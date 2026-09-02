@@ -1,4 +1,4 @@
-import { Navigate, Route, BrowserRouter, Routes } from "react-router-dom"
+import { Navigate, Route, HashRouter, Routes } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
 import { AuthProvider } from "@/components/auth/AuthProvider"
 import { useAuth } from "@/hooks/useAuth"
@@ -47,9 +47,9 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <HashRouter>
         <AppRoutes />
-      </BrowserRouter>
+      </HashRouter>
       <Toaster />
     </AuthProvider>
   )
