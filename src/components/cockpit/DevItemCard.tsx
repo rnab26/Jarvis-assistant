@@ -42,6 +42,17 @@ function renderNotes(notes: string) {
   )
 }
 
+/**
+ * Session qui travaille actuellement sur ce chantier, si la réservation court
+ * toujours. Une réservation expirée ne compte pas : la session qui l'avait
+ * prise a pu être arrêtée sans la libérer.
+ */
+function reservePar(item: DevItem) {
+  if (!item.claimed_by || !item.claim_expires_at) return null
+  if (new Date(item.claim_expires_at).getTime() < Date.now()) return null
+  return item.claimed_by.replace(/^claude\//, "")
+}
+
 interface DevItemCardProps {
   item: DevItem
   onUpdate: (id: string, input: DevItemInput) => Promise<void>
@@ -64,9 +75,14 @@ export function DevItemCard({
         {item.notes && (
           <p className="text-sm whitespace-pre-line text-muted-foreground">{renderNotes(item.notes)}</p>
         )}
-        <Badge variant={PRIORITY_VARIANT[item.priority]} className="mt-1">
-          {PRIORITY_LABEL[item.priority]}
-        </Badge>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <Badge variant={PRIORITY_VARIANT[item.priority]}>
+            {PRIORITY_LABEL[item.priority]}
+          </Badge>
+          {reservePar(item) && (
+            <Badge variant="secondary">Prise par {reservePar(item)}</Badge>
+          )}
+        </div>
       </div>
       {onArchive && item.status === "done" && (
         <Button

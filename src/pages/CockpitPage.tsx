@@ -2,11 +2,16 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { LoadError } from "@/components/LoadError"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
+import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import { useAuth } from "@/hooks/useAuth"
+import { useDevLog } from "@/hooks/useDevLog"
 
 export function CockpitPage() {
   const { devItemsState } = useJarvisData()
+  const { session } = useAuth()
+  const devLog = useDevLog(session?.user.id)
   const {
     devItems,
     loading,
@@ -49,6 +54,16 @@ export function CockpitPage() {
           onUnarchive={unarchiveDevItem}
         />
       )}
+
+      <DevLogFeed
+        entries={devLog.entries}
+        devItems={devItems}
+        loading={devLog.loading}
+        error={devLog.error}
+        onRefresh={devLog.refresh}
+        onAdd={devLog.addEntry}
+        onMarkAnswered={devLog.markAnswered}
+      />
     </div>
   )
 }
