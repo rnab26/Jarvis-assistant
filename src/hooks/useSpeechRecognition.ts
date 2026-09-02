@@ -47,18 +47,32 @@ export function useSpeechRecognition() {
       const recognition = new Ctor()
       recognitionRef.current = recognition
       recognition.lang = "fr-FR"
+      // continuous=true : évite que la reconnaissance se coupe dès la
+      // première petite pause dans la phrase. On accumule les résultats
+      // finaux et on résout seulement quand le navigateur arrête vraiment
+      // d'écouter (silence prolongé, ou stop() appelé manuellement).
+      recognition.continuous = true
       recognition.interimResults = false
       recognition.maxAlternatives = 1
+
+      let finalTranscript = ""
 
       setError(null)
       setListening(true)
 
       recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript
-        resolve(transcript)
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            finalTranscript += `${event.results[i][0].transcript} `
+          }
+        }
       }
 
       recognition.onerror = (event) => {
+        // "no-speech" en continu arrive souvent après un premier résultat
+        // valide (silence final avant coupure) : on l'ignore si on a déjà
+        // du texte, sinon c'est une vraie erreur.
+        if (event.error === "no-speech" && finalTranscript.trim()) return
         const message = friendlyErrorMessage(event.error)
         setError(message)
         reject(new Error(message))
@@ -67,6 +81,9 @@ export function useSpeechRecognition() {
       recognition.onend = () => {
         setListening(false)
         recognitionRef.current = null
+        if (finalTranscript.trim()) {
+          resolve(finalTranscript.trim())
+        }
       }
 
       recognition.start()

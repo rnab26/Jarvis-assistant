@@ -3,15 +3,18 @@ interface SpeechRecognitionResultLike {
 }
 
 interface SpeechRecognitionAlternativeList {
+  isFinal: boolean
   [index: number]: SpeechRecognitionResultLike
 }
 
 interface SpeechRecognitionResultList {
+  length: number
   [index: number]: SpeechRecognitionAlternativeList
 }
 
 interface SpeechRecognitionEvent extends Event {
   results: SpeechRecognitionResultList
+  resultIndex: number
 }
 
 interface SpeechRecognitionErrorEvent extends Event {
@@ -20,6 +23,7 @@ interface SpeechRecognitionErrorEvent extends Event {
 
 interface SpeechRecognition extends EventTarget {
   lang: string
+  continuous: boolean
   interimResults: boolean
   maxAlternatives: number
   start: () => void
