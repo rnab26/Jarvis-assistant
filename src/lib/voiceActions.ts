@@ -31,6 +31,7 @@ export type VoiceAction =
   | { action: "update_dev_item"; item_id: string; changes: Partial<DevItemInput> }
   | { action: "delete_dev_item"; item_id: string }
   | { action: "archive_dev_item"; item_id: string }
+  | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
 
@@ -145,6 +146,7 @@ export async function executeVoiceAction(
       return `"${item?.title ?? "Chantier"}" marqué fait et archivé.`
     }
 
+    case "chat":
     case "clarify":
     case "unknown":
       return action.message
