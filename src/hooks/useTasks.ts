@@ -5,11 +5,13 @@ import type { Category, Task, TaskInput } from "@/types/database"
 export function useTasks(userId: string | undefined) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  // "loading" ne reflète que le tout premier chargement : les rafraîchissements
+  // après un ajout/modif/suppression (y compris via la voix) ne doivent pas
+  // faire clignoter toute la liste en "Chargement...".
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
     if (!userId) return
-    setLoading(true)
 
     const [tasksResult, categoriesResult] = await Promise.all([
       supabase
