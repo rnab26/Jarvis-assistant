@@ -50,8 +50,10 @@ export function useSpeechRecognition() {
   const isSupported = isNative || getSpeechRecognitionCtor() !== null
 
   // Filet de sécurité si l'événement "stopped" ne vient jamais (device/plugin
-  // qui reste bloqué en écoute) — pas un vrai minuteur de silence.
-  const NATIVE_MAX_LISTEN_MS = 20000
+  // qui reste bloqué en écoute) — pas un vrai minuteur de silence. Généreux
+  // exprès (60s) pour ne pas couper un utilisateur qui prend le temps de
+  // réfléchir en pleine phrase (retour : "délai d'attente trop limité").
+  const NATIVE_MAX_LISTEN_MS = 60000
 
   const listenNative = useCallback(async (): Promise<string> => {
     setError(null)
