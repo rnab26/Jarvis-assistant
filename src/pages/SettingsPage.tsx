@@ -1,8 +1,17 @@
 import { Download } from "lucide-react"
+import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import { useSpeechSynthesis, type SpeechSynthesisVoice } from "@/hooks/useSpeechSynthesis"
 import { useUpdateCheck } from "@/hooks/useUpdateCheck"
 
 const APK_DOWNLOAD_URL =
@@ -38,8 +47,25 @@ const UPDATE_STATUS_LABEL = {
 } as const
 
 export function SettingsPage() {
-  const { wakeWordState, devItemsState } = useJarvisData()
+  const { wakeWordState, devItemsState, voiceState } = useJarvisData()
   const { status } = useUpdateCheck()
+  const { getVoices, speak } = useSpeechSynthesis()
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+
+  useEffect(() => {
+    getVoices().then(setVoices)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Voix françaises en premier (les plus utiles ici), le reste ensuite —
+  // en gardant l'index d'origine (celui attendu par speak()/TTSOptions.voice).
+  const sortedVoices = voices
+    .map((voice, index) => ({ voice, index }))
+    .sort((a, b) => {
+      const aFr = a.voice.lang.toLowerCase().startsWith("fr") ? 0 : 1
+      const bFr = b.voice.lang.toLowerCase().startsWith("fr") ? 0 : 1
+      return aFr - bFr
+    })
 
   const recentChanges = devItemsState.devItems
     .filter((item) => item.archived_at)
@@ -89,6 +115,41 @@ export function SettingsPage() {
               ))}
             </ul>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Voix de Jarvis</CardTitle>
+          <CardDescription>
+            Choisis parmi les voix déjà installées sur l'appareil (gratuit, hors-ligne).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-center gap-3">
+          <Select
+            value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}
+            onValueChange={(v) => voiceState.setVoiceIndex(v === "default" ? null : Number(v))}
+          >
+            <SelectTrigger className="w-full sm:w-64">
+              <SelectValue placeholder="Voix par défaut" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Voix par défaut</SelectItem>
+              {sortedVoices.map(({ voice, index }) => (
+                <SelectItem key={index} value={String(index)}>
+                  {voice.name} ({voice.lang})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            onClick={() =>
+              speak("Bonjour, voici un exemple de ma voix.", voiceState.voiceIndex ?? undefined)
+            }
+          >
+            Tester
+          </Button>
         </CardContent>
       </Card>
 

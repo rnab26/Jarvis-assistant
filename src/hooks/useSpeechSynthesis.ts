@@ -1,4 +1,4 @@
-import { TextToSpeech } from "@capacitor-community/text-to-speech"
+import { TextToSpeech, type SpeechSynthesisVoice } from "@capacitor-community/text-to-speech"
 import { Capacitor } from "@capacitor/core"
 import { useCallback, useRef, useState } from "react"
 
@@ -12,6 +12,8 @@ const isNative = Capacitor.isNativePlatform()
 // (1.0), pour un rendu moins lent à l'usage répété — reste raisonnable pour
 // rester compréhensible.
 const SPEECH_RATE = 1.15
+
+export type { SpeechSynthesisVoice }
 
 export function useSpeechSynthesis() {
   const [speaking, setSpeaking] = useState(false)
@@ -29,9 +31,13 @@ export function useSpeechSynthesis() {
    * relance l'écoute (ou repasse en idle) alors que l'audio joue encore,
    * ce qui fait parler Jarvis "par-dessus" une nouvelle écoute ou une
    * interaction de l'utilisateur.
+   *
+   * `voiceIndex` : index dans la liste renvoyée par getVoices(), pour
+   * utiliser la voix choisie par l'utilisateur dans Paramètres plutôt que
+   * la voix par défaut du système.
    */
   const speak = useCallback(
-    async (text: string) => {
+    async (text: string, voiceIndex?: number) => {
       if (!isSupported) return
 
       await new Promise<void>((resolve) => {
@@ -47,9 +53,14 @@ export function useSpeechSynthesis() {
 
         if (isNative) {
           setSpeaking(true)
-          TextToSpeech.speak({ text, lang: "fr-FR", rate: SPEECH_RATE, pitch: 1, volume: 1 }).finally(
-            finish,
-          )
+          TextToSpeech.speak({
+            text,
+            lang: "fr-FR",
+            rate: SPEECH_RATE,
+            pitch: 1,
+            volume: 1,
+            voice: voiceIndex,
+          }).finally(finish)
           return
         }
 
@@ -57,6 +68,10 @@ export function useSpeechSynthesis() {
         const utterance = new SpeechSynthesisUtterance(text)
         utterance.lang = "fr-FR"
         utterance.rate = SPEECH_RATE
+        if (voiceIndex !== undefined) {
+          const voice = window.speechSynthesis.getVoices()[voiceIndex]
+          if (voice) utterance.voice = voice
+        }
         utterance.onstart = () => setSpeaking(true)
         utterance.onend = finish
         utterance.onerror = finish
@@ -77,5 +92,23 @@ export function useSpeechSynthesis() {
     pendingStopRef.current?.()
   }, [])
 
-  return { speak, stop, speaking, isSupported }
+  /** Liste des voix disponibles sur l'appareil (même API des deux côtés). */
+  const getVoices = useCallback(async (): Promise<SpeechSynthesisVoice[]> => {
+    if (!isSupported) return []
+    if (isNative) {
+      const { voices } = await TextToSpeech.getSupportedVoices()
+      return voices
+    }
+    // Le navigateur charge parfois la liste des voix de façon asynchrone :
+    // si elle est vide au premier appel, on attend l'événement dédié.
+    const existing = window.speechSynthesis.getVoices()
+    if (existing.length > 0) return existing
+    return new Promise((resolve) => {
+      window.speechSynthesis.onvoiceschanged = () => {
+        resolve(window.speechSynthesis.getVoices())
+      }
+    })
+  }, [isSupported])
+
+  return { speak, stop, speaking, isSupported, getVoices }
 }

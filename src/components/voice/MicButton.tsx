@@ -20,6 +20,7 @@ interface MicButtonProps {
   devItemsApi: DevItemsApi
   documentsApi: DocumentsApi
   wakeWordEnabled: boolean
+  voiceIndex: number | null
 }
 
 function containsWakeWord(transcript: string) {
@@ -30,7 +31,13 @@ function containsWakeWord(transcript: string) {
   return normalized.includes("jarvis")
 }
 
-export function MicButton({ tasksApi, devItemsApi, documentsApi, wakeWordEnabled }: MicButtonProps) {
+export function MicButton({
+  tasksApi,
+  devItemsApi,
+  documentsApi,
+  wakeWordEnabled,
+  voiceIndex,
+}: MicButtonProps) {
   const { listen, stop: stopListening, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
   const [status, setStatus] = useState<Status>("idle")
@@ -90,7 +97,7 @@ export function MicButton({ tasksApi, devItemsApi, documentsApi, wakeWordEnabled
       setLastReply(action.message)
       setStatus("speaking")
       bargeInRef.current = false
-      await speak(action.message)
+      await speak(action.message, voiceIndex ?? undefined)
       if (bargeInRef.current) return // un tap a déjà repris la main entre-temps
 
       setStatus("listening")
@@ -105,7 +112,7 @@ export function MicButton({ tasksApi, devItemsApi, documentsApi, wakeWordEnabled
     setLastReply(reply)
     setStatus("speaking")
     bargeInRef.current = false
-    await speak(reply)
+    await speak(reply, voiceIndex ?? undefined)
     if (bargeInRef.current) return
     setStatus("idle")
   }
