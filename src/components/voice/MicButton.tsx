@@ -1,5 +1,6 @@
 import { Loader2, Mic, Volume2 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
@@ -98,6 +99,20 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
       setStatus("error")
     }
   }
+
+  // Ouverture avec ?mic=1 (ex: depuis un widget ou le bouton latéral
+  // réassigné, Phase 3) : lance directement l'écoute sans avoir à taper
+  // sur le bouton.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (searchParams.get("mic") === "1" && !autoStarted.current) {
+      autoStarted.current = true
+      setSearchParams({}, { replace: true })
+      handleClick()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   if (!isSupported) {
     return (

@@ -1,3 +1,5 @@
+import { SpeechRecognition as NativeSpeechRecognition } from "@capacitor-community/speech-recognition"
+import { Capacitor } from "@capacitor/core"
 import { useCallback, useRef, useState } from "react"
 
 type SpeechRecognitionCtor = new () => SpeechRecognition
@@ -26,14 +28,62 @@ function friendlyErrorMessage(code: string): string {
   }
 }
 
+// Dans l'app Android empaquetée (Capacitor), la webview native ne supporte
+// pas l'API Web Speech (SpeechRecognition) — on passe alors par le plugin
+// natif @capacitor-community/speech-recognition, qui utilise directement le
+// service de reconnaissance vocale d'Android. Dans un navigateur normal
+// (Chrome mobile, où le micro a déjà été validé), on garde l'API Web,
+// inchangée.
+const isNative = Capacitor.isNativePlatform()
+
 export function useSpeechRecognition() {
   const [listening, setListening] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
 
-  const isSupported = getSpeechRecognitionCtor() !== null
+  const isSupported = isNative || getSpeechRecognitionCtor() !== null
 
-  const listen = useCallback((): Promise<string> => {
+  const listenNative = useCallback(async (): Promise<string> => {
+    setError(null)
+    const { available } = await NativeSpeechRecognition.available()
+    if (!available) {
+      const message = "Reconnaissance vocale indisponible sur cet appareil."
+      setError(message)
+      throw new Error(message)
+    }
+
+    const permission = await NativeSpeechRecognition.requestPermissions()
+    if (permission.speechRecognition !== "granted") {
+      const message = "Micro refusé. Autorise l'accès au micro dans les paramètres de l'app."
+      setError(message)
+      throw new Error(message)
+    }
+
+    setListening(true)
+    try {
+      const result = await NativeSpeechRecognition.start({
+        language: "fr-FR",
+        maxResults: 1,
+        partialResults: false,
+        popup: false,
+      })
+      const transcript = result.matches?.[0]
+      if (!transcript) {
+        const message = "Je n'ai rien entendu, réessaie."
+        setError(message)
+        throw new Error(message)
+      }
+      return transcript
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur de reconnaissance vocale."
+      setError(message)
+      throw new Error(message)
+    } finally {
+      setListening(false)
+    }
+  }, [])
+
+  const listenWeb = useCallback((): Promise<string> => {
     return new Promise((resolve, reject) => {
       const Ctor = getSpeechRecognitionCtor()
       if (!Ctor) {
@@ -91,8 +141,12 @@ export function useSpeechRecognition() {
   }, [])
 
   const stop = useCallback(() => {
-    recognitionRef.current?.stop()
+    if (isNative) {
+      NativeSpeechRecognition.stop()
+    } else {
+      recognitionRef.current?.stop()
+    }
   }, [])
 
-  return { listen, stop, listening, error, isSupported }
+  return { listen: isNative ? listenNative : listenWeb, stop, listening, error, isSupported }
 }
