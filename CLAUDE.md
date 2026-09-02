@@ -88,6 +88,28 @@ en même temps que les chantiers.
 et laisse le reste libre, pour qu'une autre session puisse avancer en
 parallèle au lieu d'attendre après toi.
 
+## Plusieurs questions à Raphaël : une fiche, pas un mur de texte
+
+Dès que tu as **plus de deux ou trois questions** à lui poser, ne les empile pas
+dans un message : publie un **artefact** qu'il remplit au pouce. Il travaille
+souvent depuis son téléphone, et répondre point par point dans une
+conversation lui fait perdre le fil.
+
+La fiche doit, pour chaque point : poser la question, dire **pourquoi** tu la
+poses et ce que tu sais déjà, proposer des **options cliquables** avec
+**ta recommandation** marquée, et laisser un **champ libre** — ses réponses
+écrites valent souvent mieux que les options qu'on lui propose.
+
+Déclare la capacité `db` : ses réponses sont alors enregistrées côté serveur et
+tu les relis avec `read_db` (`action: "read_db"` sur l'URL de l'artefact) sans
+qu'il ait à les recopier. Sépare bien les **décisions** (il choisit) des
+**actions** (il fait quelque chose : créer un compte, déposer une clé) — pour
+les secondes, une liste numérotée qu'il coche au fur et à mesure te dit quand
+tu peux démarrer.
+
+Deux fiches existent déjà et servent de modèle : « Jarvis, pièce par pièce »
+(catalogue oui/non) et « Ce qu'il me manque » (décisions à options).
+
 ## Requêtes SQL : toujours regrouper
 
 Chaque appel `mcp__Supabase__execute_sql` demande une autorisation manuelle à
