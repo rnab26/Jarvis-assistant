@@ -1,9 +1,9 @@
-# Jarvis — Phase 1
+# Jarvis
 
 Dashboard PWA (React + Vite + Tailwind + shadcn/ui) avec authentification
-Supabase et gestion de tâches par catégorie. Phase 1 uniquement : pas de
-voix, pas d'app mobile, pas d'agents (voir le prompt projet pour les phases
-suivantes).
+Supabase, gestion de tâches par catégorie (Phase 1) et commandes vocales via
+l'API Claude (Phase 2). Pas d'app mobile/widget ni d'agents distants pour
+l'instant (voir le prompt projet pour les phases suivantes).
 
 ## Lancer le projet en local
 
@@ -20,8 +20,19 @@ API). Le projet Supabase dédié à Jarvis a été créé dans l'organisation
 ## Base de données
 
 Le schéma (tables `categories` / `tasks`, RLS par utilisateur) est dans
-`supabase/migrations/0001_init.sql`. Il a déjà été appliqué au projet
+`supabase/migrations/`. Les migrations ont déjà été appliquées au projet
 Supabase distant.
+
+## Commandes vocales (Phase 2)
+
+Le bouton micro appelle la Edge Function `supabase/functions/voice-command`,
+qui interprète la commande via l'API Claude et renvoie une action
+structurée (le client l'exécute ensuite via Supabase, RLS compris — la
+fonction n'écrit jamais directement en base).
+
+Secret requis côté Supabase (Dashboard → Edge Functions → Secrets, ou
+Project Settings → Edge Functions) : `ANTHROPIC_API_KEY` (clé obtenue sur
+console.anthropic.com). Jamais dans le code ni dans `.env`.
 
 ## Scripts
 
