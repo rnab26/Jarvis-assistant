@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -12,6 +13,7 @@ import {
 } from "@/components/ui/select"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
 import { useSpeechSynthesis, type SpeechSynthesisVoice } from "@/hooks/useSpeechSynthesis"
+import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
 import { useUpdateCheck } from "@/hooks/useUpdateCheck"
 
 const APK_DOWNLOAD_URL =
@@ -46,26 +48,90 @@ const UPDATE_STATUS_LABEL = {
   unknown: "Impossible de vérifier",
 } as const
 
+/** Curseur avec sa valeur lisible : régler une voix se fait à l'oreille,
+ * il faut voir où on en est et pouvoir revenir en arrière. */
+function ReglageVoix({
+  id,
+  label,
+  min,
+  max,
+  value,
+  onChange,
+}: {
+  id: string
+  label: string
+  min: number
+  max: number
+  value: number
+  onChange: (v: number) => void
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between">
+        <Label htmlFor={id}>{label}</Label>
+        <span className="text-xs tabular-nums text-muted-foreground">{value.toFixed(2)}×</span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={0.05}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-6 w-full accent-primary"
+      />
+    </div>
+  )
+}
+
 export function SettingsPage() {
   const { wakeWordState, devItemsState, voiceState, tasksState, widgetState } = useJarvisData()
   const { status } = useUpdateCheck()
-  const { getVoices, speak } = useSpeechSynthesis()
+  const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [toutesLesVoix, setToutesLesVoix] = useState(false)
 
   useEffect(() => {
     getVoices().then(setVoices)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Voix françaises en premier (les plus utiles ici), le reste ensuite —
-  // en gardant l'index d'origine (celui attendu par speak()/TTSOptions.voice).
-  const sortedVoices = voices
+  // Android installe des dizaines de voix, souvent la même déclinée par pays.
+  // On ne montre par défaut que les langues réellement parlées ici, une seule
+  // fois chacune — l'index d'origine est conservé, c'est lui qu'attend speak().
+  const voixTriees = voices
     .map((voice, index) => ({ voice, index }))
     .sort((a, b) => {
-      const aFr = a.voice.lang.toLowerCase().startsWith("fr") ? 0 : 1
-      const bFr = b.voice.lang.toLowerCase().startsWith("fr") ? 0 : 1
-      return aFr - bFr
+      const rang = (lang: string) => {
+        const l = lang.toLowerCase()
+        if (l.startsWith("fr")) return 0
+        if (l.startsWith("he") || l.startsWith("iw")) return 1
+        if (l.startsWith("en")) return 2
+        return 3
+      }
+      const parLangue = rang(a.voice.lang) - rang(b.voice.lang)
+      return parLangue !== 0 ? parLangue : a.voice.name.localeCompare(b.voice.name)
     })
+
+  const dejaVues = new Set<string>()
+  const voixCourantes = voixTriees.filter(({ voice }) => {
+    const langue = voice.lang.toLowerCase()
+    const pertinente =
+      langue.startsWith("fr") ||
+      langue.startsWith("he") ||
+      langue.startsWith("iw") ||
+      langue.startsWith("en")
+    if (!pertinente) return false
+    // Même nom décliné en fr-FR, fr-CA, fr-BE… : une seule entrée suffit.
+    const cle = `${voice.name}|${langue.slice(0, 2)}`
+    if (dejaVues.has(cle)) return false
+    dejaVues.add(cle)
+    return true
+  })
+
+  const voixAffichees = toutesLesVoix ? voixTriees : voixCourantes
+  const masquees = voixTriees.length - voixCourantes.length
 
   const recentChanges = devItemsState.devItems
     .filter((item) => item.archived_at)
@@ -125,31 +191,76 @@ export function SettingsPage() {
             Choisis parmi les voix déjà installées sur l'appareil (gratuit, hors-ligne).
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3">
-          <Select
-            value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}
-            onValueChange={(v) => voiceState.setVoiceIndex(v === "default" ? null : Number(v))}
-          >
-            <SelectTrigger className="w-full sm:w-64">
-              <SelectValue placeholder="Voix par défaut" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="default">Voix par défaut</SelectItem>
-              {sortedVoices.map(({ voice, index }) => (
-                <SelectItem key={index} value={String(index)}>
-                  {voice.name} ({voice.lang})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            onClick={() =>
-              speak("Bonjour, voici un exemple de ma voix.", voiceState.voiceIndex ?? undefined)
-            }
-          >
-            Tester
-          </Button>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Select
+              value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}
+              onValueChange={(v) => voiceState.setVoiceIndex(v === "default" ? null : Number(v))}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Voix par défaut" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Voix par défaut</SelectItem>
+                {voixAffichees.map(({ voice, index }) => (
+                  <SelectItem key={index} value={String(index)}>
+                    {voice.name} ({voice.lang})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {masquees > 0 && (
+              <button
+                type="button"
+                className="self-start text-xs text-muted-foreground underline underline-offset-4"
+                onClick={() => setToutesLesVoix(!toutesLesVoix)}
+              >
+                {toutesLesVoix
+                  ? "Ne montrer que les voix utiles"
+                  : `Afficher les ${masquees} autres voix installées`}
+              </button>
+            )}
+          </div>
+
+          <ReglageVoix
+            id="voix-vitesse"
+            label="Vitesse"
+            min={RATE_MIN}
+            max={RATE_MAX}
+            value={voiceState.rate}
+            onChange={voiceState.setRate}
+          />
+          <ReglageVoix
+            id="voix-hauteur"
+            label="Intensité"
+            min={PITCH_MIN}
+            max={PITCH_MAX}
+            value={voiceState.pitch}
+            onChange={voiceState.setPitch}
+          />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              disabled={speaking}
+              onClick={() =>
+                speak(
+                  "Bonjour Raphaël, voici comment je sonne avec ces réglages.",
+                  voiceState.voiceIndex ?? undefined,
+                )
+              }
+            >
+              {speaking ? "Lecture en cours..." : "Tester"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={voiceState.resetTon}>
+              Réglages d'origine
+            </Button>
+          </div>
+          {erreur && (
+            <p className="text-sm text-destructive">
+              La lecture a échoué : {erreur}. Essaie une autre voix.
+            </p>
+          )}
         </CardContent>
       </Card>
 
