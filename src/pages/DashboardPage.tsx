@@ -6,6 +6,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
+import { MicButton } from "@/components/voice/MicButton"
 import { useAuth } from "@/hooks/useAuth"
 import { useTasks } from "@/hooks/useTasks"
 
@@ -38,6 +39,14 @@ export function DashboardPage() {
   return (
     <DashboardLayout>
       <div className="flex flex-col gap-4">
+        <MicButton
+          tasks={tasks}
+          categories={categories}
+          addTask={addTask}
+          updateTask={updateTask}
+          deleteTask={deleteTask}
+        />
+
         <div className="flex items-center justify-between gap-2">
           <CategoryFilter
             categories={categories}
