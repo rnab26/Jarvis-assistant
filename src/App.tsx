@@ -5,6 +5,7 @@ import { ProtectedShell } from "@/components/layout/ProtectedShell"
 import { useAuth } from "@/hooks/useAuth"
 import { CockpitPage } from "@/pages/CockpitPage"
 import { DashboardPage } from "@/pages/DashboardPage"
+import { DocumentsPage } from "@/pages/DocumentsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { SettingsPage } from "@/pages/SettingsPage"
 
@@ -20,6 +21,7 @@ function AppRoutes() {
       <Route element={<ProtectedShell />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/cockpit" element={<CockpitPage />} />
+        <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

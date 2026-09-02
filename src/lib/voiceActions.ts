@@ -4,6 +4,7 @@ import type {
   DevItemInput,
   DevPriority,
   DevStatus,
+  DocumentFile,
   Task,
   TaskInput,
   TaskStatus,
@@ -31,6 +32,8 @@ export type VoiceAction =
   | { action: "update_dev_item"; item_id: string; changes: Partial<DevItemInput> }
   | { action: "delete_dev_item"; item_id: string }
   | { action: "archive_dev_item"; item_id: string }
+  | { action: "list_documents" }
+  | { action: "save_document"; filename: string; content: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
 
@@ -50,6 +53,11 @@ export interface DevItemsApi {
   archiveDevItem: (id: string) => Promise<void>
 }
 
+export interface DocumentsApi {
+  documents: DocumentFile[]
+  saveTextDocument: (filename: string, content: string) => Promise<void>
+}
+
 function categoryName(categories: Category[], id: string | null | undefined) {
   return categories.find((c) => c.id === id)?.name
 }
@@ -65,6 +73,7 @@ export async function executeVoiceAction(
   action: VoiceAction,
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
   { devItems, addDevItem, updateDevItem, deleteDevItem, archiveDevItem }: DevItemsApi,
+  { documents, saveTextDocument }: DocumentsApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -143,6 +152,17 @@ export async function executeVoiceAction(
       const item = devItems.find((i) => i.id === action.item_id)
       await archiveDevItem(action.item_id)
       return `"${item?.title ?? "Chantier"}" marqué fait et archivé.`
+    }
+
+    case "list_documents": {
+      if (documents.length === 0) return "Aucun document."
+      const names = documents.slice(0, 8).map((d) => d.name)
+      return `Tu as ${documents.length} document${documents.length > 1 ? "s" : ""} : ${names.join(", ")}.`
+    }
+
+    case "save_document": {
+      await saveTextDocument(action.filename, action.content)
+      return `Document "${action.filename}" enregistré.`
     }
 
     case "clarify":
