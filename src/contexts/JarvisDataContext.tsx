@@ -1,16 +1,19 @@
-import { createContext, useContext, type ReactNode } from "react"
+import { createContext, useContext, useEffect, type ReactNode } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { useDevItems } from "@/hooks/useDevItems"
 import { useDocuments } from "@/hooks/useDocuments"
 import { useTasks } from "@/hooks/useTasks"
 import { useVoiceSetting } from "@/hooks/useVoiceSetting"
 import { useWakeWordSetting } from "@/hooks/useWakeWordSetting"
+import { useWidgetSetting } from "@/hooks/useWidgetSetting"
+import { updateWidgetSnapshot } from "@/lib/widgetSnapshot"
 
 type TasksState = ReturnType<typeof useTasks>
 type DevItemsState = ReturnType<typeof useDevItems>
 type DocumentsState = ReturnType<typeof useDocuments>
 type WakeWordState = ReturnType<typeof useWakeWordSetting>
 type VoiceState = ReturnType<typeof useVoiceSetting>
+type WidgetState = ReturnType<typeof useWidgetSetting>
 
 interface JarvisDataValue {
   tasksState: TasksState
@@ -18,6 +21,7 @@ interface JarvisDataValue {
   documentsState: DocumentsState
   wakeWordState: WakeWordState
   voiceState: VoiceState
+  widgetState: WidgetState
 }
 
 const JarvisDataContext = createContext<JarvisDataValue | null>(null)
@@ -26,8 +30,8 @@ const JarvisDataContext = createContext<JarvisDataValue | null>(null)
  * Charge une seule fois les tâches, les chantiers de dev et les documents
  * de l'utilisateur (partagés entre le dashboard, le cockpit, les documents
  * et le micro) pour éviter de refetch et de dupliquer le bouton micro sur
- * chaque page. Porte aussi la préférence "mot-clé de réveil", partagée
- * entre Paramètres (toggle) et le micro (boucle d'écoute).
+ * chaque page. Porte aussi les préférences "mot-clé de réveil", "voix" et
+ * "widget", partagées entre Paramètres et leurs consommateurs respectifs.
  */
 export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth()
@@ -38,10 +42,20 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const documentsState = useDocuments(userId)
   const wakeWordState = useWakeWordSetting()
   const voiceState = useVoiceSetting()
+  const widgetState = useWidgetSetting()
+
+  // Met à jour le widget d'écran d'accueil à chaque changement de tâches
+  // (ajout/modif/suppression, y compris par la voix) ou de sa config
+  // (Paramètres) — sans faire échouer l'affichage des tâches si ça rate.
+  useEffect(() => {
+    updateWidgetSnapshot(tasksState.tasks, tasksState.categories, widgetState.config).catch(
+      () => {},
+    )
+  }, [tasksState.tasks, tasksState.categories, widgetState.config])
 
   return (
     <JarvisDataContext.Provider
-      value={{ tasksState, devItemsState, documentsState, wakeWordState, voiceState }}
+      value={{ tasksState, devItemsState, documentsState, wakeWordState, voiceState, widgetState }}
     >
       {children}
     </JarvisDataContext.Provider>

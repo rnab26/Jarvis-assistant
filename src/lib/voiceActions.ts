@@ -34,6 +34,12 @@ export type VoiceAction =
   | { action: "archive_dev_item"; item_id: string }
   | { action: "list_documents" }
   | { action: "save_document"; filename: string; content: string }
+  | {
+      action: "configure_widget"
+      max_tasks?: number
+      urgent_only?: boolean
+      category_id?: string | null
+    }
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
@@ -59,6 +65,11 @@ export interface DocumentsApi {
   saveTextDocument: (filename: string, content: string) => Promise<void>
 }
 
+export interface WidgetApi {
+  config: { maxTasks: number; urgentOnly: boolean; categoryId: string | null }
+  setConfig: (config: { maxTasks?: number; urgentOnly?: boolean; categoryId?: string | null }) => void
+}
+
 function categoryName(categories: Category[], id: string | null | undefined) {
   return categories.find((c) => c.id === id)?.name
 }
@@ -75,6 +86,7 @@ export async function executeVoiceAction(
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
   { devItems, addDevItem, updateDevItem, deleteDevItem, archiveDevItem }: DevItemsApi,
   { documents, saveTextDocument }: DocumentsApi,
+  { setConfig }: WidgetApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -164,6 +176,22 @@ export async function executeVoiceAction(
     case "save_document": {
       await saveTextDocument(action.filename, action.content)
       return `Document "${action.filename}" enregistré.`
+    }
+
+    case "configure_widget": {
+      setConfig({
+        maxTasks: action.max_tasks,
+        urgentOnly: action.urgent_only,
+        categoryId: action.category_id,
+      })
+      const catName = categoryName(categories, action.category_id ?? undefined)
+      const parts: string[] = []
+      if (action.max_tasks !== undefined) parts.push(`${action.max_tasks} tâche(s) affichées`)
+      if (action.urgent_only !== undefined) {
+        parts.push(action.urgent_only ? "urgentes uniquement" : "toutes les tâches")
+      }
+      if (action.category_id !== undefined) parts.push(catName ? `catégorie ${catName}` : "toutes catégories")
+      return `Widget mis à jour${parts.length ? " : " + parts.join(", ") : ""}.`
     }
 
     case "chat":
