@@ -4,7 +4,6 @@ import { errorMessage } from "@/lib/errorMessage"
 import { withErrorToast } from "@/lib/notifyError"
 import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
-import { updateWidgetSnapshot } from "@/lib/widgetSnapshot"
 import type { Category, Task, TaskInput } from "@/types/database"
 
 export function useTasks(userId: string | undefined) {
@@ -48,9 +47,6 @@ export function useTasks(userId: string | undefined) {
       setTasks(tasksResult.data ?? [])
       setCategories(categoriesResult.data ?? [])
       setError(null)
-      // Le widget d'écran d'accueil ne doit jamais faire échouer l'affichage
-      // des tâches : on le met à jour sans attendre ni propager son erreur.
-      void updateWidgetSnapshot(tasksResult.data ?? []).catch(() => {})
     } catch (e) {
       // Sans ce catch, une simple coupure réseau laissait "loading" à true pour
       // toujours : l'écran restait sur "Chargement..." sans message ni retry.

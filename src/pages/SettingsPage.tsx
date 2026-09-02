@@ -47,7 +47,7 @@ const UPDATE_STATUS_LABEL = {
 } as const
 
 export function SettingsPage() {
-  const { wakeWordState, devItemsState, voiceState } = useJarvisData()
+  const { wakeWordState, devItemsState, voiceState, tasksState, widgetState } = useJarvisData()
   const { status } = useUpdateCheck()
   const { getVoices, speak } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -149,6 +149,66 @@ export function SettingsPage() {
             }
           >
             Tester
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Widget d'écran d'accueil</CardTitle>
+          <CardDescription>
+            Ce que le widget Android affiche : nombre de tâches, urgentes, et les prochaines à
+            faire. Le widget se met à jour dès que tu changes un réglage ici.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">Tâches affichées</span>
+            <Select
+              value={String(widgetState.config.maxTasks)}
+              onValueChange={(v) => widgetState.setConfig({ maxTasks: Number(v) })}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">Catégorie</span>
+            <Select
+              value={widgetState.config.categoryId ?? "all"}
+              onValueChange={(v) =>
+                widgetState.setConfig({ categoryId: v === "all" ? null : v })
+              }
+            >
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes catégories</SelectItem>
+                {tasksState.categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button
+            variant={widgetState.config.urgentOnly ? "default" : "outline"}
+            className="w-fit"
+            onClick={() => widgetState.setConfig({ urgentOnly: !widgetState.config.urgentOnly })}
+          >
+            {widgetState.config.urgentOnly ? "Urgentes uniquement : activé" : "Urgentes uniquement : désactivé"}
           </Button>
         </CardContent>
       </Card>

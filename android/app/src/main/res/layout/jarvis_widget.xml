@@ -7,14 +7,32 @@
     android:padding="12dp"
     android:background="@drawable/widget_background">
 
-    <TextView
-        android:id="@+id/widget_app_name"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Jarvis"
-        android:textStyle="bold"
-        android:textSize="14sp"
-        android:textColor="#FFFFFF" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widget_app_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Jarvis"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:textColor="#FFFFFF" />
+
+        <TextView
+            android:id="@+id/widget_urgent"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textStyle="bold"
+            android:textSize="12sp"
+            android:textColor="#FFD166" />
+
+    </LinearLayout>
 
     <TextView
         android:id="@+id/widget_count"
@@ -27,14 +45,25 @@
         android:textColor="#FFFFFF" />
 
     <TextView
-        android:id="@+id/widget_title"
+        android:id="@+id/widget_task_list"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:maxLines="2"
+        android:layout_marginTop="4dp"
+        android:maxLines="5"
         android:ellipsize="end"
         android:text="Aucune tâche"
         android:textSize="13sp"
+        android:lineSpacingExtra="2dp"
         android:textColor="#E5E5E5" />
+
+    <TextView
+        android:id="@+id/widget_category_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Toutes catégories"
+        android:textSize="11sp"
+        android:alpha="0.75"
+        android:textColor="#FFFFFF" />
 
 </LinearLayout>

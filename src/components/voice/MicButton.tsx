@@ -11,6 +11,7 @@ import {
   type DocumentsApi,
   type TasksApi,
   type VoiceAction,
+  type WidgetApi,
 } from "@/lib/voiceActions"
 
 type Status = "idle" | "wake-listening" | "listening" | "processing" | "speaking" | "error"
@@ -19,6 +20,7 @@ interface MicButtonProps {
   tasksApi: TasksApi
   devItemsApi: DevItemsApi
   documentsApi: DocumentsApi
+  widgetApi: WidgetApi
   wakeWordEnabled: boolean
   voiceIndex: number | null
 }
@@ -35,6 +37,7 @@ export function MicButton({
   tasksApi,
   devItemsApi,
   documentsApi,
+  widgetApi,
   wakeWordEnabled,
   voiceIndex,
 }: MicButtonProps) {
@@ -72,6 +75,7 @@ export function MicButton({
             priority: i.priority,
           })),
           documents: documentsApi.documents.map((d) => ({ name: d.name })),
+          widgetConfig: widgetApi.config,
           todayISO: new Date().toISOString().slice(0, 10),
         },
       },
@@ -108,7 +112,7 @@ export function MicButton({
       return
     }
 
-    const reply = await executeVoiceAction(action, tasksApi, devItemsApi, documentsApi)
+    const reply = await executeVoiceAction(action, tasksApi, devItemsApi, documentsApi, widgetApi)
     setLastReply(reply)
     setStatus("speaking")
     bargeInRef.current = false
