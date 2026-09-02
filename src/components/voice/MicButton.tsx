@@ -4,17 +4,21 @@ import { Button } from "@/components/ui/button"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { supabase } from "@/lib/supabase"
-import { executeVoiceAction, type TasksApi, type VoiceAction } from "@/lib/voiceActions"
-import type { Category, Task } from "@/types/database"
+import {
+  executeVoiceAction,
+  type DevItemsApi,
+  type TasksApi,
+  type VoiceAction,
+} from "@/lib/voiceActions"
 
 type Status = "idle" | "listening" | "processing" | "speaking" | "error"
 
-interface MicButtonProps extends TasksApi {
-  tasks: Task[]
-  categories: Category[]
+interface MicButtonProps {
+  tasksApi: TasksApi
+  devItemsApi: DevItemsApi
 }
 
-export function MicButton(props: MicButtonProps) {
+export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
   const { listen, isSupported } = useSpeechRecognition()
   const { speak } = useSpeechSynthesis()
   const [status, setStatus] = useState<Status>("idle")
@@ -27,13 +31,19 @@ export function MicButton(props: MicButtonProps) {
       {
         body: {
           transcript,
-          categories: props.categories.map((c) => ({ id: c.id, name: c.name })),
-          tasks: props.tasks.map((t) => ({
+          categories: tasksApi.categories.map((c) => ({ id: c.id, name: c.name })),
+          tasks: tasksApi.tasks.map((t) => ({
             id: t.id,
             title: t.title,
             category_id: t.category_id,
             status: t.status,
             due_date: t.due_date,
+          })),
+          devItems: devItemsApi.devItems.map((i) => ({
+            id: i.id,
+            title: i.title,
+            status: i.status,
+            priority: i.priority,
           })),
           todayISO: new Date().toISOString().slice(0, 10),
         },
@@ -68,7 +78,7 @@ export function MicButton(props: MicButtonProps) {
       return
     }
 
-    const reply = await executeVoiceAction(action, props)
+    const reply = await executeVoiceAction(action, tasksApi, devItemsApi)
     setLastMessage(reply)
     setStatus("speaking")
     speak(reply)

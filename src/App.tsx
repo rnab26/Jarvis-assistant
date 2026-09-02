@@ -1,27 +1,11 @@
 import { Navigate, Route, HashRouter, Routes } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
 import { AuthProvider } from "@/components/auth/AuthProvider"
+import { ProtectedShell } from "@/components/layout/ProtectedShell"
 import { useAuth } from "@/hooks/useAuth"
+import { CockpitPage } from "@/pages/CockpitPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { LoginPage } from "@/pages/LoginPage"
-
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { session, loading } = useAuth()
-
-  if (loading) {
-    return (
-      <div className="flex min-h-svh items-center justify-center text-muted-foreground">
-        Chargement...
-      </div>
-    )
-  }
-
-  if (!session) {
-    return <Navigate to="/login" replace />
-  }
-
-  return <>{children}</>
-}
 
 function AppRoutes() {
   const { session } = useAuth()
@@ -32,14 +16,10 @@ function AppRoutes() {
         path="/login"
         element={session ? <Navigate to="/" replace /> : <LoginPage />}
       />
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <DashboardPage />
-          </RequireAuth>
-        }
-      />
+      <Route element={<ProtectedShell />}>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/cockpit" element={<CockpitPage />} />
+      </Route>
     </Routes>
   )
 }

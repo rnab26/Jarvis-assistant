@@ -1,0 +1,43 @@
+import { Navigate, Outlet } from "react-router-dom"
+import { DashboardLayout } from "@/components/layout/DashboardLayout"
+import { MicButton } from "@/components/voice/MicButton"
+import { JarvisDataProvider, useJarvisData } from "@/contexts/JarvisDataContext"
+import { useAuth } from "@/hooks/useAuth"
+
+function ShellContent() {
+  const { tasksState, devItemsState } = useJarvisData()
+
+  return (
+    <DashboardLayout>
+      <MicButton
+        tasksApi={tasksState}
+        devItemsApi={devItemsState}
+      />
+      <Outlet />
+    </DashboardLayout>
+  )
+}
+
+/** Vérifie l'authentification puis fournit les données partagées (tâches +
+ * chantiers dev) et le micro à toutes les pages protégées (Tâches, Cockpit). */
+export function ProtectedShell() {
+  const { session, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="flex min-h-svh items-center justify-center text-muted-foreground">
+        Chargement...
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <Navigate to="/login" replace />
+  }
+
+  return (
+    <JarvisDataProvider>
+      <ShellContent />
+    </JarvisDataProvider>
+  )
+}

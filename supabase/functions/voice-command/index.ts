@@ -10,35 +10,63 @@ const corsHeaders = {
 const VOICE_ACTION_TOOL = {
   name: "resolve_voice_command",
   description:
-    "Résout une commande vocale en français en une action structurée sur les tâches de l'utilisateur.",
+    "Résout une commande vocale en français en une action structurée. Deux domaines distincts : les tâches perso/clients (avec catégories) et les chantiers de développement de Jarvis lui-même (cockpit, avec statut à 3 valeurs + priorité, pas de catégories).",
   input_schema: {
     type: "object" as const,
     properties: {
       action: {
         type: "string",
-        enum: ["list_tasks", "add_task", "update_task", "delete_task", "clarify", "unknown"],
+        enum: [
+          "list_tasks",
+          "add_task",
+          "update_task",
+          "delete_task",
+          "list_dev_items",
+          "add_dev_item",
+          "update_dev_item",
+          "delete_dev_item",
+          "clarify",
+          "unknown",
+        ],
         description:
-          "list_tasks: lister/consulter des tâches. add_task: en créer une. update_task: modifier une tâche existante identifiée par task_id (ex: la marquer faite). delete_task: supprimer une tâche identifiée par task_id. clarify: la commande est ambiguë (plusieurs tâches possibles, ou infos manquantes) — poser une question via `message`. unknown: hors-sujet ou incompréhensible.",
+          "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id) — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: hors-sujet ou incompréhensible.",
       },
-      title: { type: "string", description: "Titre de la tâche (add_task)." },
+      title: { type: "string", description: "Titre (add_task ou add_dev_item)." },
       category_id: {
         type: ["string", "null"],
-        description: "id de catégorie existant correspondant le mieux, ou null si aucune/pas de correspondance claire.",
+        description: "add_task uniquement : id de catégorie existant correspondant le mieux, ou null si aucune/pas de correspondance claire.",
       },
       due_date: {
         type: ["string", "null"],
-        description: "Échéance au format YYYY-MM-DD, déduite si l'utilisateur dit 'demain', 'vendredi', etc. null si non précisée.",
+        description: "add_task uniquement : échéance au format YYYY-MM-DD, déduite si l'utilisateur dit 'demain', 'vendredi', etc. null si non précisée.",
+      },
+      priority: {
+        type: "string",
+        enum: ["low", "normal", "high"],
+        description: "add_dev_item uniquement : priorité du chantier, 'normal' par défaut si non précisée.",
+      },
+      status: {
+        type: "string",
+        enum: ["todo", "in_progress", "done"],
+        description: "add_dev_item uniquement : statut initial du chantier, 'todo' par défaut.",
       },
       task_id: {
         type: "string",
         description: "id de la tâche existante ciblée (update_task, delete_task), résolu depuis la liste de tâches fournie.",
       },
+      item_id: {
+        type: "string",
+        description: "id du chantier existant ciblé (update_dev_item, delete_dev_item), résolu depuis la liste de chantiers fournie.",
+      },
       changes: {
         type: "object",
-        description: "Champs à modifier pour update_task, ex: { \"status\": \"done\" } ou { \"title\": \"nouveau titre\" }.",
+        description: "Champs à modifier pour update_task (ex: { \"status\": \"done\" }) ou update_dev_item (ex: { \"status\": \"in_progress\" }, { \"priority\": \"high\" }).",
       },
-      filter_category_id: { type: "string", description: "Filtre catégorie pour list_tasks." },
-      filter_status: { type: "string", enum: ["todo", "done"], description: "Filtre statut pour list_tasks." },
+      filter_category_id: { type: "string", description: "list_tasks uniquement : filtre par catégorie." },
+      filter_status: {
+        type: "string",
+        description: "Filtre par statut. Pour list_tasks : 'todo' ou 'done'. Pour list_dev_items : 'todo', 'in_progress' ou 'done'.",
+      },
       message: {
         type: "string",
         description: "Phrase à dire à l'utilisateur : question de clarification (clarify) ou réponse (unknown).",
@@ -72,7 +100,7 @@ Deno.serve(async (req: Request) => {
       })
     }
 
-    const { transcript, categories, tasks, todayISO } = await req.json()
+    const { transcript, categories, tasks, devItems, todayISO } = await req.json()
 
     if (!transcript || typeof transcript !== "string") {
       return new Response(JSON.stringify({ error: "transcript manquant." }), {
@@ -89,12 +117,17 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    const systemPrompt = `Tu es l'assistant vocal d'un dashboard de tâches personnelles nommé Jarvis.
+    const systemPrompt = `Tu es l'assistant vocal de Jarvis, qui gère deux domaines séparés pour l'utilisateur :
+1. Ses tâches personnelles/clients, organisées par catégorie.
+2. Le cockpit de développement de Jarvis lui-même (les chantiers/fonctionnalités à coder pour l'assistant) — utilise ce domaine quand l'utilisateur parle explicitement de "chantier", de développer/coder Jarvis, du "cockpit", ou d'une fonctionnalité de l'app elle-même.
+
 Date du jour : ${todayISO}.
-Catégories existantes : ${JSON.stringify(categories)}.
+Catégories de tâches existantes : ${JSON.stringify(categories)}.
 Tâches existantes de l'utilisateur : ${JSON.stringify(tasks)}.
+Chantiers de dev Jarvis existants (cockpit) : ${JSON.stringify(devItems)}.
+
 Traduis la commande vocale de l'utilisateur en un appel à l'outil resolve_voice_command.
-Pour update_task/delete_task, résous task_id en cherchant la tâche correspondante dans la liste fournie (par titre approchant). Si plusieurs tâches correspondent ou qu'aucune ne correspond clairement, utilise action="clarify" avec une question précise.
+Pour update_task/delete_task, résous task_id depuis la liste de tâches fournie (par titre approchant). Pour update_dev_item/delete_dev_item, résous item_id depuis la liste de chantiers fournie. Si plusieurs éléments correspondent ou qu'aucun ne correspond clairement, utilise action="clarify" avec une question précise.
 Réponds toujours en français dans le champ message.`
 
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {

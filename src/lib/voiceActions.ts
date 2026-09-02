@@ -1,10 +1,23 @@
-import type { Category, Task, TaskInput, TaskStatus } from "@/types/database"
+import type {
+  Category,
+  DevItem,
+  DevItemInput,
+  DevPriority,
+  DevStatus,
+  Task,
+  TaskInput,
+  TaskStatus,
+} from "@/types/database"
 
 export type VoiceAction =
   | { action: "list_tasks"; filter_category_id?: string; filter_status?: TaskStatus }
   | { action: "add_task"; title: string; category_id?: string | null; due_date?: string | null }
   | { action: "update_task"; task_id: string; changes: Partial<TaskInput> }
   | { action: "delete_task"; task_id: string }
+  | { action: "list_dev_items"; filter_status?: DevStatus }
+  | { action: "add_dev_item"; title: string; priority?: DevPriority; status?: DevStatus }
+  | { action: "update_dev_item"; item_id: string; changes: Partial<DevItemInput> }
+  | { action: "delete_dev_item"; item_id: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
 
@@ -16,14 +29,28 @@ export interface TasksApi {
   deleteTask: (id: string) => Promise<void>
 }
 
+export interface DevItemsApi {
+  devItems: DevItem[]
+  addDevItem: (input: DevItemInput) => Promise<void>
+  updateDevItem: (id: string, input: Partial<DevItemInput>) => Promise<void>
+  deleteDevItem: (id: string) => Promise<void>
+}
+
 function categoryName(categories: Category[], id: string | null | undefined) {
   return categories.find((c) => c.id === id)?.name
+}
+
+const STATUS_LABEL: Record<DevStatus, string> = {
+  todo: "à faire",
+  in_progress: "en cours",
+  done: "terminé",
 }
 
 /** Exécute une VoiceAction résolue par la Edge Function et renvoie la phrase à énoncer. */
 export async function executeVoiceAction(
   action: VoiceAction,
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
+  { devItems, addDevItem, updateDevItem, deleteDevItem }: DevItemsApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -61,6 +88,41 @@ export async function executeVoiceAction(
       const task = tasks.find((t) => t.id === action.task_id)
       await deleteTask(action.task_id)
       return `"${task?.title ?? "Tâche"}" supprimée.`
+    }
+
+    case "list_dev_items": {
+      const filtered = devItems.filter(
+        (i) => !action.filter_status || i.status === action.filter_status,
+      )
+      if (filtered.length === 0) return "Aucun chantier trouvé."
+      const titles = filtered.slice(0, 8).map((i) => i.title)
+      return `Tu as ${filtered.length} chantier${filtered.length > 1 ? "s" : ""} : ${titles.join(", ")}.`
+    }
+
+    case "add_dev_item": {
+      await addDevItem({
+        title: action.title,
+        notes: null,
+        status: action.status ?? "todo",
+        priority: action.priority ?? "normal",
+      })
+      return `Chantier "${action.title}" ajouté au cockpit.`
+    }
+
+    case "update_dev_item": {
+      const item = devItems.find((i) => i.id === action.item_id)
+      await updateDevItem(action.item_id, action.changes)
+      const label = item?.title ?? "le chantier"
+      if (action.changes.status) {
+        return `"${label}" passé en ${STATUS_LABEL[action.changes.status]}.`
+      }
+      return `"${label}" mis à jour.`
+    }
+
+    case "delete_dev_item": {
+      const item = devItems.find((i) => i.id === action.item_id)
+      await deleteDevItem(action.item_id)
+      return `"${item?.title ?? "Chantier"}" supprimé du cockpit.`
     }
 
     case "clarify":
