@@ -10,6 +10,22 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
 }
 
+function friendlyErrorMessage(code: string): string {
+  switch (code) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return "Micro refusé. Autorise l'accès au micro dans les paramètres du navigateur."
+    case "no-speech":
+      return "Je n'ai rien entendu, réessaie."
+    case "audio-capture":
+      return "Aucun micro détecté sur cet appareil."
+    case "network":
+      return "Problème réseau pendant l'écoute, réessaie."
+    default:
+      return `Erreur de reconnaissance vocale : ${code}`
+  }
+}
+
 export function useSpeechRecognition() {
   const [listening, setListening] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -43,7 +59,7 @@ export function useSpeechRecognition() {
       }
 
       recognition.onerror = (event) => {
-        const message = `Erreur de reconnaissance vocale : ${event.error}`
+        const message = friendlyErrorMessage(event.error)
         setError(message)
         reject(new Error(message))
       }
