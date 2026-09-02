@@ -11,6 +11,9 @@ on:
       - ".github/workflows/android-build.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -47,3 +50,18 @@ jobs:
           name: jarvis-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
+
+      # Publie aussi l'APK sur une "release" GitHub à URL fixe (tag
+      # "latest-debug", toujours réécrite) : lien de téléchargement direct
+      # et stable pour le menu Paramètres de l'app, sans avoir à naviguer
+      # dans l'onglet Actions à chaque fois.
+      - name: Publier l'APK en téléchargement direct
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-debug
+          name: Dernière build (debug)
+          body: >
+            APK debug généré automatiquement depuis le dernier commit de
+            claude/new-session-rn6puh. Lien stable, toujours à jour.
+          prerelease: true
+          files: android/app/build/outputs/apk/debug/app-debug.apk

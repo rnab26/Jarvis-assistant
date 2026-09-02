@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { CockpitPage } from "@/pages/CockpitPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { LoginPage } from "@/pages/LoginPage"
+import { SettingsPage } from "@/pages/SettingsPage"
 
 function AppRoutes() {
   const { session } = useAuth()
@@ -19,6 +20,7 @@ function AppRoutes() {
       <Route element={<ProtectedShell />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/cockpit" element={<CockpitPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   )

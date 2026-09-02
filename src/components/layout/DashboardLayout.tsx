@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth"
 const TABS = [
   { to: "/", label: "Tâches", end: true },
   { to: "/cockpit", label: "Cockpit dev", end: false },
+  { to: "/settings", label: "Paramètres", end: false },
 ]
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
