@@ -20,41 +20,68 @@ export function MicButton(props: MicButtonProps) {
   const [status, setStatus] = useState<Status>("idle")
   const [lastMessage, setLastMessage] = useState<string | null>(null)
 
+  /** Envoie un transcript à la Edge Function et exécute l'action renvoyée. */
+  async function resolveTranscript(transcript: string): Promise<VoiceAction> {
+    const { data, error } = await supabase.functions.invoke<{ action: VoiceAction }>(
+      "voice-command",
+      {
+        body: {
+          transcript,
+          categories: props.categories.map((c) => ({ id: c.id, name: c.name })),
+          tasks: props.tasks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            category_id: t.category_id,
+            status: t.status,
+            due_date: t.due_date,
+          })),
+          todayISO: new Date().toISOString().slice(0, 10),
+        },
+      },
+    )
+
+    if (error || !data) {
+      throw new Error(error?.message ?? "Réponse vide du serveur vocal.")
+    }
+    return data.action
+  }
+
+  /**
+   * Traite une commande vocale ; si l'action est "clarify", parle la
+   * question puis réécoute automatiquement la réponse (en donnant à Claude
+   * le contexte de la demande initiale) plutôt que de forcer l'utilisateur
+   * à réappuyer sur le micro et tout redire.
+   */
+  async function runTurn(transcript: string, originalTranscript = transcript, round = 0) {
+    setStatus("processing")
+    const action = await resolveTranscript(transcript)
+
+    if (action.action === "clarify" && round < 3) {
+      setLastMessage(action.message)
+      setStatus("speaking")
+      speak(action.message)
+
+      setStatus("listening")
+      const answer = await listen()
+      const combined = `Demande initiale : "${originalTranscript}". Question posée : "${action.message}". Réponse de l'utilisateur : "${answer}".`
+      await runTurn(combined, originalTranscript, round + 1)
+      return
+    }
+
+    const reply = await executeVoiceAction(action, props)
+    setLastMessage(reply)
+    setStatus("speaking")
+    speak(reply)
+    setStatus("idle")
+  }
+
   async function handleClick() {
     if (status !== "idle" && status !== "error") return
 
     try {
       setStatus("listening")
       const transcript = await listen()
-
-      setStatus("processing")
-      const { data, error } = await supabase.functions.invoke<{ action: VoiceAction }>(
-        "voice-command",
-        {
-          body: {
-            transcript,
-            categories: props.categories.map((c) => ({ id: c.id, name: c.name })),
-            tasks: props.tasks.map((t) => ({
-              id: t.id,
-              title: t.title,
-              category_id: t.category_id,
-              status: t.status,
-              due_date: t.due_date,
-            })),
-            todayISO: new Date().toISOString().slice(0, 10),
-          },
-        },
-      )
-
-      if (error || !data) {
-        throw new Error(error?.message ?? "Réponse vide du serveur vocal.")
-      }
-
-      const reply = await executeVoiceAction(data.action, props)
-      setLastMessage(reply)
-      setStatus("speaking")
-      speak(reply)
-      setStatus("idle")
+      await runTurn(transcript)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue."
       setLastMessage(message)
