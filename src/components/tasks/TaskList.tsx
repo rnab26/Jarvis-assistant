@@ -29,6 +29,13 @@ export function TaskList({
     groups.set(key, group)
   }
 
+  // Ordre stable : catégories dans l'ordre alphabétique déjà fourni par
+  // useTasks, puis "Sans catégorie" en dernier — plutôt que l'ordre
+  // d'apparition dans les tâches (qui change à chaque tri par échéance).
+  const orderedKeys = [...categories.map((c) => c.id), "none"].filter((key) =>
+    groups.has(key),
+  )
+
   if (tasks.length === 0) {
     return (
       <p className="py-8 text-center text-muted-foreground">
@@ -39,27 +46,30 @@ export function TaskList({
 
   return (
     <div className="flex flex-col gap-4">
-      {[...groups.entries()].map(([categoryId, groupTasks]) => (
-        <Card key={categoryId}>
-          <CardHeader>
-            <CardTitle className="text-base">
-              {categoryById.get(categoryId) ?? NO_CATEGORY_LABEL}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {groupTasks.map((task) => (
-              <TaskItem
-                key={task.id}
-                task={task}
-                categories={categories}
-                onToggle={onToggle}
-                onUpdate={onUpdate}
-                onDelete={onDelete}
-              />
-            ))}
-          </CardContent>
-        </Card>
-      ))}
+      {orderedKeys.map((categoryId) => {
+        const groupTasks = groups.get(categoryId)!
+        return (
+          <Card key={categoryId}>
+            <CardHeader>
+              <CardTitle className="text-base">
+                {categoryById.get(categoryId) ?? NO_CATEGORY_LABEL}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {groupTasks.map((task) => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  categories={categories}
+                  onToggle={onToggle}
+                  onUpdate={onUpdate}
+                  onDelete={onDelete}
+                />
+              ))}
+            </CardContent>
+          </Card>
+        )
+      })}
     </div>
   )
 }
