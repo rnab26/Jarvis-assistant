@@ -21,9 +21,10 @@ interface MicButtonProps {
 
 export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
   const { listen, isSupported } = useSpeechRecognition()
-  const { speak } = useSpeechSynthesis()
+  const { speak, stop: stopSpeaking } = useSpeechSynthesis()
   const [status, setStatus] = useState<Status>("idle")
-  const [lastMessage, setLastMessage] = useState<string | null>(null)
+  const [lastUserText, setLastUserText] = useState<string | null>(null)
+  const [lastReply, setLastReply] = useState<string | null>(null)
 
   /** Envoie un transcript à la Edge Function et exécute l'action renvoyée. */
   async function resolveTranscript(transcript: string): Promise<VoiceAction> {
@@ -68,36 +69,50 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
     const action = await resolveTranscript(transcript)
 
     if (action.action === "clarify" && round < 3) {
-      setLastMessage(action.message)
+      setLastReply(action.message)
       setStatus("speaking")
       speak(action.message)
 
       setStatus("listening")
       const answer = await listen()
+      setLastUserText(answer)
       const combined = `Demande initiale : "${originalTranscript}". Question posée : "${action.message}". Réponse de l'utilisateur : "${answer}".`
       await runTurn(combined, originalTranscript, round + 1)
       return
     }
 
     const reply = await executeVoiceAction(action, tasksApi, devItemsApi)
-    setLastMessage(reply)
+    setLastReply(reply)
     setStatus("speaking")
     speak(reply)
     setStatus("idle")
   }
 
-  async function handleClick() {
-    if (status !== "idle" && status !== "error") return
-
+  async function startListening() {
     try {
       setStatus("listening")
       const transcript = await listen()
+      setLastUserText(transcript)
       await runTurn(transcript)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue."
-      setLastMessage(message)
+      setLastReply(message)
       setStatus("error")
     }
+  }
+
+  async function handleClick() {
+    // Interruption ("barge-in") : si Jarvis est en train de parler, un tap
+    // coupe la voix et relance directement l'écoute, sans devoir attendre
+    // la fin de la phrase.
+    if (status === "speaking") {
+      stopSpeaking()
+      await startListening()
+      return
+    }
+
+    if (status !== "idle" && status !== "error") return
+    await startListening()
   }
 
   // Ouverture avec ?mic=1 (ex: depuis un widget ou le bouton latéral
@@ -130,7 +145,7 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
         className="size-14 rounded-full"
         onClick={handleClick}
         disabled={status === "listening" || status === "processing"}
-        aria-label="Commande vocale"
+        aria-label={status === "speaking" ? "Interrompre Jarvis" : "Commande vocale"}
       >
         {status === "listening" || status === "processing" ? (
           <Loader2 className="size-6 animate-spin" />
@@ -140,7 +155,12 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
           <Mic className="size-6" />
         )}
       </Button>
-      {lastMessage && <p className="max-w-xs text-center text-sm text-muted-foreground">{lastMessage}</p>}
+      {(lastUserText || lastReply) && (
+        <div className="max-w-xs text-center text-sm">
+          {lastUserText && <p className="text-muted-foreground">Toi : {lastUserText}</p>}
+          {lastReply && <p>Jarvis : {lastReply}</p>}
+        </div>
+      )}
     </div>
   )
 }

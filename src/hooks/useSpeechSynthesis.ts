@@ -8,6 +8,11 @@ import { useCallback, useState } from "react"
 // (voix installées garanties, pas de dépendance à l'implémentation webview).
 const isNative = Capacitor.isNativePlatform()
 
+// Vitesse de lecture par défaut : un peu plus rapide que le rythme "normal"
+// (1.0), pour un rendu moins lent à l'usage répété — reste raisonnable pour
+// rester compréhensible.
+const SPEECH_RATE = 1.15
+
 export function useSpeechSynthesis() {
   const [speaking, setSpeaking] = useState(false)
   const isSupported = isNative || "speechSynthesis" in window
@@ -19,7 +24,7 @@ export function useSpeechSynthesis() {
       if (isNative) {
         setSpeaking(true)
         try {
-          await TextToSpeech.speak({ text, lang: "fr-FR", rate: 1, pitch: 1, volume: 1 })
+          await TextToSpeech.speak({ text, lang: "fr-FR", rate: SPEECH_RATE, pitch: 1, volume: 1 })
         } finally {
           setSpeaking(false)
         }
@@ -29,6 +34,7 @@ export function useSpeechSynthesis() {
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(text)
       utterance.lang = "fr-FR"
+      utterance.rate = SPEECH_RATE
       utterance.onstart = () => setSpeaking(true)
       utterance.onend = () => setSpeaking(false)
       utterance.onerror = () => setSpeaking(false)
@@ -37,5 +43,15 @@ export function useSpeechSynthesis() {
     [isSupported],
   )
 
-  return { speak, speaking, isSupported }
+  /** Coupe la voix en cours (interruption / "barge-in"). */
+  const stop = useCallback(() => {
+    if (isNative) {
+      TextToSpeech.stop()
+    } else {
+      window.speechSynthesis.cancel()
+    }
+    setSpeaking(false)
+  }, [])
+
+  return { speak, stop, speaking, isSupported }
 }
