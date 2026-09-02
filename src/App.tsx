@@ -4,6 +4,7 @@ import { AuthProvider } from "@/components/auth/AuthProvider"
 import { ProtectedShell } from "@/components/layout/ProtectedShell"
 import { useAuth } from "@/hooks/useAuth"
 import { CockpitPage } from "@/pages/CockpitPage"
+import { ContactsPage } from "@/pages/ContactsPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { DocumentsPage } from "@/pages/DocumentsPage"
 import { LoginPage } from "@/pages/LoginPage"
@@ -22,6 +23,7 @@ function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/cockpit" element={<CockpitPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
+        <Route path="/contacts" element={<ContactsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

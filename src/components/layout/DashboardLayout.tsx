@@ -8,6 +8,7 @@ const TABS = [
   { to: "/", label: "Tâches", end: true },
   { to: "/cockpit", label: "Cockpit dev", end: false },
   { to: "/documents", label: "Documents", end: false },
+  { to: "/contacts", label: "Contacts", end: false },
   { to: "/settings", label: "Paramètres", end: false },
 ]
 

@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, type ReactNode } from "react"
 import { useAuth } from "@/hooks/useAuth"
+import { useContacts } from "@/hooks/useContacts"
 import { useDevItems } from "@/hooks/useDevItems"
 import { useDocuments } from "@/hooks/useDocuments"
 import { useTasks } from "@/hooks/useTasks"
@@ -11,6 +12,7 @@ import { updateWidgetSnapshot } from "@/lib/widgetSnapshot"
 type TasksState = ReturnType<typeof useTasks>
 type DevItemsState = ReturnType<typeof useDevItems>
 type DocumentsState = ReturnType<typeof useDocuments>
+type ContactsState = ReturnType<typeof useContacts>
 type WakeWordState = ReturnType<typeof useWakeWordSetting>
 type VoiceState = ReturnType<typeof useVoiceSetting>
 type WidgetState = ReturnType<typeof useWidgetSetting>
@@ -19,6 +21,7 @@ interface JarvisDataValue {
   tasksState: TasksState
   devItemsState: DevItemsState
   documentsState: DocumentsState
+  contactsState: ContactsState
   wakeWordState: WakeWordState
   voiceState: VoiceState
   widgetState: WidgetState
@@ -40,6 +43,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const tasksState = useTasks(userId)
   const devItemsState = useDevItems(userId)
   const documentsState = useDocuments(userId)
+  const contactsState = useContacts(userId)
   const wakeWordState = useWakeWordSetting()
   const voiceState = useVoiceSetting()
   const widgetState = useWidgetSetting()
@@ -55,7 +59,15 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
 
   return (
     <JarvisDataContext.Provider
-      value={{ tasksState, devItemsState, documentsState, wakeWordState, voiceState, widgetState }}
+      value={{
+        tasksState,
+        devItemsState,
+        documentsState,
+        contactsState,
+        wakeWordState,
+        voiceState,
+        widgetState,
+      }}
     >
       {children}
     </JarvisDataContext.Provider>
