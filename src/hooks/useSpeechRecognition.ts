@@ -38,6 +38,12 @@ const isNative = Capacitor.isNativePlatform()
 
 export function useSpeechRecognition() {
   const [listening, setListening] = useState(false)
+  // "ready" distingue la phase de démarrage du moteur natif (encore sourd
+  // aux premiers mots) de l'écoute effective. Corrige le bug où le premier
+  // clic sur le micro ratait le début de la phrase : l'UI passait en
+  // "écoute" avant même que le moteur natif ait fini de démarrer, donc
+  // l'utilisateur parlait trop tôt.
+  const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const recognitionRef = useRef<SpeechRecognition | null>(null)
 
@@ -45,6 +51,7 @@ export function useSpeechRecognition() {
 
   const listenNative = useCallback(async (): Promise<string> => {
     setError(null)
+    setReady(false)
     const { available } = await NativeSpeechRecognition.available()
     if (!available) {
       const message = "Reconnaissance vocale indisponible sur cet appareil."
@@ -60,6 +67,10 @@ export function useSpeechRecognition() {
     }
 
     setListening(true)
+    const listeningStateHandle = await NativeSpeechRecognition.addListener(
+      "listeningState",
+      ({ status }) => setReady(status === "started"),
+    )
     try {
       const result = await NativeSpeechRecognition.start({
         language: "fr-FR",
@@ -80,6 +91,8 @@ export function useSpeechRecognition() {
       throw new Error(message)
     } finally {
       setListening(false)
+      setReady(false)
+      await listeningStateHandle.remove()
     }
   }, [])
 
@@ -109,6 +122,9 @@ export function useSpeechRecognition() {
 
       setError(null)
       setListening(true)
+      setReady(false)
+
+      recognition.onstart = () => setReady(true)
 
       recognition.onresult = (event) => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -130,6 +146,7 @@ export function useSpeechRecognition() {
 
       recognition.onend = () => {
         setListening(false)
+        setReady(false)
         recognitionRef.current = null
         if (finalTranscript.trim()) {
           resolve(finalTranscript.trim())
@@ -148,5 +165,12 @@ export function useSpeechRecognition() {
     }
   }, [])
 
-  return { listen: isNative ? listenNative : listenWeb, stop, listening, error, isSupported }
+  return {
+    listen: isNative ? listenNative : listenWeb,
+    stop,
+    listening,
+    ready,
+    error,
+    isSupported,
+  }
 }

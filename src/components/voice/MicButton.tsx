@@ -20,7 +20,7 @@ interface MicButtonProps {
 }
 
 export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
-  const { listen, isSupported } = useSpeechRecognition()
+  const { listen, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
   const [status, setStatus] = useState<Status>("idle")
   const [lastUserText, setLastUserText] = useState<string | null>(null)
@@ -155,6 +155,11 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
           <Mic className="size-6" />
         )}
       </Button>
+      {status === "listening" && (
+        <p className="text-sm text-muted-foreground">
+          {micReady ? "Je t'écoute..." : "Préparation du micro..."}
+        </p>
+      )}
       {(lastUserText || lastReply) && (
         <div className="max-w-xs text-center text-sm">
           {lastUserText && <p className="text-muted-foreground">Toi : {lastUserText}</p>}
