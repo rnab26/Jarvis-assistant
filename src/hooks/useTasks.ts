@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import { updateWidgetSnapshot } from "@/lib/widgetSnapshot"
 import type { Category, Task, TaskInput } from "@/types/database"
 
 export function useTasks(userId: string | undefined) {
@@ -27,6 +28,7 @@ export function useTasks(userId: string | undefined) {
     setTasks(tasksResult.data ?? [])
     setCategories(categoriesResult.data ?? [])
     setLoading(false)
+    updateWidgetSnapshot(tasksResult.data ?? [])
   }, [userId])
 
   useEffect(() => {
