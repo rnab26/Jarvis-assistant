@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useContacts } from "@/hooks/useContacts"
 import { useDevItems } from "@/hooks/useDevItems"
 import { useDocuments } from "@/hooks/useDocuments"
+import { usePlaceReminders } from "@/hooks/usePlaceReminders"
 import { useTasks } from "@/hooks/useTasks"
 import { useVoiceSetting } from "@/hooks/useVoiceSetting"
 import { useWakeWordSetting } from "@/hooks/useWakeWordSetting"
@@ -13,6 +14,7 @@ type TasksState = ReturnType<typeof useTasks>
 type DevItemsState = ReturnType<typeof useDevItems>
 type DocumentsState = ReturnType<typeof useDocuments>
 type ContactsState = ReturnType<typeof useContacts>
+type PlaceRemindersState = ReturnType<typeof usePlaceReminders>
 type WakeWordState = ReturnType<typeof useWakeWordSetting>
 type VoiceState = ReturnType<typeof useVoiceSetting>
 type WidgetState = ReturnType<typeof useWidgetSetting>
@@ -22,6 +24,7 @@ interface JarvisDataValue {
   devItemsState: DevItemsState
   documentsState: DocumentsState
   contactsState: ContactsState
+  placeRemindersState: PlaceRemindersState
   wakeWordState: WakeWordState
   voiceState: VoiceState
   widgetState: WidgetState
@@ -44,6 +47,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const devItemsState = useDevItems(userId)
   const documentsState = useDocuments(userId)
   const contactsState = useContacts(userId)
+  const placeRemindersState = usePlaceReminders(userId)
   const wakeWordState = useWakeWordSetting()
   const voiceState = useVoiceSetting()
   const widgetState = useWidgetSetting()
@@ -64,6 +68,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         devItemsState,
         documentsState,
         contactsState,
+        placeRemindersState,
         wakeWordState,
         voiceState,
         widgetState,
