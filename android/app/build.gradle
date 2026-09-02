@@ -16,7 +16,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Keystore de debug fixe (committé dans android/keystore/) au lieu du
+    // ~/.android/debug.keystore par défaut : ce dernier est régénéré à
+    // chaque run GitHub Actions (machine éphémère), donc chaque APK avait
+    // une signature différente et Android refusait la mise à jour
+    // ("Application non installée") sans désinstaller l'ancienne d'abord.
+    signingConfigs {
+        debug {
+            storeFile file('../keystore/debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
