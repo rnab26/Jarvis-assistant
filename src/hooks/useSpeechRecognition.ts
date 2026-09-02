@@ -54,8 +54,14 @@ export function useSpeechRecognition() {
   // exprès (60s) pour ne pas couper un utilisateur qui prend le temps de
   // réfléchir en pleine phrase (retour : "délai d'attente trop limité").
   const NATIVE_MAX_LISTEN_MS = 60000
+  // Écoute passive du mot-clé "Jarvis" : une phrase courte, pas une dictée.
+  // Utiliser le même mode que pour une commande complète (silence toléré
+  // ~60s) faisait percevoir le micro comme "activé en permanence, qui
+  // attend" — le mode "wake" coupe sur un silence court comme le mode
+  // commande natif standard.
+  const NATIVE_WAKE_LISTEN_MS = 8000
 
-  const listenNative = useCallback(async (): Promise<string> => {
+  const listenNative = useCallback(async (mode: "command" | "wake" = "command"): Promise<string> => {
     setError(null)
     setReady(false)
     const { available } = await NativeSpeechRecognition.available()
@@ -81,6 +87,10 @@ export function useSpeechRecognition() {
     // dictée. On accumule les résultats (partiels puis final) via
     // l'événement "partialResults", et on attend l'événement "stopped" de
     // "listeningState" (fin de parole détectée par Android) pour résoudre.
+    // En mode "wake" (écoute passive du mot-clé), on reste volontairement
+    // sur le mode commande natif (partialResults:false), qui coupe sur un
+    // silence court — on n'attend qu'un mot, pas une phrase dictée.
+    const isWake = mode === "wake"
     let latestTranscript = ""
     let safetyTimer: ReturnType<typeof setTimeout> | null = null
     let resolveStopped: (() => void) | undefined
@@ -102,22 +112,34 @@ export function useSpeechRecognition() {
     try {
       const stopped = new Promise<void>((resolve) => {
         resolveStopped = resolve
-        safetyTimer = setTimeout(() => {
-          NativeSpeechRecognition.stop().catch(() => {})
-          resolve()
-        }, NATIVE_MAX_LISTEN_MS)
+        safetyTimer = setTimeout(
+          () => {
+            NativeSpeechRecognition.stop().catch(() => {})
+            resolve()
+          },
+          isWake ? NATIVE_WAKE_LISTEN_MS : NATIVE_MAX_LISTEN_MS,
+        )
       })
 
-      await NativeSpeechRecognition.start({
+      const startResult = await NativeSpeechRecognition.start({
         language: "fr-FR",
         maxResults: 1,
-        partialResults: true,
+        partialResults: !isWake,
         popup: false,
       })
-      await stopped
-      // Petite marge : le résultat final (post-traitement Android) arrive
-      // parfois juste après l'événement "stopped".
-      await new Promise((r) => setTimeout(r, 300))
+
+      if (isWake) {
+        // partialResults:false (mode commande natif) : start() résout
+        // directement avec le résultat, pas d'événement "stopped" à
+        // attendre — on annule juste le minuteur de sécurité devenu inutile.
+        if (safetyTimer) clearTimeout(safetyTimer)
+        if (startResult?.matches?.[0]) latestTranscript = startResult.matches[0]
+      } else {
+        await stopped
+        // Petite marge : le résultat final (post-traitement Android) arrive
+        // parfois juste après l'événement "stopped".
+        await new Promise((r) => setTimeout(r, 300))
+      }
 
       const transcript = latestTranscript.trim()
       if (!transcript) {
@@ -139,7 +161,7 @@ export function useSpeechRecognition() {
     }
   }, [])
 
-  const listenWeb = useCallback((): Promise<string> => {
+  const listenWeb = useCallback((mode: "command" | "wake" = "command"): Promise<string> => {
     return new Promise((resolve, reject) => {
       const Ctor = getSpeechRecognitionCtor()
       if (!Ctor) {
@@ -157,7 +179,9 @@ export function useSpeechRecognition() {
       // première petite pause dans la phrase. On accumule les résultats
       // finaux et on résout seulement quand le navigateur arrête vraiment
       // d'écouter (silence prolongé, ou stop() appelé manuellement).
-      recognition.continuous = true
+      // En mode "wake" (écoute passive du mot-clé), on veut au contraire
+      // s'arrêter dès la première pause : continuous=false.
+      recognition.continuous = mode !== "wake"
       recognition.interimResults = false
       recognition.maxAlternatives = 1
 

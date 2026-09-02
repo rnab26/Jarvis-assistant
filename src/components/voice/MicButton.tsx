@@ -160,9 +160,12 @@ export function MicButton({
   /**
    * Écoute passive du mot-clé "Jarvis" tant que l'app est ouverte (pas de
    * service en arrière-plan — désactivé par défaut, à activer dans
-   * Paramètres). Redémarre une écoute courte en boucle quand l'app est
-   * inactive (status "idle"), s'arrête dès qu'une interaction (manuelle ou
-   * déclenchée par le mot-clé) est en cours.
+   * Paramètres). Écoute par courtes rafales en mode "wake" (coupe sur un
+   * silence court, contrairement à l'écoute de commande qui tolère de
+   * longues pauses) pour ne pas laisser le micro "en attente" plusieurs
+   * secondes après que l'utilisateur a dit "Jarvis". Redémarre en boucle
+   * quand l'app est inactive (status "idle"), s'arrête dès qu'une
+   * interaction (manuelle ou déclenchée par le mot-clé) est en cours.
    */
   useEffect(() => {
     if (!wakeWordEnabled) return
@@ -176,15 +179,23 @@ export function MicButton({
         }
         setStatus("wake-listening")
         try {
-          const transcript = await listen()
+          const transcript = await listen("wake")
           if (cancelled) return
           if (containsWakeWord(transcript)) {
             const rest = transcript.replace(/jarvis/i, "").trim()
             if (rest.length > 3) {
+              // "Jarvis" + la demande dans la même phrase : direct.
               setLastUserText(rest)
               setStatus("idle")
               await runTurn(rest)
             } else {
+              // "Jarvis" seul : confirmation orale courte avant d'écouter
+              // la demande, pour que l'utilisateur sache qu'il peut parler
+              // sans avoir à toucher le bouton.
+              setStatus("speaking")
+              bargeInRef.current = false
+              await speak("Oui ?", voiceIndex ?? undefined)
+              if (bargeInRef.current || cancelled) return
               await startListening()
             }
           } else {
