@@ -16,6 +16,31 @@ const PRIORITY_VARIANT: Record<DevPriority, "secondary" | "outline" | "destructi
   high: "destructive",
 }
 
+/**
+ * Les notes archivées finissent souvent par "Commit <hash>." — on rend ce
+ * hash cliquable vers GitHub pour retrouver le code réel en un clic
+ * (visibilité cockpit → code).
+ */
+function renderNotes(notes: string) {
+  const match = notes.match(/^(.*commit )([0-9a-f]{7,40})(\.?)$/i)
+  if (!match) return notes
+  const [, prefix, hash, suffix] = match
+  return (
+    <>
+      {prefix}
+      <a
+        href={`https://github.com/rnab26/Jarvis-assistant/commit/${hash}`}
+        target="_blank"
+        rel="noreferrer"
+        className="underline"
+      >
+        {hash}
+      </a>
+      {suffix}
+    </>
+  )
+}
+
 interface DevItemCardProps {
   item: DevItem
   onUpdate: (id: string, input: DevItemInput) => Promise<void>
@@ -35,7 +60,9 @@ export function DevItemCard({
     <div className="flex items-start gap-2 rounded-lg border p-3">
       <div className="flex-1">
         <p>{item.title}</p>
-        {item.notes && <p className="text-sm text-muted-foreground">{item.notes}</p>}
+        {item.notes && (
+          <p className="text-sm text-muted-foreground">{renderNotes(item.notes)}</p>
+        )}
         <Badge variant={PRIORITY_VARIANT[item.priority]} className="mt-1">
           {PRIORITY_LABEL[item.priority]}
         </Badge>
