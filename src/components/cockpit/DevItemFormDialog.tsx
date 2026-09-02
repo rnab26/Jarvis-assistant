@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -65,7 +66,7 @@ export function DevItemFormDialog({ item, onSubmit, trigger }: DevItemFormDialog
               {item ? "Mets à jour ce chantier de développement." : "Ajoute un chantier au cockpit."}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4 py-4">
+          <div className="flex max-h-[65vh] flex-col gap-4 overflow-y-auto py-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="dev-title">Titre</Label>
               <Input
@@ -103,9 +104,10 @@ export function DevItemFormDialog({ item, onSubmit, trigger }: DevItemFormDialog
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="dev-notes">Notes</Label>
-              <Input
+              <Textarea
                 id="dev-notes"
                 value={notes}
+                placeholder="Détails, contexte, précisions…"
                 onChange={(e) => setNotes(e.target.value)}
               />
             </div>

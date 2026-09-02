@@ -22,7 +22,7 @@ const PRIORITY_VARIANT: Record<DevPriority, "secondary" | "outline" | "destructi
  * (visibilité cockpit → code).
  */
 function renderNotes(notes: string) {
-  const match = notes.match(/^(.*commit )([0-9a-f]{7,40})(\.?)$/i)
+  const match = notes.match(/^([\s\S]*commit )([0-9a-f]{7,40})(\.?)$/i)
   if (!match) return notes
   const [, prefix, hash, suffix] = match
   return (
@@ -61,7 +61,7 @@ export function DevItemCard({
       <div className="flex-1">
         <p>{item.title}</p>
         {item.notes && (
-          <p className="text-sm text-muted-foreground">{renderNotes(item.notes)}</p>
+          <p className="text-sm whitespace-pre-line text-muted-foreground">{renderNotes(item.notes)}</p>
         )}
         <Badge variant={PRIORITY_VARIANT[item.priority]} className="mt-1">
           {PRIORITY_LABEL[item.priority]}

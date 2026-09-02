@@ -35,7 +35,7 @@ export function TaskItem({
           {task.title}
         </p>
         {task.notes && (
-          <p className="text-sm text-muted-foreground">{task.notes}</p>
+          <p className="text-sm whitespace-pre-line text-muted-foreground">{task.notes}</p>
         )}
       </div>
       {task.due_date && (
