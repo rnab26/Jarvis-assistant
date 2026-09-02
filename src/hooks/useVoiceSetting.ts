@@ -1,31 +1,56 @@
 import { useState } from "react"
+import {
+  DEFAULT_PITCH,
+  DEFAULT_RATE,
+  PITCH_MAX,
+  PITCH_MIN,
+  RATE_MAX,
+  RATE_MIN,
+  readVoicePrefs,
+  VOICE_INDEX_KEY,
+  VOICE_PITCH_KEY,
+  VOICE_RATE_KEY,
+  writeVoicePref,
+} from "@/lib/voicePrefs"
 
-const STORAGE_KEY = "jarvis_voice_index"
-
-/** Voix TTS choisie par l'utilisateur (index dans getVoices()) — persistée
- * en local, propre à cet appareil. null = voix par défaut du système. */
+/**
+ * Réglages de voix choisis par l'utilisateur — voix, vitesse, hauteur —
+ * persistés sur cet appareil. voiceIndex null = voix par défaut du système.
+ */
 export function useVoiceSetting() {
-  const [voiceIndex, setVoiceIndexState] = useState<number | null>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      return stored === null ? null : Number(stored)
-    } catch {
-      return null
-    }
-  })
+  const [prefs, setPrefs] = useState(readVoicePrefs)
 
   function setVoiceIndex(value: number | null) {
-    setVoiceIndexState(value)
-    try {
-      if (value === null) {
-        localStorage.removeItem(STORAGE_KEY)
-      } else {
-        localStorage.setItem(STORAGE_KEY, String(value))
-      }
-    } catch {
-      // Stockage indisponible : la préférence reste active pour la session en cours seulement.
-    }
+    setPrefs((p) => ({ ...p, voiceIndex: value }))
+    writeVoicePref(VOICE_INDEX_KEY, value)
   }
 
-  return { voiceIndex, setVoiceIndex }
+  function setRate(value: number) {
+    const borne = Math.min(Math.max(value, RATE_MIN), RATE_MAX)
+    setPrefs((p) => ({ ...p, rate: borne }))
+    writeVoicePref(VOICE_RATE_KEY, borne)
+  }
+
+  function setPitch(value: number) {
+    const borne = Math.min(Math.max(value, PITCH_MIN), PITCH_MAX)
+    setPrefs((p) => ({ ...p, pitch: borne }))
+    writeVoicePref(VOICE_PITCH_KEY, borne)
+  }
+
+  /** Remet vitesse et hauteur aux valeurs d'origine, sans toucher à la voix. */
+  function resetTon() {
+    setPrefs((p) => ({ ...p, rate: DEFAULT_RATE, pitch: DEFAULT_PITCH }))
+    writeVoicePref(VOICE_RATE_KEY, DEFAULT_RATE)
+    writeVoicePref(VOICE_PITCH_KEY, DEFAULT_PITCH)
+  }
+
+  return {
+    voiceIndex: prefs.voiceIndex,
+    rate: prefs.rate,
+    pitch: prefs.pitch,
+    setVoiceIndex,
+    setRate,
+    setPitch,
+    resetTon,
+  }
 }
