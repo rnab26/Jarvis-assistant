@@ -25,6 +25,10 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
   const [status, setStatus] = useState<Status>("idle")
   const [lastUserText, setLastUserText] = useState<string | null>(null)
   const [lastReply, setLastReply] = useState<string | null>(null)
+  // Un tap pendant que Jarvis parle (barge-in) relance l'écoute lui-même ;
+  // ce flag évite que le await speak(...) interrompu, une fois débloqué,
+  // ne relance À SON TOUR une écoute en double (deux listen() concurrents).
+  const bargeInRef = useRef(false)
 
   /** Envoie un transcript à la Edge Function et exécute l'action renvoyée. */
   async function resolveTranscript(transcript: string): Promise<VoiceAction> {
@@ -71,7 +75,9 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
     if (action.action === "clarify" && round < 3) {
       setLastReply(action.message)
       setStatus("speaking")
-      speak(action.message)
+      bargeInRef.current = false
+      await speak(action.message)
+      if (bargeInRef.current) return // un tap a déjà repris la main entre-temps
 
       setStatus("listening")
       const answer = await listen()
@@ -84,7 +90,9 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
     const reply = await executeVoiceAction(action, tasksApi, devItemsApi)
     setLastReply(reply)
     setStatus("speaking")
-    speak(reply)
+    bargeInRef.current = false
+    await speak(reply)
+    if (bargeInRef.current) return
     setStatus("idle")
   }
 
@@ -106,6 +114,7 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
     // coupe la voix et relance directement l'écoute, sans devoir attendre
     // la fin de la phrase.
     if (status === "speaking") {
+      bargeInRef.current = true
       stopSpeaking()
       await startListening()
       return
