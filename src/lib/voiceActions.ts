@@ -18,6 +18,7 @@ export type VoiceAction =
   | { action: "add_dev_item"; title: string; priority?: DevPriority; status?: DevStatus }
   | { action: "update_dev_item"; item_id: string; changes: Partial<DevItemInput> }
   | { action: "delete_dev_item"; item_id: string }
+  | { action: "archive_dev_item"; item_id: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
 
@@ -34,6 +35,7 @@ export interface DevItemsApi {
   addDevItem: (input: DevItemInput) => Promise<void>
   updateDevItem: (id: string, input: Partial<DevItemInput>) => Promise<void>
   deleteDevItem: (id: string) => Promise<void>
+  archiveDevItem: (id: string) => Promise<void>
 }
 
 function categoryName(categories: Category[], id: string | null | undefined) {
@@ -50,7 +52,7 @@ const STATUS_LABEL: Record<DevStatus, string> = {
 export async function executeVoiceAction(
   action: VoiceAction,
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
-  { devItems, addDevItem, updateDevItem, deleteDevItem }: DevItemsApi,
+  { devItems, addDevItem, updateDevItem, deleteDevItem, archiveDevItem }: DevItemsApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -123,6 +125,12 @@ export async function executeVoiceAction(
       const item = devItems.find((i) => i.id === action.item_id)
       await deleteDevItem(action.item_id)
       return `"${item?.title ?? "Chantier"}" supprimé du cockpit.`
+    }
+
+    case "archive_dev_item": {
+      const item = devItems.find((i) => i.id === action.item_id)
+      await archiveDevItem(action.item_id)
+      return `"${item?.title ?? "Chantier"}" marqué fait et archivé.`
     }
 
     case "clarify":

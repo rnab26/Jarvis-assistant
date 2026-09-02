@@ -37,6 +37,7 @@ export interface DevItem {
   notes: string | null
   status: DevStatus
   priority: DevPriority
+  archived_at: string | null
   created_at: string
   updated_at: string
 }

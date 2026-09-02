@@ -12,9 +12,22 @@ interface CockpitBoardProps {
   devItems: DevItem[]
   onUpdate: (id: string, input: DevItemInput) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onArchive: (id: string) => Promise<void>
+  onUnarchive: (id: string) => Promise<void>
 }
 
-export function CockpitBoard({ devItems, onUpdate, onDelete }: CockpitBoardProps) {
+export function CockpitBoard({
+  devItems,
+  onUpdate,
+  onDelete,
+  onArchive,
+  onUnarchive,
+}: CockpitBoardProps) {
+  const active = devItems.filter((i) => !i.archived_at)
+  const archived = devItems
+    .filter((i) => i.archived_at)
+    .sort((a, b) => (b.archived_at ?? "").localeCompare(a.archived_at ?? ""))
+
   if (devItems.length === 0) {
     return (
       <p className="py-8 text-center text-muted-foreground">
@@ -26,7 +39,7 @@ export function CockpitBoard({ devItems, onUpdate, onDelete }: CockpitBoardProps
   return (
     <div className="flex flex-col gap-4">
       {COLUMNS.map((column) => {
-        const items = devItems.filter((i) => i.status === column.status)
+        const items = active.filter((i) => i.status === column.status)
         if (items.length === 0) return null
 
         return (
@@ -43,12 +56,34 @@ export function CockpitBoard({ devItems, onUpdate, onDelete }: CockpitBoardProps
                   item={item}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
+                  onArchive={onArchive}
                 />
               ))}
             </CardContent>
           </Card>
         )
       })}
+
+      {archived.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base text-muted-foreground">
+              Archivées ({archived.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {archived.map((item) => (
+              <DevItemCard
+                key={item.id}
+                item={item}
+                onUpdate={onUpdate}
+                onDelete={onDelete}
+                onUnarchive={onUnarchive}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

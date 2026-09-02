@@ -48,11 +48,31 @@ export function useDevItems(userId: string | undefined) {
     await refresh()
   }
 
+  async function archiveDevItem(id: string) {
+    const { error } = await supabase
+      .from("dev_items")
+      .update({ status: "done", archived_at: new Date().toISOString() })
+      .eq("id", id)
+    if (error) throw error
+    await refresh()
+  }
+
+  async function unarchiveDevItem(id: string) {
+    const { error } = await supabase
+      .from("dev_items")
+      .update({ archived_at: null })
+      .eq("id", id)
+    if (error) throw error
+    await refresh()
+  }
+
   return {
     devItems,
     loading,
     addDevItem,
     updateDevItem,
     deleteDevItem,
+    archiveDevItem,
+    unarchiveDevItem,
   }
 }

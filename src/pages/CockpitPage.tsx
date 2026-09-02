@@ -6,7 +6,15 @@ import { useJarvisData } from "@/contexts/JarvisDataContext"
 
 export function CockpitPage() {
   const { devItemsState } = useJarvisData()
-  const { devItems, loading, addDevItem, updateDevItem, deleteDevItem } = devItemsState
+  const {
+    devItems,
+    loading,
+    addDevItem,
+    updateDevItem,
+    deleteDevItem,
+    archiveDevItem,
+    unarchiveDevItem,
+  } = devItemsState
 
   return (
     <div className="flex flex-col gap-4">
@@ -32,6 +40,8 @@ export function CockpitPage() {
           devItems={devItems}
           onUpdate={updateDevItem}
           onDelete={deleteDevItem}
+          onArchive={archiveDevItem}
+          onUnarchive={unarchiveDevItem}
         />
       )}
     </div>

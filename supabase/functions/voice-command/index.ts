@@ -25,11 +25,12 @@ const VOICE_ACTION_TOOL = {
           "add_dev_item",
           "update_dev_item",
           "delete_dev_item",
+          "archive_dev_item",
           "clarify",
           "unknown",
         ],
         description:
-          "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id) — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: hors-sujet ou incompréhensible.",
+          "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: hors-sujet ou incompréhensible.",
       },
       title: { type: "string", description: "Titre (add_task ou add_dev_item)." },
       category_id: {
@@ -56,7 +57,7 @@ const VOICE_ACTION_TOOL = {
       },
       item_id: {
         type: "string",
-        description: "id du chantier existant ciblé (update_dev_item, delete_dev_item), résolu depuis la liste de chantiers fournie.",
+        description: "id du chantier existant ciblé (update_dev_item, delete_dev_item, archive_dev_item), résolu depuis la liste de chantiers fournie.",
       },
       changes: {
         type: "object",
