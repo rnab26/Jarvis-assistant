@@ -32,7 +32,16 @@ const VOICE_ACTION_TOOL = {
         description:
           "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: hors-sujet ou incompréhensible.",
       },
-      title: { type: "string", description: "Titre (add_task ou add_dev_item)." },
+      title: {
+        type: "string",
+        description:
+          "Titre court (add_task ou add_dev_item), quelques mots, synthétisé à partir de la phrase dictée par l'utilisateur — jamais la phrase brute complète si elle est longue.",
+      },
+      notes: {
+        type: ["string", "null"],
+        description:
+          "add_task ou add_dev_item : si la phrase dictée par l'utilisateur contient des détails au-delà du simple titre (contexte, raison, précisions), reformule-les ici en note complète. null si le titre résume déjà tout.",
+      },
       category_id: {
         type: ["string", "null"],
         description: "add_task uniquement : id de catégorie existant correspondant le mieux, ou null si aucune/pas de correspondance claire.",
@@ -129,6 +138,7 @@ Chantiers de dev Jarvis existants (cockpit) : ${JSON.stringify(devItems)}.
 
 Traduis la commande vocale de l'utilisateur en un appel à l'outil resolve_voice_command.
 Pour update_task/delete_task, résous task_id depuis la liste de tâches fournie (par titre approchant). Pour update_dev_item/delete_dev_item, résous item_id depuis la liste de chantiers fournie. Si plusieurs éléments correspondent ou qu'aucun ne correspond clairement, utilise action="clarify" avec une question précise.
+Pour add_task/add_dev_item : si l'utilisateur dicte une phrase longue avec des détails (contexte, raison, précisions), ne mets pas toute la phrase dans "title" — synthétise un titre court (quelques mots) et reformule le reste dans "notes". Si la phrase est déjà courte et ne contient rien de plus que le titre, laisse "notes" à null.
 Réponds toujours en français dans le champ message.`
 
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {

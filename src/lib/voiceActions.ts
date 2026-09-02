@@ -11,11 +11,23 @@ import type {
 
 export type VoiceAction =
   | { action: "list_tasks"; filter_category_id?: string; filter_status?: TaskStatus }
-  | { action: "add_task"; title: string; category_id?: string | null; due_date?: string | null }
+  | {
+      action: "add_task"
+      title: string
+      notes?: string | null
+      category_id?: string | null
+      due_date?: string | null
+    }
   | { action: "update_task"; task_id: string; changes: Partial<TaskInput> }
   | { action: "delete_task"; task_id: string }
   | { action: "list_dev_items"; filter_status?: DevStatus }
-  | { action: "add_dev_item"; title: string; priority?: DevPriority; status?: DevStatus }
+  | {
+      action: "add_dev_item"
+      title: string
+      notes?: string | null
+      priority?: DevPriority
+      status?: DevStatus
+    }
   | { action: "update_dev_item"; item_id: string; changes: Partial<DevItemInput> }
   | { action: "delete_dev_item"; item_id: string }
   | { action: "archive_dev_item"; item_id: string }
@@ -69,7 +81,7 @@ export async function executeVoiceAction(
     case "add_task": {
       await addTask({
         title: action.title,
-        notes: null,
+        notes: action.notes ?? null,
         due_date: action.due_date ?? null,
         category_id: action.category_id ?? null,
         status: "todo",
@@ -104,7 +116,7 @@ export async function executeVoiceAction(
     case "add_dev_item": {
       await addDevItem({
         title: action.title,
-        notes: null,
+        notes: action.notes ?? null,
         status: action.status ?? "todo",
         priority: action.priority ?? "normal",
       })
