@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase"
 import {
   executeVoiceAction,
   type DevItemsApi,
+  type DocumentsApi,
   type TasksApi,
   type VoiceAction,
 } from "@/lib/voiceActions"
@@ -17,9 +18,10 @@ type Status = "idle" | "listening" | "processing" | "speaking" | "error"
 interface MicButtonProps {
   tasksApi: TasksApi
   devItemsApi: DevItemsApi
+  documentsApi: DocumentsApi
 }
 
-export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
+export function MicButton({ tasksApi, devItemsApi, documentsApi }: MicButtonProps) {
   const { listen, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
   const [status, setStatus] = useState<Status>("idle")
@@ -47,6 +49,7 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
             status: i.status,
             priority: i.priority,
           })),
+          documents: documentsApi.documents.map((d) => ({ name: d.name })),
           todayISO: new Date().toISOString().slice(0, 10),
         },
       },
@@ -81,7 +84,7 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
       return
     }
 
-    const reply = await executeVoiceAction(action, tasksApi, devItemsApi)
+    const reply = await executeVoiceAction(action, tasksApi, devItemsApi, documentsApi)
     setLastReply(reply)
     setStatus("speaking")
     speak(reply)
