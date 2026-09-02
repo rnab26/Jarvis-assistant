@@ -128,3 +128,125 @@
     @apply font-sans;
     }
 }
+/* ---------------------------------------------------------------------------
+   Le cœur de Jarvis : réacteur qui scintille et réagit à l'état du micro.
+   Les couleurs sont échantillonnées sur l'image livrée, pour que le halo et
+   l'image ne jurent pas entre eux.
+--------------------------------------------------------------------------- */
+
+@theme {
+  --color-core-vif: #69c5f5;
+  --color-core-moyen: #456baa;
+  --color-core-profond: #343f69;
+}
+
+.jarvis-core {
+  --core-halo: 0.55;
+  --core-battement: 4.2s;
+  position: relative;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.jarvis-core img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: core-battement var(--core-battement) ease-in-out infinite;
+}
+
+/* Halo diffus derrière le disque. */
+.jarvis-core::before {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-core-vif) 55%, transparent) 0%,
+    color-mix(in srgb, var(--color-core-moyen) 35%, transparent) 42%,
+    transparent 70%
+  );
+  opacity: var(--core-halo);
+  animation: core-halo var(--core-battement) ease-in-out infinite;
+}
+
+@keyframes core-battement {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.025); filter: brightness(1.14); }
+}
+
+@keyframes core-halo {
+  0%, 100% { opacity: calc(var(--core-halo) * 0.65); transform: scale(0.97); }
+  50% { opacity: var(--core-halo); transform: scale(1.06); }
+}
+
+/* Ondes concentriques, seulement quand Jarvis écoute ou parle. */
+.jarvis-core-onde {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--color-core-vif) 70%, transparent);
+  opacity: 0;
+  animation: core-onde 1.8s ease-out infinite;
+}
+
+.jarvis-core-onde:nth-of-type(2) { animation-delay: 0.6s; }
+.jarvis-core-onde:nth-of-type(3) { animation-delay: 1.2s; }
+
+@keyframes core-onde {
+  0% { transform: scale(1); opacity: 0.55; }
+  100% { transform: scale(1.75); opacity: 0; }
+}
+
+/* Balayage tournant pendant que Jarvis réfléchit. */
+.jarvis-core-balayage {
+  position: absolute;
+  inset: -6%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    color-mix(in srgb, var(--color-core-vif) 65%, transparent) 40deg,
+    transparent 120deg
+  );
+  mask: radial-gradient(circle, transparent 58%, #000 62%, #000 100%);
+  animation: core-rotation 1.5s linear infinite;
+}
+
+@keyframes core-rotation {
+  to { transform: rotate(1turn); }
+}
+
+/* --- Les états. Seuls le rythme et l'intensité changent : c'est le même
+       objet qui respire plus ou moins vite, pas six animations différentes. --- */
+
+.jarvis-core[data-etat="idle"] { --core-battement: 4.2s; --core-halo: 0.42; }
+.jarvis-core[data-etat="wake-listening"] { --core-battement: 2.6s; --core-halo: 0.6; }
+.jarvis-core[data-etat="listening"] { --core-battement: 1.15s; --core-halo: 0.95; }
+.jarvis-core[data-etat="processing"] { --core-battement: 1.5s; --core-halo: 0.8; }
+.jarvis-core[data-etat="speaking"] { --core-battement: 0.75s; --core-halo: 0.9; }
+
+.jarvis-core[data-etat="error"] {
+  --core-halo: 0.75;
+  --core-battement: 2.4s;
+  --color-core-vif: var(--color-destructive);
+  --color-core-moyen: var(--color-destructive);
+}
+
+.jarvis-core[data-etat="error"] img { filter: saturate(0.25) hue-rotate(-35deg); }
+
+/* Immobile pour qui a demandé à ne pas voir d'animation : le cœur garde
+   quand même son halo, il ne bat simplement plus. */
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-core img,
+  .jarvis-core::before,
+  .jarvis-core-onde,
+  .jarvis-core-balayage {
+    animation: none;
+  }
+  .jarvis-core-onde { opacity: 0.25; }
+}
