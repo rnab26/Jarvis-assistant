@@ -34,6 +34,7 @@ export type VoiceAction =
   | { action: "archive_dev_item"; item_id: string }
   | { action: "list_documents" }
   | { action: "save_document"; filename: string; content: string }
+  | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
 
@@ -165,6 +166,7 @@ export async function executeVoiceAction(
       return `Document "${action.filename}" enregistré.`
     }
 
+    case "chat":
     case "clarify":
     case "unknown":
       return action.message

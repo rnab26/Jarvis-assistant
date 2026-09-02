@@ -10,7 +10,7 @@ const corsHeaders = {
 const VOICE_ACTION_TOOL = {
   name: "resolve_voice_command",
   description:
-    "Résout une commande vocale en français en une action structurée. Trois domaines distincts : les tâches perso/clients (avec catégories), les chantiers de développement de Jarvis lui-même (cockpit, avec statut à 3 valeurs + priorité, pas de catégories), et les documents texte enregistrés par l'utilisateur ou dictés à Jarvis.",
+    "Résout une commande vocale en français en une action structurée. Quatre domaines : les tâches perso/clients (avec catégories), les chantiers de développement de Jarvis lui-même (cockpit, avec statut à 3 valeurs + priorité, pas de catégories), les documents texte enregistrés par l'utilisateur ou dictés à Jarvis, et la discussion généraliste (n'importe quel sujet, comme un assistant conversationnel classique).",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -28,11 +28,12 @@ const VOICE_ACTION_TOOL = {
           "archive_dev_item",
           "list_documents",
           "save_document",
+          "chat",
           "clarify",
           "unknown",
         ],
         description:
-          "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: hors-sujet ou incompréhensible.",
+          "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
       },
       title: {
         type: "string",
@@ -137,10 +138,11 @@ Deno.serve(async (req: Request) => {
       )
     }
 
-    const systemPrompt = `Tu es l'assistant vocal de Jarvis, qui gère trois domaines séparés pour l'utilisateur :
+    const systemPrompt = `Tu es l'assistant vocal de Jarvis, qui gère quatre domaines pour l'utilisateur :
 1. Ses tâches personnelles/clients, organisées par catégorie.
 2. Le cockpit de développement de Jarvis lui-même (les chantiers/fonctionnalités à coder pour l'assistant) — utilise ce domaine quand l'utilisateur parle explicitement de "chantier", de développer/coder Jarvis, du "cockpit", ou d'une fonctionnalité de l'app elle-même.
 3. Ses documents texte — utilise ce domaine quand l'utilisateur demande explicitement d'enregistrer, noter ou sauvegarder un document/texte (ex: "enregistre un document avec...", "note ça dans un fichier...").
+4. La discussion généraliste : toute question ou échange qui ne concerne ni les tâches, ni le cockpit, ni les documents — culture générale, conseil, actualité, calcul, définition, etc. Réponds comme le ferait un assistant conversationnel normal (Claude), avec tes connaissances, sans te limiter aux tâches/chantiers.
 
 Date du jour : ${todayISO}.
 Catégories de tâches existantes : ${JSON.stringify(categories)}.
@@ -152,6 +154,7 @@ Traduis la commande vocale de l'utilisateur en un appel à l'outil resolve_voice
 Pour update_task/delete_task, résous task_id depuis la liste de tâches fournie (par titre approchant). Pour update_dev_item/delete_dev_item, résous item_id depuis la liste de chantiers fournie. Si plusieurs éléments correspondent ou qu'aucun ne correspond clairement, utilise action="clarify" avec une question précise.
 Pour add_task/add_dev_item : si l'utilisateur dicte une phrase longue avec des détails (contexte, raison, précisions), ne mets pas toute la phrase dans "title" — synthétise un titre court (quelques mots) et reformule le reste dans "notes". Si la phrase est déjà courte et ne contient rien de plus que le titre, laisse "notes" à null.
 Pour save_document : synthétise un nom de fichier court dans "filename", et reformule proprement tout ce que l'utilisateur a dicté comme contenu dans "content".
+Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents, "unknown" est réservé à l'audio vraiment incompréhensible.
 Réponds toujours en français dans le champ message.`
 
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
