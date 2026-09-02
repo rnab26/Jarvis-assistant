@@ -1,4 +1,5 @@
 import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react"
+import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
@@ -22,7 +23,7 @@ const PRIORITY_VARIANT: Record<DevPriority, "secondary" | "outline" | "destructi
  * (visibilité cockpit → code).
  */
 function renderNotes(notes: string) {
-  const match = notes.match(/^(.*commit )([0-9a-f]{7,40})(\.?)$/i)
+  const match = notes.match(/^([\s\S]*commit )([0-9a-f]{7,40})(\.?)$/i)
   if (!match) return notes
   const [, prefix, hash, suffix] = match
   return (
@@ -61,7 +62,7 @@ export function DevItemCard({
       <div className="flex-1">
         <p>{item.title}</p>
         {item.notes && (
-          <p className="text-sm text-muted-foreground">{renderNotes(item.notes)}</p>
+          <p className="text-sm whitespace-pre-line text-muted-foreground">{renderNotes(item.notes)}</p>
         )}
         <Badge variant={PRIORITY_VARIANT[item.priority]} className="mt-1">
           {PRIORITY_LABEL[item.priority]}
@@ -72,7 +73,7 @@ export function DevItemCard({
           variant="ghost"
           size="icon"
           aria-label="Archiver"
-          onClick={() => onArchive(item.id)}
+          onClick={() => onArchive(item.id).catch(alreadyNotified)}
         >
           <Archive className="size-4" />
         </Button>
@@ -82,7 +83,7 @@ export function DevItemCard({
           variant="ghost"
           size="icon"
           aria-label="Désarchiver"
-          onClick={() => onUnarchive(item.id)}
+          onClick={() => onUnarchive(item.id).catch(alreadyNotified)}
         >
           <ArchiveRestore className="size-4" />
         </Button>
@@ -100,7 +101,7 @@ export function DevItemCard({
         variant="ghost"
         size="icon"
         aria-label="Supprimer"
-        onClick={() => onDelete(item.id)}
+        onClick={() => onDelete(item.id).catch(alreadyNotified)}
       >
         <Trash2 className="size-4" />
       </Button>

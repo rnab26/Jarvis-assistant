@@ -2,6 +2,7 @@ import { Plus } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { LoadError } from "@/components/LoadError"
 import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
@@ -9,8 +10,18 @@ import { useJarvisData } from "@/contexts/JarvisDataContext"
 
 export function DashboardPage() {
   const { tasksState } = useJarvisData()
-  const { tasks, categories, loading, addTask, updateTask, deleteTask, toggleStatus, addCategory } =
-    tasksState
+  const {
+    tasks,
+    categories,
+    loading,
+    error,
+    refresh,
+    addTask,
+    updateTask,
+    deleteTask,
+    toggleStatus,
+    addCategory,
+  } = tasksState
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [newCategoryName, setNewCategoryName] = useState("")
 
@@ -21,8 +32,12 @@ export function DashboardPage() {
 
   async function handleAddCategory() {
     if (!newCategoryName.trim()) return
-    await addCategory(newCategoryName.trim())
-    setNewCategoryName("")
+    try {
+      await addCategory(newCategoryName.trim())
+      setNewCategoryName("")
+    } catch {
+      // Erreur déjà signalée par un toast : on conserve la saisie.
+    }
   }
 
   return (
@@ -59,6 +74,8 @@ export function DashboardPage() {
 
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>
+      ) : error ? (
+        <LoadError message={error} onRetry={refresh} />
       ) : (
         <TaskList
           tasks={filteredTasks}

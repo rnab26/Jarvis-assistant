@@ -1,5 +1,6 @@
 import { Download, Trash2, Upload } from "lucide-react"
 import { useRef, useState } from "react"
+import { LoadError } from "@/components/LoadError"
 import { Button } from "@/components/ui/button"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
 
@@ -11,7 +12,15 @@ function formatSize(bytes: number) {
 
 export function DocumentsPage() {
   const { documentsState } = useJarvisData()
-  const { documents, loading, uploadFile, getDownloadUrl, deleteDocument } = documentsState
+  const {
+    documents,
+    loading,
+    error: loadError,
+    refresh,
+    uploadFile,
+    getDownloadUrl,
+    deleteDocument,
+  } = documentsState
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -67,6 +76,8 @@ export function DocumentsPage() {
 
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>
+      ) : loadError ? (
+        <LoadError message={loadError} onRetry={refresh} />
       ) : documents.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">Aucun document.</p>
       ) : (

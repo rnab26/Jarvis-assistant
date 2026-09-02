@@ -1,4 +1,5 @@
 import { Pencil, Trash2 } from "lucide-react"
+import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
@@ -26,7 +27,7 @@ export function TaskItem({
       <input
         type="checkbox"
         checked={isDone}
-        onChange={() => onToggle(task)}
+        onChange={() => onToggle(task).catch(alreadyNotified)}
         className="size-4"
         aria-label="Marquer comme faite"
       />
@@ -35,7 +36,7 @@ export function TaskItem({
           {task.title}
         </p>
         {task.notes && (
-          <p className="text-sm text-muted-foreground">{task.notes}</p>
+          <p className="text-sm whitespace-pre-line text-muted-foreground">{task.notes}</p>
         )}
       </div>
       {task.due_date && (
@@ -55,7 +56,7 @@ export function TaskItem({
         variant="ghost"
         size="icon"
         aria-label="Supprimer"
-        onClick={() => onDelete(task.id)}
+        onClick={() => onDelete(task.id).catch(alreadyNotified)}
       >
         <Trash2 className="size-4" />
       </Button>
