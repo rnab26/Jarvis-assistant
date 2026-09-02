@@ -42,6 +42,28 @@ discuter d'abord avec Raphaël — même s'il est dans le cockpit en statut
 "todo" (conforme à la règle de son CLAUDE.md global sur les actions à fort
 enjeu).
 
+## Requêtes SQL : toujours regrouper
+
+Chaque appel `mcp__Supabase__execute_sql` demande une autorisation manuelle à
+Raphaël, souvent depuis son téléphone. **Regrouper le maximum d'opérations
+dans un seul appel** plutôt que d'en enchaîner plusieurs :
+
+- Plusieurs `update`/`insert`/`select` liés → un seul appel, statements
+  séparés par `;` (le `select` de vérification à la fin du même appel).
+- Une structure complète (table + index + policies RLS + trigger) → un seul
+  appel, dans un `begin; ... commit;` pour que tout passe ou rien.
+- Ne pas faire un appel par ligne à mettre à jour : utiliser `where id in
+  (...)`, un `update ... from (values ...)`, ou des `case when`.
+
+Ne séparer en plusieurs appels que si c'est vraiment nécessaire : quand le
+contenu d'une requête dépend du résultat de la précédente, ou pour isoler une
+opération destructrice (`drop`, `delete` massif) qui mérite sa propre
+validation explicite.
+
+Pour le DDL, `mcp__Supabase__apply_migration` reste préférable à
+`execute_sql` — mais la même règle s'applique : une migration complète par
+appel, pas une par instruction.
+
 ## Stack
 
 React + Vite + TypeScript + Tailwind + shadcn/ui, Supabase (Auth + Postgres
