@@ -1,7 +1,6 @@
-import { Loader2, Mic, Volume2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Button } from "@/components/ui/button"
+import { JarvisCore } from "@/components/JarvisCore"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { supabase } from "@/lib/supabase"
@@ -280,22 +279,17 @@ export function MicButton({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <Button
-        size="icon"
-        variant={status === "error" ? "destructive" : "default"}
-        className="size-14 rounded-full"
+      {/* Le cœur EST le bouton : c'est lui qui réagit à ce qui se passe, plutôt
+          qu'une icône qui changerait de dessin. */}
+      <button
+        type="button"
         onClick={handleClick}
         disabled={status === "listening" || status === "processing"}
         aria-label={status === "speaking" ? "Interrompre Jarvis" : "Commande vocale"}
+        className="rounded-full transition-transform active:scale-95 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
       >
-        {status === "listening" || status === "processing" ? (
-          <Loader2 className="size-6 animate-spin" />
-        ) : status === "speaking" ? (
-          <Volume2 className="size-6" />
-        ) : (
-          <Mic className="size-6" />
-        )}
-      </Button>
+        <JarvisCore etat={status} taille={76} />
+      </button>
       {status === "listening" && (
         <p className="text-sm text-muted-foreground">
           {micReady ? "Je t'écoute..." : "Préparation du micro..."}
