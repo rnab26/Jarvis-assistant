@@ -1,9 +1,11 @@
 import { Download } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { JarvisCore, CORE_IMAGE_CHANGEE, type CoreEtat } from "@/components/JarvisCore"
+import { detourerCore, ecrireCoreImage, lireCoreImage } from "@/lib/coreImage"
 import {
   Select,
   SelectContent,
@@ -82,6 +84,99 @@ function ReglageVoix({
         className="h-6 w-full accent-primary"
       />
     </div>
+  )
+}
+
+const ETATS_APERCU: { etat: CoreEtat; label: string }[] = [
+  { etat: "idle", label: "Au repos" },
+  { etat: "listening", label: "Il écoute" },
+  { etat: "processing", label: "Il réfléchit" },
+  { etat: "speaking", label: "Il parle" },
+]
+
+/** Personnalisation du réacteur : import d'une image, détourage automatique,
+ * et aperçu de la façon dont il réagit selon ce que fait Jarvis. */
+function CoeurDeJarvis() {
+  const fichierRef = useRef<HTMLInputElement>(null)
+  const [personnalisee, setPersonnalisee] = useState(() => lireCoreImage() !== null)
+  const [apercu, setApercu] = useState<CoreEtat>("idle")
+  const [occupe, setOccupe] = useState(false)
+  const [erreur, setErreur] = useState<string | null>(null)
+
+  function prevenirLApp() {
+    window.dispatchEvent(new Event(CORE_IMAGE_CHANGEE))
+  }
+
+  async function importer(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    setErreur(null)
+    setOccupe(true)
+    try {
+      const dataUrl = await detourerCore(file)
+      ecrireCoreImage(dataUrl)
+      setPersonnalisee(true)
+      prevenirLApp()
+    } catch (err) {
+      setErreur(err instanceof Error ? err.message : "Le détourage a échoué.")
+    } finally {
+      setOccupe(false)
+    }
+  }
+
+  function reinitialiser() {
+    ecrireCoreImage(null)
+    setPersonnalisee(false)
+    setErreur(null)
+    prevenirLApp()
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Le cœur de Jarvis</CardTitle>
+        <CardDescription>
+          Le réacteur affiché sous le micro. Il bat en permanence, s'emballe quand Jarvis
+          écoute, envoie des ondes quand il parle et tourne pendant qu'il réfléchit.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col items-center gap-4">
+        <JarvisCore etat={apercu} taille={128} />
+
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {ETATS_APERCU.map(({ etat, label }) => (
+            <Button
+              key={etat}
+              size="sm"
+              variant={apercu === etat ? "default" : "outline"}
+              onClick={() => setApercu(etat)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+
+        <p className="text-center text-sm text-muted-foreground">
+          Tu peux mettre ton propre réacteur : le fond noir autour du disque est retiré
+          automatiquement, il n'y a rien à découper avant.
+        </p>
+
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button variant="outline" disabled={occupe} onClick={() => fichierRef.current?.click()}>
+            {occupe ? "Détourage..." : "Importer une image"}
+          </Button>
+          {personnalisee && (
+            <Button variant="ghost" size="sm" onClick={reinitialiser}>
+              Revenir à l'originale
+            </Button>
+          )}
+          <input ref={fichierRef} type="file" accept="image/*" hidden onChange={importer} />
+        </div>
+
+        {erreur && <p className="text-sm text-destructive">{erreur}</p>}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -183,6 +278,8 @@ export function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <CoeurDeJarvis />
 
       <Card>
         <CardHeader>
