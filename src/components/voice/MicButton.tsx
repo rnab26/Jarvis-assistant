@@ -7,6 +7,7 @@ import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { supabase } from "@/lib/supabase"
 import {
   executeVoiceAction,
+  type ContactsApi,
   type DevItemsApi,
   type DocumentsApi,
   type TasksApi,
@@ -20,6 +21,7 @@ interface MicButtonProps {
   tasksApi: TasksApi
   devItemsApi: DevItemsApi
   documentsApi: DocumentsApi
+  contactsApi: ContactsApi
   widgetApi: WidgetApi
   wakeWordEnabled: boolean
   voiceIndex: number | null
@@ -37,6 +39,7 @@ export function MicButton({
   tasksApi,
   devItemsApi,
   documentsApi,
+  contactsApi,
   widgetApi,
   wakeWordEnabled,
   voiceIndex,
@@ -75,6 +78,7 @@ export function MicButton({
             priority: i.priority,
           })),
           documents: documentsApi.documents.map((d) => ({ name: d.name })),
+          contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes })),
           widgetConfig: widgetApi.config,
           todayISO: new Date().toISOString().slice(0, 10),
         },
@@ -112,7 +116,14 @@ export function MicButton({
       return
     }
 
-    const reply = await executeVoiceAction(action, tasksApi, devItemsApi, documentsApi, widgetApi)
+    const reply = await executeVoiceAction(
+      action,
+      tasksApi,
+      devItemsApi,
+      documentsApi,
+      contactsApi,
+      widgetApi,
+    )
     setLastReply(reply)
     setStatus("speaking")
     bargeInRef.current = false

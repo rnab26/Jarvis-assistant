@@ -1,5 +1,7 @@
 import type {
   Category,
+  Contact,
+  ContactInput,
   DevItem,
   DevItemInput,
   DevPriority,
@@ -40,6 +42,10 @@ export type VoiceAction =
       urgent_only?: boolean
       category_id?: string | null
     }
+  | { action: "list_contacts" }
+  | { action: "add_contact"; name: string; notes?: string | null }
+  | { action: "update_contact"; contact_id: string; changes: Partial<ContactInput> }
+  | { action: "delete_contact"; contact_id: string }
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
@@ -65,6 +71,13 @@ export interface DocumentsApi {
   saveTextDocument: (filename: string, content: string) => Promise<void>
 }
 
+export interface ContactsApi {
+  contacts: Contact[]
+  addContact: (input: ContactInput) => Promise<void>
+  updateContact: (id: string, input: Partial<ContactInput>) => Promise<void>
+  deleteContact: (id: string) => Promise<void>
+}
+
 export interface WidgetApi {
   config: { maxTasks: number; urgentOnly: boolean; categoryId: string | null }
   setConfig: (config: { maxTasks?: number; urgentOnly?: boolean; categoryId?: string | null }) => void
@@ -86,6 +99,7 @@ export async function executeVoiceAction(
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
   { devItems, addDevItem, updateDevItem, deleteDevItem, archiveDevItem }: DevItemsApi,
   { documents, saveTextDocument }: DocumentsApi,
+  { contacts, addContact, updateContact, deleteContact }: ContactsApi,
   { setConfig }: WidgetApi,
 ): Promise<string> {
   switch (action.action) {
@@ -192,6 +206,29 @@ export async function executeVoiceAction(
       }
       if (action.category_id !== undefined) parts.push(catName ? `catégorie ${catName}` : "toutes catégories")
       return `Widget mis à jour${parts.length ? " : " + parts.join(", ") : ""}.`
+    }
+
+    case "list_contacts": {
+      if (contacts.length === 0) return "Aucun contact enregistré."
+      const names = contacts.slice(0, 8).map((c) => c.name)
+      return `Tu as ${contacts.length} contact${contacts.length > 1 ? "s" : ""} : ${names.join(", ")}.`
+    }
+
+    case "add_contact": {
+      await addContact({ name: action.name, notes: action.notes ?? null })
+      return `Contact "${action.name}" ajouté.`
+    }
+
+    case "update_contact": {
+      const contact = contacts.find((c) => c.id === action.contact_id)
+      await updateContact(action.contact_id, action.changes)
+      return `Contact "${contact?.name ?? "inconnu"}" mis à jour.`
+    }
+
+    case "delete_contact": {
+      const contact = contacts.find((c) => c.id === action.contact_id)
+      await deleteContact(action.contact_id)
+      return `Contact "${contact?.name ?? "inconnu"}" supprimé.`
     }
 
     case "chat":

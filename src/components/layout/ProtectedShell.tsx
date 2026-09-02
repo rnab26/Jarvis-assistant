@@ -5,8 +5,15 @@ import { JarvisDataProvider, useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
 
 function ShellContent() {
-  const { tasksState, devItemsState, documentsState, wakeWordState, voiceState, widgetState } =
-    useJarvisData()
+  const {
+    tasksState,
+    devItemsState,
+    documentsState,
+    contactsState,
+    wakeWordState,
+    voiceState,
+    widgetState,
+  } = useJarvisData()
 
   return (
     <DashboardLayout>
@@ -14,6 +21,7 @@ function ShellContent() {
         tasksApi={tasksState}
         devItemsApi={devItemsState}
         documentsApi={documentsState}
+        contactsApi={contactsState}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
         voiceIndex={voiceState.voiceIndex}

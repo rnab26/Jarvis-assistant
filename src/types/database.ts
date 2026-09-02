@@ -68,6 +68,20 @@ export interface DevItemInput {
   priority: DevPriority
 }
 
+export interface Contact {
+  id: string
+  user_id: string
+  name: string
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ContactInput {
+  name: string
+  notes: string | null
+}
+
 export interface DocumentFile {
   name: string
   path: string
