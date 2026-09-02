@@ -82,6 +82,19 @@ export interface ContactInput {
   notes: string | null
 }
 
+export interface PlaceReminder {
+  id: string
+  user_id: string
+  place: string
+  reminder: string
+  created_at: string
+}
+
+export interface PlaceReminderInput {
+  place: string
+  reminder: string
+}
+
 export interface DocumentFile {
   name: string
   path: string

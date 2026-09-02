@@ -1,4 +1,4 @@
-import { Download } from "lucide-react"
+import { Download, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -86,7 +86,8 @@ function ReglageVoix({
 }
 
 export function SettingsPage() {
-  const { wakeWordState, devItemsState, voiceState, tasksState, widgetState } = useJarvisData()
+  const { wakeWordState, devItemsState, voiceState, tasksState, widgetState, placeRemindersState } =
+    useJarvisData()
   const { status } = useUpdateCheck()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -321,6 +322,41 @@ export function SettingsPage() {
           >
             {widgetState.config.urgentOnly ? "Urgentes uniquement : activé" : "Urgentes uniquement : désactivé"}
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Rappels liés à un lieu</CardTitle>
+          <CardDescription>
+            Dis à Jarvis "retiens que quand je parle de [lieu], rappelle-moi [ceci]" — la
+            prochaine fois que tu mentionnes ce lieu en lui parlant, il te le rappellera dans sa
+            réponse. Pas de géolocalisation, déclenché uniquement par la conversation.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {placeRemindersState.placeReminders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun rappel de lieu pour l'instant.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {placeRemindersState.placeReminders.map((p) => (
+                <li key={p.id} className="flex items-start gap-2 rounded-lg border p-3">
+                  <div className="flex-1">
+                    <p className="font-medium">{p.place}</p>
+                    <p className="text-sm text-muted-foreground">{p.reminder}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Supprimer"
+                    onClick={() => placeRemindersState.deletePlaceReminder(p.id)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 

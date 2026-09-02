@@ -7,6 +7,8 @@ import type {
   DevPriority,
   DevStatus,
   DocumentFile,
+  PlaceReminder,
+  PlaceReminderInput,
   Task,
   TaskInput,
   TaskStatus,
@@ -46,6 +48,9 @@ export type VoiceAction =
   | { action: "add_contact"; name: string; notes?: string | null }
   | { action: "update_contact"; contact_id: string; changes: Partial<ContactInput> }
   | { action: "delete_contact"; contact_id: string }
+  | { action: "list_place_reminders" }
+  | { action: "add_place_reminder"; place: string; reminder: string }
+  | { action: "delete_place_reminder"; reminder_id: string }
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
@@ -78,6 +83,12 @@ export interface ContactsApi {
   deleteContact: (id: string) => Promise<void>
 }
 
+export interface PlaceRemindersApi {
+  placeReminders: PlaceReminder[]
+  addPlaceReminder: (input: PlaceReminderInput) => Promise<void>
+  deletePlaceReminder: (id: string) => Promise<void>
+}
+
 export interface WidgetApi {
   config: { maxTasks: number; urgentOnly: boolean; categoryId: string | null }
   setConfig: (config: { maxTasks?: number; urgentOnly?: boolean; categoryId?: string | null }) => void
@@ -100,6 +111,7 @@ export async function executeVoiceAction(
   { devItems, addDevItem, updateDevItem, deleteDevItem, archiveDevItem }: DevItemsApi,
   { documents, saveTextDocument }: DocumentsApi,
   { contacts, addContact, updateContact, deleteContact }: ContactsApi,
+  { placeReminders, addPlaceReminder, deletePlaceReminder }: PlaceRemindersApi,
   { setConfig }: WidgetApi,
 ): Promise<string> {
   switch (action.action) {
@@ -229,6 +241,23 @@ export async function executeVoiceAction(
       const contact = contacts.find((c) => c.id === action.contact_id)
       await deleteContact(action.contact_id)
       return `Contact "${contact?.name ?? "inconnu"}" supprimé.`
+    }
+
+    case "list_place_reminders": {
+      if (placeReminders.length === 0) return "Aucun rappel de lieu enregistré."
+      const items = placeReminders.slice(0, 8).map((p) => `${p.place} : ${p.reminder}`)
+      return `Tu as ${placeReminders.length} rappel${placeReminders.length > 1 ? "s" : ""} de lieu : ${items.join(", ")}.`
+    }
+
+    case "add_place_reminder": {
+      await addPlaceReminder({ place: action.place, reminder: action.reminder })
+      return `Compris, je te le rappellerai quand tu parleras de ${action.place}.`
+    }
+
+    case "delete_place_reminder": {
+      const reminder = placeReminders.find((p) => p.id === action.reminder_id)
+      await deletePlaceReminder(action.reminder_id)
+      return `Rappel pour "${reminder?.place ?? "ce lieu"}" supprimé.`
     }
 
     case "chat":

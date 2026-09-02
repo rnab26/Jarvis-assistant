@@ -10,6 +10,7 @@ function ShellContent() {
     devItemsState,
     documentsState,
     contactsState,
+    placeRemindersState,
     wakeWordState,
     voiceState,
     widgetState,
@@ -22,6 +23,7 @@ function ShellContent() {
         devItemsApi={devItemsState}
         documentsApi={documentsState}
         contactsApi={contactsState}
+        placeRemindersApi={placeRemindersState}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
         voiceIndex={voiceState.voiceIndex}

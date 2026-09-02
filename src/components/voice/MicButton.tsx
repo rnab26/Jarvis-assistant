@@ -10,6 +10,7 @@ import {
   type ContactsApi,
   type DevItemsApi,
   type DocumentsApi,
+  type PlaceRemindersApi,
   type TasksApi,
   type VoiceAction,
   type WidgetApi,
@@ -22,9 +23,17 @@ interface MicButtonProps {
   devItemsApi: DevItemsApi
   documentsApi: DocumentsApi
   contactsApi: ContactsApi
+  placeRemindersApi: PlaceRemindersApi
   widgetApi: WidgetApi
   wakeWordEnabled: boolean
   voiceIndex: number | null
+}
+
+function normalizeText(text: string) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
 }
 
 function containsWakeWord(transcript: string) {
@@ -40,6 +49,7 @@ export function MicButton({
   devItemsApi,
   documentsApi,
   contactsApi,
+  placeRemindersApi,
   widgetApi,
   wakeWordEnabled,
   voiceIndex,
@@ -79,6 +89,11 @@ export function MicButton({
           })),
           documents: documentsApi.documents.map((d) => ({ name: d.name })),
           contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes })),
+          placeReminders: placeRemindersApi.placeReminders.map((p) => ({
+            id: p.id,
+            place: p.place,
+            reminder: p.reminder,
+          })),
           widgetConfig: widgetApi.config,
           todayISO: new Date().toISOString().slice(0, 10),
         },
@@ -116,14 +131,28 @@ export function MicButton({
       return
     }
 
-    const reply = await executeVoiceAction(
+    let reply = await executeVoiceAction(
       action,
       tasksApi,
       devItemsApi,
       documentsApi,
       contactsApi,
+      placeRemindersApi,
       widgetApi,
     )
+
+    // Rappels de lieu : déclenchés par la conversation elle-même (pas par le
+    // GPS, pour ne pas consommer de batterie) — si l'utilisateur mentionne un
+    // lieu enregistré dans sa phrase, quel que soit le domaine de l'action,
+    // on glisse le rappel dans la réponse parlée.
+    const normalizedTranscript = normalizeText(originalTranscript)
+    const triggered = placeRemindersApi.placeReminders.filter((p) =>
+      normalizedTranscript.includes(normalizeText(p.place)),
+    )
+    if (triggered.length > 0) {
+      reply += ` Au fait, ${triggered.map((p) => p.reminder).join(" ")}`
+    }
+
     setLastReply(reply)
     setStatus("speaking")
     bargeInRef.current = false
