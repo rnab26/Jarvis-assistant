@@ -50,6 +50,9 @@ export function DevItemFormDialog({ item, onSubmit, trigger }: DevItemFormDialog
     try {
       await onSubmit({ title, notes: notes || null, status, priority })
       setOpen(false)
+    } catch {
+      // L'erreur est déjà signalée par un toast : on garde la fenêtre ouverte
+      // pour ne pas faire perdre sa saisie à l'utilisateur.
     } finally {
       setSubmitting(false)
     }

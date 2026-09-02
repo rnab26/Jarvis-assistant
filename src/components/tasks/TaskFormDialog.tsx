@@ -64,6 +64,9 @@ export function TaskFormDialog({
         status: task?.status ?? "todo",
       })
       setOpen(false)
+    } catch {
+      // L'erreur est déjà signalée par un toast : on garde la fenêtre ouverte
+      // pour ne pas faire perdre sa saisie à l'utilisateur.
     } finally {
       setSubmitting(false)
     }

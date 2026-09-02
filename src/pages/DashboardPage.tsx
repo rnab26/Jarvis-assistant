@@ -32,8 +32,12 @@ export function DashboardPage() {
 
   async function handleAddCategory() {
     if (!newCategoryName.trim()) return
-    await addCategory(newCategoryName.trim())
-    setNewCategoryName("")
+    try {
+      await addCategory(newCategoryName.trim())
+      setNewCategoryName("")
+    } catch {
+      // Erreur déjà signalée par un toast : on conserve la saisie.
+    }
   }
 
   return (

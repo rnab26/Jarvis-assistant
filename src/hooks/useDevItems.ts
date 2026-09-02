@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
+import { withErrorToast } from "@/lib/notifyError"
 import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
 import type { DevItem, DevItemInput } from "@/types/database"
@@ -53,44 +54,54 @@ export function useDevItems(userId: string | undefined) {
 
   async function addDevItem(input: DevItemInput) {
     if (!userId) return
-    const { error } = await supabase
-      .from("dev_items")
-      .insert({ ...input, user_id: userId })
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible d'ajouter le chantier", async () => {
+      const { error } = await supabase
+        .from("dev_items")
+        .insert({ ...input, user_id: userId })
+      if (error) throw error
+      await refresh()
+    })
   }
 
   async function updateDevItem(id: string, input: Partial<DevItemInput>) {
-    const { error } = await supabase
-      .from("dev_items")
-      .update({ ...input, updated_at: new Date().toISOString() })
-      .eq("id", id)
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible de modifier le chantier", async () => {
+      const { error } = await supabase
+        .from("dev_items")
+        .update({ ...input, updated_at: new Date().toISOString() })
+        .eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
   }
 
   async function deleteDevItem(id: string) {
-    const { error } = await supabase.from("dev_items").delete().eq("id", id)
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible de supprimer le chantier", async () => {
+      const { error } = await supabase.from("dev_items").delete().eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
   }
 
   async function archiveDevItem(id: string) {
-    const { error } = await supabase
-      .from("dev_items")
-      .update({ status: "done", archived_at: new Date().toISOString() })
-      .eq("id", id)
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible d'archiver le chantier", async () => {
+      const { error } = await supabase
+        .from("dev_items")
+        .update({ status: "done", archived_at: new Date().toISOString() })
+        .eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
   }
 
   async function unarchiveDevItem(id: string) {
-    const { error } = await supabase
-      .from("dev_items")
-      .update({ archived_at: null })
-      .eq("id", id)
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible de désarchiver le chantier", async () => {
+      const { error } = await supabase
+        .from("dev_items")
+        .update({ archived_at: null })
+        .eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
   }
 
   return {

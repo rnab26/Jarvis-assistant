@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
+import { withErrorToast } from "@/lib/notifyError"
 import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
 import { updateWidgetSnapshot } from "@/lib/widgetSnapshot"
@@ -68,26 +69,32 @@ export function useTasks(userId: string | undefined) {
 
   async function addTask(input: TaskInput) {
     if (!userId) return
-    const { error } = await supabase
-      .from("tasks")
-      .insert({ ...input, user_id: userId })
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible d'ajouter la tâche", async () => {
+      const { error } = await supabase
+        .from("tasks")
+        .insert({ ...input, user_id: userId })
+      if (error) throw error
+      await refresh()
+    })
   }
 
   async function updateTask(id: string, input: Partial<TaskInput>) {
-    const { error } = await supabase
-      .from("tasks")
-      .update({ ...input, updated_at: new Date().toISOString() })
-      .eq("id", id)
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible de modifier la tâche", async () => {
+      const { error } = await supabase
+        .from("tasks")
+        .update({ ...input, updated_at: new Date().toISOString() })
+        .eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
   }
 
   async function deleteTask(id: string) {
-    const { error } = await supabase.from("tasks").delete().eq("id", id)
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible de supprimer la tâche", async () => {
+      const { error } = await supabase.from("tasks").delete().eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
   }
 
   async function toggleStatus(task: Task) {
@@ -98,11 +105,13 @@ export function useTasks(userId: string | undefined) {
 
   async function addCategory(name: string) {
     if (!userId) return
-    const { error } = await supabase
-      .from("categories")
-      .insert({ name, user_id: userId })
-    if (error) throw error
-    await refresh()
+    await withErrorToast("Impossible d'ajouter la catégorie", async () => {
+      const { error } = await supabase
+        .from("categories")
+        .insert({ name, user_id: userId })
+      if (error) throw error
+      await refresh()
+    })
   }
 
   return {

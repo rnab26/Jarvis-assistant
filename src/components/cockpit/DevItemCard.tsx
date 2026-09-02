@@ -1,4 +1,5 @@
 import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react"
+import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
@@ -72,7 +73,7 @@ export function DevItemCard({
           variant="ghost"
           size="icon"
           aria-label="Archiver"
-          onClick={() => onArchive(item.id)}
+          onClick={() => onArchive(item.id).catch(alreadyNotified)}
         >
           <Archive className="size-4" />
         </Button>
@@ -82,7 +83,7 @@ export function DevItemCard({
           variant="ghost"
           size="icon"
           aria-label="Désarchiver"
-          onClick={() => onUnarchive(item.id)}
+          onClick={() => onUnarchive(item.id).catch(alreadyNotified)}
         >
           <ArchiveRestore className="size-4" />
         </Button>
@@ -100,7 +101,7 @@ export function DevItemCard({
         variant="ghost"
         size="icon"
         aria-label="Supprimer"
-        onClick={() => onDelete(item.id)}
+        onClick={() => onDelete(item.id).catch(alreadyNotified)}
       >
         <Trash2 className="size-4" />
       </Button>
