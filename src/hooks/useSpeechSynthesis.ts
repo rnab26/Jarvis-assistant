@@ -1,6 +1,8 @@
 import { TextToSpeech, type SpeechSynthesisVoice } from "@capacitor-community/text-to-speech"
 import { Capacitor } from "@capacitor/core"
 import { useCallback, useRef, useState } from "react"
+import { errorMessage } from "@/lib/errorMessage"
+import { readVoicePrefs } from "@/lib/voicePrefs"
 
 // Même logique que useSpeechRecognition : la synthèse vocale du navigateur
 // (speechSynthesis) fonctionne généralement dans la webview Android, mais
@@ -8,15 +10,21 @@ import { useCallback, useRef, useState } from "react"
 // (voix installées garanties, pas de dépendance à l'implémentation webview).
 const isNative = Capacitor.isNativePlatform()
 
-// Vitesse de lecture par défaut : un peu plus rapide que le rythme "normal"
-// (1.0), pour un rendu moins lent à l'usage répété — reste raisonnable pour
-// rester compréhensible.
-const SPEECH_RATE = 1.15
+// La langue de lecture suit la voix choisie. La forcer à "fr-FR" quand
+// l'utilisateur a sélectionné une voix d'une autre langue faisait échouer la
+// lecture sans un mot d'explication (bouton "Tester" muet dans Paramètres).
+const LANGUE_PAR_DEFAUT = "fr-FR"
+
+/** Voix de l'appareil, mises en cache : on en a besoin à chaque lecture pour
+ * connaître la langue de la voix choisie, et la liste ne change pas. */
+let voixEnCache: SpeechSynthesisVoice[] | null = null
 
 export type { SpeechSynthesisVoice }
 
 export function useSpeechSynthesis() {
   const [speaking, setSpeaking] = useState(false)
+  /** Dernier échec de lecture, pour que l'interface puisse le dire. */
+  const [erreur, setErreur] = useState<string | null>(null)
   const isSupported = isNative || "speechSynthesis" in window
   // Permet à stop() de débloquer un speak() en cours : sur Android natif,
   // TextToSpeech.stop() n'a pas toujours la garantie de déclencher le
@@ -40,6 +48,11 @@ export function useSpeechSynthesis() {
     async (text: string, voiceIndex?: number) => {
       if (!isSupported) return
 
+      const prefs = readVoicePrefs()
+      const index = voiceIndex ?? prefs.voiceIndex ?? undefined
+      const voix = index === undefined ? undefined : voixEnCache?.[index]
+
+      setErreur(null)
       await new Promise<void>((resolve) => {
         let done = false
         const finish = () => {
@@ -55,26 +68,32 @@ export function useSpeechSynthesis() {
           setSpeaking(true)
           TextToSpeech.speak({
             text,
-            lang: "fr-FR",
-            rate: SPEECH_RATE,
-            pitch: 1,
+            // La langue de la voix choisie prime : sinon Android refuse de lire.
+            lang: voix?.lang ?? LANGUE_PAR_DEFAUT,
+            rate: prefs.rate,
+            pitch: prefs.pitch,
             volume: 1,
-            voice: voiceIndex,
-          }).finally(finish)
+            voice: index,
+          })
+            // Sans ce catch, un échec de lecture ne se voyait nulle part.
+            .catch((e) => setErreur(errorMessage(e)))
+            .finally(finish)
           return
         }
 
         window.speechSynthesis.cancel()
         const utterance = new SpeechSynthesisUtterance(text)
-        utterance.lang = "fr-FR"
-        utterance.rate = SPEECH_RATE
-        if (voiceIndex !== undefined) {
-          const voice = window.speechSynthesis.getVoices()[voiceIndex]
-          if (voice) utterance.voice = voice
-        }
+        const voixWeb = index === undefined ? undefined : window.speechSynthesis.getVoices()[index]
+        utterance.lang = voixWeb?.lang ?? LANGUE_PAR_DEFAUT
+        utterance.rate = prefs.rate
+        utterance.pitch = prefs.pitch
+        if (voixWeb) utterance.voice = voixWeb
         utterance.onstart = () => setSpeaking(true)
         utterance.onend = finish
-        utterance.onerror = finish
+        utterance.onerror = (e) => {
+          setErreur(e.error || "La lecture a échoué.")
+          finish()
+        }
         window.speechSynthesis.speak(utterance)
       })
     },
@@ -97,18 +116,23 @@ export function useSpeechSynthesis() {
     if (!isSupported) return []
     if (isNative) {
       const { voices } = await TextToSpeech.getSupportedVoices()
+      voixEnCache = voices
       return voices
     }
     // Le navigateur charge parfois la liste des voix de façon asynchrone :
     // si elle est vide au premier appel, on attend l'événement dédié.
     const existing = window.speechSynthesis.getVoices()
-    if (existing.length > 0) return existing
+    if (existing.length > 0) {
+      voixEnCache = existing
+      return existing
+    }
     return new Promise((resolve) => {
       window.speechSynthesis.onvoiceschanged = () => {
-        resolve(window.speechSynthesis.getVoices())
+        voixEnCache = window.speechSynthesis.getVoices()
+        resolve(voixEnCache)
       }
     })
   }, [isSupported])
 
-  return { speak, stop, speaking, isSupported, getVoices }
+  return { speak, stop, speaking, erreur, isSupported, getVoices }
 }
