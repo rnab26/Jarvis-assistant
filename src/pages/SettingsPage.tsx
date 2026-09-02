@@ -1,13 +1,50 @@
 import { Download } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import { useUpdateCheck } from "@/hooks/useUpdateCheck"
 
 const APK_DOWNLOAD_URL =
   "https://github.com/rnab26/Jarvis-assistant/releases/download/latest-debug/app-debug.apk"
 
+/** Les notes archivées finissent par "Commit <hash>." — même logique que
+ * DevItemCard, pour rendre le hash cliquable vers GitHub. */
+function renderNotes(notes: string) {
+  const match = notes.match(/^(.*commit )([0-9a-f]{7,40})(\.?)$/i)
+  if (!match) return notes
+  const [, prefix, hash, suffix] = match
+  return (
+    <>
+      {prefix}
+      <a
+        href={`https://github.com/rnab26/Jarvis-assistant/commit/${hash}`}
+        target="_blank"
+        rel="noreferrer"
+        className="underline"
+      >
+        {hash}
+      </a>
+      {suffix}
+    </>
+  )
+}
+
+const UPDATE_STATUS_LABEL = {
+  checking: "Vérification...",
+  "up-to-date": "À jour",
+  "update-available": "Nouvelle version disponible",
+  unknown: "Impossible de vérifier",
+} as const
+
 export function SettingsPage() {
-  const { wakeWordState } = useJarvisData()
+  const { wakeWordState, devItemsState } = useJarvisData()
+  const { status } = useUpdateCheck()
+
+  const recentChanges = devItemsState.devItems
+    .filter((item) => item.archived_at)
+    .sort((a, b) => (b.archived_at! < a.archived_at! ? -1 : 1))
+    .slice(0, 5)
 
   return (
     <div className="flex flex-col gap-4">
@@ -19,13 +56,39 @@ export function SettingsPage() {
             jour de Jarvis — pas besoin de naviguer dans GitHub Actions.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-wrap items-center gap-3">
           <Button asChild>
             <a href={APK_DOWNLOAD_URL} target="_blank" rel="noreferrer">
               <Download className="size-4" />
               Télécharger la dernière version
             </a>
           </Button>
+          <Badge variant={status === "update-available" ? "destructive" : "outline"}>
+            {UPDATE_STATUS_LABEL[status]}
+          </Badge>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Nouveautés</CardTitle>
+          <CardDescription>Derniers chantiers terminés (depuis le cockpit).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recentChanges.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Rien à afficher pour l'instant.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {recentChanges.map((item) => (
+                <li key={item.id} className="text-sm">
+                  <p className="font-medium">{item.title}</p>
+                  {item.notes && (
+                    <p className="text-muted-foreground">{renderNotes(item.notes)}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 
