@@ -42,6 +42,52 @@ discuter d'abord avec Raphaël — même s'il est dans le cockpit en statut
 "todo" (conforme à la règle de son CLAUDE.md global sur les actions à fort
 enjeu).
 
+## Travail en parallèle : réserver un chantier et se parler
+
+Plusieurs sessions Claude Code travaillent souvent sur ce repo en même temps.
+Deux règles évitent qu'elles se marchent dessus ou qu'elles s'attendent.
+
+**Avant de toucher à un chantier, le réserver.** La prise est atomique : si
+deux sessions appellent en même temps, une seule obtient `true`.
+
+```sql
+select claim_dev_item('<id du chantier>', '<nom de ta branche>', 120);
+```
+
+`false` = une autre session est déjà dessus, prends-en un autre. La réservation
+expire après le délai en minutes, pour qu'une session interrompue ne bloque
+rien ; renouvelle l'appel si tu dépasses. Quand tu t'arrêtes ou que tu
+termines : `select release_dev_item('<id>', '<ta branche>');`
+
+Utilise **le nom de ta branche** comme identifiant de session : c'est ce que
+Raphaël voit dans le cockpit, sur le chantier, sous la forme « Prise par … ».
+
+**Deux marqueurs en tête des notes commandent le comportement :**
+
+- `[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]` — ne pas coder. Raphaël veut en
+  discuter d'abord pour trancher une bonne fois (coût, accès, périmètre) plutôt
+  que de revenir dessus plusieurs fois.
+- `[LIBRE]` — spécifié de bout en bout, aucune décision ni accès à obtenir :
+  à prendre sans rien demander.
+
+**Pour parler à une autre session**, écris dans `dev_log` — elle le lira à son
+prochain passage, même si elle est arrêtée maintenant :
+
+```sql
+insert into dev_log (user_id, item_id, author, kind, body)
+values ('<user_id>', '<id chantier ou null>', '<ta branche>',
+        'question', 'Tu es toujours sur X ? Je voudrais toucher à Y.');
+```
+
+`kind` vaut `question`, `reponse`, `info` ou `blocage`. Renseigne `answered_at`
+quand tu réponds à une question. Le journal est visible dans l'app, en bas du
+cockpit : Raphaël y écrit aussi ses consignes, **lis-le en début de session**
+en même temps que les chantiers.
+
+**Ne prends pas un gros lot d'un coup.** Réserve ce que tu traites maintenant
+et laisse le reste libre, pour qu'une autre session puisse avancer en
+parallèle au lieu d'attendre après toi.
+
 ## Requêtes SQL : toujours regrouper
 
 Chaque appel `mcp__Supabase__execute_sql` demande une autorisation manuelle à

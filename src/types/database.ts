@@ -38,8 +38,27 @@ export interface DevItem {
   status: DevStatus
   priority: DevPriority
   archived_at: string | null
+  /** Session Claude Code qui travaille dessus (nom de sa branche), si réservé. */
+  claimed_by: string | null
+  claimed_at: string | null
+  /** Passé cette date la réservation tombe : une session interrompue ne bloque rien. */
+  claim_expires_at: string | null
   created_at: string
   updated_at: string
+}
+
+/** Message du journal de bord : entre sessions, ou écrit par Raphaël. */
+export type DevLogKind = "question" | "reponse" | "info" | "blocage"
+
+export interface DevLogEntry {
+  id: string
+  user_id: string
+  item_id: string | null
+  author: string
+  kind: DevLogKind
+  body: string
+  answered_at: string | null
+  created_at: string
 }
 
 export interface DevItemInput {
