@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { LoadError } from "@/components/LoadError"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
@@ -9,6 +10,8 @@ export function CockpitPage() {
   const {
     devItems,
     loading,
+    error,
+    refresh,
     addDevItem,
     updateDevItem,
     deleteDevItem,
@@ -35,6 +38,8 @@ export function CockpitPage() {
 
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>
+      ) : error ? (
+        <LoadError message={error} onRetry={refresh} />
       ) : (
         <CockpitBoard
           devItems={devItems}
