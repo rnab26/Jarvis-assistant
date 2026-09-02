@@ -49,6 +49,10 @@ export function useSpeechRecognition() {
 
   const isSupported = isNative || getSpeechRecognitionCtor() !== null
 
+  // Filet de sécurité si l'événement "stopped" ne vient jamais (device/plugin
+  // qui reste bloqué en écoute) — pas un vrai minuteur de silence.
+  const NATIVE_MAX_LISTEN_MS = 20000
+
   const listenNative = useCallback(async (): Promise<string> => {
     setError(null)
     setReady(false)
@@ -67,18 +71,53 @@ export function useSpeechRecognition() {
     }
 
     setListening(true)
+
+    // partialResults:true (plutôt que le simple maxResults:1 d'avant) active
+    // aussi côté plugin le "DICTATION_MODE" natif d'Android, dont la
+    // tolérance au silence est bien plus longue que le mode commande
+    // classique — c'est ce qui coupait la phrase trop tôt en cours de
+    // dictée. On accumule les résultats (partiels puis final) via
+    // l'événement "partialResults", et on attend l'événement "stopped" de
+    // "listeningState" (fin de parole détectée par Android) pour résoudre.
+    let latestTranscript = ""
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null
+    let resolveStopped: (() => void) | undefined
+
+    const partialResultsHandle = await NativeSpeechRecognition.addListener(
+      "partialResults",
+      ({ matches }) => {
+        if (matches?.[0]) latestTranscript = matches[0]
+      },
+    )
     const listeningStateHandle = await NativeSpeechRecognition.addListener(
       "listeningState",
-      ({ status }) => setReady(status === "started"),
+      ({ status }) => {
+        setReady(status === "started")
+        if (status === "stopped") resolveStopped?.()
+      },
     )
+
     try {
-      const result = await NativeSpeechRecognition.start({
+      const stopped = new Promise<void>((resolve) => {
+        resolveStopped = resolve
+        safetyTimer = setTimeout(() => {
+          NativeSpeechRecognition.stop().catch(() => {})
+          resolve()
+        }, NATIVE_MAX_LISTEN_MS)
+      })
+
+      await NativeSpeechRecognition.start({
         language: "fr-FR",
         maxResults: 1,
-        partialResults: false,
+        partialResults: true,
         popup: false,
       })
-      const transcript = result.matches?.[0]
+      await stopped
+      // Petite marge : le résultat final (post-traitement Android) arrive
+      // parfois juste après l'événement "stopped".
+      await new Promise((r) => setTimeout(r, 300))
+
+      const transcript = latestTranscript.trim()
       if (!transcript) {
         const message = "Je n'ai rien entendu, réessaie."
         setError(message)
@@ -90,8 +129,10 @@ export function useSpeechRecognition() {
       setError(message)
       throw new Error(message)
     } finally {
+      if (safetyTimer) clearTimeout(safetyTimer)
       setListening(false)
       setReady(false)
+      await partialResultsHandle.remove()
       await listeningStateHandle.remove()
     }
   }, [])
