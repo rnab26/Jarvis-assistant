@@ -5,13 +5,15 @@ import { JarvisDataProvider, useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
 
 function ShellContent() {
-  const { tasksState, devItemsState } = useJarvisData()
+  const { tasksState, devItemsState, documentsState, wakeWordState } = useJarvisData()
 
   return (
     <DashboardLayout>
       <MicButton
         tasksApi={tasksState}
         devItemsApi={devItemsState}
+        documentsApi={documentsState}
+        wakeWordEnabled={wakeWordState.enabled}
       />
       <Outlet />
     </DashboardLayout>
@@ -19,7 +21,8 @@ function ShellContent() {
 }
 
 /** Vérifie l'authentification puis fournit les données partagées (tâches +
- * chantiers dev) et le micro à toutes les pages protégées (Tâches, Cockpit). */
+ * chantiers dev + documents) et le micro à toutes les pages protégées
+ * (Tâches, Cockpit, Documents). */
 export function ProtectedShell() {
   const { session, loading } = useAuth()
 

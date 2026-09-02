@@ -8,23 +8,40 @@ import { supabase } from "@/lib/supabase"
 import {
   executeVoiceAction,
   type DevItemsApi,
+  type DocumentsApi,
   type TasksApi,
   type VoiceAction,
 } from "@/lib/voiceActions"
 
-type Status = "idle" | "listening" | "processing" | "speaking" | "error"
+type Status = "idle" | "wake-listening" | "listening" | "processing" | "speaking" | "error"
 
 interface MicButtonProps {
   tasksApi: TasksApi
   devItemsApi: DevItemsApi
+  documentsApi: DocumentsApi
+  wakeWordEnabled: boolean
 }
 
-export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
-  const { listen, isSupported, ready: micReady } = useSpeechRecognition()
+function containsWakeWord(transcript: string) {
+  const normalized = transcript
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+  return normalized.includes("jarvis")
+}
+
+export function MicButton({ tasksApi, devItemsApi, documentsApi, wakeWordEnabled }: MicButtonProps) {
+  const { listen, stop: stopListening, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
   const [status, setStatus] = useState<Status>("idle")
   const [lastUserText, setLastUserText] = useState<string | null>(null)
   const [lastReply, setLastReply] = useState<string | null>(null)
+  // Un tap pendant que Jarvis parle (barge-in) relance l'écoute lui-même ;
+  // ce flag évite que le await speak(...) interrompu, une fois débloqué,
+  // ne relance À SON TOUR une écoute en double (deux listen() concurrents).
+  const bargeInRef = useRef(false)
+  const statusRef = useRef<Status>("idle")
+  statusRef.current = status
 
   /** Envoie un transcript à la Edge Function et exécute l'action renvoyée. */
   async function resolveTranscript(transcript: string): Promise<VoiceAction> {
@@ -47,6 +64,7 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
             status: i.status,
             priority: i.priority,
           })),
+          documents: documentsApi.documents.map((d) => ({ name: d.name })),
           todayISO: new Date().toISOString().slice(0, 10),
         },
       },
@@ -71,7 +89,9 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
     if (action.action === "clarify" && round < 3) {
       setLastReply(action.message)
       setStatus("speaking")
-      speak(action.message)
+      bargeInRef.current = false
+      await speak(action.message)
+      if (bargeInRef.current) return // un tap a déjà repris la main entre-temps
 
       setStatus("listening")
       const answer = await listen()
@@ -81,10 +101,12 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
       return
     }
 
-    const reply = await executeVoiceAction(action, tasksApi, devItemsApi)
+    const reply = await executeVoiceAction(action, tasksApi, devItemsApi, documentsApi)
     setLastReply(reply)
     setStatus("speaking")
-    speak(reply)
+    bargeInRef.current = false
+    await speak(reply)
+    if (bargeInRef.current) return
     setStatus("idle")
   }
 
@@ -106,7 +128,16 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
     // coupe la voix et relance directement l'écoute, sans devoir attendre
     // la fin de la phrase.
     if (status === "speaking") {
+      bargeInRef.current = true
       stopSpeaking()
+      await startListening()
+      return
+    }
+
+    // Un tap pendant l'écoute passive du mot-clé interrompt cette écoute et
+    // enchaîne directement sur une écoute de commande normale.
+    if (status === "wake-listening") {
+      stopListening()
       await startListening()
       return
     }
@@ -114,6 +145,54 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
     if (status !== "idle" && status !== "error") return
     await startListening()
   }
+
+  /**
+   * Écoute passive du mot-clé "Jarvis" tant que l'app est ouverte (pas de
+   * service en arrière-plan — désactivé par défaut, à activer dans
+   * Paramètres). Redémarre une écoute courte en boucle quand l'app est
+   * inactive (status "idle"), s'arrête dès qu'une interaction (manuelle ou
+   * déclenchée par le mot-clé) est en cours.
+   */
+  useEffect(() => {
+    if (!wakeWordEnabled) return
+    let cancelled = false
+
+    async function wakeLoop() {
+      while (!cancelled) {
+        if (statusRef.current !== "idle") {
+          await new Promise((r) => setTimeout(r, 400))
+          continue
+        }
+        setStatus("wake-listening")
+        try {
+          const transcript = await listen()
+          if (cancelled) return
+          if (containsWakeWord(transcript)) {
+            const rest = transcript.replace(/jarvis/i, "").trim()
+            if (rest.length > 3) {
+              setLastUserText(rest)
+              setStatus("idle")
+              await runTurn(rest)
+            } else {
+              await startListening()
+            }
+          } else {
+            setStatus("idle")
+          }
+        } catch {
+          // Silence, erreur de reconnaissance, etc. : on relance simplement.
+          if (!cancelled) setStatus("idle")
+          await new Promise((r) => setTimeout(r, 500))
+        }
+      }
+    }
+
+    wakeLoop()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wakeWordEnabled])
 
   // Ouverture avec ?mic=1 (ex: depuis un widget ou le bouton latéral
   // réassigné, Phase 3) : lance directement l'écoute sans avoir à taper
@@ -159,6 +238,9 @@ export function MicButton({ tasksApi, devItemsApi }: MicButtonProps) {
         <p className="text-sm text-muted-foreground">
           {micReady ? "Je t'écoute..." : "Préparation du micro..."}
         </p>
+      )}
+      {status === "wake-listening" && (
+        <p className="text-xs text-muted-foreground">En écoute du mot-clé "Jarvis"...</p>
       )}
       {(lastUserText || lastReply) && (
         <div className="max-w-xs text-center text-sm">

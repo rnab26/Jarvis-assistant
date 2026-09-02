@@ -48,3 +48,11 @@ export interface DevItemInput {
   status: DevStatus
   priority: DevPriority
 }
+
+export interface DocumentFile {
+  name: string
+  path: string
+  size: number
+  createdAt: string
+  contentType: string | null
+}
