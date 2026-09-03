@@ -542,6 +542,25 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+            <div className="flex-1">
+              <p className="font-medium">
+                {voiceState.muted ? "Voix coupée" : "Voix activée"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {voiceState.muted
+                  ? "Il te répond à l'écrit seulement. Dis-lui « remets ta voix » pour le rallumer."
+                  : "Tu peux aussi lui dire « coupe ta voix » en pleine discussion."}
+              </p>
+            </div>
+            <Button
+              variant={voiceState.muted ? "default" : "outline"}
+              onClick={() => voiceState.setMuted(!voiceState.muted)}
+            >
+              {voiceState.muted ? "Rallumer" : "Couper"}
+            </Button>
+          </div>
+
           <div className="flex flex-col gap-2">
             <Select
               value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}
@@ -594,9 +613,12 @@ export function SettingsPage() {
               variant="outline"
               disabled={speaking}
               onClick={() =>
+                // Forcé : on doit pouvoir écouter la voix pour la régler,
+                // même quand elle est coupée pour les réponses.
                 speak(
                   "Bonjour Raphaël, voici comment je sonne avec ces réglages.",
                   voiceState.voiceIndex ?? undefined,
+                  true,
                 )
               }
             >
