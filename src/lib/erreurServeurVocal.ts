@@ -4,9 +4,13 @@
  * supabase-js masque le corps de la réponse derrière un message unique et
  * inutile : « Edge Function returned a non-2xx status code ». Raphaël l'a vu
  * s'afficher sous le cœur de Jarvis sans aucun moyen de savoir ce qui n'allait
- * pas — alors que la vraie raison était nette côté serveur : la clé Anthropic
+ * pas — alors que la vraie raison était nette côté serveur : la clé du modèle
  * n'avait plus de crédit. Une panne qui ne se nomme pas se cherche pendant des
  * heures.
+ *
+ * Mêmes formulations que supabase/functions/_shared/gemini.ts (phrasePourEchec),
+ * qui habille côté serveur les pannes du modèle. Si tu en changes une, change
+ * l'autre.
  */
 
 /** Le vrai corps de la réponse, que supabase-js range dans `context`. */
@@ -31,20 +35,20 @@ export async function corpsDeLErreur(error: unknown): Promise<string> {
 export function traduireErreurServeur(corps: string, messageBrut = ""): string {
   const texte = `${corps} ${messageBrut}`.toLowerCase()
 
-  if (texte.includes("credit balance is too low")) {
-    return "Ma clé Anthropic n'a plus de crédit : je ne peux plus réfléchir tant qu'elle n'est pas rechargée. C'est à faire sur console.anthropic.com, rubrique facturation."
+  if (texte.includes("resource_exhausted") || texte.includes("quota")) {
+    return "J'ai atteint la limite de l'offre gratuite de Gemini pour le moment. Redis-moi ça dans une minute ; si ça se répète toute la journée, c'est le quota du jour qui est épuisé."
   }
-  if (texte.includes("anthropic_api_key non configurée")) {
-    return "Ma clé Anthropic n'est pas configurée côté serveur : je ne peux pas traiter ta demande."
+  if (texte.includes("gemini_api_key non configurée")) {
+    return "Ma clé Gemini n'est pas configurée côté serveur : je ne peux pas traiter ta demande."
   }
-  if (texte.includes("overloaded") || texte.includes("529")) {
+  if (texte.includes("api_key_invalid") || texte.includes("api key not valid") || texte.includes("permission_denied")) {
+    return "Ma clé Gemini est refusée par le serveur : elle a dû être changée, révoquée, ou l'API n'est pas activée pour elle."
+  }
+  if (texte.includes("overloaded") || texte.includes("unavailable") || texte.includes("503")) {
     return "Le modèle est débordé en ce moment. Redis-moi ça dans quelques secondes."
   }
   if (texte.includes("rate_limit") || texte.includes("too many requests")) {
     return "J'ai atteint ma limite de requêtes. Laisse-moi souffler quelques secondes."
-  }
-  if (texte.includes("authentication_error") || texte.includes("invalid x-api-key")) {
-    return "Ma clé Anthropic est refusée par le serveur : elle a dû être changée ou révoquée."
   }
   if (texte.includes("non authentifié")) {
     return "Ta session a expiré. Reconnecte-toi et redis-moi ça."
@@ -65,7 +69,7 @@ function extraireDetail(corps: string): string {
     const json = JSON.parse(corps)
     const brut = typeof json?.error === "string" ? json.error : ""
     if (!brut) return ""
-    // La Edge Function préfixe l'erreur Anthropic puis recolle son JSON :
+    // La Edge Function préfixe l'erreur du modèle puis recolle son JSON :
     // on en tire la phrase, pas la structure.
     const imbrique = brut.match(/"message"\s*:\s*"([^"]+)"/)
     return (imbrique ? imbrique[1] : brut).slice(0, 200)

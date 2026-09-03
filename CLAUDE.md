@@ -182,6 +182,41 @@ Les deux premières servent aussi de modèle : catalogue oui/non, et décisions 
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
 
+## Le moteur : Gemini, offre gratuite — et pourquoi
+
+Décision de Raphaël du 3 sept. 2026, à ne pas rouvrir : Jarvis tournait sur
+Claude via l'API Anthropic, facturée au jeton, et il l'a découvert en voyant
+sa clé à sec. Il a choisi l'offre gratuite de l'API Gemini, en connaissance
+du compromis (Google se réserve d'utiliser les contenus de l'offre gratuite
+pour améliorer ses produits, relecture humaine comprise). Les options
+écartées : Haiku 4.5 (moitié prix, privé), rester sur Sonnet 5.
+
+Tout ce qui est propre à Gemini vit dans `supabase/functions/_shared/gemini.ts`
+— un seul endroit pour la forme de la requête, les erreurs et les nouveaux
+essais. `index.ts` et `memoire.ts` ne font qu'appeler `appelerGemini()`.
+Les phrases d'erreur y sont alignées mot pour mot avec
+`src/lib/erreurServeurVocal.ts` : changer l'une, c'est changer l'autre.
+
+Le coût, même à zéro, se surveille : la limite de l'offre gratuite se compte
+en requêtes et en jetons par minute, et chaque phrase envoie ~45 000
+caractères (consignes 8 000 + schéma d'outil 17 800 + contexte). La ligne
+`coût` dans les journaux de la fonction donne la consommation réelle de
+chaque appel. Les archivés du cockpit sont plafonnés à 15 côté client
+(`chantiersPourLeModele` dans `MicButton.tsx`) : avant, les 83 chantiers
+partaient en entier à chaque phrase, et ça grossissait à chaque chantier
+livré.
+
+### Une clé d'API se pousse par `scripts/pousser-secret.sh`, jamais autrement
+
+```bash
+scripts/pousser-secret.sh GEMINI_API_KEY
+```
+
+Raphaël dépose la clé dans les variables d'environnement de l'environnement
+Claude Code ; le script la lit là et l'envoie aux secrets Supabase par l'API,
+sans jamais l'afficher. Ne lui demande **jamais** de coller une clé dans la
+conversation, et n'utilise pas l'outil MCP pour ça.
+
 ## Déployer une Edge Function : `scripts/deployer-fonction.sh`
 
 ```bash

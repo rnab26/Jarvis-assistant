@@ -26,13 +26,17 @@ Supabase distant.
 ## Commandes vocales (Phase 2)
 
 Le bouton micro appelle la Edge Function `supabase/functions/voice-command`,
-qui interprète la commande via l'API Claude et renvoie une action
-structurée (le client l'exécute ensuite via Supabase, RLS compris — la
-fonction n'écrit jamais directement en base).
+qui interprète la commande via l'API Gemini (offre gratuite, décision de
+Raphaël du 3 sept. 2026 — Jarvis tournait sur Claude, facturé au jeton) et
+renvoie une action structurée (le client l'exécute ensuite via Supabase, RLS
+compris — la fonction n'écrit jamais directement en base). Tout ce qui est
+propre à Gemini tient dans `supabase/functions/_shared/gemini.ts`.
 
-Secret requis côté Supabase (Dashboard → Edge Functions → Secrets, ou
-Project Settings → Edge Functions) : `ANTHROPIC_API_KEY` (clé obtenue sur
-console.anthropic.com). Jamais dans le code ni dans `.env`.
+Secret requis côté Supabase : `GEMINI_API_KEY` (clé créée sur
+https://aistudio.google.com/apikey). Jamais dans le code ni dans `.env` :
+on la dépose dans les variables d'environnement de l'environnement Claude
+Code, puis `scripts/pousser-secret.sh GEMINI_API_KEY` l'envoie à Supabase
+sans qu'elle transite nulle part ailleurs.
 
 ## Compte Google : agenda et mails
 

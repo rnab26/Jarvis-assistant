@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
 import { memoriser, rappelerSouvenirs } from "./memoire.ts"
+import { appelerGemini, phrasePourEchec } from "../_shared/gemini.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -339,26 +340,16 @@ const VOICE_ACTION_TOOL = {
 }
 
 /**
- * Statuts pour lesquels un nouvel essai a du sens : surcharge du modèle (529),
- * limite de débit (429) et incidents passagers côté serveur. Tout le reste
- * (400, 401…) vient de la requête et se reproduirait à l'identique.
- */
-const STATUTS_A_REESSAYER = new Set([408, 409, 429, 500, 502, 503, 529])
-
-/** Trois essais au plus, ~15 s dans le pire des cas : l'app abandonne à 25 s. */
-const ESSAIS_MAX = 3
-
-/**
  * Tout ce qui ne change JAMAIS d'un appel à l'autre : le rôle, les sept
  * domaines, et les règles de traduction d'une phrase en action.
  *
- * Sorti du gestionnaire et placé AVANT les données pour une raison de coût :
- * avec les définitions d'outils, ce bloc fait à lui seul près de 26 000
- * caractères renvoyés à chaque phrase dictée. Identique à l'octet près, il
- * est mis en cache côté Anthropic (voir `cache_control` plus bas) et relu à
- * 10 % du prix. Si tu y insères la moindre donnée variable — une date, une
- * liste, l'heure — le cache ne retombera plus jamais juste et le gain
- * disparaîtra en silence.
+ * Sorti du gestionnaire et placé AVANT les données : avec le schéma de
+ * l'outil, ce bloc fait près de 26 000 caractères renvoyés à chaque phrase,
+ * identiques à l'octet près. Un préfixe stable est ce que les modèles
+ * mettent en cache d'eux-mêmes (Gemini le fait implicitement sur Flash) ;
+ * et sur l'offre gratuite, où la limite se compte en requêtes et en jetons
+ * par minute, moins de jetons par phrase veut dire plus de phrases avant
+ * de buter sur la limite. N'y insère jamais une donnée variable.
  */
 const CONSIGNES = `Tu es l'assistant vocal de Jarvis, qui gère sept domaines pour l'utilisateur :
 1. Ses tâches personnelles/clients, organisées par catégorie.
@@ -392,57 +383,6 @@ Ces actions préparent le geste sans l'accomplir : le message s'affiche prêt à
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
 Réponds toujours en français dans le champ message.`
 
-/**
- * Appelle le modèle en réessayant les échecs passagers.
- *
- * Sans ça, une simple surcharge de l'API (`overloaded_error`, fréquente aux
- * heures pleines) faisait échouer la commande vocale et affichait le JSON
- * brut de l'erreur à l'écran. Mesuré le 3 sept. : jusqu'à 5 commandes sur 9
- * perdues dans une même minute, alors qu'un second essai passe.
- */
-async function appelerClaude(
-  corps: Record<string, unknown>,
-  cle: string,
-): Promise<{ reponse?: Response; echec?: { statut: number; texte: string; passager: boolean } }> {
-  let dernier: { statut: number; texte: string; passager: boolean } | undefined
-
-  for (let essai = 1; essai <= ESSAIS_MAX; essai++) {
-    let attendreMs: number | null = null
-
-    try {
-      const reponse = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": cle,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify(corps),
-      })
-      if (reponse.ok) return { reponse }
-
-      const texte = await reponse.text()
-      const passager = STATUTS_A_REESSAYER.has(reponse.status)
-      dernier = { statut: reponse.status, texte, passager }
-      if (!passager) break
-
-      // L'API dit parfois elle-même combien de temps attendre.
-      const entete = Number(reponse.headers.get("retry-after"))
-      attendreMs = Number.isFinite(entete) && entete > 0 ? entete * 1000 : null
-    } catch (err) {
-      // Coupure réseau : passagère par nature.
-      dernier = { statut: 0, texte: String(err), passager: true }
-    }
-
-    if (essai === ESSAIS_MAX) break
-    // Attente croissante, avec un grain d'aléatoire pour ne pas retomber en
-    // rafale sur la même seconde que les autres appels en attente.
-    const parDefaut = 2 ** (essai - 1) * 1000 + Math.random() * 300
-    await new Promise((r) => setTimeout(r, Math.min(attendreMs ?? parDefaut, 5000)))
-  }
-
-  return { echec: dernier }
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -499,10 +439,10 @@ Deno.serve(async (req: Request) => {
       timeStyle: "short",
     }).format(new Date())
 
-    const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY")
-    if (!anthropicKey) {
+    const cleGemini = Deno.env.get("GEMINI_API_KEY")
+    if (!cleGemini) {
       return new Response(
-        JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée côté serveur." }),
+        JSON.stringify({ error: "GEMINI_API_KEY non configurée côté serveur." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       )
     }
@@ -520,46 +460,29 @@ Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
 Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?? [])}.
 Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouvenirs(supabase, transcript)}`
 
-    const { reponse: anthropicResponse, echec } = await appelerClaude(
-      {
-        model: "claude-sonnet-5",
-        max_tokens: 1024,
-        // Le point de césure porte sur les consignes, mais le cache remonte
-        // plus haut que lui : l'ordre est tools → system → messages, donc le
-        // schéma de l'outil (17 800 caractères) est mis en cache avec elles.
-        // TTL par défaut, 5 minutes : dans une conversation suivie chaque
-        // tour retombe dessus. Le 1 h coûte 2× à l'écriture et ne serait
-        // rentable que si Raphaël parlait à Jarvis toutes les demi-heures.
-        system: [
-          { type: "text", text: CONSIGNES, cache_control: { type: "ephemeral" } },
-          { type: "text", text: contexte },
-        ],
-        messages: [{ role: "user", content: transcript }],
-        tools: [VOICE_ACTION_TOOL],
-        tool_choice: { type: "tool", name: "resolve_voice_command" },
-      },
-      anthropicKey,
-    )
+    const { args, consommation, echec } = await appelerGemini({
+      // Le Flash stable le plus récent de l'offre gratuite. Pas d'alias
+      // « latest » : un changement de modèle doit être un choix, pas une
+      // surprise un matin.
+      modele: "gemini-3.8-flash",
+      // Les consignes d'abord, le contexte ensuite : voir CONSIGNES.
+      systeme: `${CONSIGNES}\n\n${contexte}`,
+      texte: transcript,
+      outil: VOICE_ACTION_TOOL,
+      // Les modèles Gemini 3 réfléchissent avant de répondre et cette
+      // réflexion compte dans le plafond : de la marge, sinon la réponse
+      // est coupée avant l'appel d'outil.
+      maxTokens: 2048,
+      cle: cleGemini,
+    })
 
-    if (echec || !anthropicResponse) {
+    if (echec || !args) {
       // Le détail technique va dans les journaux de la fonction, pas à
       // l'écran : Raphaël se retrouvait devant le JSON brut de l'API, ce qui
       // ressemble à « Jarvis est cassé » quel que soit le vrai problème.
       // Lui, il entend une phrase qui lui dit quoi faire.
-      console.error("Appel au modèle en échec", echec?.statut, echec?.texte)
-
-      // Mêmes phrases que src/lib/erreurServeurVocal.ts, qui rattrape côté app
-      // ce que le serveur ne peut pas habiller (fonction plantée, réseau
-      // coupé, session expirée). Deux chemins, une seule formulation : si tu
-      // en changes une, change l'autre.
-      const detail = echec?.texte ?? ""
-      const message = /credit balance|billing/i.test(detail)
-        ? "Ma clé Anthropic n'a plus de crédit : je ne peux plus réfléchir tant qu'elle n'est pas rechargée. C'est à faire sur console.anthropic.com, rubrique facturation."
-        : /api key|authentication/i.test(detail)
-          ? "Ma clé Anthropic est refusée par le serveur : elle a dû être changée ou révoquée."
-          : echec?.passager
-            ? "Le modèle est débordé en ce moment. Redis-moi ça dans quelques secondes."
-            : "Je n'arrive pas à joindre le modèle en ce moment. Réessaie, et regarde les journaux de voice-command si ça dure."
+      console.error("Appel au modèle en échec", echec?.statut, echec?.texte ?? "réponse sans appel d'outil")
+      const message = phrasePourEchec(echec)
 
       return new Response(
         JSON.stringify({
@@ -570,35 +493,18 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouv
       )
     }
 
-    const anthropicData = await anthropicResponse.json()
-
-    // Ce que la phrase a réellement coûté, dans les journaux de la fonction.
-    // Avant ça, le coût par commande ne pouvait être qu'estimé à partir du
-    // nombre de caractères envoyés — et personne ne voyait le contexte
-    // grossir. `cache_lu` à 0 alors que `cache_ecrit` est élevé à chaque
-    // appel veut dire que le cache ne retombe jamais : quelque chose de
-    // variable a été glissé dans CONSIGNES ou dans le schéma de l'outil.
-    const u = anthropicData.usage ?? {}
-    console.log(
-      "coût",
-      JSON.stringify({
-        entree: u.input_tokens,
-        cache_ecrit: u.cache_creation_input_tokens,
-        cache_lu: u.cache_read_input_tokens,
-        sortie: u.output_tokens,
-      }),
-    )
-
-    const toolUse = anthropicData.content?.find(
-      (block: { type: string }) => block.type === "tool_use",
-    )
+    // Ce que la phrase a réellement coûté en jetons, dans les journaux de la
+    // fonction. Sur l'offre gratuite ce n'est pas une facture mais une jauge :
+    // la limite est en jetons par minute, et c'est ici qu'on voit le contexte
+    // grossir avant qu'il ne fasse buter dessus.
+    console.log("coût", JSON.stringify(consommation ?? {}))
 
     // Le modèle renvoie une liste. On tolère l'ancienne forme (une action à
     // plat) pour ne rien casser si le schéma n'est pas suivi.
-    const brutes: Record<string, unknown>[] = Array.isArray(toolUse?.input?.actions)
-      ? toolUse.input.actions
-      : toolUse?.input?.action
-        ? [toolUse.input]
+    const brutes: Record<string, unknown>[] = Array.isArray(args.actions)
+      ? (args.actions as Record<string, unknown>[])
+      : args.action
+        ? [args]
         : []
     const actions = brutes
       .filter((a) => a && typeof a.action === "string")
@@ -622,7 +528,7 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouv
       user.id,
       transcript,
       (actions.find((a) => typeof a.message === "string")?.message as string) ?? null,
-      anthropicKey,
+      cleGemini,
     )
     const runtime = globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }
     if (runtime.EdgeRuntime?.waitUntil) runtime.EdgeRuntime.waitUntil(rangement)
