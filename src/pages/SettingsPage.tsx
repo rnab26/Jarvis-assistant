@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core"
 import { Download, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -6,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { JarvisCore, CORE_IMAGE_CHANGEE, type CoreEtat } from "@/components/JarvisCore"
 import { detourerCore, ecrireCoreImage, lireCoreImage } from "@/lib/coreImage"
+import { Geofence } from "@/lib/geofencePlugin"
 import {
   Select,
   SelectContent,
@@ -17,6 +19,94 @@ import { useJarvisData } from "@/contexts/JarvisDataContext"
 import { useSpeechSynthesis, type SpeechSynthesisVoice } from "@/hooks/useSpeechSynthesis"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
 import { useUpdateCheck } from "@/hooks/useUpdateCheck"
+
+const isNative = Capacitor.isNativePlatform()
+
+/** Active/désactive le déclenchement des rappels de lieu par
+ * géolocalisation réelle (Geofencing Android) — demande les permissions
+ * la première fois, y compris l'écran "tout le temps" séparé requis à
+ * partir d'Android 10. */
+function RappelsGeolocalises() {
+  const [enAttente, setEnAttente] = useState(false)
+  const [arrierePlanOk, setArrierePlanOk] = useState<boolean | null>(null)
+  const [erreur, setErreur] = useState<string | null>(null)
+  const { geofenceState } = useJarvisData()
+
+  useEffect(() => {
+    if (!isNative || !geofenceState.enabled) return
+    Geofence.hasBackgroundPermission()
+      .then((r) => setArrierePlanOk(r.granted))
+      .catch(() => setArrierePlanOk(null))
+  }, [geofenceState.enabled])
+
+  async function activer() {
+    setErreur(null)
+    if (!isNative) {
+      geofenceState.setEnabled(true)
+      return
+    }
+    setEnAttente(true)
+    try {
+      const { granted, backgroundGranted } = await Geofence.requestLocationPermissions()
+      if (!granted) {
+        setErreur("Localisation refusée. Autorise-la dans les paramètres de l'app pour activer cette option.")
+        return
+      }
+      geofenceState.setEnabled(true)
+      setArrierePlanOk(backgroundGranted)
+    } catch {
+      setErreur("La demande de permission a échoué.")
+    } finally {
+      setEnAttente(false)
+    }
+  }
+
+  function desactiver() {
+    geofenceState.setEnabled(false)
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Rappels de lieu : géolocalisation réelle</CardTitle>
+        <CardDescription>
+          En plus du déclenchement par la conversation (toujours actif), Jarvis peut te prévenir
+          automatiquement en arrivant près d'un lieu enregistré — même sans lui parler. Utilise
+          l'API Geofencing d'Android (pas de suivi GPS continu, la plus économe en batterie pour
+          ça), mais consomme quand même plus que sans. Désactivé par défaut.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Button
+          variant={geofenceState.enabled ? "default" : "outline"}
+          disabled={enAttente}
+          onClick={geofenceState.enabled ? desactiver : activer}
+          className="w-fit"
+        >
+          {geofenceState.enabled ? "Activé" : "Désactivé"}
+        </Button>
+
+        {geofenceState.enabled && arrierePlanOk === false && (
+          <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+            <p>
+              Il manque l'autorisation "Tout le temps" — sans elle, les rappels ne se déclenchent
+              que pendant que l'app est ouverte à l'écran, comme avant.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-fit"
+              onClick={() => Geofence.openLocationSettings()}
+            >
+              Ouvrir les réglages de localisation
+            </Button>
+          </div>
+        )}
+        {erreur && <p className="text-sm text-destructive">{erreur}</p>}
+      </CardContent>
+    </Card>
+  )
+}
 
 const APK_DOWNLOAD_URL =
   "https://github.com/rnab26/Jarvis-assistant/releases/download/latest-debug/app-debug.apk"
@@ -428,7 +518,8 @@ export function SettingsPage() {
           <CardDescription>
             Dis à Jarvis "retiens que quand je parle de [lieu], rappelle-moi [ceci]" — la
             prochaine fois que tu mentionnes ce lieu en lui parlant, il te le rappellera dans sa
-            réponse. Pas de géolocalisation, déclenché uniquement par la conversation.
+            réponse. Déclenché par la conversation par défaut ; active la géolocalisation
+            ci-dessous pour un déclenchement automatique en plus.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -456,6 +547,8 @@ export function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <RappelsGeolocalises />
 
       <Card>
         <CardHeader>

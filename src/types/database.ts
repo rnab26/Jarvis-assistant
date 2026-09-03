@@ -90,12 +90,18 @@ export interface PlaceReminder {
   user_id: string
   place: string
   reminder: string
+  /** Coordonnées du lieu, renseignées seulement si la géolocalisation des
+   * rappels est activée — null sinon (déclenchement conversationnel seul). */
+  lat: number | null
+  lng: number | null
   created_at: string
 }
 
 export interface PlaceReminderInput {
   place: string
   reminder: string
+  lat?: number | null
+  lng?: number | null
 }
 
 export interface DocumentFile {

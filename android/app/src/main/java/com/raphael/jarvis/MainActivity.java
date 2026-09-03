@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(JarvisWidgetPlugin.class);
         registerPlugin(ShareReceiverPlugin.class);
+        registerPlugin(GeofencePlugin.class);
         super.onCreate(savedInstanceState);
         handleShareIntent(getIntent());
     }
