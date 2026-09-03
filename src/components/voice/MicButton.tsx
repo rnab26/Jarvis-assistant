@@ -26,6 +26,9 @@ interface MicButtonProps {
   widgetApi: WidgetApi
   wakeWordEnabled: boolean
   voiceIndex: number | null
+  /** Durée pendant laquelle le micro reste ouvert après une réponse de
+   * Jarvis, pour enchaîner sans retoucher le bouton. 0 = désactivé. */
+  suiteMs: number
 }
 
 function normalizeText(text: string) {
@@ -52,6 +55,7 @@ export function MicButton({
   widgetApi,
   wakeWordEnabled,
   voiceIndex,
+  suiteMs,
 }: MicButtonProps) {
   const { listen, stop: stopListening, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
@@ -110,8 +114,14 @@ export function MicButton({
    * question puis réécoute automatiquement la réponse (en donnant à Claude
    * le contexte de la demande initiale) plutôt que de forcer l'utilisateur
    * à réappuyer sur le micro et tout redire.
+   *
+   * Renvoie true s'il faut rouvrir le micro pour la réplique suivante.
    */
-  async function runTurn(transcript: string, originalTranscript = transcript, round = 0) {
+  async function runTurn(
+    transcript: string,
+    originalTranscript = transcript,
+    round = 0,
+  ): Promise<boolean> {
     setStatus("processing")
     const action = await resolveTranscript(transcript)
 
@@ -120,14 +130,13 @@ export function MicButton({
       setStatus("speaking")
       bargeInRef.current = false
       await speak(action.message, voiceIndex ?? undefined)
-      if (bargeInRef.current) return // un tap a déjà repris la main entre-temps
+      if (bargeInRef.current) return false // un tap a déjà repris la main entre-temps
 
       setStatus("listening")
-      const answer = await listen()
+      const answer = await listen("command", { onTexte: setLastUserText })
       setLastUserText(answer)
       const combined = `Demande initiale : "${originalTranscript}". Question posée : "${action.message}". Réponse de l'utilisateur : "${answer}".`
-      await runTurn(combined, originalTranscript, round + 1)
-      return
+      return await runTurn(combined, originalTranscript, round + 1)
     }
 
     let reply = await executeVoiceAction(
@@ -156,16 +165,43 @@ export function MicButton({
     setStatus("speaking")
     bargeInRef.current = false
     await speak(reply, voiceIndex ?? undefined)
-    if (bargeInRef.current) return
+    if (bargeInRef.current) return false
+    if (suiteMs > 0) return true
     setStatus("idle")
+    return false
+  }
+
+  /**
+   * Mène la discussion : la demande, la réponse de Jarvis, puis les
+   * répliques suivantes tant que Raphaël enchaîne — sans avoir à retoucher
+   * le micro entre deux phrases. Un silence après une réponse termine
+   * simplement la conversation : ce n'est pas une erreur.
+   */
+  async function conduireConversation(premier: string) {
+    let transcript = premier
+    for (;;) {
+      setLastUserText(transcript)
+      const enchainer = await runTurn(transcript)
+      if (!enchainer) return
+
+      setStatus("listening")
+      try {
+        transcript = await listen("command", {
+          premierMotMs: suiteMs,
+          onTexte: setLastUserText,
+        })
+      } catch {
+        setStatus("idle")
+        return
+      }
+    }
   }
 
   async function startListening() {
     try {
       setStatus("listening")
-      const transcript = await listen()
-      setLastUserText(transcript)
-      await runTurn(transcript)
+      const transcript = await listen("command", { onTexte: setLastUserText })
+      await conduireConversation(transcript)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue."
       setLastReply(message)
@@ -181,6 +217,13 @@ export function MicButton({
       bargeInRef.current = true
       stopSpeaking()
       await startListening()
+      return
+    }
+
+    // Un tap pendant l'écoute vaut « j'ai fini » : on clôt le tour avec ce
+    // qui a déjà été dit, sans attendre le délai de silence.
+    if (status === "listening") {
+      stopListening()
       return
     }
 
@@ -224,9 +267,8 @@ export function MicButton({
             const rest = transcript.replace(/jarvis/i, "").trim()
             if (rest.length > 3) {
               // "Jarvis" + la demande dans la même phrase : direct.
-              setLastUserText(rest)
               setStatus("idle")
-              await runTurn(rest)
+              await conduireConversation(rest)
             } else {
               // "Jarvis" seul : confirmation orale courte avant d'écouter
               // la demande, pour que l'utilisateur sache qu'il peut parler
@@ -284,15 +326,21 @@ export function MicButton({
       <button
         type="button"
         onClick={handleClick}
-        disabled={status === "listening" || status === "processing"}
-        aria-label={status === "speaking" ? "Interrompre Jarvis" : "Commande vocale"}
+        disabled={status === "processing"}
+        aria-label={
+          status === "speaking"
+            ? "Interrompre Jarvis"
+            : status === "listening"
+              ? "J'ai fini de parler"
+              : "Commande vocale"
+        }
         className="rounded-full transition-transform active:scale-95 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
       >
         <JarvisCore etat={status} taille={76} />
       </button>
       {status === "listening" && (
         <p className="text-sm text-muted-foreground">
-          {micReady ? "Je t'écoute..." : "Préparation du micro..."}
+          {micReady ? "Je t'écoute — touche le cœur quand tu as fini." : "Préparation du micro..."}
         </p>
       )}
       {status === "wake-listening" && (

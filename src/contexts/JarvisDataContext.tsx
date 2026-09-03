@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, type ReactNode } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { useContacts } from "@/hooks/useContacts"
 import { useDevItems } from "@/hooks/useDevItems"
+import { useDialogueSetting } from "@/hooks/useDialogueSetting"
 import { useDocuments } from "@/hooks/useDocuments"
 import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
 import { usePlaceGeofences } from "@/hooks/usePlaceGeofences"
@@ -19,6 +20,7 @@ type ContactsState = ReturnType<typeof useContacts>
 type PlaceRemindersState = ReturnType<typeof usePlaceReminders>
 type GeofenceState = ReturnType<typeof useGeofenceSetting>
 type WakeWordState = ReturnType<typeof useWakeWordSetting>
+type DialogueState = ReturnType<typeof useDialogueSetting>
 type VoiceState = ReturnType<typeof useVoiceSetting>
 type WidgetState = ReturnType<typeof useWidgetSetting>
 
@@ -30,6 +32,7 @@ interface JarvisDataValue {
   placeRemindersState: PlaceRemindersState
   geofenceState: GeofenceState
   wakeWordState: WakeWordState
+  dialogueState: DialogueState
   voiceState: VoiceState
   widgetState: WidgetState
 }
@@ -40,8 +43,8 @@ const JarvisDataContext = createContext<JarvisDataValue | null>(null)
  * Charge une seule fois les tâches, les chantiers de dev et les documents
  * de l'utilisateur (partagés entre le dashboard, le cockpit, les documents
  * et le micro) pour éviter de refetch et de dupliquer le bouton micro sur
- * chaque page. Porte aussi les préférences "mot-clé de réveil", "voix" et
- * "widget", partagées entre Paramètres et leurs consommateurs respectifs.
+ * chaque page. Porte aussi les préférences "mot-clé de réveil", "rythme de
+ * discussion", "voix" et "widget", partagées entre Paramètres et leurs consommateurs respectifs.
  */
 export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth()
@@ -54,6 +57,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const placeRemindersState = usePlaceReminders(userId)
   const geofenceState = useGeofenceSetting()
   const wakeWordState = useWakeWordSetting()
+  const dialogueState = useDialogueSetting()
   const voiceState = useVoiceSetting()
   const widgetState = useWidgetSetting()
 
@@ -78,6 +82,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         placeRemindersState,
         geofenceState,
         wakeWordState,
+        dialogueState,
         voiceState,
         widgetState,
       }}
