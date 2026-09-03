@@ -28,6 +28,7 @@ import {
   objetDeReponse,
   sansCitation,
 } from "../supabase/functions/google-gmail/message.ts"
+import { construireRequeteRecus, estDocument, liensDocuments } from "../supabase/functions/google-gmail/recherche.ts"
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -213,6 +214,93 @@ console.log("— Construction des messages (sans réseau) —")
   )
 }
 
+// ───────────── 1 bis. La requête qui retrouve un reçu, hors ligne ─────────
+//
+// Raphaël, le 3 sept. : « il ne faut pas forcément se bloquer à un prestataire
+// en question qui s'appelle finbot que moi j'ai nommé ». Rien de personnel ne
+// doit donc être codé ici — ni un nom, ni un destinataire — et la recherche
+// doit marcher pour lui comme pour sa femme.
+
+console.log("\n— La requête qui retrouve un reçu (sans réseau) —")
+
+{
+  const r = construireRequeteRecus()
+  verifier(
+    "sans précision : tous ses reçus de la période",
+    r.includes("newer_than:30d") && r.includes("facture") && r.includes("has:attachment"),
+    `obtenu : ${r}`,
+  )
+  verifier(
+    "ses propres envois et les promotions sont écartés",
+    r.includes("-in:sent") && r.includes("-category:promotions"),
+    `obtenu : ${r}`,
+  )
+}
+
+{
+  // Le cas qu'il a décrit : « aller récupérer la facture chez ma femme ».
+  // `from:` compare aussi le NOM AFFICHÉ, donc son adresse n'est pas requise.
+  const r = construireRequeteRecus({ recherche: "Melissa" })
+  verifier(
+    "une personne nommée est cherchée comme expéditrice ET en texte",
+    r.includes("from:Melissa") && /\bOR Melissa\b/.test(r),
+    `obtenu : ${r}`,
+  )
+}
+
+{
+  const r = construireRequeteRecus({ recherche: "la station essence" })
+  verifier(
+    "un déterminant dicté ne part pas dans la recherche",
+    !/from:l[ae]\b/i.test(r) && r.includes('from:"station essence"'),
+    `obtenu : ${r}`,
+  )
+}
+
+{
+  const r = construireRequeteRecus({ recherche: "from:facturation@bezeq.co.il" })
+  verifier(
+    "une requête Gmail déjà écrite n'est pas réécrite par-dessus",
+    r.includes("from:facturation@bezeq.co.il") && !r.includes("from:from:"),
+    `obtenu : ${r}`,
+  )
+}
+
+{
+  verifier(
+    "la période demandée est respectée, et bornée",
+    construireRequeteRecus({ jours: 7 }).includes("newer_than:7d") &&
+      construireRequeteRecus({ jours: 99999 }).includes("newer_than:365d"),
+    `obtenu : ${construireRequeteRecus({ jours: 99999 })}`,
+  )
+}
+
+{
+  // Aucun nom propre ne doit exister dans le code : Jarvis sert aussi sa
+  // femme, qui n'a pas les mêmes contacts.
+  const r = construireRequeteRecus({ recherche: "finbot" })
+  const neutre = construireRequeteRecus()
+  verifier(
+    "aucun destinataire n'est codé en dur",
+    !/finbot|melissa|raphael/i.test(neutre) && r.includes("from:finbot"),
+    `requête neutre : ${neutre}`,
+  )
+}
+
+{
+  verifier(
+    "un PDF ou une photo est un reçu, une signature .ics non",
+    estDocument("application/pdf", "f.pdf") && estDocument(null, "recu.JPG") &&
+      !estDocument("text/calendar", "invite.ics"),
+    "le filtre de documents ne trie pas correctement",
+  )
+  verifier(
+    "un reçu au bout d'un lien est repéré",
+    liensDocuments("Votre facture : https://paz.co.il/invoice/8891 merci").length === 1,
+    `obtenu : ${JSON.stringify(liensDocuments("Votre facture : https://paz.co.il/invoice/8891 merci"))}`,
+  )
+}
+
 // ────────────────────── 2. Lecture réelle de sa boîte ─────────────────────
 
 console.log("\n— Lecture réelle de la boîte —")
@@ -274,10 +362,7 @@ if (!compte) {
   // La recherche de reçus, sur ses vrais messages. Une requête Gmail se teste
   // sur une vraie boîte ou pas du tout : sur un jeu d'essai, n'importe quelle
   // requête « marche ».
-  const MOTS_RECU = ["facture", "recu", "receipt", "invoice", "ticket", "justificatif"]
-  const requete =
-    `newer_than:90d (${MOTS_RECU.join(" OR ")} OR has:attachment)` +
-    " -in:sent -in:chats -category:promotions"
+  const requete = construireRequeteRecus({ jours: 90 })
   const rRecus = await fetch(
     `${API}/messages?${new URLSearchParams({ q: requete, maxResults: "10" })}`,
     { headers: entetes },
@@ -298,14 +383,8 @@ if (!compte) {
     if (!rr.ok) continue
     const msg = await rr.json()
     const { corps: texte, pieces_jointes: pj } = extraireContenu(msg.payload)
-    const docs = pj.filter((x) => {
-      const t = (x.type ?? "").toLowerCase()
-      return t === "application/pdf" || t.startsWith("image/") ||
-        /\.(pdf|jpe?g|png|heic|webp)$/i.test(x.nom)
-    })
-    const liens = (texte.match(/https?:\/\/[^\s<>"')\]]+/g) ?? []).filter((l) =>
-      /facture|recu|re\u00e7u|receipt|invoice|ticket|justificatif|document|pdf|download|telecharger/i.test(l),
-    )
+    const docs = pj.filter((x) => estDocument(x.type, x.nom))
+    const liens = liensDocuments(texte)
     if (docs.length || liens.length) exploitables++
   }
   verifier(

@@ -27,6 +27,9 @@ import {
   objetDeReponse,
   sansCitation,
 } from "./message.ts"
+// La requête de recherche des reçus vit à côté elle aussi : c'est la pièce
+// la plus facile à casser sans s'en apercevoir, donc la plus utile à tester.
+import { construireRequeteRecus, estDocument, liensDocuments } from "./recherche.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,30 +68,6 @@ function resumer(m: {
     extrait: m.snippet ?? null,
     non_lu: (m.labelIds ?? []).includes("UNREAD"),
   }
-}
-
-/** Les mots qui désignent un reçu, dans les deux langues qu'il reçoit.
- * Gmail ignore les accents dans la recherche, « recu » couvre donc « reçu ». */
-const MOTS_RECU = ["facture", "recu", "receipt", "invoice", "ticket", "justificatif"]
-
-/** Un reçu est un PDF ou une image scannée ; une signature en PNG de 3 ko et
- * un calendrier .ics n'en sont pas, et pollueraient chaque résultat. */
-function estDocument(type: string | null, nom: string): boolean {
-  const t = (type ?? "").toLowerCase()
-  if (t === "application/pdf" || t.startsWith("image/")) return true
-  return /\.(pdf|jpe?g|png|heic|webp)$/i.test(nom)
-}
-
-/** Le cas de sa station essence : « ils m'envoient un SMS avec la facture
- * dans le lien ». Par mail c'est pareil — le reçu est au bout d'un lien, pas
- * en pièce jointe. On ne suit aucun lien ici, on les rend seulement. */
-function liensDocuments(texte: string): string[] {
-  const liens = texte.match(/https?:\/\/[^\s<>"')\]]+/g) ?? []
-  const interessants = liens.filter((l) =>
-    /facture|recu|re\u00e7u|receipt|invoice|ticket|justificatif|document|pdf|download|telecharger/i.test(l),
-  )
-  // Dédoublonné : un mail met souvent le même lien dans le texte et le bouton.
-  return [...new Set(interessants)].slice(0, 5)
 }
 
 Deno.serve(async (req: Request) => {
@@ -180,16 +159,13 @@ Deno.serve(async (req: Request) => {
     // fournisseur à l autre. D où cette requête composée, et le repli sur les
     // pièces jointes — un reçu voyage presque toujours en PDF ou en image.
     if (action === "recus") {
-      const jours = Math.min(Math.max(Number(corps.depuis_jours ?? 30), 1), 365)
-      // `recherche` restreint la recherche à un fournisseur précis (« station
-      // essence », « Bezeq ») sans avoir à réécrire toute la requête.
-      const precision = corps.recherche ? ` (${String(corps.recherche)})` : ""
-      const requete =
-        `newer_than:${jours}d${precision} ` +
-        `(${MOTS_RECU.join(" OR ")} OR has:attachment) ` +
-        // Ses propres envois et les fils promotionnels ne sont jamais des
-        // reçus à transmettre.
-        `-in:sent -in:chats -category:promotions`
+      // `recherche` désigne QUI ou QUOI : une personne (« Melissa »), une
+      // enseigne (« Paz »), ou déjà de la syntaxe Gmail. La traduction est
+      // dans recherche.ts, où elle se teste.
+      const requete = construireRequeteRecus({
+        recherche: corps.recherche ? String(corps.recherche) : null,
+        jours: Number(corps.depuis_jours ?? 30),
+      })
 
       const params = new URLSearchParams({
         q: requete,
