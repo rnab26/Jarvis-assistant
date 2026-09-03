@@ -524,13 +524,17 @@ Réponds toujours en français dans le champ message.${await rappelerSouvenirs(s
       // Lui, il entend une phrase qui lui dit quoi faire.
       console.error("Appel au modèle en échec", echec?.statut, echec?.texte)
 
+      // Mêmes phrases que src/lib/erreurServeurVocal.ts, qui rattrape côté app
+      // ce que le serveur ne peut pas habiller (fonction plantée, réseau
+      // coupé, session expirée). Deux chemins, une seule formulation : si tu
+      // en changes une, change l'autre.
       const detail = echec?.texte ?? ""
-      const message = echec?.passager
-        ? "Je suis un peu débordé là, redis-le-moi dans quelques secondes."
-        : /credit balance|billing/i.test(detail)
-          ? "Mon accès au modèle n'a plus de crédit. Il faut recharger le compte Anthropic pour que je puisse répondre."
-          : /api key|authentication|401/i.test(detail)
-            ? "Ma clé d'accès au modèle est refusée. Il faut la revoir dans les secrets Supabase."
+      const message = /credit balance|billing/i.test(detail)
+        ? "Ma clé Anthropic n'a plus de crédit : je ne peux plus réfléchir tant qu'elle n'est pas rechargée. C'est à faire sur console.anthropic.com, rubrique facturation."
+        : /api key|authentication/i.test(detail)
+          ? "Ma clé Anthropic est refusée par le serveur : elle a dû être changée ou révoquée."
+          : echec?.passager
+            ? "Le modèle est débordé en ce moment. Redis-moi ça dans quelques secondes."
             : "Je n'arrive pas à joindre le modèle en ce moment. Réessaie, et regarde les journaux de voice-command si ça dure."
 
       return new Response(
