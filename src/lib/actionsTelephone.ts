@@ -1,5 +1,7 @@
 import { registerPlugin } from "@capacitor/core"
 
+export type CommandeMedia = "play_pause" | "lecture" | "pause" | "suivant" | "precedent" | "stop"
+
 export interface ApplicationInstallee {
   nom: string
   paquet: string
@@ -10,7 +12,9 @@ interface ActionsTelephonePlugin {
   ouvrirApplication(options: { paquet?: string; recherche?: string }): Promise<void>
   preparerWhatsApp(options: { texte: string; numero?: string }): Promise<void>
   preparerSms(options: { texte: string; numero?: string }): Promise<void>
-  composer(options: { numero: string }): Promise<void>
+  composer(options: { numero: string }): Promise<{ direct: boolean }>
+  demanderPermissionAppel(): Promise<{ granted: boolean }>
+  commanderMedia(options: { commande: CommandeMedia }): Promise<void>
   mettreAlarme(options: { heure: number; minute: number; libelle?: string }): Promise<void>
   mettreMinuteur(options: { secondes: number; libelle?: string }): Promise<void>
   itineraire(options: { destination: string }): Promise<void>

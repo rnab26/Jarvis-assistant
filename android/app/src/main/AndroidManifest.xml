@@ -70,6 +70,13 @@
          dernier geste reste celui de l'utilisateur. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
+    <!-- Lancer un appel directement plutôt que de seulement composer le
+         numéro. Choix explicite de Raphaël : un assistant qui demande une
+         confirmation pour tout n'apporte rien de plus que ceux déjà intégrés
+         au téléphone. Demandée à la première utilisation ; refusée, Jarvis
+         se contente de composer, il n'échoue pas. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+
     <!-- Depuis Android 11, une app ne voit les autres que si elle les
          déclare ici. On ne demande PAS QUERY_ALL_PACKAGES (visibilité totale
          sur l'appareil, refusée par Google Play sans justification) : on

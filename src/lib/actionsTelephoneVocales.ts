@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core"
-import { ActionsTelephone, trouverApplication } from "@/lib/actionsTelephone"
+import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/actionsTelephone"
 import type { Contact } from "@/types/database"
 
 /** Les actions vocales qui sortent de Jarvis pour aller dans une autre app. */
@@ -20,6 +20,7 @@ export type ActionTelephone =
       alarm_label?: string | null
     }
   | { action: "navigate_to"; destination: string }
+  | { action: "media_control"; media_command: CommandeMedia }
 
 const SUR_LE_TELEPHONE_SEULEMENT =
   "Ça, je ne peux le faire que depuis l'application installée sur ton téléphone — ici je n'ai pas accès à tes autres applications."
@@ -33,6 +34,15 @@ function numeroDe(contacts: Contact[], contactId?: string, dicte?: string): stri
 
 function nomDe(contacts: Contact[], contactId?: string): string | null {
   return contacts.find((c) => c.id === contactId)?.name ?? null
+}
+
+const MEDIA_DIT: Record<CommandeMedia, string> = {
+  play_pause: "C'est fait.",
+  lecture: "Je relance la musique.",
+  pause: "Je mets en pause.",
+  suivant: "Morceau suivant.",
+  precedent: "Morceau précédent.",
+  stop: "J'arrête la musique.",
 }
 
 /** "10 minutes", "1 h 30" — pour annoncer un minuteur comme on le dit. */
@@ -121,8 +131,13 @@ export async function executerActionTelephone(
             ? `Je n'ai pas le numéro de ${nom}. Dis-le-moi une fois et je le retiens.`
             : "Il me faut un numéro pour passer l'appel."
         }
-        await ActionsTelephone.composer({ numero })
-        return nom ? `J'ai composé le numéro de ${nom}, appuie pour appeler.` : "Numéro composé, appuie pour appeler."
+        // Première fois : on demande la permission d'appeler, pour ne pas se
+        // contenter éternellement de composer alors qu'il a demandé mieux.
+        await ActionsTelephone.demanderPermissionAppel().catch(() => ({ granted: false }))
+        const { direct } = await ActionsTelephone.composer({ numero })
+        const qui = nom ?? "le numéro"
+        if (direct) return nom ? `J'appelle ${nom}.` : "J'appelle."
+        return `J'ai composé ${qui}, appuie pour lancer l'appel — autorise les appels dans les réglages si tu veux que je le fasse directement.`
       }
 
       case "set_alarm": {
@@ -151,6 +166,11 @@ export async function executerActionTelephone(
       case "navigate_to": {
         await ActionsTelephone.itineraire({ destination: action.destination })
         return `Je t'ouvre l'itinéraire vers ${action.destination}.`
+      }
+
+      case "media_control": {
+        await ActionsTelephone.commanderMedia({ commande: action.media_command })
+        return MEDIA_DIT[action.media_command] ?? "C'est fait."
       }
     }
   } catch (e) {

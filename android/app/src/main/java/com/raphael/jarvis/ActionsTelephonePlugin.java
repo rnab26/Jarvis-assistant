@@ -1,11 +1,15 @@
 package com.raphael.jarvis;
 
+import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
+import android.media.AudioManager;
 import android.provider.AlarmClock;
 import android.provider.MediaStore;
+import android.view.KeyEvent;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -33,7 +37,12 @@ import java.util.List;
  * minuteur se posent directement — ils ne sortent pas du téléphone et se
  * défont d'un geste.
  */
-@CapacitorPlugin(name = "ActionsTelephone")
+@CapacitorPlugin(
+    name = "ActionsTelephone",
+    permissions = {
+        @com.getcapacitor.annotation.Permission(alias = "telephone", strings = { Manifest.permission.CALL_PHONE })
+    }
+)
 public class ActionsTelephonePlugin extends Plugin {
 
     /** Lance une activité extérieure, en signalant proprement l'absence d'app. */
@@ -158,9 +167,14 @@ public class ActionsTelephonePlugin extends Plugin {
     }
 
     /**
-     * Compose le numéro sans le lancer : ACTION_DIAL, jamais ACTION_CALL.
-     * Raphaël voit qui il s'apprête à appeler et appuie lui-même — un appel
-     * déclenché sur une phrase mal comprise ne se rattrape pas.
+     * Appelle. Directement si Raphaël a donné la permission d'appeler, sinon
+     * en composant le numéro pour qu'il n'ait plus qu'à appuyer.
+     *
+     * Il a tranché explicitement : passer un appel ne pose pas de problème,
+     * et un assistant qui demande une confirmation pour tout ne sert à rien
+     * de plus que ceux déjà intégrés au téléphone. On respecte son choix, et
+     * on garde le repli sur la composition tant que la permission n'est pas
+     * accordée — plutôt que d'échouer.
      */
     @PluginMethod
     public void composer(PluginCall call) {
@@ -169,8 +183,69 @@ public class ActionsTelephonePlugin extends Plugin {
             call.reject("Je n'ai pas de numéro pour cette personne.");
             return;
         }
-        Intent appel = new Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + numero.replaceAll("[^0-9+#*]", "")));
-        if (lancer(appel, call, "Aucune application de téléphone n'a répondu.")) call.resolve();
+        String propre = numero.replaceAll("[^0-9+#*]", "");
+        boolean peutAppeler = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CALL_PHONE)
+            == PackageManager.PERMISSION_GRANTED;
+
+        Intent appel = new Intent(peutAppeler ? Intent.ACTION_CALL : Intent.ACTION_DIAL,
+            Uri.parse("tel:" + propre));
+        if (lancer(appel, call, "Aucune application de téléphone n'a répondu.")) {
+            JSObject res = new JSObject();
+            res.put("direct", peutAppeler);
+            call.resolve(res);
+        }
+    }
+
+    /** Demande la permission d'appeler, une seule fois. */
+    @PluginMethod
+    public void demanderPermissionAppel(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CALL_PHONE)
+            == PackageManager.PERMISSION_GRANTED) {
+            JSObject res = new JSObject();
+            res.put("granted", true);
+            call.resolve(res);
+            return;
+        }
+        requestPermissionForAlias("telephone", call, "retourPermissionAppel");
+    }
+
+    @com.getcapacitor.annotation.PermissionCallback
+    private void retourPermissionAppel(PluginCall call) {
+        JSObject res = new JSObject();
+        res.put("granted",
+            ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CALL_PHONE)
+                == PackageManager.PERMISSION_GRANTED);
+        call.resolve(res);
+    }
+
+    /**
+     * Pilote ce qui joue en ce moment : lecture, pause, morceau suivant ou
+     * précédent. Passe par les touches multimédia du système, celles des
+     * écouteurs — donc sans aucune permission, sans service d'accessibilité,
+     * et quelle que soit l'application qui joue.
+     */
+    @PluginMethod
+    public void commanderMedia(PluginCall call) {
+        String commande = call.getString("commande", "play_pause");
+        int touche;
+        switch (commande) {
+            case "suivant": touche = KeyEvent.KEYCODE_MEDIA_NEXT; break;
+            case "precedent": touche = KeyEvent.KEYCODE_MEDIA_PREVIOUS; break;
+            case "stop": touche = KeyEvent.KEYCODE_MEDIA_STOP; break;
+            case "lecture": touche = KeyEvent.KEYCODE_MEDIA_PLAY; break;
+            case "pause": touche = KeyEvent.KEYCODE_MEDIA_PAUSE; break;
+            default: touche = KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE; break;
+        }
+        AudioManager audio = (AudioManager) getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
+        if (audio == null) {
+            call.reject("Le contrôle du son n'est pas disponible.");
+            return;
+        }
+        // Il faut les deux événements : une app qui ne voit que l'appui sans
+        // le relâchement ignore la commande.
+        audio.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, touche));
+        audio.dispatchMediaKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, touche));
+        call.resolve();
     }
 
     /** Pose une alarme. Elle ne sort pas du téléphone et se supprime d'un

@@ -4,6 +4,7 @@ import { JarvisCore } from "@/components/JarvisCore"
 import { themesDe } from "@/components/cockpit/CockpitBoard"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
+import { messageErreurServeurVocal } from "@/lib/erreurServeurVocal"
 import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
 import { chercherMotCle } from "@/lib/motCle"
@@ -140,7 +141,12 @@ export function MicButton({
     )
 
     if (error || !data) {
-      throw new Error(error?.message ?? "Réponse vide du serveur vocal.")
+      // Pas error.message : supabase-js y met toujours la même phrase
+      // ("Edge Function returned a non-2xx status code"), quelle que soit la
+      // cause réelle, qui est dans le corps de la réponse.
+      throw new Error(
+        error ? await messageErreurServeurVocal(error) : "Réponse vide du serveur vocal.",
+      )
     }
     return data.actions?.length ? data.actions : [data.action]
   }
