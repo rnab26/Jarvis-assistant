@@ -121,6 +121,24 @@ méthode canonique du projet, à préférer à un essai à l'oreille :
 
 Aucune ne couvre le plugin Android : ça, il faut un appareil.
 
+## Branchement du compte Google : comment le vérifier
+
+```
+ANON_KEY=... node scripts/verifier-connexion-google.mjs
+```
+
+Cinq contrôles sur la fonction `google-oauth` réellement déployée, avec un
+utilisateur de test éphémère : l'adresse de retour correspond bien à celle
+enregistrée chez Google, les droits agenda et Gmail sont demandés, la
+connexion est durable (`access_type=offline` + `prompt=consent`, sinon elle
+meurt au bout d'une heure), et surtout **Google accepte la demande** — le
+script suit l'URL et regarde la réponse réelle.
+
+Ce dernier point est celui qui compte : une adresse de retour fausse d'un
+caractère produit une « Erreur 400 : redirect_uri_mismatch » chez
+l'utilisateur, et rien du côté serveur ne le signale. À relancer après tout
+déploiement de `google-oauth`.
+
 ## Scripts
 
 - `npm run dev` — serveur de développement

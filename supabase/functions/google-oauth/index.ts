@@ -111,7 +111,19 @@ Deno.serve(async (req: Request) => {
 
   const url = new URL(req.url)
   const chemin = url.pathname.split("/").filter(Boolean).pop()
-  const redirectUri = `${url.origin}/functions/v1/google-oauth/callback`
+  // L'adresse de retour vient de SUPABASE_URL, jamais de la requête reçue.
+  //
+  // `req.url` porte l'hôte vu par le runtime, qui n'est pas le domaine public
+  // du projet : Google recevait donc une adresse qui ne figurait pas dans la
+  // liste du client OAuth et refusait tout net, « Erreur 400 :
+  // redirect_uri_mismatch », avant même d'afficher l'écran d'autorisation.
+  // Constaté sur le téléphone de Raphaël le 3 sept. 2026.
+  //
+  // Cette adresse doit être IDENTIQUE au caractère près à celle enregistrée
+  // chez Google, et identique entre l'aller (/start) et le retour (/callback)
+  // — Google la revérifie au moment d'échanger le code.
+  const base = Deno.env.get("SUPABASE_URL") ?? url.origin
+  const redirectUri = `${base.replace(/\/$/, "")}/functions/v1/google-oauth/callback`
 
   try {
     const config = configGoogle()
