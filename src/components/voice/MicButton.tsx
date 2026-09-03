@@ -10,6 +10,7 @@ import {
   type DevItemsApi,
   type DocumentsApi,
   type PlaceRemindersApi,
+  type PronunciationsApi,
   type TasksApi,
   type VoiceAction,
   type WidgetApi,
@@ -23,12 +24,21 @@ interface MicButtonProps {
   documentsApi: DocumentsApi
   contactsApi: ContactsApi
   placeRemindersApi: PlaceRemindersApi
+  pronunciationsApi: PronunciationsApi
   widgetApi: WidgetApi
   wakeWordEnabled: boolean
   voiceIndex: number | null
   /** Durée pendant laquelle le micro reste ouvert après une réponse de
    * Jarvis, pour enchaîner sans retoucher le bouton. 0 = désactivé. */
   suiteMs: number
+}
+
+/** Début d'une note : de quoi reconnaître l'élément dont parle Raphaël sans
+ * envoyer des paragraphes entiers à chaque commande. */
+function extrait(notes: string | null) {
+  if (!notes) return null
+  const propre = notes.replace(/\s+/g, " ").trim()
+  return propre.length > 180 ? `${propre.slice(0, 180)}…` : propre
 }
 
 function normalizeText(text: string) {
@@ -52,6 +62,7 @@ export function MicButton({
   documentsApi,
   contactsApi,
   placeRemindersApi,
+  pronunciationsApi,
   widgetApi,
   wakeWordEnabled,
   voiceIndex,
@@ -69,44 +80,56 @@ export function MicButton({
   const statusRef = useRef<Status>("idle")
   statusRef.current = status
 
-  /** Envoie un transcript à la Edge Function et exécute l'action renvoyée. */
-  async function resolveTranscript(transcript: string): Promise<VoiceAction> {
-    const { data, error } = await supabase.functions.invoke<{ action: VoiceAction }>(
-      "voice-command",
-      {
-        body: {
-          transcript,
-          categories: tasksApi.categories.map((c) => ({ id: c.id, name: c.name })),
-          tasks: tasksApi.tasks.map((t) => ({
-            id: t.id,
-            title: t.title,
-            category_id: t.category_id,
-            status: t.status,
-            due_date: t.due_date,
-          })),
-          devItems: devItemsApi.devItems.map((i) => ({
-            id: i.id,
-            title: i.title,
-            status: i.status,
-            priority: i.priority,
-          })),
-          documents: documentsApi.documents.map((d) => ({ name: d.name })),
-          contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes })),
-          placeReminders: placeRemindersApi.placeReminders.map((p) => ({
-            id: p.id,
-            place: p.place,
-            reminder: p.reminder,
-          })),
-          widgetConfig: widgetApi.config,
-          todayISO: new Date().toISOString().slice(0, 10),
-        },
+  /**
+   * Envoie un transcript à la Edge Function et renvoie les actions à exécuter.
+   * Une phrase peut en contenir plusieurs ("ajoute une tâche et marque
+   * l'autre comme faite") : elles reviennent dans l'ordre dicté.
+   */
+  async function resolveTranscript(transcript: string): Promise<VoiceAction[]> {
+    const { data, error } = await supabase.functions.invoke<{
+      action: VoiceAction
+      actions?: VoiceAction[]
+    }>("voice-command", {
+      body: {
+        transcript,
+        categories: tasksApi.categories.map((c) => ({ id: c.id, name: c.name })),
+        tasks: tasksApi.tasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          notes: extrait(t.notes),
+          category_id: t.category_id,
+          status: t.status,
+          due_date: t.due_date,
+          due_time: t.due_time,
+        })),
+        devItems: devItemsApi.devItems.map((i) => ({
+          id: i.id,
+          title: i.title,
+          notes: extrait(i.notes),
+          status: i.status,
+          priority: i.priority,
+        })),
+        documents: documentsApi.documents.map((d) => ({ name: d.name })),
+        contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes })),
+        placeReminders: placeRemindersApi.placeReminders.map((p) => ({
+          id: p.id,
+          place: p.place,
+          reminder: p.reminder,
+        })),
+        pronunciations: pronunciationsApi.pronunciations.map((p) => ({
+          id: p.id,
+          entendu: p.entendu,
+          veut_dire: p.veut_dire,
+        })),
+        widgetConfig: widgetApi.config,
+        todayISO: new Date().toISOString().slice(0, 10),
       },
-    )
+    })
 
     if (error || !data) {
       throw new Error(error?.message ?? "Réponse vide du serveur vocal.")
     }
-    return data.action
+    return data.actions?.length ? data.actions : [data.action]
   }
 
   /**
@@ -123,9 +146,13 @@ export function MicButton({
     round = 0,
   ): Promise<boolean> {
     setStatus("processing")
-    const action = await resolveTranscript(transcript)
+    const actions = await resolveTranscript(transcript)
 
-    if (action.action === "clarify" && round < 3) {
+    // Quand quelque chose est ambigu, la Edge Function renvoie une seule
+    // action clarify : on pose la question plutôt que d'exécuter à moitié.
+    const premiere = actions[0]
+    if (premiere.action === "clarify" && round < 3) {
+      const action = premiere
       setLastReply(action.message)
       setStatus("speaking")
       bargeInRef.current = false
@@ -139,15 +166,25 @@ export function MicButton({
       return await runTurn(combined, originalTranscript, round + 1)
     }
 
-    let reply = await executeVoiceAction(
-      action,
-      tasksApi,
-      devItemsApi,
-      documentsApi,
-      contactsApi,
-      placeRemindersApi,
-      widgetApi,
-    )
+    // Plusieurs demandes dans une phrase : on les exécute dans l'ordre dicté
+    // et on n'annonce qu'une fois le tout, plutôt que de n'en traiter qu'une
+    // en laissant croire que le reste a été fait.
+    const reponses: string[] = []
+    for (const action of actions) {
+      reponses.push(
+        await executeVoiceAction(
+          action,
+          tasksApi,
+          devItemsApi,
+          documentsApi,
+          contactsApi,
+          placeRemindersApi,
+          pronunciationsApi,
+          widgetApi,
+        ),
+      )
+    }
+    let reply = reponses.join(" ")
 
     // Rappels de lieu : déclenchés par la conversation elle-même (pas par le
     // GPS, pour ne pas consommer de batterie) — si l'utilisateur mentionne un

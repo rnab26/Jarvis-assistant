@@ -435,6 +435,7 @@ export function SettingsPage() {
     tasksState,
     widgetState,
     placeRemindersState,
+    pronunciationsState,
   } = useJarvisData()
   const { status, published, recheck } = useUpdateCheck()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
@@ -736,6 +737,43 @@ export function SettingsPage() {
       </Card>
 
       <RappelsGeolocalises />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ce qu'il entend de travers</CardTitle>
+          <CardDescription>
+            La dictée écorche certains mots, surtout les noms propres. Reprends Jarvis à voix
+            haute — "ce n'est pas Avirail, c'est Avihail" — et il corrigera tout seul les fois
+            suivantes.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {pronunciationsState.pronunciations.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aucune correction pour l'instant.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {pronunciationsState.pronunciations.map((p) => (
+                <li key={p.id} className="flex items-start gap-2 rounded-lg border p-3">
+                  <div className="flex-1">
+                    <p className="font-medium">{p.veut_dire}</p>
+                    <p className="text-sm text-muted-foreground">entendu « {p.entendu} »</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Supprimer"
+                    onClick={() => pronunciationsState.deletePronunciation(p.id)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

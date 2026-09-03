@@ -34,6 +34,23 @@ Secret requis côté Supabase (Dashboard → Edge Functions → Secrets, ou
 Project Settings → Edge Functions) : `ANTHROPIC_API_KEY` (clé obtenue sur
 console.anthropic.com). Jamais dans le code ni dans `.env`.
 
+## Commandes vocales : comment les vérifier
+
+La Edge Function `voice-command` **ne se déploie pas au push** — il faut la
+redéployer explicitement (outil MCP Supabase `deploy_edge_function`). Et un
+typecheck ne dit rien de ce qui compte vraiment ici : est-ce que le modèle
+suit encore la consigne.
+
+```
+ANON_KEY=... node scripts/verifier-commande-vocale.mjs
+```
+
+Interroge la fonction réellement déployée avec un utilisateur de test
+éphémère (créé puis supprimé) et des données fictives : plusieurs demandes
+dans une phrase, reprise d'une tâche déjà faite, corrections de
+prononciation, compatibilité avec l'app Android pas encore mise à jour. À
+relancer après chaque déploiement de la fonction.
+
 ## Écoute vocale : comment la vérifier
 
 Le moteur d'écoute ne laisse plus Android ni Chrome décider que la personne a

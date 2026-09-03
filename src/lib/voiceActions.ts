@@ -9,6 +9,8 @@ import type {
   DocumentFile,
   PlaceReminder,
   PlaceReminderInput,
+  Pronunciation,
+  PronunciationInput,
   Task,
   TaskInput,
   TaskStatus,
@@ -52,6 +54,9 @@ export type VoiceAction =
   | { action: "list_place_reminders" }
   | { action: "add_place_reminder"; place: string; reminder: string }
   | { action: "delete_place_reminder"; reminder_id: string }
+  | { action: "list_pronunciations" }
+  | { action: "add_pronunciation"; entendu: string; veut_dire: string }
+  | { action: "delete_pronunciation"; pronunciation_id: string }
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
@@ -93,6 +98,12 @@ export interface PlaceRemindersApi {
   geocodePlace: ((place: string) => Promise<{ lat: number; lng: number } | null>) | null
 }
 
+export interface PronunciationsApi {
+  pronunciations: Pronunciation[]
+  addPronunciation: (input: PronunciationInput) => Promise<void>
+  deletePronunciation: (id: string) => Promise<void>
+}
+
 export interface WidgetApi {
   config: { maxTasks: number; urgentOnly: boolean; categoryId: string | null }
   setConfig: (config: { maxTasks?: number; urgentOnly?: boolean; categoryId?: string | null }) => void
@@ -130,6 +141,7 @@ export async function executeVoiceAction(
   { documents, saveTextDocument }: DocumentsApi,
   { contacts, addContact, updateContact, deleteContact }: ContactsApi,
   { placeReminders, addPlaceReminder, deletePlaceReminder, geocodePlace }: PlaceRemindersApi,
+  { pronunciations, addPronunciation, deletePronunciation }: PronunciationsApi,
   { setConfig }: WidgetApi,
 ): Promise<string> {
   switch (action.action) {
@@ -299,6 +311,23 @@ export async function executeVoiceAction(
       const reminder = placeReminders.find((p) => p.id === action.reminder_id)
       await deletePlaceReminder(action.reminder_id)
       return `Rappel pour "${reminder?.place ?? "ce lieu"}" supprimé.`
+    }
+
+    case "list_pronunciations": {
+      if (pronunciations.length === 0) return "Je n'ai aucune prononciation particulière en mémoire."
+      const items = pronunciations.slice(0, 8).map((p) => `${p.entendu} pour ${p.veut_dire}`)
+      return `J'ai retenu ${pronunciations.length} prononciation${pronunciations.length > 1 ? "s" : ""} : ${items.join(", ")}.`
+    }
+
+    case "add_pronunciation": {
+      await addPronunciation({ entendu: action.entendu, veut_dire: action.veut_dire })
+      return `Compris, quand j'entends "${action.entendu}" tu dis "${action.veut_dire}".`
+    }
+
+    case "delete_pronunciation": {
+      const p = pronunciations.find((x) => x.id === action.pronunciation_id)
+      await deletePronunciation(action.pronunciation_id)
+      return `Prononciation "${p?.veut_dire ?? "supprimée"}" oubliée.`
     }
 
     case "chat":

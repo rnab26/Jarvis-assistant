@@ -13,6 +13,7 @@ function ShellContent() {
     documentsState,
     contactsState,
     placeRemindersState,
+    pronunciationsState,
     geofenceState,
     wakeWordState,
     dialogueState,
@@ -33,6 +34,7 @@ function ShellContent() {
           ...placeRemindersState,
           geocodePlace: geofenceState.enabled ? geocodePlace : null,
         }}
+        pronunciationsApi={pronunciationsState}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
         voiceIndex={voiceState.voiceIndex}
