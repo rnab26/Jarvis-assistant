@@ -193,6 +193,16 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   S'il bute quelque part, il l'écrit dans le champ du bas : document
   `fiche/brancher-google` (`action: "read_db"`, `db_op: "get"`).
 
+- **Ce qui ferait grandir Jarvis** — les deux chantiers non codables du thème
+  « L'app elle-même » : quatre décisions de capacité (cache du contexte,
+  recherche web, lecture de liens/PDF, mémoire des conversations) et trois
+  densités d'affichage des tâches qu'il choisit au pouce.
+  https://claude.ai/code/artifact/067c81c1-88de-4ca9-8947-8df34eb9f89e
+  Ses réponses : document `fiche/capacite-et-visuel` (`action: "read_db"`,
+  `db_op: "get"`). **Ne code rien de ces deux chantiers avant de les avoir
+  lues** — c'est un [À CADRER] pour le visuel, et un arbitrage de coût pour la
+  recherche web.
+
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
