@@ -28,7 +28,7 @@ public class GeofenceBroadcastReceiver extends BroadcastReceiver {
         if (event == null || event.hasError()) return;
         if (event.getGeofenceTransition() != Geofence.GEOFENCE_TRANSITION_ENTER) return;
 
-        List<Geofence> triggered = event.triggeringGeofences();
+        List<Geofence> triggered = event.getTriggeringGeofences();
         if (triggered == null || triggered.isEmpty()) return;
 
         SharedPreferences prefs = context.getSharedPreferences(GeofencePlugin.PREFS, Context.MODE_PRIVATE);
