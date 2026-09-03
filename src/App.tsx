@@ -8,6 +8,7 @@ import { ContactsPage } from "@/pages/ContactsPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { DocumentsPage } from "@/pages/DocumentsPage"
 import { LoginPage } from "@/pages/LoginPage"
+import { MemoirePage } from "@/pages/MemoirePage"
 import { SettingsPage } from "@/pages/SettingsPage"
 
 function AppRoutes() {
@@ -24,6 +25,7 @@ function AppRoutes() {
         <Route path="/cockpit" element={<CockpitPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/contacts" element={<ContactsPage />} />
+        <Route path="/memoire" element={<MemoirePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
