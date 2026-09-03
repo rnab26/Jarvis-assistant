@@ -380,7 +380,7 @@ const VOICE_ACTION_TOOL = {
  * de buter sur la limite. N'y insère jamais une donnée variable.
  */
 /** Voir le commentaire sur `modele` dans l'appel, plus bas. */
-const MODELE_PAR_DEFAUT = "gemini-3.5-flash"
+const MODELE_PAR_DEFAUT = "gemini-3.5-flash-lite"
 
 /** Essayés dans l'ordre si la minute du premier est saturée : le quota gratuit
  * est compté PAR MODÈLE, donc basculer rend la main tout de suite là où
@@ -505,12 +505,14 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouv
       // Mesuré le 3 sept. 2026, et rien de tout cela ne se devine :
       // — gemini-3.8-flash renvoie 429 dès le premier appel (20 requêtes par
       //   jour) : nommé en tête, il laissait Jarvis muet ;
-      // — les modèles Lite répondent en 640 ms contre 3 s, mais échouaient sur
-      //   cinq des vingt-cinq contrôles, tous des actions dans les
-      //   applications — dont « appeler un contact ».
-      // Déclencher un appel par erreur coûte plus cher que deux secondes
-      // d'attente, et ces phrases sont devenues rares : l'essentiel est
-      // interprété sur le téléphone. Le rapide reste donc en secours.
+      // — gemini-3.5-flash-lite répond en ~640 ms et passe les vingt-cinq
+      //   contrôles sur la fonction déployée (v42) ; gemini-3.5-flash répond
+      //   en ~3 s, et cette latence-là, Raphaël la signale comme une gêne.
+      // Une session avait mesuré cinq échecs du Lite sur les actions dans les
+      // applications, « appeler un contact » compris, et était repassée au
+      // Flash complet ; ce n'est pas reproductible sur la version figée, elle
+      // visait probablement l'alias « latest ». D'où le Lite par défaut, et
+      // pas d'alias en tête : un changement de modèle doit être un choix.
       modele: Deno.env.get("GEMINI_MODELE") || MODELE_PAR_DEFAUT,
       secours: SECOURS,
       // Les consignes d'abord, le contexte ensuite : voir CONSIGNES.
