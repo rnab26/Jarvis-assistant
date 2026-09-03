@@ -32,12 +32,15 @@ export type ActionTelephone =
 const SUR_LE_TELEPHONE_SEULEMENT =
   "Ça, je ne peux le faire que depuis l'application installée sur ton téléphone — ici je n'ai pas accès à tes autres applications."
 
-const CLES_APP: Record<"musique" | "navigation" | "ia", string> = {
+/** Exportées pour que Paramètres puisse afficher et effacer ces préférences :
+ * elles étaient fixées une fois à la voix, puis invisibles et impossibles à
+ * changer. Seule source de vérité pour ces clés — ne les recopie pas. */
+export const CLES_APP: Record<"musique" | "navigation" | "ia", string> = {
   musique: "jarvis_app_musique",
   navigation: "jarvis_app_navigation",
   ia: "jarvis_app_ia",
 }
-const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
+export const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
 
 /** L'application que Raphaël a retenue pour la musique, la navigation ou une
  * IA tierce, si on la lui a déjà demandée une fois. Lu par MicButton pour

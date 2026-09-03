@@ -3,6 +3,7 @@ import { Download, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -669,331 +670,367 @@ export function SettingsPage() {
     .sort((a, b) => (b.archived_at! < a.archived_at! ? -1 : 1))
     .slice(0, 5)
 
+  // Trois groupes, et pas une pile.
+  //
+  // « Agencement de la section paramètres qui aujourd'hui met tout en vrac
+  // entre les nouvelles fonctionnalités des nouvelles mises à jour et les
+  // réglages modifiables à la main » — Raphaël, 3 sept. 2026. C'était juste :
+  // la mise à jour, le compte Google et les nouveautés étaient intercalés
+  // entre les réglages, sans rien pour dire ce qui était quoi.
+  //
+  // Si tu ajoutes une carte ici, mets-la dans un des trois groupes ; une carte
+  // posée entre deux sections recrée exactement le vrac.
   return (
-    <div className="flex flex-col gap-4">
-      <MettreAJour
-        status={status}
-        published={published}
-        verifieA={verifieA}
-        recheck={recheck}
-      />
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            L'application
+          </h2>
+          <p className="text-xs text-muted-foreground">Sa version, ce qu'elle vient d'apprendre.</p>
+        </div>
+        <MettreAJour
+          status={status}
+          published={published}
+          verifieA={verifieA}
+          recheck={recheck}
+        />
 
-      <CompteGoogle />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Nouveautés</CardTitle>
-          <CardDescription>Derniers chantiers terminés (depuis le cockpit).</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {recentChanges.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Rien à afficher pour l'instant.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {recentChanges.map((item) => (
-                <li key={item.id} className="text-sm">
-                  <p className="font-medium">{item.title}</p>
-                  {item.notes && (
-                    <p className="text-muted-foreground">{renderNotes(item.notes)}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <CoeurDeJarvis />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Voix de Jarvis</CardTitle>
-          <CardDescription>
-            Choisis parmi les voix déjà installées sur l'appareil (gratuit, hors-ligne).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <Interrupteur
-            titre="Jarvis répond à voix haute"
-            description={
-              voiceState.muted
-                ? "Il te répond à l'écrit seulement. Dis-lui « remets ta voix » pour le rallumer."
-                : "Tu peux aussi lui dire « coupe ta voix » en pleine discussion."
-            }
-            actif={!voiceState.muted}
-            onChange={(actif) => voiceState.setMuted(!actif)}
-          />
-
-          <div className="flex flex-col gap-2">
-            <Select
-              value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}
-              onValueChange={(v) => voiceState.setVoiceIndex(v === "default" ? null : Number(v))}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Voix par défaut" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">Voix par défaut</SelectItem>
-                {voixAffichees.map(({ voice, index }) => (
-                  <SelectItem key={index} value={String(index)}>
-                    {voice.name} ({voice.lang})
-                  </SelectItem>
+        <Card>
+          <CardHeader>
+            <CardTitle>Nouveautés</CardTitle>
+            <CardDescription>Derniers chantiers terminés (depuis le cockpit).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {recentChanges.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Rien à afficher pour l'instant.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {recentChanges.map((item) => (
+                  <li key={item.id} className="text-sm">
+                    <p className="font-medium">{item.title}</p>
+                    {item.notes && (
+                      <p className="text-muted-foreground">{renderNotes(item.notes)}</p>
+                    )}
+                  </li>
                 ))}
-              </SelectContent>
-            </Select>
-            {masquees > 0 && (
-              <button
-                type="button"
-                className="self-start text-xs text-muted-foreground underline underline-offset-4"
-                onClick={() => setToutesLesVoix(!toutesLesVoix)}
-              >
-                {toutesLesVoix
-                  ? "Ne montrer que les voix utiles"
-                  : `Afficher les ${masquees} autres voix installées`}
-              </button>
+              </ul>
             )}
-          </div>
+          </CardContent>
+        </Card>
+      </section>
 
-          <ReglageVoix
-            id="voix-vitesse"
-            label="Vitesse"
-            min={RATE_MIN}
-            max={RATE_MAX}
-            value={voiceState.rate}
-            onChange={voiceState.setRate}
-          />
-          <ReglageVoix
-            id="voix-hauteur"
-            label="Intensité"
-            min={PITCH_MIN}
-            max={PITCH_MAX}
-            value={voiceState.pitch}
-            onChange={voiceState.setPitch}
-          />
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              disabled={speaking}
-              onClick={() =>
-                // Forcé : on doit pouvoir écouter la voix pour la régler,
-                // même quand elle est coupée pour les réponses.
-                speak(
-                  "Bonjour Raphaël, voici comment je sonne avec ces réglages.",
-                  voiceState.voiceIndex ?? undefined,
-                  true,
-                )
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Réglages de Jarvis
+          </h2>
+          <p className="text-xs text-muted-foreground">Ce que tu changes toi-même, sans passer par moi.</p>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Voix de Jarvis</CardTitle>
+            <CardDescription>
+              Choisis parmi les voix déjà installées sur l'appareil (gratuit, hors-ligne).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <Interrupteur
+              titre="Jarvis répond à voix haute"
+              description={
+                voiceState.muted
+                  ? "Il te répond à l'écrit seulement. Dis-lui « remets ta voix » pour le rallumer."
+                  : "Tu peux aussi lui dire « coupe ta voix » en pleine discussion."
               }
+              actif={!voiceState.muted}
+              onChange={(actif) => voiceState.setMuted(!actif)}
+            />
+  
+            <div className="flex flex-col gap-2">
+              <Select
+                value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}
+                onValueChange={(v) => voiceState.setVoiceIndex(v === "default" ? null : Number(v))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Voix par défaut" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Voix par défaut</SelectItem>
+                  {voixAffichees.map(({ voice, index }) => (
+                    <SelectItem key={index} value={String(index)}>
+                      {voice.name} ({voice.lang})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {masquees > 0 && (
+                <button
+                  type="button"
+                  className="self-start text-xs text-muted-foreground underline underline-offset-4"
+                  onClick={() => setToutesLesVoix(!toutesLesVoix)}
+                >
+                  {toutesLesVoix
+                    ? "Ne montrer que les voix utiles"
+                    : `Afficher les ${masquees} autres voix installées`}
+                </button>
+              )}
+            </div>
+  
+            <ReglageVoix
+              id="voix-vitesse"
+              label="Vitesse"
+              min={RATE_MIN}
+              max={RATE_MAX}
+              value={voiceState.rate}
+              onChange={voiceState.setRate}
+            />
+            <ReglageVoix
+              id="voix-hauteur"
+              label="Intensité"
+              min={PITCH_MIN}
+              max={PITCH_MAX}
+              value={voiceState.pitch}
+              onChange={voiceState.setPitch}
+            />
+  
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                disabled={speaking}
+                onClick={() =>
+                  // Forcé : on doit pouvoir écouter la voix pour la régler,
+                  // même quand elle est coupée pour les réponses.
+                  speak(
+                    "Bonjour Raphaël, voici comment je sonne avec ces réglages.",
+                    voiceState.voiceIndex ?? undefined,
+                    true,
+                  )
+                }
+              >
+                {speaking ? "Lecture en cours..." : "Tester"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={voiceState.resetTon}>
+                Réglages d'origine
+              </Button>
+            </div>
+            {erreur && (
+              <p className="text-sm text-destructive">
+                La lecture a échoué : {erreur}. Essaie une autre voix.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Rythme de la discussion</CardTitle>
+            <CardDescription>
+              Jarvis n'attend plus qu'Android décide que tu as fini de parler : c'est ce réglage qui
+              en décide. Raccourcis la pause s'il te semble lent à répondre, allonge-la s'il te
+              coupe la parole.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <ReglageVoix
+              id="rythme-pause"
+              label="Pause tolérée quand tu parles"
+              min={PAUSE_MIN_MS}
+              max={PAUSE_MAX_MS}
+              step={200}
+              value={dialogueState.pauseMs}
+              onChange={dialogueState.setPauseMs}
+              format={(v) => `${(v / 1000).toFixed(1)} s`}
+              aide="Le temps de silence après lequel il considère ta phrase terminée. Tu peux aussi toucher le cœur pour dire « j'ai fini » sans attendre."
+            />
+            <ReglageVoix
+              id="rythme-suite"
+              label="Il continue de t'écouter après avoir répondu"
+              min={SUITE_MIN_MS}
+              max={SUITE_MAX_MS}
+              step={1000}
+              value={dialogueState.suiteMs}
+              onChange={dialogueState.setSuiteMs}
+              format={(v) => (v === 0 ? "Non" : `${Math.round(v / 1000)} s`)}
+              aide="Pour enchaîner sans retoucher le micro. Passe à « Non » pour revenir à un micro qu'on rouvre à chaque phrase."
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-start"
+              onClick={dialogueState.resetRythme}
             >
-              {speaking ? "Lecture en cours..." : "Tester"}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={voiceState.resetTon}>
               Réglages d'origine
             </Button>
-          </div>
-          {erreur && (
-            <p className="text-sm text-destructive">
-              La lecture a échoué : {erreur}. Essaie une autre voix.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Rythme de la discussion</CardTitle>
-          <CardDescription>
-            Jarvis n'attend plus qu'Android décide que tu as fini de parler : c'est ce réglage qui
-            en décide. Raccourcis la pause s'il te semble lent à répondre, allonge-la s'il te
-            coupe la parole.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <ReglageVoix
-            id="rythme-pause"
-            label="Pause tolérée quand tu parles"
-            min={PAUSE_MIN_MS}
-            max={PAUSE_MAX_MS}
-            step={200}
-            value={dialogueState.pauseMs}
-            onChange={dialogueState.setPauseMs}
-            format={(v) => `${(v / 1000).toFixed(1)} s`}
-            aide="Le temps de silence après lequel il considère ta phrase terminée. Tu peux aussi toucher le cœur pour dire « j'ai fini » sans attendre."
-          />
-          <ReglageVoix
-            id="rythme-suite"
-            label="Il continue de t'écouter après avoir répondu"
-            min={SUITE_MIN_MS}
-            max={SUITE_MAX_MS}
-            step={1000}
-            value={dialogueState.suiteMs}
-            onChange={dialogueState.setSuiteMs}
-            format={(v) => (v === 0 ? "Non" : `${Math.round(v / 1000)} s`)}
-            aide="Pour enchaîner sans retoucher le micro. Passe à « Non » pour revenir à un micro qu'on rouvre à chaque phrase."
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="self-start"
-            onClick={dialogueState.resetRythme}
-          >
-            Réglages d'origine
-          </Button>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Mot-clé de réveil "Jarvis"</CardTitle>
+            <CardDescription>
+              Une fois activé, dis "Jarvis" pour démarrer une commande sans toucher le bouton
+              micro — tant que l'app est ouverte à l'écran (pas en arrière-plan, écran éteint).
+              Consomme plus de batterie/données que l'usage normal.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Interrupteur
+              titre="Écouter le mot-clé « Jarvis »"
+              description="Le micro reste à l'écoute tant que l'app est ouverte à l'écran."
+              actif={wakeWordState.enabled}
+              onChange={wakeWordState.setEnabled}
+            />
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Widget d'écran d'accueil</CardTitle>
-          <CardDescription>
-            Ce que le widget Android affiche : nombre de tâches, urgentes, et les prochaines à
-            faire. Le widget se met à jour dès que tu changes un réglage ici.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">Tâches affichées</span>
-            <Select
-              value={String(widgetState.config.maxTasks)}
-              onValueChange={(v) => widgetState.setConfig({ maxTasks: Number(v) })}
-            >
-              <SelectTrigger className="w-20">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
-                  </SelectItem>
+        <Card>
+          <CardHeader>
+            <CardTitle>Ce qu'il entend de travers</CardTitle>
+            <CardDescription>
+              La dictée écorche certains mots, surtout les noms propres. Reprends Jarvis à voix
+              haute — "ce n'est pas Avirail, c'est Avihail" — et il corrigera tout seul les fois
+              suivantes.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {pronunciationsState.pronunciations.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Aucune correction pour l'instant.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {pronunciationsState.pronunciations.map((p) => (
+                  <li key={p.id} className="flex items-start gap-2 rounded-lg border p-3">
+                    <div className="flex-1">
+                      <p className="font-medium">{p.veut_dire}</p>
+                      <p className="text-sm text-muted-foreground">entendu « {p.entendu} »</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Supprimer"
+                      onClick={() => pronunciationsState.deletePronunciation(p.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </li>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
+              </ul>
+            )}
+          </CardContent>
+        </Card>
 
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">Catégorie</span>
-            <Select
-              value={widgetState.config.categoryId ?? "all"}
-              onValueChange={(v) =>
-                widgetState.setConfig({ categoryId: v === "all" ? null : v })
-              }
-            >
-              <SelectTrigger className="w-full sm:w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes catégories</SelectItem>
-                {tasksState.categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
+        <Card>
+          <CardHeader>
+            <CardTitle>Widget d'écran d'accueil</CardTitle>
+            <CardDescription>
+              Ce que le widget Android affiche : nombre de tâches, urgentes, et les prochaines à
+              faire. Le widget se met à jour dès que tu changes un réglage ici.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">Tâches affichées</span>
+              <Select
+                value={String(widgetState.config.maxTasks)}
+                onValueChange={(v) => widgetState.setConfig({ maxTasks: Number(v) })}
+              >
+                <SelectTrigger className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+  
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">Catégorie</span>
+              <Select
+                value={widgetState.config.categoryId ?? "all"}
+                onValueChange={(v) =>
+                  widgetState.setConfig({ categoryId: v === "all" ? null : v })
+                }
+              >
+                <SelectTrigger className="w-full sm:w-56">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes catégories</SelectItem>
+                  {tasksState.categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+  
+            <Interrupteur
+              titre="Urgentes uniquement"
+              description="N'afficher sur le widget que les tâches en retard ou dues aujourd'hui."
+              actif={widgetState.config.urgentOnly}
+              onChange={(actif) => widgetState.setConfig({ urgentOnly: actif })}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Rappels liés à un lieu</CardTitle>
+            <CardDescription>
+              Dis à Jarvis "retiens que quand je parle de [lieu], rappelle-moi [ceci]" — la
+              prochaine fois que tu mentionnes ce lieu en lui parlant, il te le rappellera dans sa
+              réponse. Déclenché par la conversation par défaut ; active la géolocalisation
+              ci-dessous pour un déclenchement automatique en plus.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {placeRemindersState.placeReminders.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun rappel de lieu pour l'instant.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {placeRemindersState.placeReminders.map((p) => (
+                  <li key={p.id} className="flex items-start gap-2 rounded-lg border p-3">
+                    <div className="flex-1">
+                      <p className="font-medium">{p.place}</p>
+                      <p className="text-sm text-muted-foreground">{p.reminder}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Supprimer"
+                      onClick={() => placeRemindersState.deletePlaceReminder(p.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </li>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
+              </ul>
+            )}
+          </CardContent>
+        </Card>
 
-          <Interrupteur
-            titre="Urgentes uniquement"
-            description="N'afficher sur le widget que les tâches en retard ou dues aujourd'hui."
-            actif={widgetState.config.urgentOnly}
-            onChange={(actif) => widgetState.setConfig({ urgentOnly: actif })}
-          />
-        </CardContent>
-      </Card>
+        <RappelsGeolocalises />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Rappels liés à un lieu</CardTitle>
-          <CardDescription>
-            Dis à Jarvis "retiens que quand je parle de [lieu], rappelle-moi [ceci]" — la
-            prochaine fois que tu mentionnes ce lieu en lui parlant, il te le rappellera dans sa
-            réponse. Déclenché par la conversation par défaut ; active la géolocalisation
-            ci-dessous pour un déclenchement automatique en plus.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {placeRemindersState.placeReminders.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucun rappel de lieu pour l'instant.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {placeRemindersState.placeReminders.map((p) => (
-                <li key={p.id} className="flex items-start gap-2 rounded-lg border p-3">
-                  <div className="flex-1">
-                    <p className="font-medium">{p.place}</p>
-                    <p className="text-sm text-muted-foreground">{p.reminder}</p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Supprimer"
-                    onClick={() => placeRemindersState.deletePlaceReminder(p.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+        <AppsParDefaut />
 
-      <RappelsGeolocalises />
+        <CoeurDeJarvis />
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Ce qu'il entend de travers</CardTitle>
-          <CardDescription>
-            La dictée écorche certains mots, surtout les noms propres. Reprends Jarvis à voix
-            haute — "ce n'est pas Avirail, c'est Avihail" — et il corrigera tout seul les fois
-            suivantes.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {pronunciationsState.pronunciations.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Aucune correction pour l'instant.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {pronunciationsState.pronunciations.map((p) => (
-                <li key={p.id} className="flex items-start gap-2 rounded-lg border p-3">
-                  <div className="flex-1">
-                    <p className="font-medium">{p.veut_dire}</p>
-                    <p className="text-sm text-muted-foreground">entendu « {p.entendu} »</p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Supprimer"
-                    onClick={() => pronunciationsState.deletePronunciation(p.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Mot-clé de réveil "Jarvis"</CardTitle>
-          <CardDescription>
-            Une fois activé, dis "Jarvis" pour démarrer une commande sans toucher le bouton
-            micro — tant que l'app est ouverte à l'écran (pas en arrière-plan, écran éteint).
-            Consomme plus de batterie/données que l'usage normal.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Interrupteur
-            titre="Écouter le mot-clé « Jarvis »"
-            description="Le micro reste à l'écoute tant que l'app est ouverte à l'écran."
-            actif={wakeWordState.enabled}
-            onChange={wakeWordState.setEnabled}
-          />
-        </CardContent>
-      </Card>
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Comptes et connexions
+          </h2>
+          <p className="text-xs text-muted-foreground">Les services branchés à Jarvis.</p>
+        </div>
+        <CompteGoogle />
+      </section>
     </div>
   )
 }

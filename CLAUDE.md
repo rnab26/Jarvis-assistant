@@ -72,6 +72,22 @@ que tu es interrompu, ou que Raphaël change de sujet : écris où tu en es dans
 les notes du chantier ou dans `dev_log` avant de lâcher. Une session qui se
 termine sans avoir écrit son état fait perdre des heures à la suivante.
 
+**Et si c'est du travail à faire, ça devient un CHANTIER — pas une note.**
+Consigne explicite de Raphaël le 3 sept. 2026 : tout ce que tu n'as pas pu
+avancer, tout ce qui attend une décision de lui, et tout bug que tu découvres
+sans le corriger, doit exister comme une ligne de `dev_items` ouverte. Une
+trouvaille écrite seulement dans `dev_log` est perdue dès qu'une douzaine de
+messages passent — le hook de démarrage n'en injecte que les douze derniers.
+Enfouie dans les notes d'un autre chantier, elle disparaît quand celui-ci est
+archivé.
+
+Écris le chantier de façon **autoportante** : ce que Raphaël a déjà répondu,
+ce qui a déjà été vérifié (et ce qui a été écarté, pour qu'on ne le
+repropose pas), le fichier concerné, et le marqueur `[LIBRE]` ou
+`[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]`. Un chantier ombrelle du type
+« améliorer X » qui a réellement livré son travail se referme au profit des
+chantiers concrets qu'il a produits, en les nommant dans sa note d'archivage.
+
 Si le chantier touche à un sujet sensible ou irréversible (accès aux
 applications du téléphone, contrôle du téléphone, envoi de messages,
 clonage vocal via un service tiers payant), ne pas l'implémenter sans en
@@ -127,6 +143,29 @@ scripts/sql.sh "insert into dev_log (user_id, item_id, author, kind, body) selec
 
 (le `select ... from dev_items limit 1` évite d'avoir à connaître le `user_id`
 en dur ; mets l'id du chantier concerné à la place du `null` s'il y en a un)
+
+**Piège, vérifié à ses dépens le 3 sept. 2026 :** ce `limit 1` porte sur le
+résultat entier, pas sur le `user_id`. Il ne convient donc QU'À une insertion
+d'une seule ligne. Pour en insérer plusieurs d'un coup — `insert … select …
+from (values …)` — il ne laisse passer que la première, **sans aucune erreur** :
+on croit avoir créé six chantiers, il y en a un. Écris alors le `user_id` en
+sous-requête scalaire, et pas de `limit` du tout :
+
+```sql
+insert into dev_items (user_id, title, notes, status, priority, theme)
+select (select user_id from dev_items limit 1), v.title, v.notes, 'todo', v.priority, v.theme
+from (values ('Titre A', 'Notes A', 'normal', 'Thème'),
+             ('Titre B', 'Notes B', 'high',   'Thème')) as v(title, notes, priority, theme);
+```
+
+Et relis toujours ce que tu viens d'écrire dans un appel séparé : `exec_sql`
+ne renvoie pas le nombre de lignes touchées.
+
+Autre facilité pour du texte long : `scripts/sql.sh` lit aussi son SQL sur
+l'entrée standard (`scripts/sql.sh < requete.sql`). Une note de chantier avec
+des apostrophes, des guillemets et des retours à la ligne passe ainsi sans
+bataille d'échappement — et les délimiteurs `$n$ … $n$` de Postgres évitent
+d'avoir à doubler les apostrophes.
 
 `kind` vaut `question`, `reponse`, `info` ou `blocage`. Renseigne `answered_at`
 quand tu réponds à une question. Le journal est visible dans l'app, en bas du
@@ -285,7 +324,7 @@ utilisateur de test éphémère créé puis supprimé. La clé publique se récu
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 
-## Les neuf vérifications du dépôt
+## Les dix vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
@@ -298,6 +337,7 @@ node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
+node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 ```
 
