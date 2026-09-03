@@ -1,4 +1,5 @@
 import { Pencil, Trash2 } from "lucide-react"
+import { useState } from "react"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ export function TaskItem({
   onUpdate,
   onDelete,
 }: TaskItemProps) {
+  const [deplie, setDeplie] = useState(false)
   const isDone = task.status === "done"
   // Une tâche faite n'est plus en retard : garder l'étiquette rouge sur
   // quelque chose de terminé ne signale rien, ça alarme pour rien.
@@ -53,14 +55,20 @@ export function TaskItem({
           className="size-4 shrink-0"
           aria-label="Marquer comme faite"
         />
-        <p
-          className={`min-w-0 flex-1 truncate text-sm ${
+        {/* Appuyer sur le titre déplie la tâche. Le crayon annonce « modifier »
+            et ouvre un formulaire : s'en servir pour LIRE une note, c'est
+            ouvrir une fenêtre d'édition sans vouloir modifier. Signalé par
+            Raphaël le 3 sept., sur les chantiers comme sur les tâches. */}
+        <button
+          type="button"
+          aria-expanded={deplie}
+          onClick={() => setDeplie(!deplie)}
+          className={`min-w-0 flex-1 text-left text-sm ${deplie ? "" : "truncate"} ${
             isDone ? "text-muted-foreground line-through" : ""
           }`}
-          title={task.title}
         >
           {task.title}
-        </p>
+        </button>
         {echeance && (
           <Badge
             variant={echeance.enRetard && !isDone ? "destructive" : "outline"}
@@ -93,7 +101,11 @@ export function TaskItem({
         // Alignée sous le titre, pas sous la case : la note appartient au
         // titre. Deux lignes au plus, sinon une note dictée d'un trait occupe
         // à elle seule tout l'écran.
-        <p className="ml-6 line-clamp-2 text-xs whitespace-pre-line text-muted-foreground">
+        <p
+          className={`ml-6 text-xs whitespace-pre-line text-muted-foreground ${
+            deplie ? "" : "line-clamp-2"
+          }`}
+        >
           {task.notes}
         </p>
       )}
