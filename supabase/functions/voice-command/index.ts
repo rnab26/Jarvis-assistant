@@ -286,6 +286,68 @@ const VOICE_ACTION_TOOL = {
   },
 }
 
+/**
+ * Statuts pour lesquels un nouvel essai a du sens : surcharge du modèle (529),
+ * limite de débit (429) et incidents passagers côté serveur. Tout le reste
+ * (400, 401…) vient de la requête et se reproduirait à l'identique.
+ */
+const STATUTS_A_REESSAYER = new Set([408, 409, 429, 500, 502, 503, 529])
+
+/** Trois essais au plus, ~15 s dans le pire des cas : l'app abandonne à 25 s. */
+const ESSAIS_MAX = 3
+
+/**
+ * Appelle le modèle en réessayant les échecs passagers.
+ *
+ * Sans ça, une simple surcharge de l'API (`overloaded_error`, fréquente aux
+ * heures pleines) faisait échouer la commande vocale et affichait le JSON
+ * brut de l'erreur à l'écran. Mesuré le 3 sept. : jusqu'à 5 commandes sur 9
+ * perdues dans une même minute, alors qu'un second essai passe.
+ */
+async function appelerClaude(
+  corps: Record<string, unknown>,
+  cle: string,
+): Promise<{ reponse?: Response; echec?: { statut: number; texte: string; passager: boolean } }> {
+  let dernier: { statut: number; texte: string; passager: boolean } | undefined
+
+  for (let essai = 1; essai <= ESSAIS_MAX; essai++) {
+    let attendreMs: number | null = null
+
+    try {
+      const reponse = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": cle,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(corps),
+      })
+      if (reponse.ok) return { reponse }
+
+      const texte = await reponse.text()
+      const passager = STATUTS_A_REESSAYER.has(reponse.status)
+      dernier = { statut: reponse.status, texte, passager }
+      if (!passager) break
+
+      // L'API dit parfois elle-même combien de temps attendre.
+      const entete = Number(reponse.headers.get("retry-after"))
+      attendreMs = Number.isFinite(entete) && entete > 0 ? entete * 1000 : null
+    } catch (err) {
+      // Coupure réseau : passagère par nature.
+      dernier = { statut: 0, texte: String(err), passager: true }
+    }
+
+    if (essai === ESSAIS_MAX) break
+    // Attente croissante, avec un grain d'aléatoire pour ne pas retomber en
+    // rafale sur la même seconde que les autres appels en attente.
+    const parDefaut = 2 ** (essai - 1) * 1000 + Math.random() * 300
+    await new Promise((r) => setTimeout(r, Math.min(attendreMs ?? parDefaut, 5000)))
+  }
+
+  return { echec: dernier }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
@@ -389,27 +451,35 @@ Agenda : l'utilisateur a branché son compte Google, tu peux lire et écrire dan
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
 Réponds toujours en français dans le champ message.${await rappelerSouvenirs(supabase, transcript)}`
 
-    const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
+    const { reponse: anthropicResponse, echec } = await appelerClaude(
+      {
         model: "claude-sonnet-5",
         max_tokens: 1024,
         system: systemPrompt,
         messages: [{ role: "user", content: transcript }],
         tools: [VOICE_ACTION_TOOL],
         tool_choice: { type: "tool", name: "resolve_voice_command" },
-      }),
-    })
+      },
+      anthropicKey,
+    )
 
-    if (!anthropicResponse.ok) {
-      const errText = await anthropicResponse.text()
+    if (echec || !anthropicResponse) {
+      // Une surcharge passagère du modèle n'est pas une panne de Jarvis :
+      // il le dit à voix haute et on réessaie. Renvoyer une erreur ici
+      // affichait le JSON brut de l'API à Raphaël, ce qui ressemblait à
+      // « Jarvis ne répond plus » alors qu'il suffisait d'attendre.
+      if (echec?.passager) {
+        const message = "Je suis un peu débordé là, redis-le-moi dans quelques secondes."
+        return new Response(
+          JSON.stringify({
+            action: { action: "unknown", message },
+            actions: [{ action: "unknown", message }],
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        )
+      }
       return new Response(
-        JSON.stringify({ error: `Erreur API Claude: ${errText}` }),
+        JSON.stringify({ error: `Erreur API Claude: ${echec?.texte ?? "inconnue"}` }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       )
     }
