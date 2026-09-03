@@ -3,6 +3,7 @@ import { Download, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -1015,6 +1016,8 @@ export function SettingsPage() {
         </Card>
 
         <RappelsGeolocalises />
+
+        <AppsParDefaut />
 
         <CoeurDeJarvis />
       </section>
