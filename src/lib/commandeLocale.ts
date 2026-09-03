@@ -145,6 +145,43 @@ function titreDepuis(reste: string): string {
 }
 
 /**
+ * Découpe une dictée longue en un titre court et une note complète.
+ *
+ * Ses phrases réelles ressemblent à « rajoute un chantier pour un problème de
+ * micro à chaque fois qu'on termine une phrase il faut que je réappuie ».
+ * Un modèle en tirerait un titre élégant ; ici on ne prétend pas faire aussi
+ * bien. On prend les premiers mots comme titre et on garde TOUT dans la note :
+ * rien n'est perdu, rien n'est inventé, et un titre à retoucher coûte moins
+ * cher qu'une demande qui n'aboutit pas du tout.
+ */
+const MOTS_TITRE_COURT = 12
+const MOTS_TITRE_TRONQUE = 8
+
+function decouper(phrase: string): { titre: string; notes: string | null } {
+  const mots = phrase.split(" ").filter(Boolean)
+  const majuscule = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+
+  if (mots.length <= MOTS_TITRE_COURT) {
+    return { titre: majuscule(phrase), notes: null }
+  }
+  // Un titre ne se termine pas sur un mot-outil : « Un problème de micro à
+  // chaque fois qu'on » se lit mal dans une liste. On recule jusqu'au dernier
+  // mot porteur de sens.
+  const OUTILS = new Set([
+    "a", "au", "aux", "de", "du", "des", "la", "le", "les", "un", "une",
+    "et", "ou", "que", "qu'on", "qu'il", "qui", "en", "pour", "dans", "sur",
+    "avec", "il", "elle", "je", "ce", "cette", "mon", "ma", "mes", "son",
+  ])
+  const coupe = mots.slice(0, MOTS_TITRE_TRONQUE)
+  while (coupe.length > 3 && OUTILS.has(coupe[coupe.length - 1])) coupe.pop()
+
+  return {
+    titre: majuscule(coupe.join(" ")),
+    notes: phrase.charAt(0).toUpperCase() + phrase.slice(1),
+  }
+}
+
+/**
  * Traduit une phrase en actions, ou renvoie null si elle sort de ce que les
  * règles savent lire.
  */
@@ -196,7 +233,7 @@ export function interpreterLocalement(
   }
 
   const ajoutRdv = texte.match(
-    /^(?:ajoute|cree|mets|note|prends?|programme|planifie)\s+(?:un |une |le |la |mon |ma )?(?:rendez-vous|rdv|reunion|evenement)\s*(.*)$/,
+    /^(?:ajoute|rajoute|cree|mets|note|prends?|programme|planifie)\s+(?:un |une |le |la |mon |ma )?(?:rendez-vous|rdv|reunion|evenement)\s*(.*)$/,
   )
   if (ajoutRdv) {
     const { date, heure, motsRetires } = lireQuand(ajoutRdv[1], maintenant)
@@ -216,13 +253,38 @@ export function interpreterLocalement(
   if (/^(liste|montre|donne|quels sont|c'est quoi)\b.*\bchantiers?\b/.test(texte)) {
     return [{ action: "list_dev_items" }]
   }
+  // « rajoute » plutôt qu'« ajoute », « dans les chantiers à développer… » :
+  // ce sont ses tournures réelles, relevées dans la table `echanges` le
+  // 3 sept. plutôt que devinées.
   const ajoutChantier = texte.match(
-    /^(?:ajoute|cree|note|nouveau|nouvelle)\s+(?:un |une |le |la )?chantier\s*:?\s*(.+)$/,
+    /^(?:(?:dans (?:les|mes) (?:chantiers|taches de developpement)[^,]*,?\s*)?(?:ajoute|rajoute|cree|note|nouveau|nouvelle))\s+(?:un |une |le |la )?(?:chantier|tache de developpement)\s*(?:a traiter\s*)?:?\s*(.+)$/,
   )
   if (ajoutChantier) {
-    const titre = titreDepuis(ajoutChantier[1])
-    if (!titre) return null
-    return [{ action: "add_dev_item", title: titre.charAt(0).toUpperCase() + titre.slice(1) }]
+    const brut = titreDepuis(ajoutChantier[1])
+    if (!brut || brut.length < 3) return null
+    const { titre, notes } = decouper(brut)
+    return [{ action: "add_dev_item", title: titre, notes }]
+  }
+
+  const prioriteChantier = texte.match(
+    /^(?:modifie|change|mets|passe|monte|descends)\s+(?:la priorite (?:du|de la|de l')\s*)?(?:chantier\s+)?(.+?)\s+(?:en|a|comme)\s+(?:priorite\s+)?(haute?|elevee?|tres elevee?|urgente?|normale?|basse?|faible)\b/,
+  )
+  if (prioriteChantier) {
+    const cible = prioriteChantier[1].replace(/^(?:la priorite (?:du|de la|de l')\s*)?/, "").trim()
+    const chantier = meilleur(cible, ctx.chantiers)
+    if (!chantier) return null
+    const mot = prioriteChantier[2]
+    const priority = /bas|faible/.test(mot) ? "low" : /normal/.test(mot) ? "normal" : "high"
+    return [{ action: "update_dev_item", item_id: chantier.id, changes: { priority } }]
+  }
+
+  const archiveChantier = texte.match(
+    /^(?:archive|termine|clos|ferme)\s+(?:le\s+)?chantier\s+(.+)$/,
+  )
+  if (archiveChantier) {
+    const chantier = meilleur(archiveChantier[1], ctx.chantiers)
+    if (!chantier) return null
+    return [{ action: "archive_dev_item", item_id: chantier.id }]
   }
 
   /* ---------- Les tâches ---------- */
@@ -248,7 +310,7 @@ export function interpreterLocalement(
   }
 
   const ajoutTache = texte.match(
-    /^(?:ajoute|cree|note|rappelle-moi|pense a|il faut que je|je dois)\s*(?:une |la |le |de |d')?\s*(?:tache\s*:?\s*)?(.+)$/,
+    /^(?:ajoute|rajoute|cree|note|rappelle-moi|pense a|il faut que je|je dois)\s*(?:une |la |le |de |d')?\s*(?:tache\s*:?\s*)?(.+)$/,
   )
   if (ajoutTache) {
     // « note que Dylan est le client de Melissa » est une information sur
@@ -256,16 +318,15 @@ export function interpreterLocalement(
     if (/^que\b/.test(ajoutTache[1])) return null
 
     const { date, heure, motsRetires } = lireQuand(ajoutTache[1], maintenant)
-    const titre = titreDepuis(retirerMots(ajoutTache[1], motsRetires))
-    if (!titre || titre.length < 2) return null
-    // Une phrase longue mérite le découpage titre/notes que fait le modèle :
-    // on ne bricole pas un résumé ici.
-    if (titre.split(" ").length > 12) return null
+    const brut = titreDepuis(retirerMots(ajoutTache[1], motsRetires))
+    if (!brut || brut.length < 3) return null
+    const { titre, notes } = decouper(brut)
 
     return [
       {
         action: "add_task",
-        title: titre.charAt(0).toUpperCase() + titre.slice(1),
+        title: titre,
+        notes,
         due_date: date,
         due_time: heure,
       },
