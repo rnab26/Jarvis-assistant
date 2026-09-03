@@ -93,6 +93,15 @@ try {
     )
 
     // Le contrôle qui compte vraiment : Google accepte-t-il cette demande ?
+    //
+    // CE QUE CE CONTRÔLE NE DIT PAS. Il suit l'URL sans session Google, donc
+    // il s'arrête à l'écran de connexion. Ça prouve que le client_id et
+    // l'adresse de retour sont valides — les deux refus qui arrivent AVANT
+    // toute connexion. Ça ne prouve pas que l'application est publiée en
+    // production, ni que le compte de Raphaël figure parmi les utilisateurs
+    // de test : ces deux refus-là (« Accès bloqué ») ne surviennent qu'après
+    // l'identification, hors de portée d'un script. Vert ici ne dispense donc
+    // pas de vérifier en base que google_accounts a bien reçu une ligne.
     const chezGoogle = await fetch(corps.url, { redirect: "follow" })
     const page = await chezGoogle.text()
     const refus = /redirect_uri_mismatch|Acc%C3%A8s bloqu|Accès bloqué|invalid_client|access_blocked/i.test(page)
