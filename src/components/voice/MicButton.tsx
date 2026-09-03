@@ -8,6 +8,7 @@ import { messageErreurServeurVocal } from "@/lib/erreurServeurVocal"
 import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
 import { chercherMotCle } from "@/lib/motCle"
+import { interpreterLocalement } from "@/lib/commandeLocale"
 import { withTimeout } from "@/lib/withTimeout"
 import type { DevItem } from "@/types/database"
 import {
@@ -133,6 +134,32 @@ export function MicButton({
    * l'autre comme faite") : elles reviennent dans l'ordre dicté.
    */
   async function resolveTranscript(transcript: string): Promise<VoiceAction[]> {
+    // D'ABORD SUR L'APPAREIL, ET SANS RIEN DEMANDER À PERSONNE.
+    //
+    // « Ce n'est pas vraiment de l'IA, c'est plus un assistant qui va faire
+    // des commandes » — Raphaël, 3 sept. 2026, et il a raison : « ajoute une
+    // tâche pour le plombier » n'a besoin d'aucun modèle de langage. Les
+    // formulations qu'il emploie sont en nombre fini, src/lib/commandeLocale
+    // les reconnaît sur place. C'est gratuit, instantané, ça marche hors
+    // ligne, et ça ne s'arrête pas quand un crédit s'épuise.
+    //
+    // Ce que les règles ne reconnaissent pas continue vers le serveur : le
+    // module rend la main plutôt que de deviner.
+    const local = interpreterLocalement(transcript, {
+      taches: tasksApi.tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        notes: t.notes,
+        status: t.status,
+      })),
+      chantiers: devItemsApi.devItems.map((i) => ({
+        id: i.id,
+        title: i.title,
+        notes: i.notes,
+      })),
+    })
+    if (local) return local
+
     // Borné dans le temps, comme tout le reste des appels du projet :
     // supabase-js ne rejette JAMAIS sur coupure réseau, il retente et laisse
     // la promesse en attente. Sans cette borne, une commande partie de
