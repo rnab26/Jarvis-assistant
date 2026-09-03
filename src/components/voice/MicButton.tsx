@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
+import { appMusiquePreferee } from "@/lib/actionsTelephoneVocales"
 import { withTimeout } from "@/lib/withTimeout"
 import type { DevItem } from "@/types/database"
 import {
@@ -234,19 +235,34 @@ export function MicButton({
 
     // Quand quelque chose est ambigu, la Edge Function renvoie une seule
     // action clarify : on pose la question plutôt que d'exécuter à moitié.
+    //
+    // "mets-moi la musique X" sans application nommée et sans préférence
+    // connue est ambigu de la même façon (que la commande vienne du local ou
+    // du modèle) — sinon executerActionTelephone laisserait Android ouvrir
+    // son sélecteur ("Terminer l'action avec…"), ce que Raphaël a signalé ne
+    // pas vouloir. On la traite donc comme un clarify : la question posée
+    // une fois, la réponse repart avec la demande initiale pour que le tour
+    // suivant retienne l'application ET joue le morceau demandé.
     const premiere = actions[0]
-    if (premiere.action === "clarify" && round < 3) {
-      const action = premiere
-      setLastReply(action.message)
+    const demandeAppMusique =
+      actions.length === 1 &&
+      premiere.action === "open_app" &&
+      !!premiere.music_query &&
+      !premiere.app_name &&
+      !appMusiquePreferee()
+    if ((premiere.action === "clarify" || demandeAppMusique) && round < 3) {
+      const message =
+        premiere.action === "clarify" ? premiere.message : "Quelle application utilises-tu pour la musique ?"
+      setLastReply(message)
       setStatus("speaking")
       bargeInRef.current = false
-      await speak(action.message, voiceIndex ?? undefined)
+      await speak(message, voiceIndex ?? undefined)
       if (bargeInRef.current) return false // un tap a déjà repris la main entre-temps
 
       setStatus("listening")
       const answer = await listen("command", { onTexte: setLastUserText })
       setLastUserText(answer)
-      const combined = `Demande initiale : "${originalTranscript}". Question posée : "${action.message}". Réponse de l'utilisateur : "${answer}".`
+      const combined = `Demande initiale : "${originalTranscript}". Question posée : "${message}". Réponse de l'utilisateur : "${answer}".`
       return await runTurn(combined, originalTranscript, round + 1)
     }
 

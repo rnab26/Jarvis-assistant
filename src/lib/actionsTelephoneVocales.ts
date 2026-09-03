@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core"
 import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/actionsTelephone"
+import { ecrireReglage } from "@/lib/reglages"
 import type { Contact } from "@/types/database"
 
 /** Les actions vocales qui sortent de Jarvis pour aller dans une autre app. */
@@ -24,6 +25,19 @@ export type ActionTelephone =
 
 const SUR_LE_TELEPHONE_SEULEMENT =
   "Ça, je ne peux le faire que depuis l'application installée sur ton téléphone — ici je n'ai pas accès à tes autres applications."
+
+const CLE_APP_MUSIQUE = "jarvis_app_musique"
+
+/** L'application que Raphaël a retenue pour la musique, si on la lui a déjà
+ * demandée une fois. Lu par MicButton pour savoir s'il faut la lui demander
+ * avant d'exécuter — seule source de vérité, avec CLE_APP_MUSIQUE ci-dessus. */
+export function appMusiquePreferee(): string | null {
+  try {
+    return localStorage.getItem(CLE_APP_MUSIQUE)
+  } catch {
+    return null
+  }
+}
 
 /** Le numéro d'un contact, ou celui que Raphaël a dicté à voix haute. */
 function numeroDe(contacts: Contact[], contactId?: string, dicte?: string): string | null {
@@ -77,15 +91,23 @@ export async function executerActionTelephone(
       case "open_app": {
         let paquet: string | undefined
         let nomAffiche = action.app_name ?? ""
+        // "mets-moi la musique X" sans application nommée : viser celle déjà
+        // retenue plutôt que de laisser Android ouvrir son sélecteur
+        // ("Terminer l'action avec…") — ce n'est jamais ce qui est demandé.
+        // MicButton pose la question une fois, avant d'arriver ici, quand
+        // aucune n'est encore connue ; ici on ne fait qu'appliquer et
+        // qu'apprendre la réponse pour la prochaine fois.
+        let nomCible = action.app_name || (action.music_query ? appMusiquePreferee() ?? undefined : undefined)
 
-        if (action.app_name) {
+        if (nomCible) {
           const { applications } = await ActionsTelephone.listerApplications()
-          const trouvee = trouverApplication(applications, action.app_name)
+          const trouvee = trouverApplication(applications, nomCible)
           if (!trouvee) {
-            return `Je ne trouve pas d'application qui s'appelle "${action.app_name}" sur ton téléphone.`
+            return `Je ne trouve pas d'application qui s'appelle "${nomCible}" sur ton téléphone.`
           }
           paquet = trouvee.paquet
           nomAffiche = trouvee.nom
+          if (action.music_query) ecrireReglage(CLE_APP_MUSIQUE, trouvee.nom)
         }
 
         await ActionsTelephone.ouvrirApplication({ paquet, recherche: action.music_query })

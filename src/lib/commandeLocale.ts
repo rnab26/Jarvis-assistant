@@ -366,6 +366,14 @@ export function interpreterLocalement(
       },
     ]
   }
+  // "mets-moi la musique X" (sans "sur Y") : l'application à viser n'est pas
+  // ici — c'est le rôle d'executerActionTelephone/open_app, seule source de
+  // vérité pour "quelle app pour la musique" (déjà retenue, ou à demander).
+  const musiqueSansApp = texte.match(/^mets?(?:-moi)?\s+(?:la\s+)?musique\s+(.+)$/)
+  if (musiqueSansApp) {
+    return [{ action: "open_app", music_query: majuscule(musiqueSansApp[1].trim()) }]
+  }
+
   const ouvreApp = texte.match(/^(?:ouvre|lance|demarre)\s+(.+)$/)
   if (ouvreApp) {
     const cible = ouvreApp[1].trim()

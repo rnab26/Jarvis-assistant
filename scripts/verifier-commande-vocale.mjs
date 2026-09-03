@@ -313,6 +313,22 @@ cas.push(
     },
   },
   {
+    // Signalé par Raphaël le 3 sept. (capture) : sans "sur", Android ouvrait
+    // son sélecteur ("Terminer l'action avec…") au lieu de jouer le morceau.
+    // Le correctif vit côté app (executerActionTelephone/open_app) : ici on
+    // vérifie seulement que le modèle continue de laisser app_name absent
+    // quand aucune application n'est nommée, comme le décrit son schéma.
+    nom: "mettre de la musique sans nommer d'application",
+    phrase: "Mets-moi la musique Maes la planque.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "open_app")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.app_name) return [false, `app_name renseigné à tort : ${a.app_name}`]
+      if (!/maes/i.test(a.music_query ?? "")) return [false, `music_query = ${a.music_query}`]
+      return [true]
+    },
+  },
+  {
     nom: "ouvrir une app sans rien jouer",
     phrase: "Ouvre WhatsApp.",
     controle: (r) => {

@@ -180,6 +180,14 @@ doitDonner("mets du Brassens sur Spotify", {
   app_name: "Spotify",
   music_query: "Du brassens",
 })
+// Signalé par Raphaël le 3 sept. : sans "sur", l'app n'est jamais nommée ici
+// — c'est executerActionTelephone/open_app qui vise l'app retenue ou la
+// demande, pour ne jamais laisser Android ouvrir son sélecteur.
+doitDonner("mets-moi la musique Maes la planque", {
+  action: "open_app",
+  music_query: "Maes la planque",
+  app_name: undefined,
+})
 doitDonner("ouvre WhatsApp", { action: "open_app", app_name: "Whatsapp" })
 doitDonner("mets en pause", { action: "media_control", media_command: "pause" })
 doitDonner("reprends la musique", { action: "media_control", media_command: "lecture" })
