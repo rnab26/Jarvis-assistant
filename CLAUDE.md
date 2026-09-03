@@ -72,6 +72,22 @@ que tu es interrompu, ou que Raphaël change de sujet : écris où tu en es dans
 les notes du chantier ou dans `dev_log` avant de lâcher. Une session qui se
 termine sans avoir écrit son état fait perdre des heures à la suivante.
 
+**Et si c'est du travail à faire, ça devient un CHANTIER — pas une note.**
+Consigne explicite de Raphaël le 3 sept. 2026 : tout ce que tu n'as pas pu
+avancer, tout ce qui attend une décision de lui, et tout bug que tu découvres
+sans le corriger, doit exister comme une ligne de `dev_items` ouverte. Une
+trouvaille écrite seulement dans `dev_log` est perdue dès qu'une douzaine de
+messages passent — le hook de démarrage n'en injecte que les douze derniers.
+Enfouie dans les notes d'un autre chantier, elle disparaît quand celui-ci est
+archivé.
+
+Écris le chantier de façon **autoportante** : ce que Raphaël a déjà répondu,
+ce qui a déjà été vérifié (et ce qui a été écarté, pour qu'on ne le
+repropose pas), le fichier concerné, et le marqueur `[LIBRE]` ou
+`[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]`. Un chantier ombrelle du type
+« améliorer X » qui a réellement livré son travail se referme au profit des
+chantiers concrets qu'il a produits, en les nommant dans sa note d'archivage.
+
 Si le chantier touche à un sujet sensible ou irréversible (accès aux
 applications du téléphone, contrôle du téléphone, envoi de messages,
 clonage vocal via un service tiers payant), ne pas l'implémenter sans en
