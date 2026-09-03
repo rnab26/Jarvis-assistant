@@ -105,3 +105,20 @@ export interface DocumentFile {
   createdAt: string
   contentType: string | null
 }
+
+/** Ce que Jarvis retient durablement : des faits courts, jamais le texte
+ * des conversations. Voir la migration 0006. */
+export type SouvenirCategorie = "personne" | "dossier" | "engagement" | "preference" | "fait"
+
+export interface Souvenir {
+  id: string
+  user_id: string
+  contenu: string
+  categorie: SouvenirCategorie
+  /** La phrase d'origine, pour vérifier d'où sort un souvenir. */
+  source: string | null
+  /** Un fait remplacé est marqué périmé plutôt que supprimé. */
+  perime_at: string | null
+  created_at: string
+  updated_at: string
+}
