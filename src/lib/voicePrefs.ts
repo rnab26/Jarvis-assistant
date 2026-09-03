@@ -70,11 +70,7 @@ export function readVoicePrefs(): VoicePrefs {
 /** Écrit la préférence de coupure. Séparée de writeVoicePref, qui ne
  *  manipule que des nombres. */
 export function writeVoiceMuted(muted: boolean) {
-  try {
-    localStorage.setItem(VOICE_MUTED_KEY, muted ? "1" : "0")
-  } catch {
-    // Stockage indisponible : le réglage vaut pour la session en cours.
-  }
+  ecrireReglage(VOICE_MUTED_KEY, muted ? "1" : "0")
 }
 
 export function writeVoicePref(key: string, value: number | null) {
