@@ -88,6 +88,9 @@ export interface PlaceRemindersApi {
   placeReminders: PlaceReminder[]
   addPlaceReminder: (input: PlaceReminderInput) => Promise<void>
   deletePlaceReminder: (id: string) => Promise<void>
+  /** Non-null seulement si la géolocalisation des rappels est activée dans
+   * Paramètres : géocode le lieu pour aussi créer une géofence native. */
+  geocodePlace: ((place: string) => Promise<{ lat: number; lng: number } | null>) | null
 }
 
 export interface WidgetApi {
@@ -112,7 +115,7 @@ export async function executeVoiceAction(
   { devItems, addDevItem, updateDevItem, deleteDevItem, archiveDevItem }: DevItemsApi,
   { documents, saveTextDocument }: DocumentsApi,
   { contacts, addContact, updateContact, deleteContact }: ContactsApi,
-  { placeReminders, addPlaceReminder, deletePlaceReminder }: PlaceRemindersApi,
+  { placeReminders, addPlaceReminder, deletePlaceReminder, geocodePlace }: PlaceRemindersApi,
   { setConfig }: WidgetApi,
 ): Promise<string> {
   switch (action.action) {
@@ -253,8 +256,15 @@ export async function executeVoiceAction(
     }
 
     case "add_place_reminder": {
-      await addPlaceReminder({ place: action.place, reminder: action.reminder })
-      return `Compris, je te le rappellerai quand tu parleras de ${action.place}.`
+      const coords = geocodePlace ? await geocodePlace(action.place) : null
+      await addPlaceReminder({
+        place: action.place,
+        reminder: action.reminder,
+        lat: coords?.lat ?? null,
+        lng: coords?.lng ?? null,
+      })
+      const geoNote = geocodePlace && !coords ? " Je n'ai pas réussi à localiser ce lieu, ça restera basé sur ce que tu me dis." : ""
+      return `Compris, je te le rappellerai quand tu parleras de ${action.place}.${geoNote}`
     }
 
     case "delete_place_reminder": {

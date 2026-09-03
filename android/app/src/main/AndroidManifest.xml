@@ -32,6 +32,11 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/jarvis_widget_info" />
         </receiver>
 
+        <!-- Rappels de lieu par géolocalisation (option, désactivée par
+             défaut) : reçoit les transitions ENTER des zones enregistrées
+             via GeofencingClient et affiche une notification. -->
+        <receiver android:name=".GeofenceBroadcastReceiver" android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -44,4 +49,13 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Rappels de lieu par géolocalisation (option désactivée par défaut,
+         demandées seulement si l'utilisateur active la fonction dans
+         Paramètres). ACCESS_BACKGROUND_LOCATION est requise séparément à
+         partir d'Android 10, via un second écran système. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

@@ -3,6 +3,8 @@ import { useAuth } from "@/hooks/useAuth"
 import { useContacts } from "@/hooks/useContacts"
 import { useDevItems } from "@/hooks/useDevItems"
 import { useDocuments } from "@/hooks/useDocuments"
+import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
+import { usePlaceGeofences } from "@/hooks/usePlaceGeofences"
 import { usePlaceReminders } from "@/hooks/usePlaceReminders"
 import { useTasks } from "@/hooks/useTasks"
 import { useVoiceSetting } from "@/hooks/useVoiceSetting"
@@ -15,6 +17,7 @@ type DevItemsState = ReturnType<typeof useDevItems>
 type DocumentsState = ReturnType<typeof useDocuments>
 type ContactsState = ReturnType<typeof useContacts>
 type PlaceRemindersState = ReturnType<typeof usePlaceReminders>
+type GeofenceState = ReturnType<typeof useGeofenceSetting>
 type WakeWordState = ReturnType<typeof useWakeWordSetting>
 type VoiceState = ReturnType<typeof useVoiceSetting>
 type WidgetState = ReturnType<typeof useWidgetSetting>
@@ -25,6 +28,7 @@ interface JarvisDataValue {
   documentsState: DocumentsState
   contactsState: ContactsState
   placeRemindersState: PlaceRemindersState
+  geofenceState: GeofenceState
   wakeWordState: WakeWordState
   voiceState: VoiceState
   widgetState: WidgetState
@@ -48,9 +52,12 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const documentsState = useDocuments(userId)
   const contactsState = useContacts(userId)
   const placeRemindersState = usePlaceReminders(userId)
+  const geofenceState = useGeofenceSetting()
   const wakeWordState = useWakeWordSetting()
   const voiceState = useVoiceSetting()
   const widgetState = useWidgetSetting()
+
+  usePlaceGeofences(placeRemindersState.placeReminders, geofenceState.enabled)
 
   // Met à jour le widget d'écran d'accueil à chaque changement de tâches
   // (ajout/modif/suppression, y compris par la voix) ou de sa config
@@ -69,6 +76,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         documentsState,
         contactsState,
         placeRemindersState,
+        geofenceState,
         wakeWordState,
         voiceState,
         widgetState,

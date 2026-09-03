@@ -4,6 +4,7 @@ import { MicButton } from "@/components/voice/MicButton"
 import { JarvisDataProvider, useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useShareReceiver } from "@/hooks/useShareReceiver"
+import { geocodePlace } from "@/lib/geocodePlace"
 
 function ShellContent() {
   const {
@@ -12,6 +13,7 @@ function ShellContent() {
     documentsState,
     contactsState,
     placeRemindersState,
+    geofenceState,
     wakeWordState,
     voiceState,
     widgetState,
@@ -26,7 +28,10 @@ function ShellContent() {
         devItemsApi={devItemsState}
         documentsApi={documentsState}
         contactsApi={contactsState}
-        placeRemindersApi={placeRemindersState}
+        placeRemindersApi={{
+          ...placeRemindersState,
+          geocodePlace: geofenceState.enabled ? geocodePlace : null,
+        }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
         voiceIndex={voiceState.voiceIndex}
