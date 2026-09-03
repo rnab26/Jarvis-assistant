@@ -9,6 +9,10 @@
 // dans `echanges` puis disparaît — c'est le choix de Raphaël.
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2"
+import { appelerGemini } from "../_shared/gemini.ts"
+
+/** Le plus petit modèle de l'offre gratuite : trier des faits n'en demande pas plus. */
+const MODELE_EXTRACTION = "gemini-3.5-flash-lite"
 
 /** Modèle embarqué dans les Edge Functions Supabase : gratuit, sur place. */
 const MODELE_EMBEDDING = "gte-small"
@@ -128,40 +132,23 @@ export async function memoriser(
   userId: string,
   transcript: string,
   reponse: string | null,
-  anthropicKey: string,
+  cleGemini: string,
 ): Promise<void> {
   try {
     await supabase.from("echanges").insert({ user_id: userId, transcript, reponse })
     // Purge paresseuse : pas de tâche planifiée à maintenir.
     await supabase.rpc("purger_echanges")
 
-    const extraction = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 512,
-        system: CONSIGNE_EXTRACTION,
-        messages: [
-          {
-            role: "user",
-            content: `Raphaël a dit : « ${transcript} »\n${reponse ? `Jarvis a répondu : « ${reponse} »` : ""}`,
-          },
-        ],
-        tools: [OUTIL_EXTRACTION],
-        tool_choice: { type: "tool", name: "extraire_faits" },
-      }),
+    const { args } = await appelerGemini({
+      modele: MODELE_EXTRACTION,
+      systeme: CONSIGNE_EXTRACTION,
+      texte: `Raphaël a dit : « ${transcript} »\n${reponse ? `Jarvis a répondu : « ${reponse} »` : ""}`,
+      outil: OUTIL_EXTRACTION,
+      maxTokens: 512,
+      cle: cleGemini,
     })
 
-    if (!extraction.ok) return
-
-    const donnees = await extraction.json()
-    const outil = donnees.content?.find((b: { type: string }) => b.type === "tool_use")
-    const faits: Souvenir[] = outil?.input?.faits ?? []
+    const faits: Souvenir[] = (args?.faits as Souvenir[] | undefined) ?? []
     if (!faits.length) return
 
     const aRanger = faits.slice(0, MAX_FAITS_PAR_ECHANGE)
