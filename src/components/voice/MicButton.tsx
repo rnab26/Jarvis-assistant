@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
 import { chercherMotCle } from "@/lib/motCle"
 import { withTimeout } from "@/lib/withTimeout"
+import type { DevItem } from "@/types/database"
 import {
   executeVoiceAction,
   type ContactsApi,
@@ -49,6 +50,49 @@ function extrait(notes: string | null) {
   if (!notes) return null
   const propre = notes.replace(/\s+/g, " ").trim()
   return propre.length > 180 ? `${propre.slice(0, 180)}…` : propre
+}
+
+/** Nombre de chantiers archivés encore envoyés au modèle. Assez pour que
+ * « rouvre celui que j'ai terminé hier » marche, pas assez pour que la
+ * facture grossisse à chaque chantier fini. */
+const ARCHIVES_ENVOYEES = 15
+
+/**
+ * Ce que le modèle a besoin de savoir du cockpit — et rien de plus.
+ *
+ * Mesuré le 3 sept. 2026 : les 83 chantiers étaient renvoyés en entier à
+ * CHAQUE phrase dictée, soit 32 799 caractères, dont 21 000 pour 55 chantiers
+ * déjà archivés. C'était la moitié du coût d'une commande, et ça grossissait
+ * de façon irréversible à chaque chantier livré.
+ *
+ * Les archivés restent nécessaires — Raphaël rouvre parfois quelque chose de
+ * terminé — mais seulement les plus récents, et leur titre suffit à les
+ * désigner : personne ne rouvre un chantier en citant une ligne de ses notes.
+ */
+function chantiersPourLeModele(items: DevItem[]) {
+  const enCours = items.filter((i) => !i.archived_at)
+  const archives = items
+    .filter((i) => i.archived_at)
+    .sort((a, b) => (b.archived_at ?? "").localeCompare(a.archived_at ?? ""))
+    .slice(0, ARCHIVES_ENVOYEES)
+
+  return [
+    ...enCours.map((i) => ({
+      id: i.id,
+      title: i.title,
+      notes: extrait(i.notes),
+      status: i.status,
+      priority: i.priority,
+      theme: i.theme,
+    })),
+    ...archives.map((i) => ({
+      id: i.id,
+      title: i.title,
+      status: "done",
+      theme: i.theme,
+      archive: true,
+    })),
+  ]
 }
 
 function normalizeText(text: string) {
@@ -112,14 +156,7 @@ export function MicButton({
             due_date: t.due_date,
             due_time: t.due_time,
           })),
-          devItems: devItemsApi.devItems.map((i) => ({
-            id: i.id,
-            title: i.title,
-            notes: extrait(i.notes),
-            status: i.status,
-            priority: i.priority,
-            theme: i.theme,
-          })),
+          devItems: chantiersPourLeModele(devItemsApi.devItems),
           themes: themesDe(devItemsApi.devItems),
           documents: documentsApi.documents.map((d) => ({ name: d.name })),
           contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes, phone: c.phone })),
