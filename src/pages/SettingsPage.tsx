@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core"
 import { Download, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -185,10 +186,12 @@ function libellePubliee(published: PublishedBuild | null): string {
 function MettreAJour({
   status,
   published,
+  verifieA,
   recheck,
 }: {
   status: UpdateStatus
   published: PublishedBuild | null
+  verifieA: Date | null
   recheck: () => void
 }) {
   const [etat, setEtat] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
@@ -256,10 +259,19 @@ function MettreAJour({
             disabled={status === "checking"}
             aria-label="Revérifier"
           >
-            <RefreshCw className="size-4" />
+            <RefreshCw className={cn("size-4", status === "checking" && "animate-spin")} />
             Revérifier
           </Button>
         </div>
+
+        {/* Sans cette ligne, revérifier alors qu'on est déjà à jour ne
+            change rien à l'écran : le bouton paraît cassé. L'heure qui
+            avance est la preuve que la vérification a bien eu lieu. */}
+        {verifieA && (
+          <p className="text-xs text-muted-foreground">
+            Dernière vérification à {verifieA.toLocaleTimeString("fr-FR")}
+          </p>
+        )}
 
         {isNative && status === "update-available" && (
           <p className="text-sm text-muted-foreground">
@@ -437,7 +449,7 @@ export function SettingsPage() {
     placeRemindersState,
     pronunciationsState,
   } = useJarvisData()
-  const { status, published, recheck } = useUpdateCheck()
+  const { status, published, verifieA, recheck } = useUpdateCheck()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
@@ -490,7 +502,12 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <MettreAJour status={status} published={published} recheck={recheck} />
+      <MettreAJour
+        status={status}
+        published={published}
+        verifieA={verifieA}
+        recheck={recheck}
+      />
 
       <Card>
         <CardHeader>
