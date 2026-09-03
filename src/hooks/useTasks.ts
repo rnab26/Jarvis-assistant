@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
 import { withErrorToast } from "@/lib/notifyError"
@@ -35,7 +36,14 @@ export function useTasks(userId: string | undefined) {
           supabase
             .from("tasks")
             .select("*")
-            .order("due_date", { ascending: true, nullsFirst: false }),
+            // Second critère de tri indispensable : sans lui, toutes les
+            // tâches sans échéance (la majorité de celles dictées à la voix)
+            // remontaient dans un ordre arbitraire choisi par Postgres, qui
+            // pouvait changer d'un chargement à l'autre — une tâche qu'on
+            // venait d'ajouter apparaissait n'importe où dans la liste, ce
+            // qui se voit exactement comme un affichage pas rafraîchi.
+            .order("due_date", { ascending: true, nullsFirst: false })
+            .order("created_at", { ascending: false }),
           supabase.from("categories").select("*").order("name"),
         ]),
       )
@@ -62,6 +70,8 @@ export function useTasks(userId: string | undefined) {
   }, [refresh])
 
   useRefreshOnForeground(refresh)
+  useRealtimeRefresh("tasks", userId, refresh)
+  useRealtimeRefresh("categories", userId, refresh)
 
   async function addTask(input: TaskInput) {
     if (!userId) return

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
 import { withErrorToast } from "@/lib/notifyError"
@@ -51,6 +52,7 @@ export function useDevItems(userId: string | undefined) {
   }, [refresh])
 
   useRefreshOnForeground(refresh)
+  useRealtimeRefresh("dev_items", userId, refresh)
 
   async function addDevItem(input: DevItemInput) {
     if (!userId) return
