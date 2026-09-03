@@ -1,13 +1,21 @@
-import { Plus } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { LoadError } from "@/components/LoadError"
 import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
-import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
+import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDevLog } from "@/hooks/useDevLog"
 
+/**
+ * Le cockpit, de haut en bas : ce qu'on envoie, ce qui est en cours, ce qu'on
+ * se dit entre sessions.
+ *
+ * Le bouton « + Chantier » qui ouvrait un formulaire à cinq champs a été
+ * retiré : il faisait exactement la même chose que la fenêtre d'envoi, en
+ * plus laborieux, et deux chemins vers le même résultat obligent à choisir
+ * avant d'agir. Le formulaire complet reste accessible là où il sert vraiment
+ * — le crayon d'une carte, pour retoucher un chantier existant.
+ */
 export function CockpitPage() {
   const { devItemsState } = useJarvisData()
   const { session } = useAuth()
@@ -26,21 +34,11 @@ export function CockpitPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted-foreground">
-          Chantiers de développement de Jarvis lui-même.
-        </p>
-        <DevItemFormDialog
-          themes={themesDe(devItems)}
-          onSubmit={addDevItem}
-          trigger={
-            <Button size="sm">
-              <Plus className="size-4" />
-              Chantier
-            </Button>
-          }
-        />
-      </div>
+      <EnvoyerAClaudeCode
+        devItems={devItems}
+        themes={themesDe(devItems)}
+        onSend={addDevItem}
+      />
 
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>
