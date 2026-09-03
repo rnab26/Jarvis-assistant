@@ -144,6 +144,29 @@ scripts/sql.sh "insert into dev_log (user_id, item_id, author, kind, body) selec
 (le `select ... from dev_items limit 1` évite d'avoir à connaître le `user_id`
 en dur ; mets l'id du chantier concerné à la place du `null` s'il y en a un)
 
+**Piège, vérifié à ses dépens le 3 sept. 2026 :** ce `limit 1` porte sur le
+résultat entier, pas sur le `user_id`. Il ne convient donc QU'À une insertion
+d'une seule ligne. Pour en insérer plusieurs d'un coup — `insert … select …
+from (values …)` — il ne laisse passer que la première, **sans aucune erreur** :
+on croit avoir créé six chantiers, il y en a un. Écris alors le `user_id` en
+sous-requête scalaire, et pas de `limit` du tout :
+
+```sql
+insert into dev_items (user_id, title, notes, status, priority, theme)
+select (select user_id from dev_items limit 1), v.title, v.notes, 'todo', v.priority, v.theme
+from (values ('Titre A', 'Notes A', 'normal', 'Thème'),
+             ('Titre B', 'Notes B', 'high',   'Thème')) as v(title, notes, priority, theme);
+```
+
+Et relis toujours ce que tu viens d'écrire dans un appel séparé : `exec_sql`
+ne renvoie pas le nombre de lignes touchées.
+
+Autre facilité pour du texte long : `scripts/sql.sh` lit aussi son SQL sur
+l'entrée standard (`scripts/sql.sh < requete.sql`). Une note de chantier avec
+des apostrophes, des guillemets et des retours à la ligne passe ainsi sans
+bataille d'échappement — et les délimiteurs `$n$ … $n$` de Postgres évitent
+d'avoir à doubler les apostrophes.
+
 `kind` vaut `question`, `reponse`, `info` ou `blocage`. Renseigne `answered_at`
 quand tu réponds à une question. Le journal est visible dans l'app, en bas du
 cockpit : Raphaël y écrit aussi ses consignes, **lis-le en début de session**
