@@ -23,6 +23,7 @@ export const CLES_REGLAGES = [
   "jarvis_voice_index",
   "jarvis_voice_rate",
   "jarvis_voice_pitch",
+  "jarvis_voice_muted",
   "jarvis_dialogue_pause_ms",
   "jarvis_dialogue_suite_ms",
   "jarvis_core_image",
