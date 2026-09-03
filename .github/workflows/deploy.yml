@@ -24,11 +24,16 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - name: Calculer la version
+        id: version
+        run: echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_COMMIT_SHA: ${{ github.sha }}
+          VITE_BUILD_DATE: ${{ steps.version.outputs.built_at }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

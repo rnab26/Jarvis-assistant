@@ -2,13 +2,13 @@ name: Build Android APK
 
 on:
   push:
+    # Pas de filtre "paths" volontairement : un APK est produit à CHAQUE
+    # push sur la branche. Avec un filtre, un commit qui ne touchait pas
+    # src/ ne reconstruisait pas l'APK, donc l'indicateur de version de
+    # l'app (qui compare au dernier commit de la branche) annonçait une
+    # "nouvelle version" qui n'existait pas — Raphaël retéléchargeait
+    # exactement le même APK et ne voyait aucun changement.
     branches: [claude/new-session-rn6puh]
-    paths:
-      - "android/**"
-      - "capacitor.config.ts"
-      - "src/**"
-      - "package.json"
-      - ".github/workflows/android-build.yml"
   workflow_dispatch:
 
 permissions:
@@ -27,11 +27,27 @@ jobs:
 
       - run: npm ci
 
+      # Identité de version : versionCode strictement croissant (numéro de
+      # run), versionName lisible. Sans ça, toutes les APK annonçaient
+      # "1.0 (1)" et rien ne permettait de savoir laquelle était installée.
+      - name: Calculer la version
+        id: version
+        run: |
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          DATE=$(date -u +%Y.%m.%d)
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "name=${DATE}-b${{ github.run_number }}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
           VITE_COMMIT_SHA: ${{ github.sha }}
+          VITE_BUILD_NUMBER: ${{ steps.version.outputs.code }}
+          VITE_BUILD_VERSION: ${{ steps.version.outputs.name }}
+          VITE_BUILD_DATE: ${{ steps.version.outputs.built_at }}
 
       - run: npx cap sync android
 
@@ -45,6 +61,9 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
+        env:
+          ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+          ANDROID_VERSION_NAME: ${{ steps.version.outputs.name }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -56,13 +75,24 @@ jobs:
       # "latest-debug", toujours réécrite) : lien de téléchargement direct
       # et stable pour le menu Paramètres de l'app, sans avoir à naviguer
       # dans l'onglet Actions à chaque fois.
+      #
+      # Le corps de la release contient le commit et la version SOUS FORME
+      # LISIBLE PAR MACHINE ("commit: <sha>") : c'est ce que l'app lit pour
+      # savoir si l'APK réellement publié est plus récent que celle qui
+      # tourne. Comparer au dernier commit de la branche mentait dès qu'un
+      # build échouait ou qu'un commit ne produisait pas d'APK.
       - name: Publier l'APK en téléchargement direct
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-debug
-          name: Dernière build (debug)
-          body: >
-            APK debug généré automatiquement depuis le dernier commit de
-            claude/new-session-rn6puh. Lien stable, toujours à jour.
+          name: Build ${{ steps.version.outputs.code }} — ${{ steps.version.outputs.short_sha }}
+          body: |
+            APK debug construite automatiquement depuis claude/new-session-rn6puh.
+            Lien stable, toujours à jour.
+
+            version: ${{ steps.version.outputs.name }}
+            build: ${{ steps.version.outputs.code }}
+            commit: ${{ github.sha }}
+            date: ${{ steps.version.outputs.built_at }}
           prerelease: true
           files: android/app/build/outputs/apk/debug/app-debug.apk
