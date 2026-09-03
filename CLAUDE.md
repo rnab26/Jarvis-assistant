@@ -433,6 +433,34 @@ endroit à tenir à jour.
 Règle de résolution : à la connexion, la base gagne ; ensuite toute
 modification locale y est poussée dans la seconde.
 
+### Et une préférence se règle depuis Paramètres, pas depuis le code
+
+Consigne de Raphaël, 3 sept. 2026 : **toute fonctionnalité qui introduit une
+préférence livre son réglage avec elle, dans le même travail.** Il ne veut pas
+avoir à demander qu'on code chaque activation ou changement de préférence.
+C'est une règle permanente, pas un chantier à finir : elle s'applique à chaque
+nouvelle fonctionnalité, indéfiniment. Le chantier « Ajouter dans les réglages
+tous les paramètres nécessaires » reste ouvert exprès, comme rappel.
+
+Deux exigences distinctes, et il faut les deux :
+
+1. La clé est déclarée dans `CLES_REGLAGES` — sinon elle est perdue à la
+   prochaine réinstallation (ci-dessus).
+2. Un **contrôle existe dans Paramètres** — sinon la préférence est invisible
+   et figée sur la valeur posée au départ.
+
+Le cas qui a fait écrire cette règle : les trois applications par défaut
+(musique, itinéraires, canal des messages) étaient bien déclarées et
+synchronisées, donc conformes au point 1 — mais fixées une seule fois par une
+question orale, sans aucun contrôle. Impossible de savoir ce que Jarvis avait
+retenu, impossible d'en changer sans toucher au code. Conforme à la moitié de
+la règle, inutilisable en pratique. Réparé par la carte « Tes applications par
+défaut » (`src/components/settings/AppsParDefaut.tsx`).
+
+Une préférence qu'un seul chemin permet de poser — une question orale, une
+détection automatique, une valeur par défaut — se règle **aussi** depuis
+Paramètres. Au minimum : la voir, et pouvoir l'effacer.
+
 ## Stack
 
 React + Vite + TypeScript + Tailwind + shadcn/ui, Supabase (Auth + Postgres
