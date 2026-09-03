@@ -108,6 +108,20 @@ const STATUS_LABEL: Record<DevStatus, string> = {
   done: "terminé",
 }
 
+const PRIORITY_LABEL: Record<DevPriority, string> = {
+  low: "priorité basse",
+  normal: "priorité normale",
+  high: "priorité haute",
+}
+
+/** Une modification sans aucun champ passerait en base sans rien changer, et
+ * Jarvis annoncerait quand même "mis à jour" — c'est ce silence qui faisait
+ * croire que la commande de priorité à l'oral n'était pas prise en compte.
+ * On ne prétend plus avoir fait ce qu'on n'a pas fait. */
+function riensAModifier(changes: object | undefined | null): boolean {
+  return !changes || Object.keys(changes).length === 0
+}
+
 /** Exécute une VoiceAction résolue par la Edge Function et renvoie la phrase à énoncer. */
 export async function executeVoiceAction(
   action: VoiceAction,
@@ -146,8 +160,11 @@ export async function executeVoiceAction(
 
     case "update_task": {
       const task = tasks.find((t) => t.id === action.task_id)
-      await updateTask(action.task_id, action.changes)
       const label = task?.title ?? "la tâche"
+      if (riensAModifier(action.changes)) {
+        return `Je n'ai pas compris ce qu'il faut changer sur "${label}". Redis-moi ce que je modifie.`
+      }
+      await updateTask(action.task_id, action.changes)
       if (action.changes.status === "done") return `"${label}" marquée comme faite.`
       return `"${label}" mise à jour.`
     }
@@ -179,11 +196,18 @@ export async function executeVoiceAction(
 
     case "update_dev_item": {
       const item = devItems.find((i) => i.id === action.item_id)
-      await updateDevItem(action.item_id, action.changes)
       const label = item?.title ?? "le chantier"
-      if (action.changes.status) {
-        return `"${label}" passé en ${STATUS_LABEL[action.changes.status]}.`
+      if (riensAModifier(action.changes)) {
+        return `Je n'ai pas compris ce qu'il faut changer sur "${label}". Redis-moi ce que je modifie.`
       }
+      await updateDevItem(action.item_id, action.changes)
+      // La confirmation nomme ce qui a vraiment changé : sans ça, un
+      // "mis à jour" générique ne permet pas de savoir si la priorité
+      // demandée a été prise en compte.
+      const dits: string[] = []
+      if (action.changes.status) dits.push(STATUS_LABEL[action.changes.status])
+      if (action.changes.priority) dits.push(PRIORITY_LABEL[action.changes.priority])
+      if (dits.length > 0) return `"${label}" passé en ${dits.join(", ")}.`
       return `"${label}" mis à jour.`
     }
 
@@ -239,8 +263,12 @@ export async function executeVoiceAction(
 
     case "update_contact": {
       const contact = contacts.find((c) => c.id === action.contact_id)
+      const nom = contact?.name ?? "inconnu"
+      if (riensAModifier(action.changes)) {
+        return `Je n'ai pas compris ce qu'il faut changer sur "${nom}". Redis-moi ce que je modifie.`
+      }
       await updateContact(action.contact_id, action.changes)
-      return `Contact "${contact?.name ?? "inconnu"}" mis à jour.`
+      return `Contact "${nom}" mis à jour.`
     }
 
     case "delete_contact": {

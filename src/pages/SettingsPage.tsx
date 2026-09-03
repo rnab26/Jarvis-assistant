@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core"
-import { Download, Trash2 } from "lucide-react"
+import { Download, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,7 +25,8 @@ import {
   SUITE_MIN_MS,
 } from "@/lib/dialoguePrefs"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
-import { useUpdateCheck } from "@/hooks/useUpdateCheck"
+import { useUpdateCheck, type PublishedBuild, type UpdateStatus } from "@/hooks/useUpdateCheck"
+import { formatBuildDate, versionInstallee } from "@/lib/version"
 
 const isNative = Capacitor.isNativePlatform()
 
@@ -147,14 +148,49 @@ const UPDATE_STATUS_LABEL = {
   unknown: "Impossible de vérifier",
 } as const
 
+/** Une ligne "libellé : valeur" du bloc de version. */
+function LigneVersion({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+/** Ce que la CI a publié, en clair : "build 33 (2026.09.03-b33-c42dcc9) · 3 sept. 2026 à 07:15". */
+function libellePubliee(published: PublishedBuild | null): string {
+  if (!published) return "inconnue"
+  const morceaux: string[] = []
+  if (published.buildNumber !== null) morceaux.push(`build ${published.buildNumber}`)
+  if (published.version) morceaux.push(published.version)
+  else if (published.commit) morceaux.push(published.commit.slice(0, 7))
+  const date = formatBuildDate(published.date)
+  const base = morceaux.join(" · ") || "inconnue"
+  return date ? `${base} · ${date}` : base
+}
+
 /**
  * Un <a href> vers l'APK ouvert depuis l'app est intercepté par Capacitor
  * et lancé dans un nouveau contexte Chrome — où le téléchargement d'un
  * gros fichier binaire ne se finalise jamais de façon fiable (bug observé
- * sur device, indépendant du fix "pas de target=_blank"). Sur natif, on
- * passe donc par ApkDownloader (DownloadManager Android), un seul tap.
+ * sur device). Sur natif, on passe donc par ApkDownloader (DownloadManager
+ * Android), un seul tap.
+ *
+ * La carte affiche aussi les DEUX versions, installée et publiée : sans
+ * ça, une installation sans effet est invisible — c'est exactement ce qui
+ * a fait perdre à Raphaël une vingtaine de builds sans qu'il puisse le
+ * constater.
  */
-function MettreAJour({ status }: { status: "checking" | "up-to-date" | "update-available" | "unknown" }) {
+function MettreAJour({
+  status,
+  published,
+  recheck,
+}: {
+  status: UpdateStatus
+  published: PublishedBuild | null
+  recheck: () => void
+}) {
   const [etat, setEtat] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
   const [erreur, setErreur] = useState<string | null>(null)
 
@@ -180,11 +216,20 @@ function MettreAJour({ status }: { status: "checking" | "up-to-date" | "update-a
       <CardHeader>
         <CardTitle>Mettre à jour l'application</CardTitle>
         <CardDescription>
-          Toujours la dernière APK construite automatiquement à chaque mise à jour de Jarvis —
-          pas besoin de naviguer dans GitHub Actions.
+          {isNative
+            ? "L'app installée ne se met jamais à jour toute seule : compare les deux versions ci-dessous, et si elles diffèrent, mets à jour."
+            : "Le site est republié à chaque changement, cette page est donc toujours à jour. Le bouton télécharge l'APK Android."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-start gap-3">
+        <div className="flex w-full flex-col gap-1 rounded-lg border p-3">
+          <LigneVersion
+            label={isNative ? "Version installée" : "Version de cette page"}
+            value={versionInstallee()}
+          />
+          <LigneVersion label="Dernière APK publiée" value={libellePubliee(published)} />
+        </div>
+
         <div className="flex flex-wrap items-center gap-3">
           {isNative ? (
             <Button onClick={telecharger} disabled={etat === "telechargement"}>
@@ -199,10 +244,29 @@ function MettreAJour({ status }: { status: "checking" | "up-to-date" | "update-a
               </a>
             </Button>
           )}
-          <Badge variant={status === "update-available" ? "destructive" : "outline"}>
-            {UPDATE_STATUS_LABEL[status]}
-          </Badge>
+          {isNative && (
+            <Badge variant={status === "update-available" ? "destructive" : "outline"}>
+              {UPDATE_STATUS_LABEL[status]}
+            </Badge>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={recheck}
+            disabled={status === "checking"}
+            aria-label="Revérifier"
+          >
+            <RefreshCw className="size-4" />
+            Revérifier
+          </Button>
         </div>
+
+        {isNative && status === "update-available" && (
+          <p className="text-sm text-muted-foreground">
+            Après l'installation, reviens ici : si "Version installée" n'a pas changé, c'est que
+            l'installation n'a pas abouti.
+          </p>
+        )}
         {etat === "besoin-permission" && (
           <div className="flex flex-col gap-2 text-sm">
             <p className="text-muted-foreground">
@@ -372,7 +436,7 @@ export function SettingsPage() {
     widgetState,
     placeRemindersState,
   } = useJarvisData()
-  const { status } = useUpdateCheck()
+  const { status, published, recheck } = useUpdateCheck()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
@@ -425,7 +489,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <MettreAJour status={status} />
+      <MettreAJour status={status} published={published} recheck={recheck} />
 
       <Card>
         <CardHeader>

@@ -8,6 +8,46 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 }
 
+/**
+ * Champs qu'une action de modification attend dans "changes" — et qui
+ * existent AUSSI comme paramètres de premier niveau parce que les actions
+ * de création (add_task, add_dev_item, add_contact) les utilisent.
+ *
+ * C'est précisément ce doublon qui cassait la modification de priorité à
+ * l'oral : "monte ce chantier en priorité haute" produisait
+ * { action: "update_dev_item", item_id: "...", priority: "high" } — le
+ * champ était rempli, mais au premier niveau, donc "changes" restait vide,
+ * l'app faisait une mise à jour sans aucun champ, et Jarvis annonçait
+ * quand même "mis à jour". Le modèle est maintenant guidé par le schéma,
+ * et on replie ici ce qui atterrit au mauvais endroit : une seule source
+ * de vérité côté app, "changes".
+ */
+const CHAMPS_MODIFIABLES: Record<string, string[]> = {
+  update_task: ["title", "notes", "status", "category_id", "due_date", "due_time"],
+  update_dev_item: ["title", "notes", "status", "priority"],
+  update_contact: ["name", "notes"],
+}
+
+function normaliserAction(input: Record<string, unknown>): Record<string, unknown> {
+  const champs = CHAMPS_MODIFIABLES[String(input.action)]
+  if (!champs) return input
+
+  const changes: Record<string, unknown> = {
+    ...(typeof input.changes === "object" && input.changes !== null
+      ? (input.changes as Record<string, unknown>)
+      : {}),
+  }
+  const normalise = { ...input }
+  for (const champ of champs) {
+    if (!(champ in normalise)) continue
+    // Ce qui est déjà dans "changes" fait foi : c'est la place prévue.
+    if (!(champ in changes)) changes[champ] = normalise[champ]
+    delete normalise[champ]
+  }
+  normalise.changes = changes
+  return normalise
+}
+
 const VOICE_ACTION_TOOL = {
   name: "resolve_voice_command",
   description:
@@ -89,12 +129,12 @@ const VOICE_ACTION_TOOL = {
       priority: {
         type: "string",
         enum: ["low", "normal", "high"],
-        description: "add_dev_item uniquement : priorité du chantier, 'normal' par défaut si non précisée.",
+        description: "add_dev_item UNIQUEMENT : priorité du chantier à créer, 'normal' par défaut si non précisée. Pour MODIFIER la priorité d'un chantier existant, ne pas utiliser ce champ : mettre { \"priority\": ... } dans \"changes\" avec action=update_dev_item.",
       },
       status: {
         type: "string",
         enum: ["todo", "in_progress", "done"],
-        description: "add_dev_item uniquement : statut initial du chantier, 'todo' par défaut.",
+        description: "add_dev_item UNIQUEMENT : statut initial du chantier à créer, 'todo' par défaut. Pour MODIFIER le statut d'un chantier existant, ne pas utiliser ce champ : mettre { \"status\": ... } dans \"changes\" avec action=update_dev_item.",
       },
       task_id: {
         type: "string",
@@ -114,7 +154,17 @@ const VOICE_ACTION_TOOL = {
       },
       changes: {
         type: "object",
-        description: "Champs à modifier pour update_task (ex: { \"status\": \"done\" }), update_dev_item (ex: { \"status\": \"in_progress\" }, { \"priority\": \"high\" }) ou update_contact (ex: { \"notes\": \"...\" }, { \"name\": \"...\" }).",
+        description: "OBLIGATOIRE et NON VIDE pour update_task, update_dev_item et update_contact : les champs à modifier, et eux seuls. update_task : title, notes, status ('todo'/'done'), category_id, due_date, due_time. update_dev_item : title, notes, status ('todo'/'in_progress'/'done'), priority ('low'/'normal'/'high'). update_contact : name, notes. Exemples : { \"priority\": \"high\" } pour monter un chantier en priorité, { \"status\": \"in_progress\" } pour le passer en cours.",
+        properties: {
+          title: { type: "string" },
+          notes: { type: ["string", "null"] },
+          status: { type: "string", enum: ["todo", "in_progress", "done"] },
+          priority: { type: "string", enum: ["low", "normal", "high"] },
+          category_id: { type: ["string", "null"] },
+          due_date: { type: ["string", "null"] },
+          due_time: { type: ["string", "null"] },
+          name: { type: "string" },
+        },
       },
       filter_category_id: { type: "string", description: "list_tasks uniquement : filtre par catégorie." },
       filter_status: {
@@ -209,6 +259,7 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.
 
 Traduis la commande vocale de l'utilisateur en un appel à l'outil resolve_voice_command.
 Pour update_task/delete_task, résous task_id depuis la liste de tâches fournie (par titre approchant). Pour update_dev_item/delete_dev_item, résous item_id depuis la liste de chantiers fournie. Pour update_contact/delete_contact, résous contact_id depuis la liste de contacts fournie (par nom approchant). Pour delete_place_reminder, résous reminder_id depuis la liste de rappels de lieu fournie (par lieu approchant). Si plusieurs éléments correspondent ou qu'aucun ne correspond clairement, utilise action="clarify" avec une question précise.
+Pour update_task/update_dev_item/update_contact, tout ce qui change va dans "changes", jamais dans les champs de premier niveau : "passe ce chantier en priorité haute" donne changes={"priority":"high"}, "marque-le en cours" donne changes={"status":"in_progress"}. Ne renvoie jamais une action de modification avec un "changes" vide.
 Pour add_task/add_dev_item : si l'utilisateur dicte une phrase longue avec des détails (contexte, raison, précisions), ne mets pas toute la phrase dans "title" — synthétise un titre court (quelques mots) et reformule le reste dans "notes". Si la phrase est déjà courte et ne contient rien de plus que le titre, laisse "notes" à null.
 Pour add_task : si l'utilisateur précise une heure ("à 14h", "ce midi", "à 9h30 demain"), déduis-la dans "due_time" (HH:MM) en plus de "due_date" — jamais d'heure sans date. Sans heure précisée, laisse "due_time" à null.
 Pour save_document : synthétise un nom de fichier court dans "filename", et reformule proprement tout ce que l'utilisateur a dicté comme contenu dans "content".
@@ -269,7 +320,7 @@ Réponds toujours en français dans le champ message.${await rappelerSouvenirs(s
     if (runtime.EdgeRuntime?.waitUntil) runtime.EdgeRuntime.waitUntil(rangement)
     else await rangement
 
-    return new Response(JSON.stringify({ action: toolUse.input }), {
+    return new Response(JSON.stringify({ action: normaliserAction(toolUse.input ?? {}) }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     })
   } catch (err) {
