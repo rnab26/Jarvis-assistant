@@ -3,6 +3,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { MicButton } from "@/components/voice/MicButton"
 import { JarvisDataProvider, useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
+import { useShareReceiver } from "@/hooks/useShareReceiver"
 
 function ShellContent() {
   const {
@@ -15,6 +16,8 @@ function ShellContent() {
     voiceState,
     widgetState,
   } = useJarvisData()
+
+  useShareReceiver(documentsState.saveTextDocument)
 
   return (
     <DashboardLayout>
