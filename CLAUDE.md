@@ -275,7 +275,7 @@ utilisateur de test éphémère créé puis supprimé. La clé publique se récu
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 
-## Les huit vérifications du dépôt
+## Les neuf vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
@@ -288,6 +288,7 @@ node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
+ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
@@ -305,6 +306,29 @@ Le script suit vraiment l'URL produite par `/start` et vérifie que Google
 l'accepte — un contrôle sur le seul contenu de l'URL ne l'aurait pas vu.
 **À relancer après tout déploiement de `google-oauth`**, avant de dire à
 Raphaël d'essayer : c'est lui qui se prend l'erreur sinon.
+
+## Gmail : Jarvis prépare, Raphaël valide, et seulement ensuite ça part
+
+Un e-mail part vers l'extérieur **en son nom**. La Edge Function `google-gmail`
+sépare donc `preparer` (qui rend le brouillon, sans rien envoyer) et `envoyer`
+(qui exige `confirme: true`). Le garde-fou est placé **avant** la lecture du
+jeton Google, pour qu'un envoi non confirmé soit refusé sans qu'on ait seulement
+approché Gmail — et pour rester vérifiable sans compte branché.
+
+**Ne refonds jamais ces deux actions en une, et ne pose jamais `confirme: true`
+par défaut côté app.** Ce drapeau atteste d'une validation que Raphaël a
+réellement dite. `scripts/verifier-gmail.mjs` le vérifie sur la fonction
+déployée : si ce contrôle vire au rouge, un e-mail peut partir sans son accord.
+
+Le reste des actions : `list` (syntaxe de recherche Gmail), `read` (corps
+lisible, citations du fil retirées, pièces jointes listées, marqué lu),
+`piece_jointe` (récupère un document reçu, plafonné à 8 Mo). L'encodage MIME
+vit dans `google-gmail/message.ts`, sans dépendance Deno pour être testable
+sous Node — ses erreurs sont silencieuses (objet accentué en charabia, réponse
+qui crée un fil neuf faute d'`In-Reply-To`), d'où les contrôles hors ligne.
+
+La portée `gmail.modify` couvre la lecture, l'envoi et les pièces jointes :
+aucune portée supplémentaire à demander à Raphaël.
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
