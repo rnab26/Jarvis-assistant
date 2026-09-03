@@ -96,7 +96,7 @@ répliques. La décision est prise par `src/lib/dialogueTour.ts`, à partir d'un
 silence mesuré par l'app et réglable dans Paramètres → Rythme de la
 discussion.
 
-Trois vérifications, à relancer après toute retouche du micro — c'est la
+Quatre vérifications, à relancer après toute retouche du micro — c'est la
 méthode canonique du projet, à préférer à un essai à l'oreille :
 
 - `node --experimental-strip-types scripts/verifier-dialogue.ts` — la logique
@@ -106,6 +106,10 @@ méthode canonique du projet, à préférer à un essai à l'oreille :
   reconnaissance du réveil « Jarvis » : les transcriptions fautives qui doivent
   quand même réveiller, et les phrases ordinaires qui ne doivent surtout pas
   déclencher. Instantané.
+- `node --experimental-strip-types scripts/verifier-commande-locale.ts` — les
+  commandes comprises **sur l'appareil**, sans appeler de modèle : ce qu'il
+  doit reconnaître seul, et ce qu'il doit laisser passer au serveur plutôt que
+  de deviner. Instantané.
 - `node scripts/verifier-ecoute-web.mjs` — le moteur complet dans un vrai
   navigateur, avec un faux moteur de reconnaissance piloté au millième de
   seconde (démarre Vite et le banc d'essai `scripts/harness/` tout seul).

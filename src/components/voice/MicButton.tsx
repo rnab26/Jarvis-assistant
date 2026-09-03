@@ -7,6 +7,7 @@ import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
 import { chercherMotCle } from "@/lib/motCle"
+import { interpreterLocalement } from "@/lib/commandeLocale"
 import { withTimeout } from "@/lib/withTimeout"
 import {
   executeVoiceAction,
@@ -50,6 +51,39 @@ function extrait(notes: string | null) {
   return propre.length > 180 ? `${propre.slice(0, 180)}…` : propre
 }
 
+/**
+ * Ce que Jarvis doit DIRE quand le serveur vocal refuse.
+ *
+ * supabase-js ne rend qu'un « non-2xx status code » ; le vrai motif est dans
+ * le corps de la réponse. Et le motif le plus probable aujourd'hui — le
+ * crédit du fournisseur d'IA épuisé — mérite une phrase que Raphaël puisse
+ * comprendre à l'oreille, pas un extrait de JSON lu à voix haute. Elle dit
+ * aussi ce qui marche encore : les commandes courantes ne passent plus par
+ * là du tout.
+ */
+async function messageServeurVocal(erreur: unknown): Promise<string> {
+  const contexte = (erreur as { context?: Response } | null)?.context
+  let details = ""
+  if (contexte && typeof contexte.json === "function") {
+    try {
+      const corps = await contexte.json()
+      details = String(corps?.error ?? corps?.message ?? "")
+    } catch {
+      // Réponse sans JSON : on s'en tient au message générique.
+    }
+  }
+
+  if (/credit balance|insufficient|quota|billing/i.test(details)) {
+    return "Je n'ai pas compris cette demande, et je ne peux pas la faire analyser : le crédit du service d'IA est épuisé. Les commandes habituelles continuent de marcher."
+  }
+  if (/ANTHROPIC_API_KEY|non configur/i.test(details)) {
+    return "Le service d'interprétation n'est pas configuré côté serveur. Les commandes habituelles continuent de marcher."
+  }
+  if (details) return `Le serveur vocal a répondu : ${details}`
+  const message = (erreur as { message?: string } | null)?.message
+  return message ?? "Réponse vide du serveur vocal."
+}
+
 function normalizeText(text: string) {
   return text
     .toLowerCase()
@@ -88,6 +122,32 @@ export function MicButton({
    * l'autre comme faite") : elles reviennent dans l'ordre dicté.
    */
   async function resolveTranscript(transcript: string): Promise<VoiceAction[]> {
+    // D'ABORD SUR L'APPAREIL, ET SANS RIEN DEMANDER À PERSONNE.
+    //
+    // « Ce n'est pas vraiment de l'IA, c'est plus un assistant qui va faire
+    // des commandes » — Raphaël, 3 sept. 2026, et il a raison : « ajoute une
+    // tâche pour le plombier » n'a besoin d'aucun modèle de langage. Les
+    // formulations qu'il emploie sont en nombre fini, src/lib/commandeLocale
+    // les reconnaît sur place. C'est gratuit, instantané, ça marche hors
+    // ligne, et ça ne s'arrête pas quand un crédit s'épuise.
+    //
+    // Ce que les règles ne reconnaissent pas continue vers le serveur : le
+    // module rend la main plutôt que de deviner.
+    const local = interpreterLocalement(transcript, {
+      taches: tasksApi.tasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        notes: t.notes,
+        status: t.status,
+      })),
+      chantiers: devItemsApi.devItems.map((i) => ({
+        id: i.id,
+        title: i.title,
+        notes: i.notes,
+      })),
+    })
+    if (local) return local
+
     // Borné dans le temps, comme tout le reste des appels du projet :
     // supabase-js ne rejette JAMAIS sur coupure réseau, il retente et laisse
     // la promesse en attente. Sans cette borne, une commande partie de
@@ -140,7 +200,7 @@ export function MicButton({
     )
 
     if (error || !data) {
-      throw new Error(error?.message ?? "Réponse vide du serveur vocal.")
+      throw new Error(await messageServeurVocal(error))
     }
     return data.actions?.length ? data.actions : [data.action]
   }
