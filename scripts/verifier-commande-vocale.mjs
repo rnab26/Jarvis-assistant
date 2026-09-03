@@ -26,7 +26,7 @@ const URL_PROJET = "https://bexiyvmdbxcwxasgslxp.supabase.co"
 const ANON = process.env.ANON_KEY
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
 const FONCTION = process.env.FONCTION ?? "voice-command"
-const PAUSE_MS = Number(process.env.PAUSE_MS ?? 0)
+const PAUSE_MS = Number(process.env.PAUSE_MS ?? 4000)
 
 if (!ANON || !SERVICE) {
   console.error("Il manque ANON_KEY et/ou SUPABASE_SERVICE_ROLE_KEY (voir l'en-tête du fichier).")
@@ -402,22 +402,12 @@ cas.push(
   },
 )
 
-// L'offre gratuite de Gemini compte les requêtes À LA MINUTE (cinq pour
+// L'offre gratuite compte les requêtes À LA MINUTE (cinq pour
 // gemini-3.5-flash, mesuré le 3 sept.). Envoyer les vingt-cinq cas en rafale
-// sature le quota et fait échouer la vérification pour une raison qui n'a
-// rien à voir avec le code. On respire entre deux cas ; PAUSE_MS=0 pour
-// retrouver l'ancien comportement quand le modèle n'a pas cette limite.
-const PAUSE_MS = Number(process.env.PAUSE_MS ?? 4000)
-const respirer = (ms) => new Promise((r) => setTimeout(r, ms))
-
-let premier = true
+// sature le quota et fait échouer la vérification pour une raison étrangère
+// au code : d'où la pause entre deux cas, réglable par PAUSE_MS.
 for (const c of cas) {
-<<<<<<< HEAD
-  if (!premier && PAUSE_MS > 0) await respirer(PAUSE_MS)
-  premier = false
-=======
   if (PAUSE_MS) await new Promise((r) => setTimeout(r, PAUSE_MS))
->>>>>>> 9905691194dd9f685e9f7a5353de1d85d52bb3fa
   c.avant?.()
   const r = await demander(c.phrase)
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }
