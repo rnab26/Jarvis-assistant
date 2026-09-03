@@ -117,16 +117,60 @@ doitDonner("prends un rendez-vous demain à 9h30 chez le dentiste", {
   event_debut: "2026-09-04T09:30:00",
 })
 
+console.log("\n— Ses tournures réelles, relevées dans la table `echanges` —")
+
+// Ces phrases ne sont pas inventées : ce sont celles que Raphaël a réellement
+// dictées, telles que la table les a enregistrées. Elles disent deux choses
+// qu'aucune supposition n'aurait données : il dit « rajoute », pas « ajoute »,
+// et ses demandes sont longues et descriptives.
+doitDonner("Jarvis rajoute un chantier pour un problème de micro", {
+  action: "add_dev_item",
+  title: "Un probleme de micro",
+})
+doitDonner(
+  "rajoute un chantier pour un problème de micro à chaque fois qu'on termine une phrase il faut que je réappuie sur le bouton",
+  {
+    action: "add_dev_item",
+    title: "Un probleme de micro a chaque fois",
+  },
+)
+doitDonner("rajoute une tâche : vérifier le devis de la boutique", {
+  action: "add_task",
+  title: "Verifier le devis de la boutique",
+})
+doitDonner("dans les tâches de développement ajoute un chantier à traiter en priorité", {
+  action: "add_dev_item",
+})
+doitDonner("mets le chantier micro en priorité haute", {
+  action: "update_dev_item",
+  item_id: "c-micro",
+})
+doitDonner("modifie la priorité du chantier micro en très élevé", {
+  action: "update_dev_item",
+  item_id: "c-micro",
+})
+doitDonner("archive le chantier micro", { action: "archive_dev_item", item_id: "c-micro" })
+
+// La note garde tout ce qu'il a dit — c'est ce qui rend acceptable un titre
+// tronqué : rien n'est perdu, seul le titre est à retoucher.
+{
+  const longue =
+    "rajoute une tâche comme quoi le micro doit avoir la capacité d'être en écoute constante à chaque fois il se coupe"
+  const actions = interpreterLocalement(longue, CTX)
+  const a = actions?.[0] as unknown as Record<string, unknown> | undefined
+  verifier(
+    "une dictée longue garde tout son contenu dans la note",
+    typeof a?.notes === "string" && (a.notes as string).includes("ecoute constante"),
+    `notes = ${JSON.stringify(a?.notes)}`,
+  )
+}
+
 console.log("\n— Ce qu'il doit laisser au serveur, plutôt que de deviner —")
 
 doitLaisserPasser("c'est quoi la capitale de l'Australie", "question de culture générale")
 doitLaisserPasser(
   "note que Dylan est le client de Melissa et qu'il faut toujours le rappeler avant midi",
   "une information sur quelqu'un, pas une tâche",
-)
-doitLaisserPasser(
-  "ajoute une tâche pour rappeler le carreleur au sujet du devis de la villa Dan qu'il devait renvoyer avant la fin de la semaine dernière",
-  "phrase longue : le découpage titre/notes demande un modèle",
 )
 doitLaisserPasser("marque le truc bidule comme fait", "aucune tâche ne correspond")
 doitLaisserPasser("ajoute un rendez-vous avec Yoni", "un rendez-vous sans date n'a pas de sens")
