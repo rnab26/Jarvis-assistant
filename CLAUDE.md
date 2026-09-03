@@ -202,7 +202,7 @@ utilisateur de test éphémère créé puis supprimé. La clé publique se récu
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 
-## Les quatre vérifications du dépôt
+## Les cinq vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
@@ -210,6 +210,7 @@ Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 ANON_KEY=... node scripts/verifier-commande-vocale.mjs   # la Edge Function déployée
 ANON_KEY=... node scripts/verifier-donnees.mjs           # temps réel + réglages, RLS comprise
 node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole, sans réseau
+node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
 ```
 

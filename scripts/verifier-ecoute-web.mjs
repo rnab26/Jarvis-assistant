@@ -171,6 +171,35 @@ try {
     1,
   )
   verifier("appui sur le cœur : sans attendre le délai de silence", Date.now() - avant < 1500, true)
+  // --- Le mot-clé coupe la rafale au vol ----------------------------------
+  // Le réveil vocal ratait parce qu'il fallait attendre un résultat FINAL
+  // d'Android pour savoir si « Jarvis » avait été dit. Ici le mot arrive dans
+  // un résultat PARTIEL, au milieu d'une phrase : le tour doit se clore tout
+  // de suite, sans attendre le silence.
+  await page.evaluate("window.__sr.starts = 0")
+  await page.evaluate("window.lancerMotCle()")
+  await page.waitForFunction("window.__sr.starts >= 1")
+  const avantMotCle = Date.now()
+  await page.evaluate("window.__derniere().dire('eh jarvice tu m entends', false)")
+  await page
+    .waitForFunction("document.querySelector('#resultat').textContent !== ''", null, {
+      timeout: 2000,
+    })
+    .catch(() => {
+      echecs++
+      console.log("ÉCHEC le mot-clé n'a pas clos la rafale")
+    })
+  verifier(
+    "mot-clé reconnu dans un résultat partiel, malgré la transcription fautive",
+    (await resultat()).startsWith("OK:"),
+    true,
+  )
+  verifier(
+    "mot-clé : la rafale se coupe sans attendre le silence",
+    Date.now() - avantMotCle < 1500,
+    true,
+  )
+
   // --- Un moteur qui refuse de démarrer ne doit pas figer le micro --------
   // Régression réellement rencontrée : la phrase était entendue, le tour ne
   // se terminait jamais, et Jarvis restait sur « Préparation du micro… »
