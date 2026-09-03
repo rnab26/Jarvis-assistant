@@ -67,6 +67,30 @@ function resumer(m: {
   }
 }
 
+/** Les mots qui désignent un reçu, dans les deux langues qu'il reçoit.
+ * Gmail ignore les accents dans la recherche, « recu » couvre donc « reçu ». */
+const MOTS_RECU = ["facture", "recu", "receipt", "invoice", "ticket", "justificatif"]
+
+/** Un reçu est un PDF ou une image scannée ; une signature en PNG de 3 ko et
+ * un calendrier .ics n'en sont pas, et pollueraient chaque résultat. */
+function estDocument(type: string | null, nom: string): boolean {
+  const t = (type ?? "").toLowerCase()
+  if (t === "application/pdf" || t.startsWith("image/")) return true
+  return /\.(pdf|jpe?g|png|heic|webp)$/i.test(nom)
+}
+
+/** Le cas de sa station essence : « ils m'envoient un SMS avec la facture
+ * dans le lien ». Par mail c'est pareil — le reçu est au bout d'un lien, pas
+ * en pièce jointe. On ne suit aucun lien ici, on les rend seulement. */
+function liensDocuments(texte: string): string[] {
+  const liens = texte.match(/https?:\/\/[^\s<>"')\]]+/g) ?? []
+  const interessants = liens.filter((l) =>
+    /facture|recu|re\u00e7u|receipt|invoice|ticket|justificatif|document|pdf|download|telecharger/i.test(l),
+  )
+  // Dédoublonné : un mail met souvent le même lien dans le texte et le bouton.
+  return [...new Set(interessants)].slice(0, 5)
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders })
 
@@ -146,6 +170,62 @@ Deno.serve(async (req: Request) => {
         }),
       )
       return json({ messages: messages.filter(Boolean) })
+    }
+
+    // ── Chercher ses reçus et ses factures ──
+    //
+    // Sa demande, mot pour mot : « qu il sache chercher des reçus si je lui
+    // demande ». Une recherche Gmail nue ne suffit pas : « facture » sort
+    // aussi les relances et les publicités, et le mot exact varie d un
+    // fournisseur à l autre. D où cette requête composée, et le repli sur les
+    // pièces jointes — un reçu voyage presque toujours en PDF ou en image.
+    if (action === "recus") {
+      const jours = Math.min(Math.max(Number(corps.depuis_jours ?? 30), 1), 365)
+      // `recherche` restreint la recherche à un fournisseur précis (« station
+      // essence », « Bezeq ») sans avoir à réécrire toute la requête.
+      const precision = corps.recherche ? ` (${String(corps.recherche)})` : ""
+      const requete =
+        `newer_than:${jours}d${precision} ` +
+        `(${MOTS_RECU.join(" OR ")} OR has:attachment) ` +
+        // Ses propres envois et les fils promotionnels ne sont jamais des
+        // reçus à transmettre.
+        `-in:sent -in:chats -category:promotions`
+
+      const params = new URLSearchParams({
+        q: requete,
+        maxResults: String(Math.min(Number(corps.limite ?? 10), 25)),
+      })
+      const reponse = await fetch(`${API}/messages?${params}`, { headers: entetes })
+      const donnees = await reponse.json()
+      if (!reponse.ok) return json({ error: "google", details: donnees }, 502)
+
+      // On descend en « full » ici, contrairement à `list` : sans le corps du
+      // message, on ne saurait pas quelles pièces jointes il porte, et c est
+      // justement le document qui l intéresse.
+      const trouves = await Promise.all(
+        (donnees.messages ?? []).map(async (m: { id: string }) => {
+          const r = await fetch(`${API}/messages/${m.id}?format=full`, { headers: entetes })
+          if (!r.ok) return null
+          const message = await r.json()
+          const { corps: texte, pieces_jointes } = extraireContenu(message.payload)
+          return {
+            ...resumer(message),
+            // Un reçu est soit un document joint, soit un lien vers un
+            // document — le cas de sa station essence. On rend les deux, et
+            // c est l app qui décide quoi en faire.
+            pieces_jointes: pieces_jointes.filter((p) => estDocument(p.type, p.nom)),
+            liens: liensDocuments(texte),
+          }
+        }),
+      )
+
+      // Un message sans document ni lien n est pas un reçu exploitable : le
+      // garder ferait dire à Jarvis « j en ai trouvé douze » pour rien.
+      const recus = trouves.filter(
+        (m): m is NonNullable<typeof m> =>
+          !!m && (m.pieces_jointes.length > 0 || m.liens.length > 0),
+      )
+      return json({ recus })
     }
 
     // ── Lire un message en entier, pour que Jarvis le lise à voix haute ──

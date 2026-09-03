@@ -270,6 +270,51 @@ if (!compte) {
       )
     }
   }
+
+  // La recherche de reçus, sur ses vrais messages. Une requête Gmail se teste
+  // sur une vraie boîte ou pas du tout : sur un jeu d'essai, n'importe quelle
+  // requête « marche ».
+  const MOTS_RECU = ["facture", "recu", "receipt", "invoice", "ticket", "justificatif"]
+  const requete =
+    `newer_than:90d (${MOTS_RECU.join(" OR ")} OR has:attachment)` +
+    " -in:sent -in:chats -category:promotions"
+  const rRecus = await fetch(
+    `${API}/messages?${new URLSearchParams({ q: requete, maxResults: "10" })}`,
+    { headers: entetes },
+  )
+  const dRecus = rRecus.ok ? await rRecus.json() : {}
+  verifier(
+    "la requête « reçus » est acceptée par Gmail",
+    rRecus.ok,
+    `Gmail répond ${rRecus.status} — la syntaxe de recherche est refusée`,
+  )
+
+  // Trouver des messages ne suffit pas : ce qui compte est qu'il en reste
+  // après le filtre « porte vraiment un document », sinon Jarvis annoncerait
+  // des reçus qui n'en sont pas.
+  let exploitables = 0
+  for (const m of (dRecus.messages ?? []).slice(0, 8)) {
+    const rr = await fetch(`${API}/messages/${m.id}?format=full`, { headers: entetes })
+    if (!rr.ok) continue
+    const msg = await rr.json()
+    const { corps: texte, pieces_jointes: pj } = extraireContenu(msg.payload)
+    const docs = pj.filter((x) => {
+      const t = (x.type ?? "").toLowerCase()
+      return t === "application/pdf" || t.startsWith("image/") ||
+        /\.(pdf|jpe?g|png|heic|webp)$/i.test(x.nom)
+    })
+    const liens = (texte.match(/https?:\/\/[^\s<>"')\]]+/g) ?? []).filter((l) =>
+      /facture|recu|re\u00e7u|receipt|invoice|ticket|justificatif|document|pdf|download|telecharger/i.test(l),
+    )
+    if (docs.length || liens.length) exploitables++
+  }
+  verifier(
+    "et elle remonte des reçus réellement exploitables",
+    exploitables > 0,
+    `${(dRecus.messages ?? []).length} message(s) trouvés, mais aucun ne porte de document ` +
+      "ni de lien de facture — la requête ou le filtre est à revoir",
+  )
+  console.log(`      (${exploitables} reçu(s) exploitable(s) sur 90 jours)`)
 }
 
 // ──────────── 3. Le garde-fou d'envoi, sur la fonction DÉPLOYÉE ──────────

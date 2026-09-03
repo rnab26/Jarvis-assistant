@@ -260,6 +260,50 @@ cas.push(
       return [true]
     },
   },
+  {
+    nom: "gmail : consulter ce qu'il a reçu",
+    phrase: "Qu'est-ce que j'ai reçu comme mails aujourd'hui ?",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (!types.includes("list_emails")) return [false, `actions : ${JSON.stringify(types)}`]
+      return [true]
+    },
+  },
+  {
+    nom: "gmail : se faire lire un message",
+    phrase: "Lis-moi le mail de Yoni.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "read_email")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/yoni/i.test(a.mail_cible ?? "")) return [false, `mail_cible = ${a.mail_cible}`]
+      return [true]
+    },
+  },
+  {
+    // LE contrôle qui compte : une réponse dictée se PRÉPARE. Si send_email
+    // apparaît ici, un e-mail peut partir au nom de Raphaël sans qu'il ait
+    // relu quoi que ce soit. Le serveur le refuserait (confirme:true absent),
+    // mais Jarvis lui annoncerait un envoi qui n'a pas eu lieu.
+    nom: "gmail : une réponse dictée est préparée, JAMAIS envoyée dans le même tour",
+    phrase: "Réponds au mail de Yoni que je passe sur le chantier demain matin vers neuf heures.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.includes("send_email")) return [false, `ENVOI DIRECT, garde-fou franchi : ${JSON.stringify(types)}`]
+      const a = (r.actions ?? []).find((x) => x.action === "prepare_email_reply")
+      if (!a) return [false, `aucune préparation : ${JSON.stringify(types)}`]
+      if (!a.mail_texte) return [false, "mail_texte vide : rien à lui relire"]
+      return [true]
+    },
+  },
+  {
+    nom: "gmail : retrouver ses reçus",
+    phrase: "Retrouve-moi les factures que j'ai reçues ce mois-ci.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (!types.includes("find_receipts")) return [false, `actions : ${JSON.stringify(types)}`]
+      return [true]
+    },
+  },
 )
 
 cas.push({
@@ -413,6 +457,50 @@ cas.push(
         ["call_contact", "send_message", "open_app", "navigate_to", "set_alarm"].includes(t))
       if (debordements.length > 0) return [false, `a déclenché ${debordements.join(", ")} au lieu de noter une tâche`]
       if (!types.includes("add_task")) return [false, `aucune tâche créée : ${types}`]
+      return [true]
+    },
+  },
+  {
+    nom: "gmail : consulter ce qu'il a reçu",
+    phrase: "Qu'est-ce que j'ai reçu comme mails aujourd'hui ?",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (!types.includes("list_emails")) return [false, `actions : ${JSON.stringify(types)}`]
+      return [true]
+    },
+  },
+  {
+    nom: "gmail : se faire lire un message",
+    phrase: "Lis-moi le mail de Yoni.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "read_email")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/yoni/i.test(a.mail_cible ?? "")) return [false, `mail_cible = ${a.mail_cible}`]
+      return [true]
+    },
+  },
+  {
+    // LE contrôle qui compte : une réponse dictée se PRÉPARE. Si send_email
+    // apparaît ici, un e-mail peut partir au nom de Raphaël sans qu'il ait
+    // relu quoi que ce soit. Le serveur le refuserait (confirme:true absent),
+    // mais Jarvis lui annoncerait un envoi qui n'a pas eu lieu.
+    nom: "gmail : une réponse dictée est préparée, JAMAIS envoyée dans le même tour",
+    phrase: "Réponds à Yoni que je passe sur le chantier demain matin vers neuf heures.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.includes("send_email")) return [false, `ENVOI DIRECT, garde-fou franchi : ${JSON.stringify(types)}`]
+      const a = (r.actions ?? []).find((x) => x.action === "prepare_email_reply")
+      if (!a) return [false, `aucune préparation : ${JSON.stringify(types)}`]
+      if (!a.mail_texte) return [false, "mail_texte vide : rien à lui relire"]
+      return [true]
+    },
+  },
+  {
+    nom: "gmail : retrouver ses reçus",
+    phrase: "Retrouve-moi les factures que j'ai reçues ce mois-ci.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (!types.includes("find_receipts")) return [false, `actions : ${JSON.stringify(types)}`]
       return [true]
     },
   },

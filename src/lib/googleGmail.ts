@@ -52,8 +52,15 @@ export type Brouillon = {
   pieces_jointes: { nom: string; type: string | null }[]
 }
 
+export type Recu = MessageResume & {
+  pieces_jointes: PieceJointe[]
+  /** Le reçu est parfois au bout d'un lien plutôt qu'en pièce jointe. */
+  liens: string[]
+}
+
 type Reponse = {
   messages?: MessageResume[]
+  recus?: Recu[]
   message?: MessageComplet | string
   brouillon?: Brouillon
   envoye?: { id: string; fil_id: string | null }
@@ -95,6 +102,21 @@ export async function listerMessages(options: {
 } = {}): Promise<MessageResume[]> {
   const reponse = await appeler({ action: "list", ...options })
   return reponse.messages ?? []
+}
+
+/**
+ * Ses reçus et ses factures des derniers jours. Ne rend que les messages qui
+ * portent vraiment un document (pièce jointe ou lien) : annoncer « j'en ai
+ * trouvé douze » dont dix sans facture ne lui sert à rien.
+ */
+export async function chercherRecus(options: {
+  depuis_jours?: number
+  limite?: number
+  /** Restreint à un fournisseur précis : « station essence », « Bezeq ». */
+  recherche?: string
+} = {}): Promise<Recu[]> {
+  const reponse = await appeler({ action: "recus", ...options })
+  return reponse.recus ?? []
 }
 
 export async function lireMessage(
@@ -157,6 +179,7 @@ export async function recupererPieceJointe(
 /** Gmail tel qu'on l'injecte dans l'exécuteur de commandes vocales. */
 export const gmailApi = {
   listerMessages,
+  chercherRecus,
   lireMessage,
   preparerReponse,
   envoyerMessage,
