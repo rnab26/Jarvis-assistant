@@ -20,10 +20,16 @@ Raphaël y ajoute des chantiers par la voix ou depuis l'interface.
 
 ### Au démarrage de CHAQUE session, avant toute autre chose
 
-Raphaël ouvre souvent une session neuve pour poursuivre un travail commencé
-ailleurs. Rien de ce qui a été fait ne doit se perdre, et il ne doit pas avoir
-à se répéter. Ces trois lectures ne sont donc pas optionnelles — elles coûtent
-trois commandes et te disent où en est le projet :
+**Normalement tu n'as rien à faire : c'est déjà chargé.** Un hook de démarrage
+(`.claude/hooks/session-start.sh`) lit la base à chaque ouverture de session et
+injecte l'état du projet dans ton contexte — chantiers en cours avec leurs
+réservations, douze dernières entrées du journal, huit derniers chantiers
+livrés. Raphaël n'a rien à coller, et tu n'as pas à redemander.
+
+Si ce bloc « État du projet au démarrage de cette session » n'apparaît pas, ou
+s'il dit que le cockpit n'a pas pu être chargé, fais les lectures à la main —
+et pour le détail complet d'un chantier (les notes sont tronquées dans
+l'injection), de toute façon c'est par là :
 
 ```bash
 # 1. Les chantiers en cours, et qui les a réservés
