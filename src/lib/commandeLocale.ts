@@ -408,14 +408,31 @@ export function interpreterLocalement(
     if (!contact) return null
     const texteMsg = messageContact[3].trim()
     if (!texteMsg) return null
+    // "message" tout court ne dit pas le canal : c'est
+    // executerActionTelephone/send_message, seule source de vérité pour
+    // "quel canal pour les messages" (déjà retenu, ou à demander), qui
+    // tranche. "sms"/"texto" et "whatsapp" restent des choix explicites.
+    const canal = /sms|texto/.test(canalMot) ? "sms" : /whatsapp/.test(canalMot) ? "whatsapp" : undefined
     return [
       {
         action: "send_message",
-        message_channel: /sms|texto/.test(canalMot) ? "sms" : "whatsapp",
+        message_channel: canal,
         message_text: majuscule(texteMsg),
         contact_id: contact.id,
       },
     ]
+  }
+
+  // "utilise X pour la musique/la navigation/les messages" — apprentissage
+  // direct, sans attendre une commande ambiguë qui pose la question.
+  const apprends = texte.match(
+    /^utilise\s+(.+?)\s+pour\s+(?:la\s+|les\s+)?(musique|navigation|itineraires?|messages?)$/,
+  )
+  if (apprends) {
+    const cible = majuscule(apprends[1].trim())
+    const mot = apprends[2]
+    const category = /musique/.test(mot) ? "musique" : /navigation|itineraire/.test(mot) ? "navigation" : "messages"
+    return [{ action: "set_app_preference", category, app_name: cible }]
   }
 
   /* ---------- Alarme et minuteur ---------- */

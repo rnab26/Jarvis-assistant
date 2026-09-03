@@ -3,6 +3,10 @@ import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/
 import { ecrireReglage } from "@/lib/reglages"
 import type { Contact } from "@/types/database"
 
+/** Les catégories du téléphone où Jarvis doit choisir une application sans
+ * qu'on la lui nomme à chaque fois — apprises une fois, retenues ensuite. */
+export type CategorieAppTelephone = "musique" | "navigation" | "messages"
+
 /** Les actions vocales qui sortent de Jarvis pour aller dans une autre app. */
 export type ActionTelephone =
   | { action: "open_app"; app_name?: string; music_query?: string }
@@ -22,21 +26,52 @@ export type ActionTelephone =
     }
   | { action: "navigate_to"; destination: string }
   | { action: "media_control"; media_command: CommandeMedia }
+  | { action: "set_app_preference"; category: CategorieAppTelephone; app_name: string }
 
 const SUR_LE_TELEPHONE_SEULEMENT =
   "Ça, je ne peux le faire que depuis l'application installée sur ton téléphone — ici je n'ai pas accès à tes autres applications."
 
-const CLE_APP_MUSIQUE = "jarvis_app_musique"
+const CLES_APP: Record<"musique" | "navigation", string> = {
+  musique: "jarvis_app_musique",
+  navigation: "jarvis_app_navigation",
+}
+const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
 
-/** L'application que Raphaël a retenue pour la musique, si on la lui a déjà
- * demandée une fois. Lu par MicButton pour savoir s'il faut la lui demander
- * avant d'exécuter — seule source de vérité, avec CLE_APP_MUSIQUE ci-dessus. */
-export function appMusiquePreferee(): string | null {
+/** L'application que Raphaël a retenue pour la musique ou la navigation, si
+ * on la lui a déjà demandée une fois. Lu par MicButton pour savoir s'il faut
+ * la lui demander avant d'exécuter — seule source de vérité pour "quelle
+ * app pour X", avec CLES_APP ci-dessus. */
+export function appPreferee(categorie: "musique" | "navigation"): string | null {
   try {
-    return localStorage.getItem(CLE_APP_MUSIQUE)
+    return localStorage.getItem(CLES_APP[categorie])
   } catch {
     return null
   }
+}
+
+/** Même principe que ci-dessus, mais pour les messages : pas une app parmi
+ * celles installées, un canal fixe (WhatsApp ou SMS). */
+export function canalMessagesPrefere(): "whatsapp" | "sms" | null {
+  try {
+    const v = localStorage.getItem(CLE_CANAL_MESSAGES)
+    return v === "whatsapp" || v === "sms" ? v : null
+  } catch {
+    return null
+  }
+}
+
+const NOM_CATEGORIE: Record<CategorieAppTelephone, string> = {
+  musique: "la musique",
+  navigation: "les itinéraires",
+  messages: "les messages",
+}
+
+/** La question posée une seule fois par catégorie, tant qu'aucune préférence
+ * n'est encore connue — lue par MicButton pour déclencher le même mécanisme
+ * de clarification que la Edge Function, sans passer par elle. */
+export function questionAppPreferee(categorie: CategorieAppTelephone): string {
+  if (categorie === "messages") return "Tu préfères WhatsApp ou les SMS pour tes messages ?"
+  return `Quelle application utilises-tu pour ${NOM_CATEGORIE[categorie]} ?`
 }
 
 /** Le numéro d'un contact, ou celui que Raphaël a dicté à voix haute. */
@@ -97,7 +132,7 @@ export async function executerActionTelephone(
         // MicButton pose la question une fois, avant d'arriver ici, quand
         // aucune n'est encore connue ; ici on ne fait qu'appliquer et
         // qu'apprendre la réponse pour la prochaine fois.
-        let nomCible = action.app_name || (action.music_query ? appMusiquePreferee() ?? undefined : undefined)
+        let nomCible = action.app_name || (action.music_query ? appPreferee("musique") ?? undefined : undefined)
 
         if (nomCible) {
           const { applications } = await ActionsTelephone.listerApplications()
@@ -107,7 +142,7 @@ export async function executerActionTelephone(
           }
           paquet = trouvee.paquet
           nomAffiche = trouvee.nom
-          if (action.music_query) ecrireReglage(CLE_APP_MUSIQUE, trouvee.nom)
+          if (action.music_query) ecrireReglage(CLES_APP.musique, trouvee.nom)
         }
 
         await ActionsTelephone.ouvrirApplication({ paquet, recherche: action.music_query })
@@ -120,7 +155,11 @@ export async function executerActionTelephone(
       }
 
       case "send_message": {
-        const canal = action.message_channel ?? "whatsapp"
+        // Sans canal précisé ("envoie un message à Dylan..."), utiliser celui
+        // retenu — MicButton l'a demandé une fois s'il n'était pas encore
+        // connu. "whatsapp" reste le repli si on arrive quand même ici sans
+        // rien savoir (ex. le tour de clarification a expiré).
+        const canal = action.message_channel ?? canalMessagesPrefere() ?? "whatsapp"
         const numero = numeroDe(contacts, action.contact_id, action.phone_number)
         const nom = nomDe(contacts, action.contact_id)
 
@@ -186,13 +225,45 @@ export async function executerActionTelephone(
       }
 
       case "navigate_to": {
-        await ActionsTelephone.itineraire({ destination: action.destination })
+        // Même bug que la musique, même correctif : "geo:" sans application
+        // visée fait ouvrir à Android son sélecteur dès que Waze ET Google
+        // Maps sont installés. On vise l'application retenue si on la
+        // connaît ; sinon MicButton l'a déjà demandée avant d'arriver ici.
+        let paquet: string | undefined
+        const preferee = appPreferee("navigation")
+        if (preferee) {
+          const { applications } = await ActionsTelephone.listerApplications()
+          paquet = trouverApplication(applications, preferee)?.paquet
+        }
+        await ActionsTelephone.itineraire({ destination: action.destination, paquet })
         return `Je t'ouvre l'itinéraire vers ${action.destination}.`
       }
 
       case "media_control": {
         await ActionsTelephone.commanderMedia({ commande: action.media_command })
         return MEDIA_DIT[action.media_command] ?? "C'est fait."
+      }
+
+      case "set_app_preference": {
+        // Apprentissage direct, sans attendre une commande ambiguë :
+        // "utilise Waze pour la navigation", "utilise WhatsApp pour les
+        // messages". Même stockage que l'apprentissage automatique — une
+        // seule source de vérité, quel que soit le chemin qui l'a remplie.
+        if (action.category === "messages") {
+          const canal = /sms|texto/i.test(action.app_name) ? "sms" : "whatsapp"
+          ecrireReglage(CLE_CANAL_MESSAGES, canal)
+          return canal === "sms"
+            ? "Compris, je passerai par SMS pour tes messages."
+            : "Compris, je passerai par WhatsApp pour tes messages."
+        }
+
+        const { applications } = await ActionsTelephone.listerApplications()
+        const trouvee = trouverApplication(applications, action.app_name)
+        if (!trouvee) {
+          return `Je ne trouve pas d'application qui s'appelle "${action.app_name}" sur ton téléphone.`
+        }
+        ecrireReglage(CLES_APP[action.category], trouvee.nom)
+        return `Compris, j'utiliserai ${trouvee.nom} pour ${NOM_CATEGORIE[action.category]}.`
       }
     }
   } catch (e) {

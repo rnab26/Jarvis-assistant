@@ -416,6 +416,52 @@ cas.push(
       return [true]
     },
   },
+  {
+    // Le canal n'est renseigné QUE si l'utilisateur le dit — sinon c'est le
+    // téléphone qui tranche (préférence retenue, ou question posée), pas le
+    // modèle qui ne doit plus se rabattre sur "whatsapp" par défaut de son
+    // propre chef.
+    nom: "message sans canal précisé : le modèle ne choisit pas à sa place",
+    phrase: "Envoie un message à Dylan pour lui dire que je passe demain matin sur le chantier.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "send_message")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.message_channel) return [false, `message_channel renseigné à tort : ${a.message_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "message avec canal précisé : SMS explicite respecté",
+    phrase: "Envoie un SMS à Dylan pour lui dire que je suis en retard.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "send_message")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.message_channel !== "sms") return [false, `message_channel = ${a.message_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "apprentissage direct : quelle app pour la navigation",
+    phrase: "Utilise Waze pour la navigation.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_app_preference")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.category !== "navigation") return [false, `category = ${a.category}`]
+      if (!/waze/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      return [true]
+    },
+  },
+  {
+    nom: "apprentissage direct : quel canal pour les messages",
+    phrase: "Préfère les SMS pour mes messages.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_app_preference")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.category !== "messages") return [false, `category = ${a.category}`]
+      if (!/sms/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      return [true]
+    },
+  },
 )
 
 // sature le quota et fait échouer la vérification pour une raison étrangère

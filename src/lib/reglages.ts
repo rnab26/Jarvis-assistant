@@ -28,6 +28,8 @@ export const CLES_REGLAGES = [
   "jarvis_dialogue_suite_ms",
   "jarvis_core_image",
   "jarvis_app_musique",
+  "jarvis_app_navigation",
+  "jarvis_canal_messages",
 ] as const
 
 /** Émis après une écriture locale : la synchro sait qu'elle a à pousser. */

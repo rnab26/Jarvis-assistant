@@ -542,6 +542,7 @@ export async function executeVoiceAction(
     case "set_alarm":
     case "navigate_to":
     case "media_control":
+    case "set_app_preference":
       return await executerActionTelephone(action, contacts)
 
     case "chat":

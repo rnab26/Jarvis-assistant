@@ -189,6 +189,23 @@ doitDonner("mets-moi la musique Maes la planque", {
   app_name: undefined,
 })
 doitDonner("ouvre WhatsApp", { action: "open_app", app_name: "Whatsapp" })
+// Apprentissage direct : mêmes catégories que ci-dessus (musique, navigation,
+// messages), sans attendre une commande ambiguë pour poser la question.
+doitDonner("utilise Spotify pour la musique", {
+  action: "set_app_preference",
+  category: "musique",
+  app_name: "Spotify",
+})
+doitDonner("utilise Waze pour la navigation", {
+  action: "set_app_preference",
+  category: "navigation",
+  app_name: "Waze",
+})
+doitDonner("utilise WhatsApp pour les messages", {
+  action: "set_app_preference",
+  category: "messages",
+  app_name: "Whatsapp",
+})
 doitDonner("mets en pause", { action: "media_control", media_command: "pause" })
 doitDonner("reprends la musique", { action: "media_control", media_command: "lecture" })
 doitDonner("chanson suivante", { action: "media_control", media_command: "suivant" })
@@ -199,8 +216,15 @@ doitDonner("appelle Yoni", { action: "call_contact", contact_id: "ct-yoni" })
 doitDonner("envoie un message à Dylan pour lui dire que je passe demain matin sur le chantier", {
   action: "send_message",
   contact_id: "ct-dylan",
-  message_channel: "whatsapp",
+  // "message" ne dit pas le canal : send_message tranche à l'exécution
+  // (canal retenu, ou "whatsapp" par défaut) — voir actionsTelephoneVocales.
+  message_channel: undefined,
   message_text: "Je passe demain matin sur le chantier",
+})
+doitDonner("envoie un whatsapp à Dylan pour lui dire que je passe demain matin sur le chantier", {
+  action: "send_message",
+  contact_id: "ct-dylan",
+  message_channel: "whatsapp",
 })
 doitDonner("envoie un sms à Dylan pour dire que je suis en retard", {
   action: "send_message",
