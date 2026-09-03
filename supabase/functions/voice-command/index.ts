@@ -25,7 +25,7 @@ const corsHeaders = {
 const CHAMPS_MODIFIABLES: Record<string, string[]> = {
   update_task: ["title", "notes", "status", "category_id", "due_date", "due_time"],
   update_dev_item: ["title", "notes", "status", "priority", "theme"],
-  update_contact: ["name", "notes"],
+  update_contact: ["name", "notes", "phone"],
 }
 
 function normaliserAction(input: Record<string, unknown>): Record<string, unknown> {
@@ -96,12 +96,17 @@ const ACTION_SCHEMA = {
         "update_calendar_event",
         "delete_calendar_event",
         "set_voice",
+        "open_app",
+        "send_message",
+        "call_contact",
+        "set_alarm",
+        "navigate_to",
         "chat",
         "clarify",
         "unknown",
       ],
       description:
-        "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. configure_widget (max_tasks, urgent_only, category_id) — utilisé quand l'utilisateur parle du widget d'écran d'accueil (ex: 'montre-moi 5 tâches sur le widget', 'affiche que les urgentes sur le widget', 'widget catégorie perso'). Contacts : list_contacts, add_contact (name + notes), update_contact (contact_id + changes), delete_contact (contact_id) — utilisé quand l'utilisateur présente quelqu'un ou donne une consigne à son sujet (ex: 'Dylan c'est le client de Melissa', 'pour Yoni toujours confirmer avant d'envoyer un message'). Rappels de lieu : list_place_reminders, add_place_reminder (place + reminder), delete_place_reminder (reminder_id) — utilisé quand l'utilisateur demande de lui rappeler quelque chose la prochaine fois qu'il parle d'un lieu précis (ex: 'quand je parle du chantier Dan, rappelle-moi de commander les carreaux'). Prononciations : list_pronunciations, add_pronunciation (entendu + veut_dire), delete_pronunciation (pronunciation_id) — utilisé quand l'utilisateur corrige la façon dont la dictée a écrit un mot ou un nom (ex: 'ce n'est pas Avirail, c'est Avihail, le h est muet', 'quand je dis Melissa tu écris Mélissa'). set_voice (voice_enabled) — utilisé quand l'utilisateur demande de couper ou de remettre la voix de Jarvis ('arrête de parler', 'coupe ta voix', 'réponds-moi juste à l'écrit', 'remets ta voix', 'reparle'). voice_enabled=false pour se taire, true pour reparler. Ne PAS l'utiliser pour un simple 'tais-toi' qui interrompt une phrase en cours : là il ne s'agit que d'arrêter la lecture, pas de couper la voix pour de bon. Agenda Google : list_calendar_events (event_depuis / event_jusqu_a / event_recherche), add_calendar_event (event_titre + event_debut), update_calendar_event (event_cible + le ou les champs event_* qui changent), delete_calendar_event (event_cible) — utilisé quand l'utilisateur parle de son agenda, de ses rendez-vous, de son planning, de sa journée ou de sa semaine (ex: 'qu'est-ce que j'ai demain ?', 'ajoute un rendez-vous avec Yoni mardi à 14h', 'décale mon rendez-vous de jeudi à 16h', 'annule le rendez-vous chez le dentiste'). À ne pas confondre avec add_task : une tâche est quelque chose à faire, un événement d'agenda occupe un créneau. chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents ni le widget ni les contacts ni les rappels de lieu (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
+        "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. configure_widget (max_tasks, urgent_only, category_id) — utilisé quand l'utilisateur parle du widget d'écran d'accueil (ex: 'montre-moi 5 tâches sur le widget', 'affiche que les urgentes sur le widget', 'widget catégorie perso'). Contacts : list_contacts, add_contact (name + notes + phone), update_contact (contact_id + changes), delete_contact (contact_id) — utilisé quand l'utilisateur présente quelqu'un, donne une consigne à son sujet, ou dicte son numéro de téléphone (ex: 'Dylan c'est le client de Melissa', 'pour Yoni toujours confirmer avant d'envoyer un message'). Rappels de lieu : list_place_reminders, add_place_reminder (place + reminder), delete_place_reminder (reminder_id) — utilisé quand l'utilisateur demande de lui rappeler quelque chose la prochaine fois qu'il parle d'un lieu précis (ex: 'quand je parle du chantier Dan, rappelle-moi de commander les carreaux'). Prononciations : list_pronunciations, add_pronunciation (entendu + veut_dire), delete_pronunciation (pronunciation_id) — utilisé quand l'utilisateur corrige la façon dont la dictée a écrit un mot ou un nom (ex: 'ce n'est pas Avirail, c'est Avihail, le h est muet', 'quand je dis Melissa tu écris Mélissa'). set_voice (voice_enabled) — utilisé quand l'utilisateur demande de couper ou de remettre la voix de Jarvis ('arrête de parler', 'coupe ta voix', 'réponds-moi juste à l'écrit', 'remets ta voix', 'reparle'). voice_enabled=false pour se taire, true pour reparler. Ne PAS l'utiliser pour un simple 'tais-toi' qui interrompt une phrase en cours : là il ne s'agit que d'arrêter la lecture, pas de couper la voix pour de bon. Agenda Google : list_calendar_events (event_depuis / event_jusqu_a / event_recherche), add_calendar_event (event_titre + event_debut), update_calendar_event (event_cible + le ou les champs event_* qui changent), delete_calendar_event (event_cible) — utilisé quand l'utilisateur parle de son agenda, de ses rendez-vous, de son planning, de sa journée ou de sa semaine (ex: 'qu'est-ce que j'ai demain ?', 'ajoute un rendez-vous avec Yoni mardi à 14h', 'décale mon rendez-vous de jeudi à 16h', 'annule le rendez-vous chez le dentiste'). À ne pas confondre avec add_task : une tâche est quelque chose à faire, un événement d'agenda occupe un créneau. Actions dans les autres applications du téléphone (uniquement quand il demande explicitement d'agir dans une app) : open_app (app_name, et music_query pour lancer une lecture — 'mets du Brassens sur Spotify', 'ouvre WhatsApp', 'lance la musique') ; send_message (message_channel 'whatsapp' ou 'sms', message_text, et contact_id si le destinataire est un contact connu — 'envoie un message à Dylan pour lui dire que je passe demain') ; call_contact (contact_id ou phone_number — 'appelle Yoni') ; set_alarm (alarm_time en HH:MM pour une heure précise, OU alarm_duration_seconds pour un minuteur, plus alarm_label — 'réveille-moi à 7h', 'minuteur de 10 minutes') ; navigate_to (destination — 'emmène-moi au chantier de la villa Dan'). Ces actions PRÉPARENT le geste, elles ne l'accomplissent pas : le message s'affiche prêt à partir et l'appel est composé, mais c'est l'utilisateur qui appuie. Dis-le naturellement dans ta réponse, sans t'excuser. N'utilise JAMAIS ces actions pour quelque chose qui se fait dans Jarvis lui-même : une tâche reste add_task, un rappel reste add_place_reminder, un rendez-vous reste add_calendar_event. chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents ni le widget ni les contacts ni les rappels de lieu (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
     },
     title: {
       type: "string",
@@ -111,6 +116,10 @@ const ACTION_SCHEMA = {
     name: {
       type: "string",
       description: "add_contact uniquement : nom de la personne.",
+    },
+    phone: {
+      type: "string",
+      description: "add_contact uniquement : numéro de téléphone, si l'utilisateur l'a dicté (\"le numéro de Yoni c'est le 06 12 34 56 78\"). Garder les chiffres tels qu'il les a dits. Pour renseigner le numéro d'un contact déjà enregistré, utiliser update_contact avec { \"phone\": ... } dans \"changes\".",
     },
     place: {
       type: "string",
@@ -245,6 +254,43 @@ const ACTION_SCHEMA = {
         due_time: { type: ["string", "null"] },
         name: { type: "string" },
       },
+    },
+    app_name: {
+      type: "string",
+      description: "open_app uniquement : le nom de l'application tel que l'utilisateur l'a dit (\"Spotify\", \"WhatsApp\", \"YouTube\"). L'app est retrouvée ensuite parmi celles réellement installées, la casse et les accents n'ont pas d'importance. Absent si l'utilisateur veut juste lancer de la musique sans préciser où.",
+    },
+    music_query: {
+      type: "string",
+      description: "open_app uniquement : ce qu'il faut jouer (\"du Brassens\", \"l'album Rumours\", \"ma playlist du matin\"). Ne le renseigner que si l'utilisateur demande d'écouter quelque chose — sinon on se contente d'ouvrir l'application.",
+    },
+    message_channel: {
+      type: "string",
+      enum: ["whatsapp", "sms"],
+      description: "send_message uniquement : par où passe le message. WhatsApp par défaut si l'utilisateur ne précise pas, SMS s'il dit \"SMS\", \"texto\" ou \"message classique\".",
+    },
+    message_text: {
+      type: "string",
+      description: "send_message uniquement : le message rédigé proprement, prêt à être envoyé. L'utilisateur dicte une intention (\"dis-lui que je passe demain matin\"), pas un texte : rédige-le à sa place, à la première personne, court et naturel.",
+    },
+    phone_number: {
+      type: "string",
+      description: "send_message ou call_contact : le numéro, uniquement si l'utilisateur l'a dicté à voix haute. Sinon utiliser contact_id.",
+    },
+    alarm_time: {
+      type: "string",
+      description: "set_alarm : heure de l'alarme au format HH:MM (24h). Pour un minuteur, laisser vide et utiliser alarm_duration_seconds.",
+    },
+    alarm_duration_seconds: {
+      type: "number",
+      description: "set_alarm : durée d'un minuteur en secondes (\"minuteur de 10 minutes\" = 600). Pour une heure précise, utiliser alarm_time à la place.",
+    },
+    alarm_label: {
+      type: "string",
+      description: "set_alarm : à quoi sert l'alarme, en quelques mots (\"les pâtes\", \"rendez-vous dentiste\"). null si l'utilisateur n'a rien précisé.",
+    },
+    destination: {
+      type: "string",
+      description: "navigate_to uniquement : l'adresse ou le lieu, tel qu'une application de cartes peut le chercher.",
     },
     filter_category_id: { type: "string", description: "list_tasks uniquement : filtre par catégorie." },
     filter_status: {
@@ -386,6 +432,8 @@ Une seule phrase peut contenir PLUSIEURS demandes ("ajoute une tâche pour le pl
 Reprendre quelque chose d'existant : la liste fournie contient AUSSI les tâches déjà faites (status "done") et les chantiers terminés. Si l'utilisateur veut revenir sur une tâche déjà faite ("remets la tâche du plombier à faire", "finalement je dois refaire les carreaux", "rouvre celle que j'ai terminée hier"), n'en crée pas une nouvelle : utilise update_task sur la tâche existante avec changes={"status":"todo"} plus ce qu'il change d'autre. Une tâche n'a que deux statuts, "todo" et "done" — "en cours" pour une tâche vaut "todo".
 Pour retrouver la bonne tâche ou le bon chantier, appuie-toi sur les notes autant que sur le titre : l'utilisateur redit souvent un détail de la note plutôt que le titre exact. À égalité de correspondance, préfère ce qui est encore à faire, sauf si l'utilisateur parle explicitement de quelque chose de terminé ou d'archivé.
 Agenda : l'utilisateur a branché son compte Google, tu peux lire et écrire dans son agenda. Toutes les heures qu'il dicte sont des heures locales (Israël) — renvoie-les telles quelles dans event_debut/event_fin, sans conversion ni fuseau. Pour update_calendar_event et delete_calendar_event, tu ne connais pas l'identifiant des événements : renseigne event_cible avec la façon dont il les désigne, l'app se charge de retrouver le bon et de demander à l'utilisateur s'il y a une ambiguïté. Un rendez-vous, une réunion, un créneau qui occupe du temps va dans l'agenda ; quelque chose à faire sans créneau reste une tâche (add_task).
+Pour send_message et call_contact : résous contact_id depuis la liste de contacts fournie, par nom approchant. Si le contact existe mais n'a pas de numéro (champ phone vide) et que l'utilisateur n'en a pas dicté un, utilise quand même send_message : WhatsApp demandera à qui envoyer. Pour call_contact en revanche, sans numéro l'appel est impossible : renvoie une action clarify qui demande le numéro de la personne.
+Ces actions préparent le geste sans l'accomplir : le message s'affiche prêt à partir, l'appel est composé, et c'est l'utilisateur qui appuie. Dis-le simplement dans ta réponse ("je te l'ai préparé, tu n'as plus qu'à envoyer"), sans t'en excuser ni t'étendre dessus.
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
 Réponds toujours en français dans le champ message.${await rappelerSouvenirs(supabase, transcript)}`
 

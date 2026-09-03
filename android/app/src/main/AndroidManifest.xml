@@ -62,4 +62,49 @@
     <!-- Mise à jour de l'app : installer l'APK téléchargé par
          ApkDownloaderPlugin, sans passer par un navigateur. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Poser une alarme ou un minuteur sans ouvrir l'app d'horloge. Seule
+         permission demandée par les actions dans les autres applications :
+         composer un numéro (ACTION_DIAL) et pré-remplir un message
+         (ACTION_SENDTO) n'en demandent aucune, justement parce que le
+         dernier geste reste celui de l'utilisateur. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+
+    <!-- Depuis Android 11, une app ne voit les autres que si elle les
+         déclare ici. On ne demande PAS QUERY_ALL_PACKAGES (visibilité totale
+         sur l'appareil, refusée par Google Play sans justification) : on
+         déclare seulement ce que Jarvis a besoin de voir — les applications
+         ouvrables, et les apps capables de répondre aux actions qu'il
+         propose. Sans ce bloc, la liste des apps revient vide et chaque
+         intent échoue silencieusement. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <package android:name="com.whatsapp" />
+    </queries>
 </manifest>

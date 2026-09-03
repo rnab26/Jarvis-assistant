@@ -80,6 +80,9 @@ export interface Contact {
   user_id: string
   name: string
   notes: string | null
+  /** Numéro dicté par Raphaël, format libre. Sert à appeler la personne ou à
+   * lui préparer un message sans lire le répertoire du téléphone. */
+  phone: string | null
   created_at: string
   updated_at: string
 }
@@ -87,6 +90,7 @@ export interface Contact {
 export interface ContactInput {
   name: string
   notes: string | null
+  phone?: string | null
 }
 
 export interface PlaceReminder {

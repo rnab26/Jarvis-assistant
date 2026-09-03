@@ -121,7 +121,7 @@ export function MicButton({
           })),
           themes: themesDe(devItemsApi.devItems),
           documents: documentsApi.documents.map((d) => ({ name: d.name })),
-          contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes })),
+          contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes, phone: c.phone })),
           placeReminders: placeRemindersApi.placeReminders.map((p) => ({
             id: p.id,
             place: p.place,
