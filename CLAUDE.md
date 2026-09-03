@@ -175,3 +175,29 @@ scripts : voir `README.md`.
 Toujours vérifier que les deux workflows passent au vert après un push
 (`mcp__github__actions_list` / `get_job_logs`), et se corriger soi-même en
 cas d'échec avant de considérer un chantier terminé.
+
+## Le web se met à jour tout seul, l'app Android jamais
+
+Piège découvert le 3 sept. 2026 : Raphaël pensait suivre les nouveautés en
+temps réel, alors que son app installée avait pris un vrai retard (plusieurs
+chantiers manquants, dont un indicateur censé justement détecter ce
+décalage) — le lien de téléchargement de l'APK était cassé depuis un moment
+et chaque tentative de mise à jour échouait silencieusement.
+
+`deploy.yml` republie le site à chaque push : ce que Raphaël voit dans le
+navigateur (ou en PWA) est **toujours** à jour, sans rien faire. `android-build.yml`
+ne fait que publier un nouvel APK à télécharger — l'app installée sur son
+téléphone reste figée sur l'ancienne version tant qu'il ne relance pas
+l'installation lui-même. Un chantier « fini et CI verte » sur du code qui
+touche `android/`, `capacitor.config.ts` ou du `src/**` utilisé par l'app
+native n'est donc fini pour lui **que web**, pas encore en pratique côté
+téléphone.
+
+**En terminant un chantier qui touche l'app Android**, le dire explicitement
+dans la réponse à Raphaël (pas juste « CI verte ») : que ça nécessite une
+mise à jour de l'APK pour être visible, et rappeler comment (bouton
+« Mettre à jour » dans Paramètres). Le badge « À jour / Nouvelle version
+disponible » de Paramètres est fait pour qu'il puisse vérifier lui-même à
+tout moment — s'il n'apparaît pas dans l'app qu'il utilise, prendre ça au
+sérieux : ça veut dire que ce qu'il a sous les yeux est déjà en retard sur
+plusieurs chantiers, pas seulement le dernier.
