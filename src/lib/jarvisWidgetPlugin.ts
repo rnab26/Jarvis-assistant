@@ -2,6 +2,7 @@ import { registerPlugin } from "@capacitor/core"
 
 interface JarvisWidgetPlugin {
   refresh(): Promise<void>
+  getPendingListen(): Promise<{ demarrer: boolean }>
 }
 
 /** Pont vers le plugin natif Android (android/.../JarvisWidgetPlugin.java).

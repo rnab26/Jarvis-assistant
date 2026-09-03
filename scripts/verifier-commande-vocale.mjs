@@ -462,6 +462,30 @@ cas.push(
       return [true]
     },
   },
+  {
+    nom: "relayer une question à une IA nommée",
+    phrase: "Demande à Perplexity ce que vaut le grès cérame en ce moment.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "ask_ai")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/perplexity/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      if (!a.question || a.question.length < 5) return [false, `question = ${a.question}`]
+      return [true]
+    },
+  },
+  {
+    // Même défaut potentiel que pour la musique (app_name halluciné) : ici on
+    // vérifie que le modèle le laisse absent quand l'IA n'est pas nommée.
+    nom: "relayer une question sans nommer l'IA",
+    phrase: "Demande à une IA combien coûte un plombier à Paris.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "ask_ai")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.app_name) return [false, `app_name renseigné à tort : ${a.app_name}`]
+      if (!a.question || a.question.length < 5) return [false, `question = ${a.question}`]
+      return [true]
+    },
+  },
 )
 
 // sature le quota et fait échouer la vérification pour une raison étrangère

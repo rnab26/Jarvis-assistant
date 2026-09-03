@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core"
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { JarvisCore } from "@/components/JarvisCore"
@@ -16,6 +17,7 @@ import {
 } from "@/lib/veille"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
+import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appPreferee,
   canalMessagesPrefere,
@@ -60,6 +62,9 @@ function questionAmbigueAppTelephone(
   }
   if (action.action === "send_message" && !action.message_channel && !canalMessagesPrefere()) {
     return { message: questionAppPreferee("messages"), category: "messages" }
+  }
+  if (action.action === "ask_ai" && !action.app_name && !appPreferee("ia")) {
+    return { message: questionAppPreferee("ia"), category: "ia" }
   }
   return null
 }
@@ -413,6 +418,24 @@ export function MicButton({
       setStatus("error")
     }
   }
+
+  // Un appui sur le widget d'écran d'accueil doit lancer l'écoute
+  // directement — pas seulement ouvrir l'app, en laissant Raphaël retoucher
+  // le micro derrière. MainActivity pose le drapeau au moment de l'intent ;
+  // on ne le consomme qu'une fois, au montage, sinon un retour au premier
+  // plan sans rapport relancerait l'écoute.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    JarvisWidget.getPendingListen()
+      .then(({ demarrer }) => {
+        if (demarrer) startListening()
+      })
+      .catch(() => {
+        // Ancienne app pas encore mise à jour, ou plugin absent : tant pis,
+        // l'appui aura simplement ouvert l'app comme avant.
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleClick() {
     // Interruption ("barge-in") : si Jarvis est en train de parler, un tap

@@ -154,6 +154,29 @@ public class ActionsTelephonePlugin extends Plugin {
         if (lancer(partage, call, "WhatsApp n'est pas installé sur ce téléphone.")) call.resolve();
     }
 
+    /**
+     * Envoie du texte vers une application quelconque (relais d'une question
+     * vers une IA installée — ChatGPT, Perplexity, Claude...), via le même
+     * mécanisme de partage qu'un utilisateur ferait à la main. Le paquet est
+     * obligatoire : contrairement à la musique ou l'itinéraire, il n'existe
+     * pas d'intent générique "pose une question à une IA" que le système
+     * saurait résoudre tout seul.
+     */
+    @PluginMethod
+    public void envoyerTexte(PluginCall call) {
+        String paquet = call.getString("paquet");
+        String texte = call.getString("texte", "");
+        if (paquet == null || paquet.isEmpty()) {
+            call.reject("Je ne sais pas à quelle application l'envoyer.");
+            return;
+        }
+        Intent partage = new Intent(Intent.ACTION_SEND);
+        partage.setType("text/plain");
+        partage.putExtra(Intent.EXTRA_TEXT, texte);
+        partage.setPackage(paquet);
+        if (lancer(partage, call, "Cette application n'a pas répondu.")) call.resolve();
+    }
+
     /** Prépare un SMS : l'app de messages s'ouvre, le texte est déjà écrit. */
     @PluginMethod
     public void preparerSms(PluginCall call) {

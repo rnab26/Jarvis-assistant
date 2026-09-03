@@ -5,7 +5,7 @@ import type { Contact } from "@/types/database"
 
 /** Les catégories du téléphone où Jarvis doit choisir une application sans
  * qu'on la lui nomme à chaque fois — apprises une fois, retenues ensuite. */
-export type CategorieAppTelephone = "musique" | "navigation" | "messages"
+export type CategorieAppTelephone = "musique" | "navigation" | "messages" | "ia"
 
 /** Les actions vocales qui sortent de Jarvis pour aller dans une autre app. */
 export type ActionTelephone =
@@ -27,21 +27,23 @@ export type ActionTelephone =
   | { action: "navigate_to"; destination: string }
   | { action: "media_control"; media_command: CommandeMedia }
   | { action: "set_app_preference"; category: CategorieAppTelephone; app_name: string }
+  | { action: "ask_ai"; question: string; app_name?: string }
 
 const SUR_LE_TELEPHONE_SEULEMENT =
   "Ça, je ne peux le faire que depuis l'application installée sur ton téléphone — ici je n'ai pas accès à tes autres applications."
 
-const CLES_APP: Record<"musique" | "navigation", string> = {
+const CLES_APP: Record<"musique" | "navigation" | "ia", string> = {
   musique: "jarvis_app_musique",
   navigation: "jarvis_app_navigation",
+  ia: "jarvis_app_ia",
 }
 const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
 
-/** L'application que Raphaël a retenue pour la musique ou la navigation, si
- * on la lui a déjà demandée une fois. Lu par MicButton pour savoir s'il faut
- * la lui demander avant d'exécuter — seule source de vérité pour "quelle
- * app pour X", avec CLES_APP ci-dessus. */
-export function appPreferee(categorie: "musique" | "navigation"): string | null {
+/** L'application que Raphaël a retenue pour la musique, la navigation ou une
+ * IA tierce, si on la lui a déjà demandée une fois. Lu par MicButton pour
+ * savoir s'il faut la lui demander avant d'exécuter — seule source de
+ * vérité pour "quelle app pour X", avec CLES_APP ci-dessus. */
+export function appPreferee(categorie: "musique" | "navigation" | "ia"): string | null {
   try {
     return localStorage.getItem(CLES_APP[categorie])
   } catch {
@@ -64,6 +66,7 @@ const NOM_CATEGORIE: Record<CategorieAppTelephone, string> = {
   musique: "la musique",
   navigation: "les itinéraires",
   messages: "les messages",
+  ia: "poser une question à une IA",
 }
 
 /** La question posée une seule fois par catégorie, tant qu'aucune préférence
@@ -264,6 +267,27 @@ export async function executerActionTelephone(
         }
         ecrireReglage(CLES_APP[action.category], trouvee.nom)
         return `Compris, j'utiliserai ${trouvee.nom} pour ${NOM_CATEGORIE[action.category]}.`
+      }
+
+      case "ask_ai": {
+        // Jarvis ne sait pas répondre à tout, mais peut relayer la question à
+        // une IA déjà installée — WhatsApp/SMS pour un message. Elle part
+        // déjà écrite, prête à envoyer, comme le reste : Jarvis prépare le
+        // geste, ne l'accomplit pas à sa place.
+        const nomCible = action.app_name || appPreferee("ia") || undefined
+        if (!nomCible) {
+          return "Je ne sais pas encore à quelle IA la poser. Dis-le-moi une fois et je m'en souviendrai."
+        }
+
+        const { applications } = await ActionsTelephone.listerApplications()
+        const trouvee = trouverApplication(applications, nomCible)
+        if (!trouvee) {
+          return `Je ne trouve pas d'application qui s'appelle "${nomCible}" sur ton téléphone.`
+        }
+        if (action.app_name) ecrireReglage(CLES_APP.ia, trouvee.nom)
+
+        await ActionsTelephone.envoyerTexte({ paquet: trouvee.paquet, texte: action.question })
+        return `Je pose la question à ${trouvee.nom}, tu n'as plus qu'à envoyer. Elle répondra directement là-bas, je ne peux pas te ramener sa réponse ici.`
       }
     }
   } catch (e) {

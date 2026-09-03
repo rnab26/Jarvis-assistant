@@ -423,16 +423,43 @@ export function interpreterLocalement(
     ]
   }
 
-  // "utilise X pour la musique/la navigation/les messages" — apprentissage
-  // direct, sans attendre une commande ambiguë qui pose la question.
+  // "utilise X pour la musique/la navigation/les messages/l'IA" —
+  // apprentissage direct, sans attendre une commande ambiguë qui pose la
+  // question.
   const apprends = texte.match(
-    /^utilise\s+(.+?)\s+pour\s+(?:la\s+|les\s+)?(musique|navigation|itineraires?|messages?)$/,
+    /^utilise\s+(.+?)\s+pour\s+(?:la\s+|les\s+|l['’]\s*)?(musique|navigation|itineraires?|messages?|ia|intelligence artificielle)$/,
   )
   if (apprends) {
     const cible = majuscule(apprends[1].trim())
     const mot = apprends[2]
-    const category = /musique/.test(mot) ? "musique" : /navigation|itineraire/.test(mot) ? "navigation" : "messages"
+    const category = /musique/.test(mot)
+      ? "musique"
+      : /navigation|itineraire/.test(mot)
+        ? "navigation"
+        : /ia|intelligence/.test(mot)
+          ? "ia"
+          : "messages"
     return [{ action: "set_app_preference", category, app_name: cible }]
+  }
+
+  /* ---------- Relayer une question à une IA installée ---------- */
+  // Vocabulaire fini plutôt qu'un motif générique : deviner où s'arrête le
+  // nom de l'app et où commence la question, sur une phrase libre, serait
+  // justement le genre d'approximation que ce module s'interdit. Les noms
+  // ci-dessous sont ceux que Raphaël a lui-même cités.
+  const iaConnue = texte.match(
+    /^demande\s+(?:a|à)\s+(chatgpt|perplexity|claude|grok|gemini|copilot)\s+(.+)$/,
+  )
+  if (iaConnue) {
+    const question = iaConnue[2].trim()
+    if (!question) return null
+    return [{ action: "ask_ai", app_name: majuscule(iaConnue[1]), question: majuscule(question) }]
+  }
+  const iaGenerique = texte.match(/^demande\s+(?:a|à)\s+(?:l['’]\s*ia|une ia|l['’]\s*intelligence artificielle)\s+(.+)$/)
+  if (iaGenerique) {
+    const question = iaGenerique[1].trim()
+    if (!question) return null
+    return [{ action: "ask_ai", question: majuscule(question) }]
   }
 
   /* ---------- Alarme et minuteur ---------- */

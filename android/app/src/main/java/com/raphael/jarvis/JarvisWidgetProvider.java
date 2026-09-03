@@ -55,6 +55,9 @@ public class JarvisWidgetProvider extends AppWidgetProvider {
 
             Intent intent = new Intent(context, MainActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            // Un appui doit ouvrir l'app ET lancer l'écoute directement — pas
+            // juste ouvrir, en laissant Raphaël retoucher le micro derrière.
+            intent.putExtra("demarrer_ecoute", true);
             PendingIntent pendingIntent = PendingIntent.getActivity(
                 context,
                 0,

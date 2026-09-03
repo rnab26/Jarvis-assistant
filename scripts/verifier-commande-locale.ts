@@ -206,6 +206,28 @@ doitDonner("utilise WhatsApp pour les messages", {
   category: "messages",
   app_name: "Whatsapp",
 })
+doitDonner("utilise Perplexity pour l'IA", {
+  action: "set_app_preference",
+  category: "ia",
+  app_name: "Perplexity",
+})
+// Relayer une question à une IA installée (3de0e08a étendu à 54928a6c) :
+// vocabulaire fini (ChatGPT, Perplexity, Claude, Grok, Gemini, Copilot),
+// sinon la question retombe sur le serveur plutôt que de deviner où
+// s'arrête le nom de l'app.
+// Comme le reste du module, la question reconstruite perd ses accents (le
+// module entier travaille sur le texte normalisé — limitation existante,
+// pas propre à cette règle : voir "verifier le devis" plus haut).
+doitDonner("demande à Perplexity ce que vaut le grès cérame", {
+  action: "ask_ai",
+  app_name: "Perplexity",
+  question: "Ce que vaut le gres cerame",
+})
+doitDonner("demande à une IA combien coûte un plombier à Paris", {
+  action: "ask_ai",
+  app_name: undefined,
+  question: "Combien coute un plombier a paris",
+})
 doitDonner("mets en pause", { action: "media_control", media_command: "pause" })
 doitDonner("reprends la musique", { action: "media_control", media_command: "lecture" })
 doitDonner("chanson suivante", { action: "media_control", media_command: "suivant" })

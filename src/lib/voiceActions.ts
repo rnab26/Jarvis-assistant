@@ -543,6 +543,7 @@ export async function executeVoiceAction(
     case "navigate_to":
     case "media_control":
     case "set_app_preference":
+    case "ask_ai":
       return await executerActionTelephone(action, contacts)
 
     case "chat":
