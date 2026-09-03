@@ -58,6 +58,7 @@ export type VoiceAction =
   | { action: "list_pronunciations" }
   | { action: "add_pronunciation"; entendu: string; veut_dire: string }
   | { action: "delete_pronunciation"; pronunciation_id: string }
+  | { action: "set_voice"; voice_enabled: boolean }
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
@@ -105,6 +106,11 @@ export interface PronunciationsApi {
   deletePronunciation: (id: string) => Promise<void>
 }
 
+export interface VoiceSettingApi {
+  muted: boolean
+  setMuted: (muted: boolean) => void
+}
+
 export interface WidgetApi {
   config: { maxTasks: number; urgentOnly: boolean; categoryId: string | null }
   setConfig: (config: { maxTasks?: number; urgentOnly?: boolean; categoryId?: string | null }) => void
@@ -143,6 +149,7 @@ export async function executeVoiceAction(
   { contacts, addContact, updateContact, deleteContact }: ContactsApi,
   { placeReminders, addPlaceReminder, deletePlaceReminder, geocodePlace }: PlaceRemindersApi,
   { pronunciations, addPronunciation, deletePronunciation }: PronunciationsApi,
+  { muted, setMuted }: VoiceSettingApi,
   { setConfig }: WidgetApi,
 ): Promise<string> {
   switch (action.action) {
@@ -333,6 +340,17 @@ export async function executeVoiceAction(
       const p = pronunciations.find((x) => x.id === action.pronunciation_id)
       await deletePronunciation(action.pronunciation_id)
       return `Prononciation "${p?.veut_dire ?? "supprimée"}" oubliée.`
+    }
+
+    case "set_voice": {
+      // Écrit avant que la réponse ne soit prononcée : "coupe ta voix" est
+      // donc la dernière phrase qu'on n'entend pas, et "remets ta voix" la
+      // première qu'on entend à nouveau. La réponse reste affichée dans les
+      // deux cas.
+      if (action.voice_enabled === muted) setMuted(!action.voice_enabled)
+      return action.voice_enabled
+        ? "Voix rallumée, tu m'entends à nouveau."
+        : "D'accord, je me tais. Je continue de te répondre à l'écrit."
     }
 
     case "chat":

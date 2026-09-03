@@ -11,6 +11,7 @@ import { ecrireReglage } from "@/lib/reglages"
 export const VOICE_INDEX_KEY = "jarvis_voice_index"
 export const VOICE_RATE_KEY = "jarvis_voice_rate"
 export const VOICE_PITCH_KEY = "jarvis_voice_pitch"
+export const VOICE_MUTED_KEY = "jarvis_voice_muted"
 
 /** Un peu plus rapide que le rythme neutre : moins lent à l'usage répété. */
 export const DEFAULT_RATE = 1.15
@@ -25,6 +26,8 @@ export interface VoicePrefs {
   voiceIndex: number | null
   rate: number
   pitch: number
+  /** Voix coupée : Jarvis répond alors par écrit seulement. */
+  muted: boolean
 }
 
 function readNumber(key: string, fallback: number, min: number, max: number) {
@@ -49,11 +52,25 @@ export function readVoicePrefs(): VoicePrefs {
     voiceIndex = null
   }
 
+  let muted = false
+  try {
+    muted = localStorage.getItem(VOICE_MUTED_KEY) === "1"
+  } catch {
+    muted = false
+  }
+
   return {
     voiceIndex,
     rate: readNumber(VOICE_RATE_KEY, DEFAULT_RATE, RATE_MIN, RATE_MAX),
     pitch: readNumber(VOICE_PITCH_KEY, DEFAULT_PITCH, PITCH_MIN, PITCH_MAX),
+    muted,
   }
+}
+
+/** Écrit la préférence de coupure. Séparée de writeVoicePref, qui ne
+ *  manipule que des nombres. */
+export function writeVoiceMuted(muted: boolean) {
+  ecrireReglage(VOICE_MUTED_KEY, muted ? "1" : "0")
 }
 
 export function writeVoicePref(key: string, value: number | null) {
