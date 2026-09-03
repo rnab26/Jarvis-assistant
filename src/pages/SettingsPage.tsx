@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { JarvisCore, CORE_IMAGE_CHANGEE, type CoreEtat } from "@/components/JarvisCore"
+import { ApkDownloader } from "@/lib/apkDownloader"
 import { detourerCore, ecrireCoreImage, lireCoreImage } from "@/lib/coreImage"
 import { Geofence } from "@/lib/geofencePlugin"
 import {
@@ -139,6 +140,84 @@ const UPDATE_STATUS_LABEL = {
   "update-available": "Nouvelle version disponible",
   unknown: "Impossible de vérifier",
 } as const
+
+/**
+ * Un <a href> vers l'APK ouvert depuis l'app est intercepté par Capacitor
+ * et lancé dans un nouveau contexte Chrome — où le téléchargement d'un
+ * gros fichier binaire ne se finalise jamais de façon fiable (bug observé
+ * sur device, indépendant du fix "pas de target=_blank"). Sur natif, on
+ * passe donc par ApkDownloader (DownloadManager Android), un seul tap.
+ */
+function MettreAJour({ status }: { status: "checking" | "up-to-date" | "update-available" | "unknown" }) {
+  const [etat, setEtat] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
+  const [erreur, setErreur] = useState<string | null>(null)
+
+  async function telecharger() {
+    setErreur(null)
+    const { granted } = await ApkDownloader.hasInstallPermission()
+    if (!granted) {
+      setEtat("besoin-permission")
+      return
+    }
+    setEtat("telechargement")
+    try {
+      await ApkDownloader.downloadAndInstall({ url: APK_DOWNLOAD_URL })
+      setEtat("idle")
+    } catch (e) {
+      setEtat("erreur")
+      setErreur(e instanceof Error ? e.message : "Échec du téléchargement.")
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Mettre à jour l'application</CardTitle>
+        <CardDescription>
+          Toujours la dernière APK construite automatiquement à chaque mise à jour de Jarvis —
+          pas besoin de naviguer dans GitHub Actions.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col items-start gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isNative ? (
+            <Button onClick={telecharger} disabled={etat === "telechargement"}>
+              <Download className="size-4" />
+              {etat === "telechargement" ? "Téléchargement..." : "Mettre à jour"}
+            </Button>
+          ) : (
+            <Button asChild>
+              <a href={APK_DOWNLOAD_URL} download>
+                <Download className="size-4" />
+                Télécharger la dernière version
+              </a>
+            </Button>
+          )}
+          <Badge variant={status === "update-available" ? "destructive" : "outline"}>
+            {UPDATE_STATUS_LABEL[status]}
+          </Badge>
+        </div>
+        {etat === "besoin-permission" && (
+          <div className="flex flex-col gap-2 text-sm">
+            <p className="text-muted-foreground">
+              Android bloque l'installation d'une app venant d'ailleurs que le Play Store par
+              défaut — autorise Jarvis une fois, puis appuie à nouveau sur "Mettre à jour".
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-fit"
+              onClick={() => ApkDownloader.openInstallPermissionSettings()}
+            >
+              Autoriser cette source
+            </Button>
+          </div>
+        )}
+        {etat === "erreur" && erreur && <p className="text-sm text-destructive">{erreur}</p>}
+      </CardContent>
+    </Card>
+  )
+}
 
 /** Curseur avec sa valeur lisible : régler une voix se fait à l'oreille,
  * il faut voir où on en est et pouvoir revenir en arrière. */
@@ -326,29 +405,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Mettre à jour l'application</CardTitle>
-          <CardDescription>
-            Ce lien pointe toujours vers le dernier APK construit automatiquement à chaque mise à
-            jour de Jarvis — pas besoin de naviguer dans GitHub Actions.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-3">
-          <Button asChild>
-            {/* Pas de target="_blank" : sur Chrome Android, un téléchargement de
-             * fichier binaire lancé dans un nouvel onglet reste parfois bloqué
-             * à 100% sans jamais se finaliser. Navigation directe = fiable. */}
-            <a href={APK_DOWNLOAD_URL} download>
-              <Download className="size-4" />
-              Télécharger la dernière version
-            </a>
-          </Button>
-          <Badge variant={status === "update-available" ? "destructive" : "outline"}>
-            {UPDATE_STATUS_LABEL[status]}
-          </Badge>
-        </CardContent>
-      </Card>
+      <MettreAJour status={status} />
 
       <Card>
         <CardHeader>

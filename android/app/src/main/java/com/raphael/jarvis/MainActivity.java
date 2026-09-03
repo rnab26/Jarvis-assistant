@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(JarvisWidgetPlugin.class);
         registerPlugin(ShareReceiverPlugin.class);
         registerPlugin(GeofencePlugin.class);
+        registerPlugin(ApkDownloaderPlugin.class);
         super.onCreate(savedInstanceState);
         handleShareIntent(getIntent());
     }
