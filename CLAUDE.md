@@ -107,8 +107,24 @@ qu'il ait à les recopier. Sépare bien les **décisions** (il choisit) des
 les secondes, une liste numérotée qu'il coche au fur et à mesure te dit quand
 tu peux démarrer.
 
-Deux fiches existent déjà et servent de modèle : « Jarvis, pièce par pièce »
-(catalogue oui/non) et « Ce qu'il me manque » (décisions à options).
+### Les fiches en cours — à lui renvoyer en début de session
+
+**À chaque nouvelle session**, renvoie-lui les fiches encore en cours (ou
+régénère-les si nécessaire) pour qu'il reprenne au bon endroit sans avoir à se
+répéter. Relis d'abord ses réponses avec `read_db` sur l'URL de la fiche : ne
+lui redemande jamais ce à quoi il a déjà répondu.
+
+| Fiche | État | URL |
+| --- | --- | --- |
+| Jarvis, pièce par pièce (catalogue oui/non) | répondue | https://claude.ai/code/artifact/d9bda589-10ac-4de4-a515-1c41ad95b90a |
+| Ce qu'il me manque (décisions à options) | répondue, sauf la contradiction sur la voix | https://claude.ai/code/artifact/fc8f0416-f799-4fc6-b9ae-3951b1486dbd |
+| Brancher Google à Jarvis (procédure) | **en cours** — il est bloqué à l'étape 3 | https://claude.ai/code/artifact/27f79fa6-2f64-49bd-879e-5215df9f88cd |
+
+Les deux premières servent aussi de modèle de mise en forme.
+
+Limite connue : **il ne peut pas joindre de capture d'écran** dans une réponse
+d'artefact. Quand il est bloqué visuellement, demande-lui la capture dans la
+conversation, pas dans la fiche.
 
 ## Requêtes SQL : toujours regrouper
 
