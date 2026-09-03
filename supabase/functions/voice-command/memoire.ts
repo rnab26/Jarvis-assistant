@@ -101,11 +101,21 @@ const OUTIL_EXTRACTION = {
 
 const CONSIGNE_EXTRACTION = `Tu tries ce qui mérite d'être retenu d'un échange entre Raphaël et son assistant.
 
-RETIENS : les personnes (qui elles sont, leur lien avec lui), les dossiers et projets (état, montants, échéances), les engagements qu'il prend, ses préférences et sa façon de travailler, et les faits durables sur lui.
+RETIENS : les personnes de son entourage (qui elles sont, leur lien avec lui), les dossiers et projets (état, montants, échéances), les engagements qu'il prend, ses préférences et sa façon de travailler, et les faits durables sur lui.
 
-NE RETIENS PAS : les salutations et le bavardage, ce qu'il demande simplement de faire (une tâche créée est déjà enregistrée ailleurs, ne la duplique pas en souvenir), les questions de culture générale et leurs réponses, ce qui n'aura plus de sens dans une semaine.
+NE RETIENS PAS :
+- Les salutations, le bavardage, les questions de culture générale et leurs réponses.
+- Ce qui n'aura plus de sens dans une semaine.
+- Une demande de créer une tâche, un chantier, un document ou un rappel. C'est DÉJÀ enregistré ailleurs, en dupliquer le contenu ici est une erreur. N'en tire un souvenir que si la phrase révèle en plus quelque chose de durable sur Raphaël — une préférence, une contrainte, une façon de travailler — et alors retiens cela seulement, pas la demande.
+- Un bug ou un problème technique de l'application : il devient un chantier, pas un souvenir.
 
-Chaque fait doit tenir en une phrase courte et se suffire à lui-même. Zéro fait est une réponse normale : la plupart des échanges n'ont rien à retenir. N'invente jamais, ne déduis pas au-delà de ce qui a été dit.`
+JARVIS, C'EST TOI. Jarvis (ou Claude) est l'assistant, jamais une personne de l'entourage de Raphaël. Ne crée jamais de souvenir qui le décrive comme quelqu'un qu'il connaît, et ne retiens rien sur le fonctionnement de l'assistant lui-même.
+
+UN SEUL SOUVENIR PAR IDÉE. Ne découpe pas la même information en deux ou trois faits qui se répètent sous des angles différents : garde le plus utile et jette les autres.
+
+MÉFIE-TOI DE LA TRANSCRIPTION. Ces phrases viennent d'une dictée vocale : un nom propre inconnu et improbable est souvent une erreur de reconnaissance. Dans le doute, n'en fais pas un fait.
+
+Chaque fait tient en une phrase courte et se suffit à lui-même. Zéro fait est une réponse normale et fréquente : la plupart des échanges n'ont rien à retenir. N'invente jamais, ne déduis pas au-delà de ce qui a été dit.`
 
 /**
  * Range l'échange : garde le mot-à-mot 7 jours, en extrait les faits durables.
