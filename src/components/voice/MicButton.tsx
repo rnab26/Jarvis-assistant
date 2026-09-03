@@ -326,7 +326,15 @@ export function MicButton({
 
     async function wakeLoop() {
       while (!cancelled) {
-        if (statusRef.current !== "idle") {
+        // "error" compte comme un état de repos, et c'est capital : sans ça,
+        // la moindre erreur tuait le réveil vocal pour de bon. Le cas le plus
+        // fréquent n'a rien d'exceptionnel — Raphaël dit « Jarvis », Jarvis
+        // répond « Oui ? », il n'enchaîne pas tout de suite : l'écoute rend
+        // « Je n'ai rien entendu », le statut passe en "error" et n'en
+        // revient jamais tout seul. La boucle attendait alors un "idle" qui
+        // n'arrivait plus, et il fallait toucher le cœur pour repartir —
+        // exactement ce qu'il décrivait.
+        if (statusRef.current !== "idle" && statusRef.current !== "error") {
           await new Promise((r) => setTimeout(r, 400))
           continue
         }
