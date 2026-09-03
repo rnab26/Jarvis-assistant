@@ -9,6 +9,7 @@ const TABS = [
   { to: "/cockpit", label: "Cockpit dev", end: false },
   { to: "/documents", label: "Documents", end: false },
   { to: "/contacts", label: "Contacts", end: false },
+  { to: "/memoire", label: "Mémoire", end: false },
   { to: "/settings", label: "Paramètres", end: false },
 ]
 

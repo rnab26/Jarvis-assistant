@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
+import { memoriser, rappelerSouvenirs } from "./memoire.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -210,7 +211,7 @@ Pour configure_widget : ne renvoie que les champs (max_tasks, urgent_only, categ
 Pour add_contact : si le contact existe déjà dans la liste fournie (même nom ou très proche), utilise update_contact à la place pour ajouter l'information à ses notes existantes plutôt que de créer un doublon.
 Pour add_place_reminder : "place" doit être un mot-clé court et probable à être redit tel quel (nom de lieu, de chantier, de client) — pas une phrase entière. "reminder" est la phrase que Jarvis doit dire, reformulée proprement.
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
-Réponds toujours en français dans le champ message.`
+Réponds toujours en français dans le champ message.${await rappelerSouvenirs(supabase, transcript)}`
 
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -248,6 +249,20 @@ Réponds toujours en français dans le champ message.`
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       )
     }
+
+    // Mémorisation silencieuse, après coup : la réponse part sans l'attendre.
+    // waitUntil garde la fonction en vie le temps de finir, sans retarder
+    // l'utilisateur — sans lui, l'Edge Function s'arrête dès la réponse rendue.
+    const rangement = memoriser(
+      supabase,
+      user.id,
+      transcript,
+      typeof toolUse.input?.message === "string" ? toolUse.input.message : null,
+      anthropicKey,
+    )
+    const runtime = globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }
+    if (runtime.EdgeRuntime?.waitUntil) runtime.EdgeRuntime.waitUntil(rangement)
+    else await rangement
 
     return new Response(JSON.stringify({ action: toolUse.input }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
