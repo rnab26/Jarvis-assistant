@@ -380,12 +380,7 @@ const VOICE_ACTION_TOOL = {
  * de buter sur la limite. N'y insère jamais une donnée variable.
  */
 /** Voir le commentaire sur `modele` dans l'appel, plus bas. */
-const MODELE_PAR_DEFAUT = "gemini-3.5-flash"
-
-/** Essayés dans l'ordre si la minute du premier est saturée : le quota gratuit
- * est compté PAR MODÈLE, donc basculer rend la main tout de suite là où
- * attendre coûte plusieurs secondes. */
-const SECOURS = ["gemini-flash-lite-latest", "gemini-3.1-flash-lite"]
+const MODELE_PAR_DEFAUT = "gemini-3.5-flash-lite"
 
 const CONSIGNES = `Tu es l'assistant vocal de Jarvis, qui gère sept domaines pour l'utilisateur :
 1. Ses tâches personnelles/clients, organisées par catégorie.
@@ -498,21 +493,29 @@ Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?
 Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouvenirs(supabase, transcript)}`
 
     const { args, consommation, echec } = await appelerGemini({
-      // Réglable par le secret GEMINI_MODELE, sans redéployer : les quotas de
-      // l'offre gratuite ne sont publiés nulle part et diffèrent par modèle.
-      // Pas d'alias « latest » : un changement de modèle doit être un choix.
+      // Le modèle est réglable par le secret GEMINI_MODELE, sans redéployer :
+      // les quotas de l'offre gratuite ne sont publiés nulle part (visibles
+      // seulement dans AI Studio) et diffèrent par modèle.
       //
-      // Mesuré le 3 sept. 2026, et rien de tout cela ne se devine :
-      // — gemini-3.8-flash renvoie 429 dès le premier appel (20 requêtes par
-      //   jour) : nommé en tête, il laissait Jarvis muet ;
-      // — les modèles Lite répondent en 640 ms contre 3 s, mais échouaient sur
-      //   cinq des vingt-cinq contrôles, tous des actions dans les
-      //   applications — dont « appeler un contact ».
-      // Déclencher un appel par erreur coûte plus cher que deux secondes
-      // d'attente, et ces phrases sont devenues rares : l'essentiel est
-      // interprété sur le téléphone. Le rapide reste donc en secours.
+      // Mesures du 3 sept. 2026, sur la vraie API :
+      // - gemini-3.8-flash est plafonné à 20 requêtes PAR JOUR et renvoie 429
+      //   dès le premier appel : le nommer en tête laissait Jarvis muet.
+      // - gemini-3.5-flash-lite répond en ~640 ms et passe les vingt-cinq
+      //   contrôles de scripts/verifier-commande-vocale.mjs, « appeler un
+      //   contact » compris (rejoué sur la fonction déployée après la fusion).
+      // - gemini-3.5-flash répond en ~3 s : la latence s'entend, et Raphaël
+      //   la signale déjà comme une gêne.
+      // D'où ce défaut. Une session avait mesuré cinq échecs sur le Lite au
+      // moment de la bascule ; ce n'est pas reproductible ici, elle visait
+      // probablement l'alias « gemini-flash-lite-latest » et non cette
+      // version figée. Pas d'alias « latest » en tête, justement : un
+      // changement de modèle doit être un choix, pas une surprise un matin.
       modele: Deno.env.get("GEMINI_MODELE") || MODELE_PAR_DEFAUT,
-      secours: SECOURS,
+      // Le plafond gratuit se compte PAR MODÈLE : quand la minute du premier
+      // est saturée, basculer sur un autre rend la main tout de suite, là où
+      // attendre s'entend dans une conversation parlée. Ces deux-là sont les
+      // autres versions du même Lite, avec chacune leur propre quota.
+      secours: ["gemini-flash-lite-latest", "gemini-3.1-flash-lite"],
       // Les consignes d'abord, le contexte ensuite : voir CONSIGNES.
       systeme: `${CONSIGNES}\n\n${contexte}`,
       texte: transcript,
