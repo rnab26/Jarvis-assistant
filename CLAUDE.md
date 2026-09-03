@@ -260,7 +260,7 @@ utilisateur de test éphémère créé puis supprimé. La clé publique se récu
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 
-## Les six vérifications du dépôt
+## Les sept vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
@@ -271,6 +271,7 @@ node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
+ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
@@ -279,6 +280,15 @@ absent → RLS refuse sans le dire), et les réglages qui ne remonteraient pas
 en base. Piège à connaître si tu écris un script du même genre : « SUBSCRIBED »
 ne veut pas dire que le serveur diffuse déjà — le tout premier canal d'une
 connexion neuve rate une écriture faite dans la seconde qui suit.
+
+`verifier-connexion-google.mjs` couvre le piège qui a bloqué Raphaël le
+3 sept. 2026 : l'adresse de retour envoyée à Google doit être identique au
+caractère près à celle enregistrée dans le client OAuth, sinon Google refuse
+d'afficher l'écran d'autorisation (« Erreur 400 : redirect_uri_mismatch »).
+Le script suit vraiment l'URL produite par `/start` et vérifie que Google
+l'accepte — un contrôle sur le seul contenu de l'URL ne l'aurait pas vu.
+**À relancer après tout déploiement de `google-oauth`**, avant de dire à
+Raphaël d'essayer : c'est lui qui se prend l'erreur sinon.
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
