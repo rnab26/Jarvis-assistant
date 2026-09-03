@@ -3,12 +3,20 @@ import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
-import type { DevItem, DevItemInput, DevPriority } from "@/types/database"
+import type { DevItem, DevItemInput, DevPriority, DevStatus } from "@/types/database"
 
 const PRIORITY_LABEL: Record<DevPriority, string> = {
   low: "Basse",
   normal: "Normale",
   high: "Haute",
+}
+
+/** Le tableau est groupé par thème : le statut, lui, se lit sur la carte.
+ * "À faire" reste implicite — c'est le cas de la plupart, l'afficher n'ajoute
+ * que du bruit sur un écran de téléphone. */
+const STATUS_LABEL: Partial<Record<DevStatus, string>> = {
+  in_progress: "En cours",
+  done: "Terminé",
 }
 
 const PRIORITY_VARIANT: Record<DevPriority, "secondary" | "outline" | "destructive"> = {
@@ -55,6 +63,8 @@ function reservePar(item: DevItem) {
 
 interface DevItemCardProps {
   item: DevItem
+  /** Thèmes déjà utilisés, proposés à la saisie lors d'une modification. */
+  themes?: string[]
   onUpdate: (id: string, input: DevItemInput) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onArchive?: (id: string) => Promise<void>
@@ -63,6 +73,7 @@ interface DevItemCardProps {
 
 export function DevItemCard({
   item,
+  themes,
   onUpdate,
   onDelete,
   onArchive,
@@ -76,6 +87,9 @@ export function DevItemCard({
           <p className="text-sm whitespace-pre-line text-muted-foreground">{renderNotes(item.notes)}</p>
         )}
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {STATUS_LABEL[item.status] && (
+            <Badge variant="default">{STATUS_LABEL[item.status]}</Badge>
+          )}
           <Badge variant={PRIORITY_VARIANT[item.priority]}>
             {PRIORITY_LABEL[item.priority]}
           </Badge>
@@ -106,6 +120,7 @@ export function DevItemCard({
       )}
       <DevItemFormDialog
         item={item}
+        themes={themes}
         onSubmit={(input) => onUpdate(item.id, input)}
         trigger={
           <Button variant="ghost" size="icon" aria-label="Modifier">
