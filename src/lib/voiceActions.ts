@@ -22,6 +22,7 @@ export type VoiceAction =
       notes?: string | null
       category_id?: string | null
       due_date?: string | null
+      due_time?: string | null
     }
   | { action: "update_task"; task_id: string; changes: Partial<TaskInput> }
   | { action: "delete_task"; task_id: string }
@@ -131,11 +132,13 @@ export async function executeVoiceAction(
         title: action.title,
         notes: action.notes ?? null,
         due_date: action.due_date ?? null,
+        due_time: action.due_date ? (action.due_time ?? null) : null,
         category_id: action.category_id ?? null,
         status: "todo",
       })
       const catName = categoryName(categories, action.category_id)
-      return `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}.`
+      const heure = action.due_date && action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
+      return `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
     }
 
     case "update_task": {

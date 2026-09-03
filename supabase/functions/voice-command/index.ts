@@ -81,6 +81,10 @@ const VOICE_ACTION_TOOL = {
         type: ["string", "null"],
         description: "add_task uniquement : échéance au format YYYY-MM-DD, déduite si l'utilisateur dit 'demain', 'vendredi', etc. null si non précisée.",
       },
+      due_time: {
+        type: ["string", "null"],
+        description: "add_task uniquement : heure du rappel au format HH:MM (24h), déduite si l'utilisateur dit 'à 14h', 'ce midi', 'à 9h30', etc. null si aucune heure n'est précisée (seule la date compte alors).",
+      },
       priority: {
         type: "string",
         enum: ["low", "normal", "high"],
@@ -205,6 +209,7 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.
 Traduis la commande vocale de l'utilisateur en un appel à l'outil resolve_voice_command.
 Pour update_task/delete_task, résous task_id depuis la liste de tâches fournie (par titre approchant). Pour update_dev_item/delete_dev_item, résous item_id depuis la liste de chantiers fournie. Pour update_contact/delete_contact, résous contact_id depuis la liste de contacts fournie (par nom approchant). Pour delete_place_reminder, résous reminder_id depuis la liste de rappels de lieu fournie (par lieu approchant). Si plusieurs éléments correspondent ou qu'aucun ne correspond clairement, utilise action="clarify" avec une question précise.
 Pour add_task/add_dev_item : si l'utilisateur dicte une phrase longue avec des détails (contexte, raison, précisions), ne mets pas toute la phrase dans "title" — synthétise un titre court (quelques mots) et reformule le reste dans "notes". Si la phrase est déjà courte et ne contient rien de plus que le titre, laisse "notes" à null.
+Pour add_task : si l'utilisateur précise une heure ("à 14h", "ce midi", "à 9h30 demain"), déduis-la dans "due_time" (HH:MM) en plus de "due_date" — jamais d'heure sans date. Sans heure précisée, laisse "due_time" à null.
 Pour save_document : synthétise un nom de fichier court dans "filename", et reformule proprement tout ce que l'utilisateur a dicté comme contenu dans "content".
 Pour configure_widget : ne renvoie que les champs (max_tasks, urgent_only, category_id) que l'utilisateur a explicitement mentionnés — laisse les autres absents plutôt que de les redéfinir à une valeur par défaut.
 Pour add_contact : si le contact existe déjà dans la liste fournie (même nom ou très proche), utilise update_contact à la place pour ajouter l'information à ses notes existantes plutôt que de créer un doublon.
