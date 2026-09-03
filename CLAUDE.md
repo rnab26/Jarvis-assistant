@@ -188,8 +188,12 @@ le même commit — sinon elle sera perdue pour les sessions suivantes.
 scripts/deployer-fonction.sh voice-command
 ```
 
-Il lit les fichiers sur le disque et les envoie à l'API Supabase. **Il exige
-`SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
+Il lit les fichiers sur le disque et les envoie à l'API Supabase. Il embarque
+tout seul les fichiers voisins (`memoire.ts`) et le dossier `_shared/` quand
+la fonction s'en sert, et il relit puis **conserve le réglage `verify_jwt`
+existant** — `google-oauth` doit rester ouvert pour recevoir la redirection de
+Google, qui ne porte aucun jeton ; le refermer casserait la connexion du
+compte Google. **Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
 à mettre dans les variables d'environnement de l'environnement cloud — jamais
 dans le dépôt). Tant qu'elle manque, le script le dit et s'arrête.
 
