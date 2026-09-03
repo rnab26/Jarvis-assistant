@@ -378,6 +378,7 @@ Une seule phrase peut contenir PLUSIEURS demandes ("ajoute une tâche pour le pl
 Reprendre quelque chose d'existant : la liste fournie contient AUSSI les tâches déjà faites (status "done") et les chantiers terminés. Si l'utilisateur veut revenir sur une tâche déjà faite ("remets la tâche du plombier à faire", "finalement je dois refaire les carreaux", "rouvre celle que j'ai terminée hier"), n'en crée pas une nouvelle : utilise update_task sur la tâche existante avec changes={"status":"todo"} plus ce qu'il change d'autre. Une tâche n'a que deux statuts, "todo" et "done" — "en cours" pour une tâche vaut "todo".
 Pour retrouver la bonne tâche ou le bon chantier, appuie-toi sur les notes autant que sur le titre : l'utilisateur redit souvent un détail de la note plutôt que le titre exact. À égalité de correspondance, préfère ce qui est encore à faire, sauf si l'utilisateur parle explicitement de quelque chose de terminé ou d'archivé.
 Agenda : l'utilisateur a branché son compte Google, tu peux lire et écrire dans son agenda. Toutes les heures qu'il dicte sont des heures locales (Israël) — renvoie-les telles quelles dans event_debut/event_fin, sans conversion ni fuseau. Pour update_calendar_event et delete_calendar_event, tu ne connais pas l'identifiant des événements : renseigne event_cible avec la façon dont il les désigne, l'app se charge de retrouver le bon et de demander à l'utilisateur s'il y a une ambiguïté. Un rendez-vous, une réunion, un créneau qui occupe du temps va dans l'agenda ; quelque chose à faire sans créneau reste une tâche (add_task).
+Quand la phrase COMMENCE par une demande de note ("ajoute une tâche", "rajoute un chantier", "note que…"), tout ce qui suit est le CONTENU de cette note, même si on y lit "appeler", "envoyer un message" ou "ouvrir" : tu enregistres UNE tâche ou UN chantier, et tu ne déclenches aucune action dans une application. "Ajoute une tâche : appeler le plombier et envoyer un message à Melissa" fait une seule action, add_task — le plombier ne doit pas être appelé maintenant.
 Pour send_message et call_contact : résous contact_id depuis la liste de contacts fournie, par nom approchant. Si le contact existe mais n'a pas de numéro (champ phone vide) et que l'utilisateur n'en a pas dicté un, utilise quand même send_message : WhatsApp demandera à qui envoyer. Pour call_contact en revanche, sans numéro l'appel est impossible : renvoie une action clarify qui demande le numéro de la personne.
 Ces actions préparent le geste sans l'accomplir : le message s'affiche prêt à partir, l'appel est composé, et c'est l'utilisateur qui appuie. Dis-le simplement dans ta réponse ("je te l'ai préparé, tu n'as plus qu'à envoyer"), sans t'en excuser ni t'étendre dessus.
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
@@ -464,7 +465,14 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouv
       // Le Flash stable le plus récent de l'offre gratuite. Pas d'alias
       // « latest » : un changement de modèle doit être un choix, pas une
       // surprise un matin.
-      modele: "gemini-3.8-flash",
+      // Mesuré le 3 sept. 2026, pas choisi au catalogue : sur la même phrase à
+      // découper, flash-lite répond en 640 ms, gemini-3.5-flash en 3 s, et
+      // gemini-3-flash-preview en 138 s. gemini-3.8-flash, lui, renvoie 429
+      // dès le premier appel — son quota gratuit est nul, le nommer en tête
+      // laissait Jarvis muet. Dans une conversation parlée, la latence est une
+      // fonctionnalité.
+      modele: "gemini-flash-lite-latest",
+      secours: ["gemini-3.5-flash", "gemini-3.1-flash-lite"],
       // Les consignes d'abord, le contexte ensuite : voir CONSIGNES.
       systeme: `${CONSIGNES}\n\n${contexte}`,
       texte: transcript,

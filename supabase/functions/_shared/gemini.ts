@@ -31,8 +31,17 @@ export interface OutilDeclare {
 }
 
 export interface AppelModele {
-  /** Identifiant du modèle, ex. "gemini-3.8-flash". */
+  /** Identifiant du modèle, ex. "gemini-flash-lite-latest". */
   modele: string
+  /**
+   * Modèles à essayer si le premier refuse faute de quota.
+   *
+   * Le plafond gratuit est compté PAR MODÈLE
+   * (« GenerateRequestsPerMinutePerProjectPerModel »), donc changer de modèle
+   * rend la main tout de suite là où attendre coûte plusieurs secondes — et
+   * dans une conversation parlée, un silence de cinq secondes s'entend.
+   */
+  secours?: string[]
   /** La consigne, stable d'un appel à l'autre. */
   systeme: string
   /** Ce que l'utilisateur a dit. */
@@ -111,6 +120,21 @@ export function pourGemini(schema: unknown): unknown {
  * réessaie jamais une requête refusée pour de bon.
  */
 export async function appelerGemini(appel: AppelModele): Promise<ResultatModele> {
+  const candidats = [appel.modele, ...(appel.secours ?? [])]
+  let dernierResultat: ResultatModele = { echec: undefined }
+
+  for (const modele of candidats) {
+    dernierResultat = await tenterUnModele(appel, modele)
+    if (!dernierResultat.echec) return dernierResultat
+    // Quota de la minute atteint sur CE modèle : le suivant a le sien. Toute
+    // autre erreur se reproduirait à l'identique, on s'arrête là.
+    if (dernierResultat.echec.statut !== 429) break
+  }
+
+  return dernierResultat
+}
+
+async function tenterUnModele(appel: AppelModele, modele: string): Promise<ResultatModele> {
   const corps = {
     systemInstruction: { parts: [{ text: appel.systeme }] },
     contents: [{ role: "user", parts: [{ text: appel.texte }] }],
@@ -143,7 +167,7 @@ export async function appelerGemini(appel: AppelModele): Promise<ResultatModele>
     let attendreMs: number | null = null
 
     try {
-      const reponse = await fetch(`${HOTE}/models/${appel.modele}:generateContent`, {
+      const reponse = await fetch(`${HOTE}/models/${modele}:generateContent`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": appel.cle },
         body: JSON.stringify(corps),
@@ -167,7 +191,10 @@ export async function appelerGemini(appel: AppelModele): Promise<ResultatModele>
       }
 
       const texte = await reponse.text()
-      const passager = STATUTS_A_REESSAYER.has(reponse.status)
+      // 429 : inutile d'attendre ici, l'appelant bascule sur un autre modèle,
+      // dont le quota est distinct. Les autres pannes passagères, elles,
+      // valent la peine d'être rejouées sur le même modèle.
+      const passager = reponse.status !== 429 && STATUTS_A_REESSAYER.has(reponse.status)
       dernier = { statut: reponse.status, texte, passager }
       if (!passager) break
 
