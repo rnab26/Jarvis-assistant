@@ -24,6 +24,10 @@ const CTX: ContexteLocal = {
     { id: "t-carreaux", title: "Commander les carreaux", notes: "chantier villa Dan" },
   ],
   chantiers: [{ id: "c-micro", title: "Micro", notes: "se coupe entre les phrases" }],
+  contacts: [
+    { id: "ct-yoni", name: "Yoni", phone: "0612345678" },
+    { id: "ct-dylan", name: "Dylan", phone: null },
+  ],
   maintenant: MAINTENANT,
 }
 
@@ -164,6 +168,63 @@ doitDonner("archive le chantier micro", { action: "archive_dev_item", item_id: "
     `notes = ${JSON.stringify(a?.notes)}`,
   )
 }
+
+console.log("\n— Musique, appels, messages, alarmes, itinéraires —")
+// Formulations calquées sur celles déjà vérifiées côté Edge Function
+// (scripts/verifier-commande-vocale.mjs) : personne ne les a encore dictées
+// pour de vrai, la fonctionnalité n'a jamais tourné faute de crédit. À
+// corriger avec de vraies tournures dès qu'il en dicte.
+
+doitDonner("mets du Brassens sur Spotify", {
+  action: "open_app",
+  app_name: "Spotify",
+  music_query: "Du brassens",
+})
+doitDonner("ouvre WhatsApp", { action: "open_app", app_name: "Whatsapp" })
+doitDonner("mets en pause", { action: "media_control", media_command: "pause" })
+doitDonner("reprends la musique", { action: "media_control", media_command: "lecture" })
+doitDonner("chanson suivante", { action: "media_control", media_command: "suivant" })
+doitDonner("morceau précédent", { action: "media_control", media_command: "precedent" })
+doitDonner("lance la musique", { action: "media_control", media_command: "lecture" })
+
+doitDonner("appelle Yoni", { action: "call_contact", contact_id: "ct-yoni" })
+doitDonner("envoie un message à Dylan pour lui dire que je passe demain matin sur le chantier", {
+  action: "send_message",
+  contact_id: "ct-dylan",
+  message_channel: "whatsapp",
+  message_text: "Je passe demain matin sur le chantier",
+})
+doitDonner("envoie un sms à Dylan pour dire que je suis en retard", {
+  action: "send_message",
+  contact_id: "ct-dylan",
+  message_channel: "sms",
+})
+doitDonner("réveille-moi à 7h", { action: "set_alarm", alarm_time: "07:00" })
+doitDonner("mets un minuteur de 10 minutes pour les pâtes", {
+  action: "set_alarm",
+  alarm_duration_seconds: 600,
+  alarm_label: "Les pates",
+})
+doitDonner("minuteur de 2 heures", {
+  action: "set_alarm",
+  alarm_duration_seconds: 7200,
+})
+
+doitDonner("emmène-moi au 12 rue de la Paix", {
+  action: "navigate_to",
+  destination: "12 rue de la paix",
+})
+
+console.log("\n— Ce qui ne doit JAMAIS déclencher une action dans une app —")
+
+doitLaisserPasser(
+  "appelle le truc bidule",
+  "aucun contact ne correspond, mieux vaut redemander que composer au hasard",
+)
+doitDonner("ajoute une tâche : appeler le plombier", {
+  action: "add_task",
+  title: "Appeler le plombier",
+})
 
 console.log("\n— Ce qu'il doit laisser au serveur, plutôt que de deviner —")
 

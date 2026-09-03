@@ -62,7 +62,9 @@ export interface Quand {
 }
 
 /** « à 14h », « à 14h30 », « à 9 heures », « à midi », « à 8h du soir ». */
-function lireHeure(texte: string): { heure: string; extrait: string } | null {
+/** Heure seule, sans date — pour une alarme ou un minuteur, qui n'ont pas
+ * besoin de jour. Même lecture que celle utilisée pour un rendez-vous. */
+export function lireHeure(texte: string): { heure: string; extrait: string } | null {
   if (/\bmidi\b/.test(texte)) return { heure: "12:00", extrait: "midi" }
   if (/\bminuit\b/.test(texte)) return { heure: "00:00", extrait: "minuit" }
 

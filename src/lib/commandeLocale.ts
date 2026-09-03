@@ -1,7 +1,7 @@
 // Import relatif avec extension : ce module doit rester chargeable par
 // `node --experimental-strip-types` pour sa vérification, qui ne connaît
 // pas l'alias « @/ » de Vite.
-import { lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
+import { lireHeure, lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 
 /**
@@ -36,9 +36,16 @@ export interface ChantierConnu {
   notes?: string | null
 }
 
+export interface ContactConnu {
+  id: string
+  name: string
+  phone?: string | null
+}
+
 export interface ContexteLocal {
   taches: TacheConnue[]
   chantiers: ChantierConnu[]
+  contacts?: ContactConnu[]
   /** Injecté pour que les tests ne dépendent pas du jour où ils tournent. */
   maintenant?: Date
 }
@@ -115,6 +122,26 @@ function meilleur<T extends { title: string; notes?: string | null }>(
   // En dessous, la correspondance relève de la coïncidence : on préfère
   // rendre la main plutôt que de modifier la mauvaise ligne.
   return score >= 50 ? gagnant : null
+}
+
+/** Même principe que `meilleur`, mais sur un nom de personne plutôt qu'un
+ * titre de tâche : pas de notes à consulter, la correspondance se joue sur
+ * le nom seul. */
+function meilleurContact(cible: string, contacts: ContactConnu[]): ContactConnu | null {
+  let gagnant: ContactConnu | null = null
+  let score = 0
+  for (const c of contacts) {
+    const s = correspond(cible, c.name)
+    if (s > score) {
+      score = s
+      gagnant = c
+    }
+  }
+  return score >= 50 ? gagnant : null
+}
+
+function majuscule(texte: string): string {
+  return texte.charAt(0).toUpperCase() + texte.slice(1)
 }
 
 /**
@@ -307,6 +334,112 @@ export function interpreterLocalement(
     const tache = meilleur(suppr[1], ctx.taches)
     if (!tache) return null
     return [{ action: "delete_task", task_id: tache.id }]
+  }
+
+  /* ---------- La musique en cours : pause/reprise/suivant, pas "ouvre une
+     app" — pilotée par les touches multimédia du système, pour ce qui joue
+     déjà quelle que soit l'application. ---------- */
+  if (/^(?:mets?( ca| la musique)? en pause|pause( la musique)?)\b/.test(texte)) {
+    return [{ action: "media_control", media_command: "pause" }]
+  }
+  if (/^(?:arrete|stoppe|coupe)( la musique| ca)\b/.test(texte)) {
+    return [{ action: "media_control", media_command: "stop" }]
+  }
+  if (/^(?:reprends?|relance)( la musique)?\b/.test(texte) || /^remets( la musique)\b/.test(texte)) {
+    return [{ action: "media_control", media_command: "lecture" }]
+  }
+  if (/^(?:(?:morceau|chanson|piste|titre) suivante?|suivante?|passe (?:a la|au) suivante?)\b/.test(texte)) {
+    return [{ action: "media_control", media_command: "suivant" }]
+  }
+  if (/^(?:(?:morceau|chanson|piste|titre) precedente?|precedente?)\b/.test(texte)) {
+    return [{ action: "media_control", media_command: "precedent" }]
+  }
+
+  /* ---------- Ouvrir une application, avec ou sans musique précise ---------- */
+  const musiqueSur = texte.match(/^(?:mets?|joue|lance)\s+(.+?)\s+sur\s+([a-z0-9 ]+)$/)
+  if (musiqueSur) {
+    return [
+      {
+        action: "open_app",
+        app_name: majuscule(musiqueSur[2].trim()),
+        music_query: majuscule(musiqueSur[1].trim()),
+      },
+    ]
+  }
+  const ouvreApp = texte.match(/^(?:ouvre|lance|demarre)\s+(.+)$/)
+  if (ouvreApp) {
+    const cible = ouvreApp[1].trim()
+    // "lance la musique" seule, sans application précisée, relève du
+    // contrôle de lecture ci-dessus — pas d'une application qui s'appellerait
+    // "la musique".
+    if (/^(?:de la |la )?musique$/.test(cible)) {
+      return [{ action: "media_control", media_command: "lecture" }]
+    }
+    return [{ action: "open_app", app_name: majuscule(cible) }]
+  }
+
+  /* ---------- Appeler un contact connu ---------- */
+  const appelContact = texte.match(/^(?:appelle|telephone a)\s+(.+)$/)
+  if (appelContact) {
+    const contact = meilleurContact(appelContact[1], ctx.contacts ?? [])
+    if (!contact) return null
+    return [{ action: "call_contact", contact_id: contact.id }]
+  }
+
+  /* ---------- Préparer un message ---------- */
+  // Ne reconnaît que ce qui suit un déclencheur net ("pour lui dire",
+  // "dis-lui que") : le texte du message est repris TEL QUEL, jamais
+  // reformulé — une bonne reformulation demande un jugement que ce module
+  // n'a pas, une mauvaise abîmerait un message qui part vraiment.
+  const messageContact = texte.match(
+    /^(?:envoie|prepare)\s+(?:un\s+)?(sms|texto|message|whatsapp)\s+a\s+(.+?)\s+(?:pour(?: lui)? dire|lui dire)\s+(?:que\s+)?(.+)$/,
+  )
+  if (messageContact) {
+    const canalMot = messageContact[1]
+    const contact = meilleurContact(messageContact[2], ctx.contacts ?? [])
+    if (!contact) return null
+    const texteMsg = messageContact[3].trim()
+    if (!texteMsg) return null
+    return [
+      {
+        action: "send_message",
+        message_channel: /sms|texto/.test(canalMot) ? "sms" : "whatsapp",
+        message_text: majuscule(texteMsg),
+        contact_id: contact.id,
+      },
+    ]
+  }
+
+  /* ---------- Alarme et minuteur ---------- */
+  const minuteur = texte.match(
+    /^(?:mets?(?: un)?|lance(?: un)?)?\s*minuteur\s+de\s+(\d+)\s*(heures?|minutes?|secondes?)\b\s*(.*)$/,
+  )
+  if (minuteur) {
+    const n = Number(minuteur[1])
+    const unite = minuteur[2]
+    const secondes = /heure/.test(unite) ? n * 3600 : /minute/.test(unite) ? n * 60 : n
+    const reste = titreDepuis(minuteur[3] ?? "")
+    return [
+      {
+        action: "set_alarm",
+        alarm_duration_seconds: secondes,
+        alarm_label: reste ? majuscule(reste) : undefined,
+      },
+    ]
+  }
+  const alarme = texte.match(/^(?:reveille-moi|mets?(?: une)? alarme|reveil)\s*(.*)$/)
+  if (alarme) {
+    const trouve = lireHeure(alarme[1] ?? "")
+    if (!trouve) return null
+    return [{ action: "set_alarm", alarm_time: trouve.heure }]
+  }
+
+  /* ---------- Itinéraire ---------- */
+  const itineraire = texte.match(
+    /^(?:emmene-moi\s+(?:a|au|aux|vers|jusqu'a)|itineraire\s+(?:vers|jusqu'a)|guide-moi\s+(?:vers|jusqu'a))\s+(.+)$/,
+  )
+  if (itineraire) {
+    return [{ action: "navigate_to", destination: majuscule(itineraire[1].trim()) }]
   }
 
   const ajoutTache = texte.match(

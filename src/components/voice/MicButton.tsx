@@ -157,6 +157,7 @@ export function MicButton({
         title: i.title,
         notes: i.notes,
       })),
+      contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
     })
     if (local) return local
 
