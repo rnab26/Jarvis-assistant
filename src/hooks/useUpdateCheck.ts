@@ -1,44 +1,97 @@
-import { useEffect, useState } from "react"
-import { COMMIT_SHA } from "@/lib/version"
+import { useCallback, useEffect, useState } from "react"
+import { BUILD_NUMBER, COMMIT_SHA } from "@/lib/version"
 
-type UpdateStatus = "checking" | "up-to-date" | "update-available" | "unknown"
+export type UpdateStatus = "checking" | "up-to-date" | "update-available" | "unknown"
+
+/** Ce que la CI a réellement publié comme dernière APK. */
+export type PublishedBuild = {
+  commit: string | null
+  version: string | null
+  buildNumber: number | null
+  date: string | null
+}
 
 const REPO = "rnab26/Jarvis-assistant"
-const BRANCH = "claude/new-session-rn6puh"
+const RELEASE_TAG = "latest-debug"
+
+/** Le workflow Android écrit ces lignes dans le corps de la release
+ * (cf. .github/workflows/android-build.yml). On les relit ici : c'est la
+ * seule source qui décrit l'APK VRAIMENT téléchargeable. */
+function lireChamp(body: string, champ: string): string | null {
+  const m = body.match(new RegExp(`^\\s*${champ}:\\s*(.+?)\\s*$`, "im"))
+  return m ? m[1] : null
+}
 
 /**
- * Compare le commit sur lequel ce build a été fait (injecté par la CI) au
- * dernier commit publié sur la branche, via l'API GitHub publique (pas
- * d'auth nécessaire, lecture seule). Sert à afficher "à jour" ou "nouvelle
- * version disponible" dans Paramètres — l'app ne se met jamais à jour
- * toute seule, c'est juste une indication pour savoir s'il faut retélécharger.
+ * Compare la build en cours d'exécution à la dernière APK RÉELLEMENT
+ * PUBLIÉE (release "latest-debug"), via l'API GitHub publique (lecture
+ * seule, pas d'auth).
+ *
+ * Avant, la comparaison se faisait avec le dernier commit de la branche.
+ * C'était faux dès qu'un commit ne produisait pas d'APK (le workflow avait
+ * un filtre "paths") ou qu'un build échouait : l'app annonçait une
+ * nouvelle version qui n'existait pas, Raphaël retéléchargeait exactement
+ * le même fichier et ne voyait évidemment aucun changement. Le filtre a
+ * été retiré du workflow, et on compare désormais à la release elle-même —
+ * les deux corrections attaquent la même cause.
  */
 export function useUpdateCheck() {
   const [status, setStatus] = useState<UpdateStatus>(
     COMMIT_SHA === "dev" ? "unknown" : "checking",
   )
+  const [published, setPublished] = useState<PublishedBuild | null>(null)
 
-  useEffect(() => {
-    if (COMMIT_SHA === "dev") return
-    let cancelled = false
+  const check = useCallback(async () => {
+    if (COMMIT_SHA === "dev") {
+      setStatus("unknown")
+      return
+    }
+    setStatus("checking")
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`,
+      )
+      if (!res.ok) throw new Error("GitHub API error")
+      const data: { body?: string; assets?: { updated_at?: string }[] } = await res.json()
+      const body = data.body ?? ""
 
-    fetch(`https://api.github.com/repos/${REPO}/commits/${BRANCH}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("GitHub API error")
-        return res.json()
-      })
-      .then((data: { sha?: string }) => {
-        if (cancelled || !data.sha) return
-        setStatus(data.sha === COMMIT_SHA ? "up-to-date" : "update-available")
-      })
-      .catch(() => {
-        if (!cancelled) setStatus("unknown")
-      })
+      const commit = lireChamp(body, "commit")
+      const buildTexte = lireChamp(body, "build")
+      const buildNumber = buildTexte && /^\d+$/.test(buildTexte) ? Number(buildTexte) : null
+      const infos: PublishedBuild = {
+        commit,
+        version: lireChamp(body, "version"),
+        buildNumber,
+        // La date d'upload de l'APK reste juste même si le corps de la
+        // release n'a pas encore le nouveau format.
+        date: lireChamp(body, "date") ?? data.assets?.[0]?.updated_at ?? null,
+      }
+      setPublished(infos)
 
-    return () => {
-      cancelled = true
+      if (!commit) {
+        // Release publiée par l'ancienne version du workflow : rien de
+        // fiable à comparer, ne pas inventer un verdict.
+        setStatus("unknown")
+        return
+      }
+      if (commit === COMMIT_SHA) {
+        setStatus("up-to-date")
+        return
+      }
+      const installe = BUILD_NUMBER ? Number(BUILD_NUMBER) : null
+      if (installe !== null && buildNumber !== null && installe >= buildNumber) {
+        setStatus("up-to-date")
+        return
+      }
+      setStatus("update-available")
+    } catch {
+      setStatus("unknown")
     }
   }, [])
 
-  return { status }
+  useEffect(() => {
+    void check()
+  }, [check])
+
+  return { status, published, recheck: check }
 }

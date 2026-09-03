@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+// Identite de version fournie par la CI. Avant, chaque APK annoncait
+// "1.0 (1)" : Android ne pouvait pas distinguer une mise a jour d'une
+// reinstallation, et Raphael n'avait aucun moyen de verifier laquelle il
+// avait vraiment sur son telephone. ANDROID_VERSION_CODE = numero de run
+// du workflow (strictement croissant), ANDROID_VERSION_NAME = date +
+// numero de build + hash court du commit.
+def ciVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1") as int
+def ciVersionName = System.getenv("ANDROID_VERSION_NAME") ?: "dev"
+
 android {
     namespace = "com.raphael.jarvis"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +16,8 @@ android {
         applicationId "com.raphael.jarvis"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode ciVersionCode
+        versionName ciVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

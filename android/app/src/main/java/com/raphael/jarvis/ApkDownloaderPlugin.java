@@ -1,15 +1,14 @@
 package com.raphael.jarvis;
 
 import android.app.DownloadManager;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
-import androidx.core.content.ContextCompat;
+import android.os.Handler;
+import android.os.Looper;
 import androidx.core.content.FileProvider;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -32,6 +31,11 @@ import java.io.File;
 public class ApkDownloaderPlugin extends Plugin {
 
     private static final String FILE_NAME = "jarvis-update.apk";
+    /** Intervalle d'interrogation de DownloadManager. */
+    private static final long POLL_MS = 500;
+    /** Filet de sécurité : au-delà, on rend la main plutôt que de laisser
+     * le bouton bloqué sur "Téléchargement..." indéfiniment. */
+    private static final long TIMEOUT_MS = 10 * 60 * 1000;
 
     @PluginMethod
     public void hasInstallPermission(PluginCall call) {
@@ -68,56 +72,101 @@ public class ApkDownloaderPlugin extends Plugin {
             return;
         }
 
-        File targetDir = getContext().getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+        Context context = getContext();
+        File targetDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
         File targetFile = new File(targetDir, FILE_NAME);
-        if (targetFile.exists()) targetFile.delete();
+        // Sans ça, DownloadManager écrirait à côté (jarvis-update-1.apk) et
+        // on installerait indéfiniment le PREMIER fichier téléchargé.
+        if (targetFile.exists() && !targetFile.delete()) {
+            call.reject("Impossible de supprimer le téléchargement précédent.");
+            return;
+        }
 
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url))
             .setTitle("Mise à jour Jarvis")
             .setDescription("Téléchargement de la dernière version")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(getContext(), Environment.DIRECTORY_DOWNLOADS, FILE_NAME)
+            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, FILE_NAME)
             .setMimeType("application/vnd.android.package-archive")
             .setAllowedOverMetered(true)
             .setAllowedOverRoaming(true);
+        // L'URL de la release est fixe et le fichier change à chaque build :
+        // on interdit explicitement toute réponse mise en cache, sinon on
+        // réinstalle l'ancienne APK en croyant se mettre à jour.
+        request.addRequestHeader("Cache-Control", "no-cache");
 
-        DownloadManager downloadManager = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
+        DownloadManager downloadManager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
         long downloadId = downloadManager.enqueue(request);
 
-        BroadcastReceiver receiver = new BroadcastReceiver() {
+        // Interrogation périodique plutôt qu'un BroadcastReceiver sur
+        // ACTION_DOWNLOAD_COMPLETE : ce broadcast est émis par l'app
+        // système DownloadManager (un autre UID), sa réception dépend donc
+        // du flag exported du receiver et n'est pas garantie selon les
+        // versions d'Android. Ici, l'issue du téléchargement ne peut pas
+        // être manquée — c'est précisément ce silence-là qui donnait
+        // "je télécharge et il ne se passe rien".
+        Handler handler = new Handler(Looper.getMainLooper());
+        final long debut = System.currentTimeMillis();
+        handler.post(new Runnable() {
             @Override
-            public void onReceive(Context context, Intent intent) {
-                long completedId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
-                if (completedId != downloadId) return;
-                context.unregisterReceiver(this);
-
-                DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
-                DownloadManager.Query query = new DownloadManager.Query().setFilterById(downloadId);
-                android.database.Cursor cursor = dm.query(query);
-                boolean success = false;
-                if (cursor != null && cursor.moveToFirst()) {
-                    int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
-                    success = statusIndex >= 0 && cursor.getInt(statusIndex) == DownloadManager.STATUS_SUCCESSFUL;
+            public void run() {
+                int status = -1;
+                int reason = 0;
+                Cursor cursor = downloadManager.query(new DownloadManager.Query().setFilterById(downloadId));
+                if (cursor != null) {
+                    if (cursor.moveToFirst()) {
+                        int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+                        int reasonIndex = cursor.getColumnIndex(DownloadManager.COLUMN_REASON);
+                        if (statusIndex >= 0) status = cursor.getInt(statusIndex);
+                        if (reasonIndex >= 0) reason = cursor.getInt(reasonIndex);
+                    }
+                    cursor.close();
                 }
-                if (cursor != null) cursor.close();
 
-                if (!success) {
-                    call.reject("Le téléchargement a échoué.");
+                if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                    lancerInstallation(call, targetFile);
                     return;
                 }
-
-                Uri contentUri = FileProvider.getUriForFile(
-                    context, context.getPackageName() + ".fileprovider", targetFile
-                );
-                Intent installIntent = new Intent(Intent.ACTION_VIEW);
-                installIntent.setDataAndType(contentUri, "application/vnd.android.package-archive");
-                installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                context.startActivity(installIntent);
-                call.resolve();
+                if (status == DownloadManager.STATUS_FAILED) {
+                    call.reject("Le téléchargement a échoué (code " + reason + ").");
+                    return;
+                }
+                // -1 = aucune ligne pour cet identifiant. Juste après
+                // enqueue() la ligne existe déjà, mais on laisse une marge
+                // plutôt que d'échouer sur une course de départ.
+                if (status == -1 && System.currentTimeMillis() - debut > 5000) {
+                    call.reject("Le téléchargement a disparu de la file d'attente d'Android.");
+                    return;
+                }
+                if (System.currentTimeMillis() - debut > TIMEOUT_MS) {
+                    downloadManager.remove(downloadId);
+                    call.reject("Le téléchargement n'a pas abouti dans le temps imparti.");
+                    return;
+                }
+                handler.postDelayed(this, POLL_MS);
             }
-        };
+        });
+    }
 
-        IntentFilter filter = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
-        ContextCompat.registerReceiver(getContext(), receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED);
+    private void lancerInstallation(PluginCall call, File apk) {
+        Context context = getContext();
+        // Un fichier vide ou tronqué déclencherait un "Échec de l'analyse
+        // du package" sans explication : autant le dire ici.
+        if (!apk.exists() || apk.length() == 0) {
+            call.reject("Le fichier téléchargé est introuvable ou vide.");
+            return;
+        }
+        try {
+            Uri contentUri = FileProvider.getUriForFile(
+                context, context.getPackageName() + ".fileprovider", apk
+            );
+            Intent installIntent = new Intent(Intent.ACTION_VIEW);
+            installIntent.setDataAndType(contentUri, "application/vnd.android.package-archive");
+            installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            context.startActivity(installIntent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Impossible d'ouvrir l'installateur Android : " + e.getMessage());
+        }
     }
 }

@@ -255,3 +255,27 @@ disponible » de Paramètres est fait pour qu'il puisse vérifier lui-même à
 tout moment — s'il n'apparaît pas dans l'app qu'il utilise, prendre ça au
 sérieux : ça veut dire que ce qu'il a sous les yeux est déjà en retard sur
 plusieurs chantiers, pas seulement le dernier.
+
+### Comment on sait quelle version tourne (depuis le 3 sept. 2026)
+
+Raphaël a passé une vingtaine de builds à télécharger et installer sans
+que rien ne change, sans aucun moyen de s'en rendre compte. Trois pièces
+ont été mises en place pour que ça ne se reproduise pas — ne pas les
+défaire :
+
+1. **Chaque APK a une identité.** `versionCode` = numéro de run du
+   workflow Android, `versionName` = `AAAA.MM.JJ-b<run>-<sha court>`,
+   injectés par la CI (`ANDROID_VERSION_CODE` / `ANDROID_VERSION_NAME`).
+   Avant, toutes les builds annonçaient « 1.0 (1) » : Android ne pouvait
+   pas distinguer une mise à jour d'une réinstallation.
+2. **Paramètres affiche les deux versions** — celle installée et la
+   dernière APK publiée. Une installation sans effet se voit donc
+   immédiatement, au lieu de se deviner.
+3. **La comparaison porte sur l'APK réellement publiée**, pas sur le
+   dernier commit de la branche : l'app lit la release `latest-debug`
+   via l'API GitHub et y trouve une ligne `commit: <sha>` écrite par le
+   workflow. Corollaire : **le workflow Android n'a plus de filtre
+   `paths`** — chaque push produit une APK, sinon les deux sources
+   divergent à nouveau. Si tu modifies le corps de la release dans
+   `android-build.yml`, garde les lignes `version:`, `build:`, `commit:`
+   et `date:`, c'est le contrat que lit `src/hooks/useUpdateCheck.ts`.
