@@ -18,6 +18,12 @@ import {
 } from "@/components/ui/select"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
 import { useSpeechSynthesis, type SpeechSynthesisVoice } from "@/hooks/useSpeechSynthesis"
+import {
+  PAUSE_MAX_MS,
+  PAUSE_MIN_MS,
+  SUITE_MAX_MS,
+  SUITE_MIN_MS,
+} from "@/lib/dialoguePrefs"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
 import { useUpdateCheck, type PublishedBuild, type UpdateStatus } from "@/hooks/useUpdateCheck"
 import { formatBuildDate, versionInstallee } from "@/lib/version"
@@ -283,8 +289,8 @@ function MettreAJour({
   )
 }
 
-/** Curseur avec sa valeur lisible : régler une voix se fait à l'oreille,
- * il faut voir où on en est et pouvoir revenir en arrière. */
+/** Curseur avec sa valeur lisible : régler une voix ou un rythme se fait à
+ * l'oreille, il faut voir où on en est et pouvoir revenir en arrière. */
 function ReglageVoix({
   id,
   label,
@@ -292,6 +298,9 @@ function ReglageVoix({
   max,
   value,
   onChange,
+  step = 0.05,
+  format = (v: number) => `${v.toFixed(2)}×`,
+  aide,
 }: {
   id: string
   label: string
@@ -299,23 +308,27 @@ function ReglageVoix({
   max: number
   value: number
   onChange: (v: number) => void
+  step?: number
+  format?: (v: number) => string
+  aide?: string
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between">
         <Label htmlFor={id}>{label}</Label>
-        <span className="text-xs tabular-nums text-muted-foreground">{value.toFixed(2)}×</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{format(value)}</span>
       </div>
       <input
         id={id}
         type="range"
         min={min}
         max={max}
-        step={0.05}
+        step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="h-6 w-full accent-primary"
       />
+      {aide && <p className="text-xs text-muted-foreground">{aide}</p>}
     </div>
   )
 }
@@ -414,8 +427,15 @@ function CoeurDeJarvis() {
 }
 
 export function SettingsPage() {
-  const { wakeWordState, devItemsState, voiceState, tasksState, widgetState, placeRemindersState } =
-    useJarvisData()
+  const {
+    wakeWordState,
+    dialogueState,
+    devItemsState,
+    voiceState,
+    tasksState,
+    widgetState,
+    placeRemindersState,
+  } = useJarvisData()
   const { status, published, recheck } = useUpdateCheck()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
@@ -573,6 +593,49 @@ export function SettingsPage() {
               La lecture a échoué : {erreur}. Essaie une autre voix.
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Rythme de la discussion</CardTitle>
+          <CardDescription>
+            Jarvis n'attend plus qu'Android décide que tu as fini de parler : c'est ce réglage qui
+            en décide. Raccourcis la pause s'il te semble lent à répondre, allonge-la s'il te
+            coupe la parole.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <ReglageVoix
+            id="rythme-pause"
+            label="Pause tolérée quand tu parles"
+            min={PAUSE_MIN_MS}
+            max={PAUSE_MAX_MS}
+            step={200}
+            value={dialogueState.pauseMs}
+            onChange={dialogueState.setPauseMs}
+            format={(v) => `${(v / 1000).toFixed(1)} s`}
+            aide="Le temps de silence après lequel il considère ta phrase terminée. Tu peux aussi toucher le cœur pour dire « j'ai fini » sans attendre."
+          />
+          <ReglageVoix
+            id="rythme-suite"
+            label="Il continue de t'écouter après avoir répondu"
+            min={SUITE_MIN_MS}
+            max={SUITE_MAX_MS}
+            step={1000}
+            value={dialogueState.suiteMs}
+            onChange={dialogueState.setSuiteMs}
+            format={(v) => (v === 0 ? "Non" : `${Math.round(v / 1000)} s`)}
+            aide="Pour enchaîner sans retoucher le micro. Passe à « Non » pour revenir à un micro qu'on rouvre à chaque phrase."
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="self-start"
+            onClick={dialogueState.resetRythme}
+          >
+            Réglages d'origine
+          </Button>
         </CardContent>
       </Card>
 

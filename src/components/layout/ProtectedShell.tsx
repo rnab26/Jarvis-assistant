@@ -15,6 +15,7 @@ function ShellContent() {
     placeRemindersState,
     geofenceState,
     wakeWordState,
+    dialogueState,
     voiceState,
     widgetState,
   } = useJarvisData()
@@ -35,6 +36,7 @@ function ShellContent() {
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
         voiceIndex={voiceState.voiceIndex}
+        suiteMs={dialogueState.suiteMs}
       />
       <Outlet />
     </DashboardLayout>

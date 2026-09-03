@@ -26,5 +26,7 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  /* scripts/harness : banc d'essai du micro, monté par Vite en dev seulement,
+     jamais inclus dans le build — typé ici pour qu'il ne pourrisse pas. */
+  "include": ["src", "scripts/harness"]
 }
