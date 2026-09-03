@@ -324,7 +324,7 @@ utilisateur de test éphémère créé puis supprimé. La clé publique se récu
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 
-## Les neuf vérifications du dépôt
+## Les dix vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
@@ -337,6 +337,7 @@ node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
+node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 ```
 

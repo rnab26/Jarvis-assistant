@@ -4,10 +4,17 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { decouperDemande } from "@/lib/demandeChantier"
-import type { DevItem, DevItemInput } from "@/types/database"
+import { resoudreTheme } from "@/lib/themeChantier"
+import type { DevItem, DevItemInput, DevPriority } from "@/types/database"
+
+/** Les trois crans, du plus calme au plus pressé. */
+const PRIORITES: { valeur: DevPriority; libelle: string }[] = [
+  { valeur: "low", libelle: "Quand tu peux" },
+  { valeur: "normal", libelle: "Normal" },
+  { valeur: "high", libelle: "Urgent" },
+]
 
 /**
  * La fenêtre d'où Raphaël envoie un chantier à Claude Code.
@@ -53,7 +60,8 @@ interface EnvoyerAClaudeCodeProps {
 export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeCodeProps) {
   const [texte, setTexte] = useState("")
   const [theme, setTheme] = useState("")
-  const [urgent, setUrgent] = useState(false)
+  const [nouveauTheme, setNouveauTheme] = useState(false)
+  const [priorite, setPriorite] = useState<DevPriority>("normal")
   const [envoi, setEnvoi] = useState(false)
   const [envoye, setEnvoye] = useState<string | null>(null)
 
@@ -68,12 +76,16 @@ export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeC
         title: apercu.titre,
         notes: apercu.notes,
         status: "todo",
-        priority: urgent ? "high" : "normal",
-        theme: theme.trim() || null,
+        priority: priorite,
+        // Passe par resoudreTheme : si un thème équivalent existe déjà, c'est
+        // LUI qui est enregistré, à l'orthographe près. Sans ça, « L app
+        // elle-meme » vient doubler « L'app elle-même » et coupe le sujet en
+        // deux dans le cockpit — arrivé pour de vrai, nettoyé le 3 sept.
+        theme: resoudreTheme(theme, themes),
       })
       setEnvoye(apercu.titre)
       setTexte("")
-      setUrgent(false)
+      setPriorite("normal")
       // Le thème reste : il enchaîne souvent plusieurs demandes sur un sujet.
     } catch {
       // Déjà signalé par un toast : on garde sa saisie plutôt que de la perdre.
@@ -107,34 +119,90 @@ export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeC
           </p>
         )}
 
+        {/* Des puces plutôt qu'un champ libre : sur un téléphone, retaper
+            « L'app elle-même » à la main finit par produire « L app
+            elle-meme », un second thème pour le même sujet. On choisit ce qui
+            existe ; écrire reste possible, mais c'est le geste rare. */}
         <div className="flex flex-col gap-2">
-          <Label htmlFor="envoi-theme">Thème (facultatif)</Label>
-          <Input
-            id="envoi-theme"
-            list="envoi-themes"
-            value={theme}
-            placeholder="Reprends un thème existant"
-            onChange={(e) => setTheme(e.target.value)}
-          />
-          <datalist id="envoi-themes">
+          <Label>Thème (facultatif)</Label>
+          <div className="flex flex-wrap gap-1.5">
             {themes.map((t) => (
-              <option key={t} value={t} />
+              <button
+                key={t}
+                type="button"
+                aria-pressed={theme === t && !nouveauTheme}
+                onClick={() => {
+                  setNouveauTheme(false)
+                  setTheme(theme === t ? "" : t)
+                }}
+                className={`rounded-full border px-2.5 py-1 text-xs ${
+                  theme === t && !nouveauTheme
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {t}
+              </button>
             ))}
-          </datalist>
+            <button
+              type="button"
+              aria-pressed={nouveauTheme}
+              onClick={() => {
+                setNouveauTheme(!nouveauTheme)
+                setTheme("")
+              }}
+              className={`rounded-full border border-dashed px-2.5 py-1 text-xs ${
+                nouveauTheme ? "border-primary text-primary" : "text-muted-foreground"
+              }`}
+            >
+              Nouveau thème
+            </button>
+          </div>
+          {nouveauTheme && (
+            <Input
+              value={theme}
+              autoFocus
+              placeholder="Nom du nouveau thème"
+              aria-label="Nom du nouveau thème"
+              onChange={(e) => setTheme(e.target.value)}
+            />
+          )}
         </div>
 
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Switch id="envoi-urgent" checked={urgent} onCheckedChange={setUrgent} />
-            <Label htmlFor="envoi-urgent" className="font-normal">
-              {urgent ? "Urgent — passera devant" : "Priorité normale"}
-            </Label>
+        {/* Trois crans, pas un interrupteur. Avec « urgent ou pas », tout ce
+            qui comptait un peu partait en urgent, et plus rien ne ressortait :
+            demande de Raphaël, « ajouter un niveau moyen pour éviter d'avoir
+            beaucoup de tâche urgente ». */}
+        <div className="flex flex-col gap-2">
+          <Label>Priorité</Label>
+          <div className="flex gap-1.5">
+            {PRIORITES.map(({ valeur, libelle }) => (
+              <button
+                key={valeur}
+                type="button"
+                aria-pressed={priorite === valeur}
+                onClick={() => setPriorite(valeur)}
+                className={`flex-1 rounded-md border px-2 py-1.5 text-xs ${
+                  priorite === valeur
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {libelle}
+              </button>
+            ))}
           </div>
-          <Button size="sm" disabled={envoi || !apercu.titre} onClick={envoyer}>
-            <Send className="size-4" />
-            Envoyer
-          </Button>
         </div>
+
+        <Button
+          size="sm"
+          className="self-end"
+          disabled={envoi || !apercu.titre}
+          onClick={envoyer}
+        >
+          <Send className="size-4" />
+          Envoyer
+        </Button>
 
         {envoye && (
           <p className="rounded-lg border border-primary/40 bg-primary/5 p-3 text-sm">
