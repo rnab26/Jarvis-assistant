@@ -144,19 +144,28 @@ variable manque dans son environnement.
 Pour le DDL, écris une migration numérotée dans `supabase/migrations/` — le
 dépôt reste la source de vérité — puis applique-la avec `scripts/sql.sh`.
 
-**Regrouper quand même le maximum d'opérations dans un seul appel** : c'est
-plus lisible, plus atomique et moins bavard, même sans pop-up à la clé.
+**Une seule instruction par appel quand tu attends un résultat.** `exec_sql`
+enveloppe la requête pour en récupérer les lignes en JSON ; une enveloppe ne
+peut contenir qu'une instruction. Si tu en mets plusieurs séparées par `;`,
+elles **s'exécutent bien, mais tu ne récupères aucune ligne** — la réponse
+contient `"rows": null`. Le piège est silencieux : tu croirais que la table
+est vide alors qu'elle ne l'est pas. Ne groupe donc jamais deux `select`, ni
+un `update` et son `select` de vérification, dans le même appel.
 
-- Plusieurs `update`/`insert`/`select` liés → un seul appel, statements
-  séparés par `;` (le `select` de vérification à la fin du même appel).
-- Une structure complète (table + index + policies RLS + trigger) → un seul
-  appel, dans un `begin; ... commit;` pour que tout passe ou rien.
-- Ne pas faire un appel par ligne à mettre à jour : utiliser `where id in
-  (...)`, un `update ... from (values ...)`, ou des `case when`.
+Puisqu'il n'y a plus de pop-up, enchaîner les appels ne coûte plus rien :
 
-Ne séparer en plusieurs appels que si c'est vraiment nécessaire : quand le
-contenu d'une requête dépend du résultat de la précédente, ou pour isoler une
-opération destructrice — qui, elle, se soumet d'abord à Raphaël.
+```bash
+scripts/sql.sh "update dev_items set status = 'done' where id = '...';"
+scripts/sql.sh "select id, status from dev_items where id = '...';"
+```
+
+**Grouper reste bon pour les écritures**, dont on n'attend pas de lignes :
+plusieurs `update`/`insert` liés, ou une structure complète (table + index +
+policies RLS + trigger), dans un `begin; ... commit;` pour que tout passe ou
+rien. Fais juste la vérification dans un appel séparé.
+
+Et dans tous les cas, ne fais pas un appel par ligne à mettre à jour :
+`where id in (...)`, `update ... from (values ...)` ou des `case when`.
 
 ## Stack
 
