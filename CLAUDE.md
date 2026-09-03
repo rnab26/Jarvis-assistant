@@ -13,27 +13,40 @@ Raphaël y ajoute des chantiers par la voix ou depuis l'interface.
 - **Table** : `dev_items` (`id`, `title`, `notes`, `status`
   todo/in_progress/done, `priority` low/normal/high, `archived_at`).
 
-**Avant de commencer à travailler sur ce repo**, va lire les chantiers en
-cours pour ne pas repartir de zéro ou dupliquer un travail déjà fait :
+### Au démarrage de CHAQUE session, avant toute autre chose
 
-```sql
-select id, title, status, priority, notes
-from dev_items
-where archived_at is null
-order by priority desc, created_at;
+Raphaël ouvre souvent une session neuve pour poursuivre un travail commencé
+ailleurs. Rien de ce qui a été fait ne doit se perdre, et il ne doit pas avoir
+à se répéter. Ces trois lectures ne sont donc pas optionnelles — elles coûtent
+trois commandes et te disent où en est le projet :
+
+```bash
+# 1. Les chantiers en cours, et qui les a réservés
+scripts/sql.sh "select id, title, status, priority, notes, claimed_by, claim_expires_at from dev_items where archived_at is null order by priority desc, created_at"
+
+# 2. Le journal de bord : consignes de Raphaël et messages des autres sessions
+scripts/sql.sh "select created_at, author, kind, body, answered_at, item_id from dev_log order by created_at desc limit 30"
+
+# 3. Ce qui a déjà été livré, pour ne pas refaire ni défaire
+scripts/sql.sh "select title, notes, archived_at from dev_items where archived_at is not null order by archived_at desc limit 15"
 ```
 
-(via `mcp__Supabase__execute_sql`, `project_id: bexiyvmdbxcwxasgslxp`)
+Lis-les vraiment avant de proposer quoi que ce soit. Une question dont la
+réponse est déjà dans les notes d'un chantier, dans le journal ou dans une
+fiche (voir plus bas) ne doit pas être reposée à Raphaël.
 
 **En terminant un chantier**, marque-le fait et archive-le, avec une note
 qui référence le commit — c'est la pratique établie qui sert d'historique
 (visible directement dans l'app, section "Archivées" du cockpit) :
 
-```sql
-update dev_items
-set status = 'done', archived_at = now(), notes = 'Fait : <résumé court>. Commit <hash>.'
-where id = '<id>';
+```bash
+scripts/sql.sh "update dev_items set status = 'done', archived_at = now(), notes = 'Fait : <résumé court>. Commit <hash>.' where id = '<id>'"
 ```
+
+**Ne laisse jamais un travail sans trace.** Si tu t'arrêtes en cours de route,
+que tu es interrompu, ou que Raphaël change de sujet : écris où tu en es dans
+les notes du chantier ou dans `dev_log` avant de lâcher. Une session qui se
+termine sans avoir écrit son état fait perdre des heures à la suivante.
 
 Si le chantier touche à un sujet sensible ou irréversible (accès aux
 applications du téléphone, contrôle du téléphone, envoi de messages,
@@ -50,14 +63,18 @@ Deux règles évitent qu'elles se marchent dessus ou qu'elles s'attendent.
 **Avant de toucher à un chantier, le réserver.** La prise est atomique : si
 deux sessions appellent en même temps, une seule obtient `true`.
 
-```sql
-select claim_dev_item('<id du chantier>', '<nom de ta branche>', 120);
+```bash
+scripts/sql.sh "select claim_dev_item('<id du chantier>', '<nom de ta branche>', 120)"
 ```
 
 `false` = une autre session est déjà dessus, prends-en un autre. La réservation
 expire après le délai en minutes, pour qu'une session interrompue ne bloque
 rien ; renouvelle l'appel si tu dépasses. Quand tu t'arrêtes ou que tu
-termines : `select release_dev_item('<id>', '<ta branche>');`
+termines :
+
+```bash
+scripts/sql.sh "select release_dev_item('<id>', '<ta branche>')"
+```
 
 Utilise **le nom de ta branche** comme identifiant de session : c'est ce que
 Raphaël voit dans le cockpit, sur le chantier, sous la forme « Prise par … ».
@@ -73,11 +90,12 @@ Raphaël voit dans le cockpit, sur le chantier, sous la forme « Prise par … �
 **Pour parler à une autre session**, écris dans `dev_log` — elle le lira à son
 prochain passage, même si elle est arrêtée maintenant :
 
-```sql
-insert into dev_log (user_id, item_id, author, kind, body)
-values ('<user_id>', '<id chantier ou null>', '<ta branche>',
-        'question', 'Tu es toujours sur X ? Je voudrais toucher à Y.');
+```bash
+scripts/sql.sh "insert into dev_log (user_id, item_id, author, kind, body) select user_id, null, '<ta branche>', 'question', 'Tu es toujours sur X ? Je voudrais toucher a Y.' from dev_items limit 1"
 ```
+
+(le `select ... from dev_items limit 1` évite d'avoir à connaître le `user_id`
+en dur ; mets l'id du chantier concerné à la place du `null` s'il y en a un)
 
 `kind` vaut `question`, `reponse`, `info` ou `blocage`. Renseigne `answered_at`
 quand tu réponds à une question. Le journal est visible dans l'app, en bas du
@@ -107,8 +125,24 @@ qu'il ait à les recopier. Sépare bien les **décisions** (il choisit) des
 les secondes, une liste numérotée qu'il coche au fur et à mesure te dit quand
 tu peux démarrer.
 
-Deux fiches existent déjà et servent de modèle : « Jarvis, pièce par pièce »
-(catalogue oui/non) et « Ce qu'il me manque » (décisions à options).
+### Les fiches déjà publiées — à lire avant de reposer une question
+
+Raphaël a déjà répondu à beaucoup de choses dans ces fiches. Ses réponses n'ont
+pas toutes été recopiées dans les notes des chantiers. **Avant de lui demander
+quoi que ce soit qui ressemble à une préférence, un arbitrage ou un périmètre,
+va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, et
+`action: "read_db"` sur la même URL pour les réponses enregistrées) :
+
+- **Jarvis, pièce par pièce** — catalogue oui/non de ce qu'il veut :
+  https://claude.ai/code/artifact/d9bda589-10ac-4de4-a515-1c41ad95b90a
+- **Ce qu'il me manque** — décisions à options :
+  https://claude.ai/code/artifact/fc8f0416-f799-4fc6-b9ae-3951b1486dbd
+- **Brancher Google à Jarvis** — actions à faire côté Google Cloud :
+  https://claude.ai/code/artifact/27f79fa6-2f64-49bd-879e-5215df9f88cd
+
+Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
+options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
+le même commit — sinon elle sera perdue pour les sessions suivantes.
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
