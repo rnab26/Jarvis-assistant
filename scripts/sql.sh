@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Exécute du SQL sur le projet Supabase sans validation manuelle de Raphaël.
+#
+# Pourquoi ce script existe : l'outil MCP Supabase (execute_sql) impose un pop-up à
+# chaque appel, imposé par le serveur MCP et impossible à désactiver. Raphaël travaille
+# depuis son téléphone et ne veut plus cliquer. Ce script passe par l'API HTTPS et la
+# fonction public.exec_sql (migration 0010), donc par Bash : aucune validation.
+#
+# Usage :
+#   scripts/sql.sh "select id, title from dev_items where archived_at is null;"
+#   echo "update dev_items set status='done' where id='...';" | scripts/sql.sh
+#   scripts/sql.sh < requete.sql
+#
+# Prérequis : la variable d'environnement SUPABASE_SERVICE_ROLE_KEY, définie dans
+# l'environnement cloud Claude Code. Jamais dans le dépôt.
+#
+# RAPPEL : cette clé donne un accès total à la base. La règle du CLAUDE.md tient
+# toujours — on demande à Raphaël avant tout drop, delete massif ou truncate.
+
+set -euo pipefail
+
+URL="${SUPABASE_URL:-https://bexiyvmdbxcwxasgslxp.supabase.co}"
+
+if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+  cat >&2 <<'FIN'
+Erreur : SUPABASE_SERVICE_ROLE_KEY n'est pas définie.
+
+Cette clé doit être ajoutée aux variables d'environnement de l'environnement cloud
+Claude Code (claude.ai > Code > environnement « Full access » > variables), pas dans
+le dépôt. On la récupère dans Supabase : Project Settings > API > service_role.
+
+Sans elle, repasser par l'outil MCP Supabase (avec le pop-up).
+FIN
+  exit 2
+fi
+
+# La requête vient du premier argument, sinon de l'entrée standard.
+if [ $# -gt 0 ]; then
+  requete="$1"
+else
+  requete="$(cat)"
+fi
+
+if [ -z "${requete//[[:space:]]/}" ]; then
+  echo "Erreur : aucune requête fournie." >&2
+  exit 2
+fi
+
+# jq construit le JSON, pour que guillemets, apostrophes et sauts de ligne de la requête
+# soient échappés correctement.
+corps="$(jq -n --arg q "$requete" '{query: $q}')"
+
+reponse="$(curl -sS --max-time 60 \
+  -X POST "$URL/rest/v1/rpc/exec_sql" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d "$corps")"
+
+# Réponse inattendue (erreur PostgREST, HTML d'un proxy...) : on la montre telle quelle.
+if ! echo "$reponse" | jq -e 'type == "object" and has("ok")' >/dev/null 2>&1; then
+  echo "Réponse inattendue de Supabase :" >&2
+  echo "$reponse" >&2
+  exit 1
+fi
+
+echo "$reponse" | jq .
+
+# Code de sortie non nul si le SQL a échoué, pour que l'échec ne passe pas inaperçu.
+if [ "$(echo "$reponse" | jq -r '.ok')" != "true" ]; then
+  exit 1
+fi

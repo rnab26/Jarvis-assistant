@@ -110,11 +110,42 @@ tu peux démarrer.
 Deux fiches existent déjà et servent de modèle : « Jarvis, pièce par pièce »
 (catalogue oui/non) et « Ce qu'il me manque » (décisions à options).
 
-## Requêtes SQL : toujours regrouper
+## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
-Chaque appel `mcp__Supabase__execute_sql` demande une autorisation manuelle à
-Raphaël, souvent depuis son téléphone. **Regrouper le maximum d'opérations
-dans un seul appel** plutôt que d'en enchaîner plusieurs :
+**N'utilise pas `mcp__Supabase__execute_sql`.** Le serveur MCP Supabase marque
+cet outil « exige une interaction humaine » : le pop-up de validation s'affiche
+à **chaque** appel, même en mode `auto`, même en `bypassPermissions`, aucune
+règle d'autorisation ne le saute et il n'offre jamais « ne plus demander ».
+Raphaël travaille depuis son téléphone et ne veut plus cliquer. Ne perds pas de
+temps à chercher un réglage qui l'enlèverait : il n'existe pas, ça a déjà été
+cherché (3 sept. 2026).
+
+À la place :
+
+```bash
+scripts/sql.sh "select id, title, status from dev_items where archived_at is null;"
+```
+
+Le script appelle la fonction `public.exec_sql` (migration `0010_exec_sql.sql`)
+via l'API HTTPS, avec la clé `SUPABASE_SERVICE_ROLE_KEY` fournie par
+l'environnement cloud. Il passe par Bash, donc sans validation. Il renvoie du
+JSON (`ok`, `rows`) et sort en code non nul si le SQL a échoué.
+
+**Cette clé donne un accès total à la base**, DDL et suppressions comprises,
+sans que Raphaël voie rien passer. C'est son choix explicite, en connaissance
+du risque. En contrepartie la règle ci-dessous n'est pas négociable :
+**demande-lui toujours avant un `drop`, un `delete` massif ou un `truncate`.**
+Le garde-fou, c'est nous.
+
+Si `SUPABASE_SERVICE_ROLE_KEY` est absente, le script le dit et s'arrête :
+repasse alors par l'outil MCP (avec le pop-up), et préviens Raphaël que la
+variable manque dans son environnement.
+
+Pour le DDL, écris une migration numérotée dans `supabase/migrations/` — le
+dépôt reste la source de vérité — puis applique-la avec `scripts/sql.sh`.
+
+**Regrouper quand même le maximum d'opérations dans un seul appel** : c'est
+plus lisible, plus atomique et moins bavard, même sans pop-up à la clé.
 
 - Plusieurs `update`/`insert`/`select` liés → un seul appel, statements
   séparés par `;` (le `select` de vérification à la fin du même appel).
@@ -125,12 +156,7 @@ dans un seul appel** plutôt que d'en enchaîner plusieurs :
 
 Ne séparer en plusieurs appels que si c'est vraiment nécessaire : quand le
 contenu d'une requête dépend du résultat de la précédente, ou pour isoler une
-opération destructrice (`drop`, `delete` massif) qui mérite sa propre
-validation explicite.
-
-Pour le DDL, `mcp__Supabase__apply_migration` reste préférable à
-`execute_sql` — mais la même règle s'applique : une migration complète par
-appel, pas une par instruction.
+opération destructrice — qui, elle, se soumet d'abord à Raphaël.
 
 ## Stack
 
