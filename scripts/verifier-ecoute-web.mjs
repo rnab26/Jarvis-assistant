@@ -49,7 +49,13 @@ async function attendreServeur(essais = 60) {
 const FAUX_MOTEUR = `
 class FauxMoteur {
   constructor() { window.__sr.instances.push(this); this.continuous = false; this.interimResults = false }
-  start() { window.__sr.starts++; setTimeout(() => this.onstart && this.onstart(), 0) }
+  start() {
+    window.__sr.starts++
+    // Un moteur qui refuse de démarrer lève tout de suite, sans déclencher
+    // le moindre gestionnaire — cas réel : micro refusé, moteur déjà lancé.
+    if (window.__sr.refuseDeDemarrer) throw new Error("moteur indisponible")
+    setTimeout(() => this.onstart && this.onstart(), 0)
+  }
   stop()  { setTimeout(() => this.onend && this.onend(), 0) }
   abort() { this.stop() }
   /** Simule ce que le moteur a entendu. */
@@ -62,7 +68,7 @@ class FauxMoteur {
   /** Simule Android qui coupe l'écoute de lui-même, sur une respiration. */
   finTouteSeule() { this.onend && this.onend() }
 }
-window.__sr = { instances: [], starts: 0 }
+window.__sr = { instances: [], starts: 0, refuseDeDemarrer: false }
 window.SpeechRecognition = FauxMoteur
 window.webkitSpeechRecognition = FauxMoteur
 window.__derniere = () => window.__sr.instances[window.__sr.instances.length - 1]
@@ -165,6 +171,27 @@ try {
     1,
   )
   verifier("appui sur le cœur : sans attendre le délai de silence", Date.now() - avant < 1500, true)
+  // --- Un moteur qui refuse de démarrer ne doit pas figer le micro --------
+  // Régression réellement rencontrée : la phrase était entendue, le tour ne
+  // se terminait jamais, et Jarvis restait sur « Préparation du micro… »
+  // sans rien dire. Un tour doit toujours se terminer, quitte à échouer.
+  await page.evaluate("window.__sr.refuseDeDemarrer = true")
+  await page.evaluate("window.lancer()")
+  await page
+    .waitForFunction("document.querySelector('#resultat').textContent !== ''", null, {
+      timeout: 5000,
+    })
+    .catch(() => {
+      echecs++
+      console.log("ÉCHEC le micro reste figé quand le moteur refuse de démarrer")
+    })
+  const echec = await resultat()
+  verifier(
+    "moteur qui refuse de démarrer : le tour se termine et le dit",
+    echec.startsWith("ERR:"),
+    true,
+  )
+  await page.evaluate("window.__sr.refuseDeDemarrer = false")
 } finally {
   await navigateur?.close()
   vite.kill()

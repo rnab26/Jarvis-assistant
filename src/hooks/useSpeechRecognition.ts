@@ -44,6 +44,29 @@ function attendre(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+/**
+ * Borne un appel au plugin natif dans le temps.
+ *
+ * Un plugin Capacitor ne garantit pas de résoudre sa promesse : `stop()` sur
+ * un recognizer déjà arrêté, `start()` sur un service occupé, peuvent rester
+ * en attente pour toujours. Un seul de ces appels bloqué suffit à figer tout
+ * le tour de parole — c'est exactement ce qui laissait Jarvis sur
+ * « Préparation du micro… » avec la phrase déjà entendue à l'écran, sans rien
+ * faire. Rien de ce que fait le plugin ne mérite qu'on attende sans fin.
+ */
+function borner<T>(appel: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    appel.catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ])
+}
+
+/** Au-delà, le service de reconnaissance d'Android est considéré muet. */
+const DELAI_PLUGIN_MS = 8000
+
+/** Marge du filet de dernier recours, au-delà de la durée max d'un tour. */
+const PLAFOND_MARGE_MS = 15000
+
 // Dans l'app Android empaquetée (Capacitor), la webview native ne supporte
 // pas l'API Web Speech (SpeechRecognition) — on passe alors par le plugin
 // natif @capacitor-community/speech-recognition, qui utilise directement le
@@ -108,9 +131,11 @@ export function useSpeechRecognition() {
   // --- Android natif -------------------------------------------------------
 
   const preparerNatif = useCallback(async () => {
-    const { available } = await NativeSpeechRecognition.available()
-    if (!available) throw new Error("Reconnaissance vocale indisponible sur cet appareil.")
+    const dispo = await borner(NativeSpeechRecognition.available(), DELAI_PLUGIN_MS)
+    if (!dispo?.available) throw new Error("Reconnaissance vocale indisponible sur cet appareil.")
 
+    // Pas de borne ici : la fenêtre de permission d'Android attend une
+    // réponse de l'utilisateur, elle peut légitimement durer.
     const permission = await NativeSpeechRecognition.requestPermissions()
     if (permission.speechRecognition !== "granted") {
       throw new Error("Micro refusé. Autorise l'accès au micro dans les paramètres de l'app.")
@@ -129,12 +154,15 @@ export function useSpeechRecognition() {
       filet = setTimeout(() => {
         NativeSpeechRecognition.stop().catch(() => {})
       }, WAKE_LISTEN_MS)
-      const resultat = await NativeSpeechRecognition.start({
-        language: "fr-FR",
-        maxResults: 1,
-        partialResults: false,
-        popup: false,
-      })
+      const resultat = await borner(
+        NativeSpeechRecognition.start({
+          language: "fr-FR",
+          maxResults: 1,
+          partialResults: false,
+          popup: false,
+        }),
+        WAKE_LISTEN_MS + DELAI_PLUGIN_MS,
+      )
       const transcript = (resultat?.matches?.[0] ?? "").trim()
       if (!transcript) throw new Error(RIEN_ENTENDU)
       return transcript
@@ -142,7 +170,7 @@ export function useSpeechRecognition() {
       if (filet) clearTimeout(filet)
       setListening(false)
       setReady(false)
-      await etats.remove()
+      etats.remove().catch(() => {})
     }
   }, [preparerNatif])
 
@@ -197,12 +225,15 @@ export function useSpeechRecognition() {
             const restant = opts.maxMs - (Date.now() - flux.etat.debutAt)
             filet = setTimeout(resolve, Math.max(2000, restant + 2000))
           })
-          await NativeSpeechRecognition.start({
-            language: "fr-FR",
-            maxResults: 1,
-            partialResults: true,
-            popup: false,
-          })
+          await borner(
+            NativeSpeechRecognition.start({
+              language: "fr-FR",
+              maxResults: 1,
+              partialResults: true,
+              popup: false,
+            }),
+            DELAI_PLUGIN_MS,
+          )
           await arret
           if (filet) clearTimeout(filet)
           // Le résultat final post-traité par Android arrive parfois juste
@@ -220,12 +251,17 @@ export function useSpeechRecognition() {
         if (!transcript) throw new Error(RIEN_ENTENDU)
         return transcript
       } finally {
+        // L'interface d'abord, et sans rien attendre. Mettre un
+        // `await NativeSpeechRecognition.stop()` avant ces deux lignes
+        // suffisait à figer le micro pour de bon quand le plugin ne
+        // résolvait pas : le texte était entendu, le tour ne se terminait
+        // jamais, et Jarvis restait muet en écoute.
         clearInterval(battement)
-        await NativeSpeechRecognition.stop().catch(() => {})
         setListening(false)
         setReady(false)
-        await partiels.remove()
-        await etats.remove()
+        NativeSpeechRecognition.stop().catch(() => {})
+        partiels.remove().catch(() => {})
+        etats.remove().catch(() => {})
       }
     },
     [preparerNatif],
@@ -305,6 +341,9 @@ export function useSpeechRecognition() {
             resolve()
           }
 
+          // Une exception synchrone ici (moteur déjà démarré, micro refusé)
+          // rejette la promesse d'elle-même : l'appelant la reçoit, le
+          // `finally` nettoie. Vérifié par scripts/verifier-ecoute-web.mjs.
           reco.start()
         })
       }
@@ -347,10 +386,26 @@ export function useSpeechRecognition() {
       setError(null)
       arretManuelRef.current = false
       try {
-        if (isNative) {
-          return mode === "wake" ? await ecouterWakeNatif() : await ecouterCommandeNative(options)
-        }
-        return await ecouterWeb(mode, options)
+        const ecoute = isNative
+          ? mode === "wake"
+            ? ecouterWakeNatif()
+            : ecouterCommandeNative(options)
+          : ecouterWeb(mode, options)
+
+        // Filet de dernier recours. Chaque attente du moteur est déjà bornée
+        // une par une ; celui-ci garantit la propriété qui compte vraiment :
+        // un tour de parole finit TOUJOURS par rendre la main, même si une
+        // brique en dessous ne répond jamais. Un micro figé sans un mot est
+        // le pire des cas — mieux vaut une erreur affichée.
+        return await Promise.race([
+          ecoute,
+          new Promise<never>((_, rejeter) =>
+            setTimeout(
+              () => rejeter(new Error("Le micro ne répond plus. Touche le cœur pour réessayer.")),
+              MAX_TOUR_MS + PLAFOND_MARGE_MS,
+            ),
+          ),
+        ])
       } catch (err) {
         const message = err instanceof Error ? err.message : "Erreur de reconnaissance vocale."
         setError(message)

@@ -173,6 +173,29 @@ cas.push({
   },
 })
 
+cas.push(
+  {
+    nom: "couper la voix à l'oral",
+    phrase: "Arrête de parler, réponds-moi juste à l'écrit.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_voice")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.voice_enabled !== false) return [false, `voice_enabled = ${a.voice_enabled}`]
+      return [true]
+    },
+  },
+  {
+    nom: "remettre la voix à l'oral",
+    phrase: "Tu peux reparler maintenant, remets ta voix.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_voice")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.voice_enabled !== true) return [false, `voice_enabled = ${a.voice_enabled}`]
+      return [true]
+    },
+  },
+)
+
 for (const c of cas) {
   c.avant?.()
   const r = await demander(c.phrase)
