@@ -336,7 +336,10 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="flex flex-wrap items-center gap-3">
           <Button asChild>
-            <a href={APK_DOWNLOAD_URL} target="_blank" rel="noreferrer">
+            {/* Pas de target="_blank" : sur Chrome Android, un téléchargement de
+             * fichier binaire lancé dans un nouvel onglet reste parfois bloqué
+             * à 100% sans jamais se finaliser. Navigation directe = fiable. */}
+            <a href={APK_DOWNLOAD_URL} download>
               <Download className="size-4" />
               Télécharger la dernière version
             </a>
