@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core"
 import { Download, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -26,7 +27,12 @@ import {
   SUITE_MIN_MS,
 } from "@/lib/dialoguePrefs"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
-import { useUpdateCheck, type PublishedBuild, type UpdateStatus } from "@/hooks/useUpdateCheck"
+import {
+  useUpdateCheck,
+  type PublishedBuild,
+  type UpdateStatus,
+  type Verdict,
+} from "@/hooks/useUpdateCheck"
 import { formatBuildDate, versionInstallee } from "@/lib/version"
 
 const isNative = Capacitor.isNativePlatform()
@@ -192,10 +198,30 @@ function MettreAJour({
   status: UpdateStatus
   published: PublishedBuild | null
   verifieA: Date | null
-  recheck: () => void
+  recheck: () => Promise<Verdict>
 }) {
   const [etat, setEtat] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
   const [erreur, setErreur] = useState<string | null>(null)
+
+  /* Une vérification qui aboutit sans rien changer à l'écran passe pour un
+     bouton mort — c'est le retour de Raphaël, deux fois. Le résultat est donc
+     annoncé explicitement, avec le numéro de build : on ne lui demande plus
+     de deviner que quelque chose s'est produit. */
+  async function revérifier() {
+    const { status: verdict, published: infos } = await recheck()
+    const build = infos?.buildNumber !== null && infos?.buildNumber !== undefined
+      ? ` (build ${infos.buildNumber})`
+      : ""
+    if (verdict === "up-to-date") {
+      toast.success(`Vérifié : tu es à jour${build}.`)
+    } else if (verdict === "update-available") {
+      toast.warning(`Vérifié : une nouvelle version existe${build}.`)
+    } else {
+      toast.error("Vérification impossible", {
+        description: "GitHub n'a pas répondu. Réessaie dans un moment.",
+      })
+    }
+  }
 
   async function telecharger() {
     setErreur(null)
@@ -255,7 +281,7 @@ function MettreAJour({
           <Button
             variant="ghost"
             size="sm"
-            onClick={recheck}
+            onClick={revérifier}
             disabled={status === "checking"}
             aria-label="Revérifier"
           >

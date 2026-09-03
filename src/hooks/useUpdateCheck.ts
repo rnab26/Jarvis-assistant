@@ -3,6 +3,15 @@ import { BUILD_NUMBER, COMMIT_SHA } from "@/lib/version"
 
 export type UpdateStatus = "checking" | "up-to-date" | "update-available" | "unknown"
 
+/** Ce que `recheck()` renvoie à celui qui l'a déclenché, pour qu'il puisse
+ * confirmer le résultat sans relire un état React encore périmé. */
+export type Verdict = { status: UpdateStatus; published: PublishedBuild | null }
+
+/** Durée minimale de l'état "Vérification". La réponse arrive en ~200 ms :
+ * en dessous de ce seuil, l'utilisateur ne voit strictement rien bouger et
+ * conclut que le bouton est mort. */
+const DUREE_MINIMALE_MS = 900
+
 /** Ce que la CI a réellement publié comme dernière APK. */
 export type PublishedBuild = {
   commit: string | null
@@ -42,11 +51,11 @@ export function useUpdateCheck() {
   const [published, setPublished] = useState<PublishedBuild | null>(null)
   const [verifieA, setVerifieA] = useState<Date | null>(null)
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (): Promise<Verdict> => {
     if (COMMIT_SHA === "dev") {
       setStatus("unknown")
       setVerifieA(new Date())
-      return
+      return { status: "unknown", published: null }
     }
     setStatus("checking")
     // Quand la réponse arrive en 200 ms et que le verdict ne change pas
@@ -56,10 +65,12 @@ export function useUpdateCheck() {
     // longtemps pour qu'il se voie, et on horodate le résultat.
     const debut = Date.now()
     const rendreVisible = async () => {
-      const reste = 600 - (Date.now() - debut)
+      const reste = DUREE_MINIMALE_MS - (Date.now() - debut)
       if (reste > 0) await new Promise((r) => setTimeout(r, reste))
       setVerifieA(new Date())
     }
+    let verdict: UpdateStatus = "unknown"
+    let infos: PublishedBuild | null = null
     try {
       const res = await fetch(
         `https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`,
@@ -71,7 +82,7 @@ export function useUpdateCheck() {
       const commit = lireChamp(body, "commit")
       const buildTexte = lireChamp(body, "build")
       const buildNumber = buildTexte && /^\d+$/.test(buildTexte) ? Number(buildTexte) : null
-      const infos: PublishedBuild = {
+      infos = {
         commit,
         version: lireChamp(body, "version"),
         buildNumber,
@@ -84,21 +95,23 @@ export function useUpdateCheck() {
       if (!commit) {
         // Release publiée par l'ancienne version du workflow : rien de
         // fiable à comparer, ne pas inventer un verdict.
-        setStatus("unknown")
+        verdict = "unknown"
       } else if (commit === COMMIT_SHA) {
-        setStatus("up-to-date")
+        verdict = "up-to-date"
       } else {
         const installe = BUILD_NUMBER ? Number(BUILD_NUMBER) : null
-        setStatus(
+        verdict =
           installe !== null && buildNumber !== null && installe >= buildNumber
             ? "up-to-date"
-            : "update-available",
-        )
+            : "update-available"
       }
+      setStatus(verdict)
     } catch {
+      verdict = "unknown"
       setStatus("unknown")
     }
     await rendreVisible()
+    return { status: verdict, published: infos }
   }, [])
 
   useEffect(() => {
