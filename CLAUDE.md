@@ -178,6 +178,14 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   (outil Artifact, `action: "read_db"`, `db_op: "get"`) : **relis-les avant de
   lui redemander quoi que ce soit** sur ces sujets.
 
+- **Brancher Google, pas à pas** — les étapes qui lui restent après la
+  correction de l'erreur 400 (`redirect_uri_mismatch`, 3 sept. 2026) :
+  se connecter, contourner l'écran « application non validée », et publier
+  l'application pour que l'autorisation ne meure pas au bout de 7 jours.
+  https://claude.ai/code/artifact/aba8e4d3-4e1d-46d1-9873-c150702fa909
+  S'il bute quelque part, il l'écrit dans le champ du bas : document
+  `fiche/brancher-google` (`action: "read_db"`, `db_op: "get"`).
+
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
