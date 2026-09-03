@@ -182,6 +182,25 @@ Les deux premières servent aussi de modèle : catalogue oui/non, et décisions 
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
 
+## Déployer une Edge Function : `scripts/deployer-fonction.sh`
+
+```bash
+scripts/deployer-fonction.sh voice-command
+```
+
+Il lit les fichiers sur le disque et les envoie à l'API Supabase. **Il exige
+`SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
+à mettre dans les variables d'environnement de l'environnement cloud — jamais
+dans le dépôt). Tant qu'elle manque, le script le dit et s'arrête.
+
+Sans ce jeton, le seul chemin est l'outil MCP `deploy_edge_function`, qui
+n'accepte le contenu **qu'en clair, recopié à la main dans l'appel**. Pour
+`voice-command` cela veut dire retranscrire 35 Ko de code écrit par d'autres
+sessions, à la virgule près, à chaque déploiement : une erreur de recopie ou
+une troncature met l'assistant hors service, et la corriger demande de tout
+retranscrire une seconde fois. **Ne fais pas ça.** Si le jeton manque, dis-le
+et laisse le déploiement en attente plutôt que de recopier le fichier.
+
 ## La Edge Function `voice-command` ne se déploie PAS au push
 
 Le site web se republie à chaque push, la Edge Function non : il faut la
