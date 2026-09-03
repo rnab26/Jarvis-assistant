@@ -29,6 +29,7 @@ import {
   sansCitation,
 } from "../supabase/functions/google-gmail/message.ts"
 import { construireRequeteRecus, estDocument, liensDocuments } from "../supabase/functions/google-gmail/recherche.ts"
+import { lienAutorise, recupererDocument, estTypeDocument } from "../supabase/functions/google-gmail/lien.ts"
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -298,6 +299,121 @@ console.log("\n— La requête qui retrouve un reçu (sans réseau) —")
     "un reçu au bout d'un lien est repéré",
     liensDocuments("Votre facture : https://paz.co.il/invoice/8891 merci").length === 1,
     `obtenu : ${JSON.stringify(liensDocuments("Votre facture : https://paz.co.il/invoice/8891 merci"))}`,
+  )
+}
+
+// ─────── 1 ter. Le garde-fou des liens, hors ligne ───────
+//
+// L'adresse d'un reçu vient d'un e-mail : n'importe qui peut écrire à Raphaël,
+// donc n'importe qui peut choisir l'adresse que notre serveur ira visiter.
+// Sans ces contrôles, c'est un client HTTP offert à un inconnu, à l'intérieur
+// de notre infrastructure — et rien ne se verrait à l'usage.
+
+console.log("\n— Le garde-fou des liens (sans réseau) —")
+
+{
+  verifier(
+    "une adresse de fournisseur en https est acceptée",
+    lienAutorise("https://paz.co.il/invoice/8891.pdf").ok,
+    "un lien légitime est refusé",
+  )
+  verifier(
+    "http en clair est refusé",
+    !lienAutorise("http://paz.co.il/invoice.pdf").ok,
+    "un lien non chiffré est passé",
+  )
+  verifier(
+    "les adresses internes sont refusées",
+    ["https://localhost/x", "https://127.0.0.1/x", "https://10.0.0.5/x",
+     "https://192.168.1.1/x", "https://172.16.0.9/x", "https://[::1]/x",
+     "https://metadata.google.internal/x", "https://boîte.internal/x"]
+      .every((u) => !lienAutorise(u).ok),
+    "une adresse interne est passée à travers",
+  )
+  verifier(
+    "169.254.169.254 — l'adresse des métadonnées de l'hébergeur — est refusée",
+    !lienAutorise("https://169.254.169.254/computeMetadata/v1/").ok,
+    "la cible SSRF classique est accessible",
+  )
+  verifier(
+    "un autre protocole (file:, data:) est refusé",
+    !lienAutorise("file:///etc/passwd").ok && !lienAutorise("data:text/html,x").ok,
+    "un protocole non http est passé",
+  )
+}
+
+{
+  verifier(
+    "seuls un PDF ou une image comptent comme document",
+    estTypeDocument("application/pdf") && estTypeDocument("image/jpeg; charset=binary") &&
+      !estTypeDocument("text/html") && !estTypeDocument(null),
+    "le tri des types accepte n'importe quoi",
+  )
+}
+
+{
+  // Une redirection est le vrai piège : l'adresse d'entrée peut être publique
+  // et parfaitement innocente, et rediriger vers l'intérieur.
+  const faux = async (url) => {
+    if (url.startsWith("https://paz.co.il"))
+      return new Response(null, { status: 302, headers: { location: "https://169.254.169.254/secret" } })
+    return new Response("ne devrait jamais être atteint", { status: 200 })
+  }
+  let refus = null
+  try {
+    await recupererDocument("https://paz.co.il/facture", { fetch: faux })
+  } catch (e) { refus = e.message }
+  verifier(
+    "une redirection vers une adresse interne est refusée elle aussi",
+    !!refus && /interne/i.test(refus),
+    `obtenu : ${refus ?? "aucune erreur — la redirection a été suivie"}`,
+  )
+}
+
+{
+  // Le cas courant en vrai : le lien mène à une page de connexion.
+  const page = async () =>
+    new Response("<html>Connectez-vous</html>", { status: 200, headers: { "content-type": "text/html" } })
+  let refus = null
+  try {
+    await recupererDocument("https://fournisseur.example/facture", { fetch: page })
+  } catch (e) { refus = e.message }
+  verifier(
+    "une page HTML n'est pas prise pour un reçu, et il sait quoi faire",
+    !!refus && /page/i.test(refus) && /ouvre/i.test(refus),
+    `obtenu : ${refus}`,
+  )
+}
+
+{
+  const gros = async () =>
+    new Response(new Uint8Array(10), {
+      status: 200,
+      headers: { "content-type": "application/pdf", "content-length": String(50 * 1024 * 1024) },
+    })
+  let refus = null
+  try {
+    await recupererDocument("https://fournisseur.example/gros.pdf", { fetch: gros })
+  } catch (e) { refus = e.message }
+  verifier(
+    "un document trop gros est refusé avant d'être chargé",
+    !!refus && /gros/i.test(refus),
+    `obtenu : ${refus}`,
+  )
+}
+
+{
+  const pdf = async () =>
+    new Response(new TextEncoder().encode("%PDF-1.4 facture"), {
+      status: 200,
+      headers: { "content-type": "application/pdf" },
+    })
+  const doc = await recupererDocument("https://paz.co.il/facture.pdf", { fetch: pdf })
+  verifier(
+    "un vrai PDF est rapporté, décodable",
+    Buffer.from(doc.contenu_base64, "base64").toString("utf8").startsWith("%PDF") &&
+      doc.type === "application/pdf" && doc.taille === 16,
+    JSON.stringify({ type: doc.type, taille: doc.taille }),
   )
 }
 

@@ -65,6 +65,7 @@ type Reponse = {
   brouillon?: Brouillon
   envoye?: { id: string; fil_id: string | null }
   piece_jointe?: { taille: number | null; contenu_base64: string }
+  document?: { contenu_base64: string; type: string | null; taille: number; url_finale: string }
   error?: string
 }
 
@@ -176,6 +177,19 @@ export async function recupererPieceJointe(
   return reponse.piece_jointe ?? null
 }
 
+/**
+ * Le reçu au bout d'un lien — beaucoup de fournisseurs n'envoient pas le PDF,
+ * ils envoient une adresse. Le serveur refuse tout ce qui n'est pas un document
+ * public en https, et son message dit quoi faire quand le lien mène à une page
+ * de connexion : à remonter tel quel, il est écrit pour être dit à voix haute.
+ */
+export async function recupererDocumentLien(
+  url: string,
+): Promise<{ contenu_base64: string; type: string | null; taille: number; url_finale: string } | null> {
+  const reponse = await appeler({ action: "document_lien", url })
+  return reponse.document ?? null
+}
+
 /** Gmail tel qu'on l'injecte dans l'exécuteur de commandes vocales. */
 export const gmailApi = {
   listerMessages,
@@ -184,4 +198,5 @@ export const gmailApi = {
   preparerReponse,
   envoyerMessage,
   recupererPieceJointe,
+  recupererDocumentLien,
 }

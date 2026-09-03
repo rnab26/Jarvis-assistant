@@ -30,6 +30,10 @@ import {
 // La requête de recherche des reçus vit à côté elle aussi : c'est la pièce
 // la plus facile à casser sans s'en apercevoir, donc la plus utile à tester.
 import { construireRequeteRecus, estDocument, liensDocuments } from "./recherche.ts"
+// Suivre un lien venu d'un e-mail demande un garde-fou : l'adresse est
+// choisie par celui qui écrit, pas par Raphaël. Le contrôle est isolé dans
+// lien.ts pour être prouvable sans réseau.
+import { recupererDocument } from "./lien.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -349,6 +353,23 @@ Deno.serve(async (req: Request) => {
       // Base64url, tel que Gmail le rend : c'est à l'appelant d'en faire un
       // fichier, on ne le décode pas pour rien en mémoire.
       return json({ piece_jointe: { taille: donnees.size ?? null, contenu_base64: donnees.data } })
+    }
+
+    // ── Récupérer le document au bout d'un lien ──
+    //
+    // « ils m'envoient un SMS avec la facture DANS LE LIEN ». Par mail, même
+    // chose chez beaucoup de fournisseurs. Sans ça, `recus` sait dire qu'un
+    // reçu existe mais pas le rapporter.
+    if (action === "document_lien") {
+      if (!corps.url) return json({ error: "url manquante." }, 400)
+      try {
+        const doc = await recupererDocument(String(corps.url))
+        return json({ document: doc })
+      } catch (err) {
+        // Ces messages sont écrits pour être dits à voix haute : ils
+        // expliquent quoi faire, ils ne récitent pas une erreur technique.
+        return json({ error: "lien_inexploitable", message: String((err as Error).message) }, 422)
+      }
     }
 
     return json({ error: `Action inconnue : ${action}` }, 400)

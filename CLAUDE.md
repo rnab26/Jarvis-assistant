@@ -350,6 +350,7 @@ node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèm
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
+ANON_KEY=... node scripts/verifier-messages-programmes.mjs  # messages programmés : cycle + cloisonnement RLS
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
@@ -390,6 +391,30 @@ qui crée un fil neuf faute d'`In-Reply-To`), d'où les contrôles hors ligne.
 
 La portée `gmail.modify` couvre la lecture, l'envoi et les pièces jointes :
 aucune portée supplémentaire à demander à Raphaël.
+
+### Un reçu au bout d'un lien : `document_lien`, et pourquoi il est gardé
+
+Beaucoup de fournisseurs n'envoient pas le PDF, ils envoient une adresse (« ils
+m'envoient un SMS avec la facture dans le lien »). L'action `document_lien` va
+la chercher — mais **cette adresse vient d'un e-mail, donc d'un inconnu**.
+Sans garde-fou, c'est un client HTTP offert à qui veut, à l'intérieur de notre
+infrastructure, et rien ne se verrait à l'usage.
+
+`google-gmail/lien.ts` impose donc : https seul, aucune adresse interne
+(boucle locale, réseaux privés, et `169.254.169.254`, l'adresse des métadonnées
+de l'hébergeur), redirections suivies **à la main et revalidées une par une**
+— une adresse publique peut rediriger vers l'intérieur —, taille plafonnée à
+8 Mo, et seuls un PDF ou une image acceptés en retour. **Ne relâche aucun de
+ces contrôles** ; `scripts/verifier-gmail.mjs` les vérifie tous hors ligne.
+
+### Les messages programmés (`messages_programmes`, migration 0017)
+
+La table ne sait pas envoyer, et ne doit jamais le savoir : décision de Raphaël
+du 3 sept., on reste sur le téléphone et rien ne part sans qu'il appuie. D'où
+`statut`, où **« annoncé » est distinct de « envoyé »** — un message que Jarvis
+a présenté sans réponse ne doit pas disparaître de sa liste comme s'il était
+parti. `canal` reste `null` tant qu'il n'a pas dit WhatsApp ou SMS.
+Client : `src/lib/messagesProgrammes.ts`.
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
