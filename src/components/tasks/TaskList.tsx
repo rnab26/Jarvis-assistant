@@ -55,7 +55,9 @@ export function TaskList({
                 {categoryById.get(categoryId) ?? NO_CATEGORY_LABEL}
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
+            {/* Un filet entre deux tâches, pas un cadre autour de chacune :
+                c'est ce qui rend la liste compacte sans rétrécir le texte. */}
+            <CardContent className="divide-y">
               {groupTasks.map((task) => (
                 <TaskItem
                   key={task.id}

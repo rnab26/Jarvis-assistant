@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
 import type { DevItem, DevItemInput, DevPriority, DevStatus } from "@/types/database"
 
-const PRIORITY_LABEL: Record<DevPriority, string> = {
+/** « Normale » reste implicite : c'est la priorité de presque tous les
+ * chantiers, l'afficher sur chacun ne distingue rien et mange la place du
+ * titre. Même raisonnement que pour « À faire » ci-dessous. */
+const PRIORITY_LABEL: Partial<Record<DevPriority, string>> = {
   low: "Basse",
-  normal: "Normale",
   high: "Haute",
 }
 
@@ -79,43 +81,69 @@ export function DevItemCard({
   onArchive,
   onUnarchive,
 }: DevItemCardProps) {
+  // Même densité que les tâches (option « compact » choisie par Raphaël le
+  // 3 sept. 2026) : plus de cadre par chantier, un filet entre deux, les
+  // étiquettes dans la ligne du titre. Deux listes qui se ressemblent doivent
+  // se lire pareil — sinon le cockpit paraît inachevé à côté des tâches.
   return (
-    <div className="flex items-start gap-2 rounded-lg border p-3">
-      <div className="flex-1">
-        <p>{item.title}</p>
-        {item.notes && (
-          <p className="text-sm whitespace-pre-line text-muted-foreground">{renderNotes(item.notes)}</p>
-        )}
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+    <div className="flex items-start gap-2 py-1.5">
+      <div className="min-w-0 flex-1">
+        {/* Une seule ligne, donc au plus deux étiquettes courtes à droite du
+            titre : à trois, elles écrasaient le titre jusqu'à le faire
+            disparaître sur un écran de téléphone. « Prise par … » descend donc
+            avec la note, dont elle a la nature — un détail qu'on lit après
+            avoir trouvé le chantier, pas un critère pour le trouver. */}
+        <div className="flex items-center gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-sm" title={item.title}>
+            {item.title}
+          </span>
           {STATUS_LABEL[item.status] && (
-            <Badge variant="default">{STATUS_LABEL[item.status]}</Badge>
+            <Badge variant="default" className="shrink-0 px-1.5 text-xs font-normal">
+              {STATUS_LABEL[item.status]}
+            </Badge>
           )}
-          <Badge variant={PRIORITY_VARIANT[item.priority]}>
-            {PRIORITY_LABEL[item.priority]}
-          </Badge>
-          {reservePar(item) && (
-            <Badge variant="secondary">Prise par {reservePar(item)}</Badge>
+          {PRIORITY_LABEL[item.priority] && (
+            <Badge
+              variant={PRIORITY_VARIANT[item.priority]}
+              className="shrink-0 px-1.5 text-xs font-normal"
+            >
+              {PRIORITY_LABEL[item.priority]}
+            </Badge>
           )}
         </div>
+        {reservePar(item) && (
+          <p className="truncate text-xs text-muted-foreground">
+            Prise par {reservePar(item)}
+          </p>
+        )}
+        {item.notes && (
+          // Trois lignes ici, contre deux pour une tâche : les notes d'un
+          // chantier portent le cadrage, et c'est ce qu'on vient y lire.
+          <p className="line-clamp-3 text-xs whitespace-pre-line text-muted-foreground">
+            {renderNotes(item.notes)}
+          </p>
+        )}
       </div>
       {onArchive && item.status === "done" && (
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-sm"
+          className="shrink-0"
           aria-label="Archiver"
           onClick={() => onArchive(item.id).catch(alreadyNotified)}
         >
-          <Archive className="size-4" />
+          <Archive className="size-3.5" />
         </Button>
       )}
       {onUnarchive && (
         <Button
           variant="ghost"
-          size="icon"
+          size="icon-sm"
+          className="shrink-0"
           aria-label="Désarchiver"
           onClick={() => onUnarchive(item.id).catch(alreadyNotified)}
         >
-          <ArchiveRestore className="size-4" />
+          <ArchiveRestore className="size-3.5" />
         </Button>
       )}
       <DevItemFormDialog
@@ -123,18 +151,19 @@ export function DevItemCard({
         themes={themes}
         onSubmit={(input) => onUpdate(item.id, input)}
         trigger={
-          <Button variant="ghost" size="icon" aria-label="Modifier">
-            <Pencil className="size-4" />
+          <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Modifier">
+            <Pencil className="size-3.5" />
           </Button>
         }
       />
       <Button
         variant="ghost"
-        size="icon"
+        size="icon-sm"
+        className="shrink-0"
         aria-label="Supprimer"
         onClick={() => onDelete(item.id).catch(alreadyNotified)}
       >
-        <Trash2 className="size-4" />
+        <Trash2 className="size-3.5" />
       </Button>
     </div>
   )

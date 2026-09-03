@@ -119,7 +119,7 @@ export function CockpitBoard({
               </Badge>
             )}
           </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+          <CardContent className="divide-y">
             {chantiers.map((item) => (
               <DevItemCard
                 key={item.id}
@@ -141,7 +141,7 @@ export function CockpitBoard({
               Archivées ({archived.length})
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+          <CardContent className="divide-y">
             {archived.map((item) => (
               <DevItemCard
                 key={item.id}
