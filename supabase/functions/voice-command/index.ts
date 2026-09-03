@@ -518,23 +518,27 @@ Réponds toujours en français dans le champ message.${await rappelerSouvenirs(s
     )
 
     if (echec || !anthropicResponse) {
-      // Une surcharge passagère du modèle n'est pas une panne de Jarvis :
-      // il le dit à voix haute et on réessaie. Renvoyer une erreur ici
-      // affichait le JSON brut de l'API à Raphaël, ce qui ressemblait à
-      // « Jarvis ne répond plus » alors qu'il suffisait d'attendre.
-      if (echec?.passager) {
-        const message = "Je suis un peu débordé là, redis-le-moi dans quelques secondes."
-        return new Response(
-          JSON.stringify({
-            action: { action: "unknown", message },
-            actions: [{ action: "unknown", message }],
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        )
-      }
+      // Le détail technique va dans les journaux de la fonction, pas à
+      // l'écran : Raphaël se retrouvait devant le JSON brut de l'API, ce qui
+      // ressemble à « Jarvis est cassé » quel que soit le vrai problème.
+      // Lui, il entend une phrase qui lui dit quoi faire.
+      console.error("Appel au modèle en échec", echec?.statut, echec?.texte)
+
+      const detail = echec?.texte ?? ""
+      const message = echec?.passager
+        ? "Je suis un peu débordé là, redis-le-moi dans quelques secondes."
+        : /credit balance|billing/i.test(detail)
+          ? "Mon accès au modèle n'a plus de crédit. Il faut recharger le compte Anthropic pour que je puisse répondre."
+          : /api key|authentication|401/i.test(detail)
+            ? "Ma clé d'accès au modèle est refusée. Il faut la revoir dans les secrets Supabase."
+            : "Je n'arrive pas à joindre le modèle en ce moment. Réessaie, et regarde les journaux de voice-command si ça dure."
+
       return new Response(
-        JSON.stringify({ error: `Erreur API Claude: ${echec?.texte ?? "inconnue"}` }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        JSON.stringify({
+          action: { action: "unknown", message },
+          actions: [{ action: "unknown", message }],
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       )
     }
 

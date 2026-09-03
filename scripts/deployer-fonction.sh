@@ -48,27 +48,51 @@ if [ ! -d "$DOSSIER" ]; then
   exit 1
 fi
 
+# verify_jwt est RELU sur la fonction déjà en place, jamais imposé. L'imposer
+# à true refermerait google-oauth, qui doit rester ouvert pour recevoir la
+# redirection de Google — celle-ci ne porte aucun jeton. Une fonction encore
+# inexistante est créée fermée, le choix sûr.
+actuel=$(curl -sS -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+  "https://api.supabase.com/v1/projects/$PROJET/functions/$FONCTION" 2>/dev/null || echo '{}')
+verify_jwt=$(printf '%s' "$actuel" | python3 -c "
+import sys, json
+try: print('false' if json.load(sys.stdin).get('verify_jwt') is False else 'true')
+except Exception: print('true')
+")
+
+# Les fichiers partent avec leur chemin RELATIF à supabase/functions/, pas
+# seulement leur nom : une fonction importe ses voisins (memoire.ts) mais
+# aussi le dossier partagé (../_shared/google.ts). Aplatir les noms ferait
+# échouer ces imports au démarrage, sans un mot au déploiement.
+BASE="supabase/functions"
+chemins=()
+for fichier in "$DOSSIER"/*.ts; do chemins+=("${fichier#$BASE/}"); done
+if grep -rqs '\.\./_shared/' "$DOSSIER"; then
+  for fichier in "$BASE"/_shared/*.ts; do chemins+=("${fichier#$BASE/}"); done
+fi
+
 # L'API attend un multipart : un manifeste JSON, puis chaque fichier.
-metadata=$(python3 - "$DOSSIER" <<'PY'
-import json, pathlib, sys
-dossier = pathlib.Path(sys.argv[1])
-fichiers = sorted(p.name for p in dossier.glob("*.ts"))
+metadata=$(python3 - "$FONCTION" "$verify_jwt" <<'PY'
+import json, sys
 print(json.dumps({
-    "name": dossier.name,
-    "entrypoint_path": "index.ts",
-    "verify_jwt": True,
+    "name": sys.argv[1],
+    "entrypoint_path": f"{sys.argv[1]}/index.ts",
+    "verify_jwt": sys.argv[2] == "true",
     "static_patterns": [],
 }))
 PY
 )
+
+echo "Déploiement de $FONCTION (verify_jwt=$verify_jwt) :"
+printf '  %s\n' "${chemins[@]}"
 
 args=(-X POST
   "https://api.supabase.com/v1/projects/$PROJET/functions/deploy?slug=$FONCTION"
   -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN"
   -F "metadata=$metadata;type=application/json")
 
-for fichier in "$DOSSIER"/*.ts; do
-  args+=(-F "file=@$fichier;type=application/typescript")
+for chemin in "${chemins[@]}"; do
+  args+=(-F "file=@$BASE/$chemin;filename=$chemin;type=application/typescript")
 done
 
 reponse=$(curl -sS -w $'\n%{http_code}' "${args[@]}")

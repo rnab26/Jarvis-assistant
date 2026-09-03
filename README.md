@@ -73,7 +73,7 @@ et les autorisations accordées (migration `0013_google_oauth.sql`).
 ## Commandes vocales : comment les vérifier
 
 Les Edge Functions **ne se déploient pas au push** — il faut les redéployer
-explicitement (outil MCP Supabase `deploy_edge_function`). Et un
+explicitement — `scripts/deployer-fonction.sh voice-command`. Et un
 typecheck ne dit rien de ce qui compte vraiment ici : est-ce que le modèle
 suit encore la consigne.
 
