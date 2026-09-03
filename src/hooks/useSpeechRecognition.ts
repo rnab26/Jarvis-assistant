@@ -93,6 +93,17 @@ const POULS_SERVICE_MS = 500
 /** Après un démarrage, le temps que le plugin passe `listening` à vrai. */
 const GRACE_DEMARRAGE_MS = 1500
 
+/**
+ * Après « stopped », le temps laissé au service pour livrer son résultat
+ * FINAL. Lu dans le journal d'écoute du téléphone de Raphaël (3 sept.) : un
+ * « Jarvis » seul ne produit aucun partiel — le service ferme l'écoute
+ * (onEndOfSpeech, donc « stopped »), puis livre le résultat 300 à 1000 ms
+ * plus tard. On avait déjà retiré les écouteurs : le mot était perdu, et il
+ * fallait enchaîner une phrase pour être entendu. On attend donc ce final,
+ * borné, et on part dès qu'il arrive.
+ */
+const ATTENTE_FINAL_MS = 1000
+
 /** Le service a-t-il lâché sans rien dire ? Borné : un plugin muet n'est
  * pas un service vivant. */
 async function serviceEncoreVivant(): Promise<boolean> {
@@ -229,8 +240,9 @@ export function useSpeechRecognition() {
       await preparerNatif()
       setListening(true)
 
-      const flux = { texte: "", suffit: false }
+      const flux = { texte: "", suffit: false, stoppedRecu: false, finalRecu: false }
       let resoudreStop: (() => void) | undefined
+      let resoudreFinal: (() => void) | undefined
       let filet: ReturnType<typeof setTimeout> | null = null
 
       const partiels = await NativeSpeechRecognition.addListener(
@@ -240,6 +252,12 @@ export function useSpeechRecognition() {
           if (typeof texte !== "string" || !texte.trim()) return
           nbPartiels++
           flux.texte = texte
+          // Après « stopped », le plugin livre le résultat final par ce même
+          // événement : c'est ce qu'on attendait, on peut partir.
+          if (flux.stoppedRecu) {
+            flux.finalRecu = true
+            resoudreFinal?.()
+          }
           o.onTexte?.(texte)
           if (!flux.suffit && o.arreterSi?.(texte)) {
             flux.suffit = true
@@ -251,7 +269,10 @@ export function useSpeechRecognition() {
       )
       const etats = await NativeSpeechRecognition.addListener("listeningState", ({ status }) => {
         setReady(status === "started")
-        if (status === "stopped") resoudreStop?.()
+        if (status === "stopped") {
+          flux.stoppedRecu = true
+          resoudreStop?.()
+        }
       })
 
       let demarrageRefuse = false
@@ -302,7 +323,11 @@ export function useSpeechRecognition() {
         // Le pouls : si le service est mort sans le dire, on clôt la rafale
         // tout de suite au lieu d'attendre le filet avec un micro mort.
         pouls = setInterval(async () => {
-          if (flux.suffit || demarrageRefuse || Date.now() - debutAt < GRACE_DEMARRAGE_MS) return
+          if (flux.suffit || flux.stoppedRecu || demarrageRefuse) return
+          if (Date.now() - debutAt < GRACE_DEMARRAGE_MS) return
+          // Le plugin met `listening` à faux aussi à la fin normale d'une
+          // prise de parole — mais alors « stopped » arrive. Sans « stopped »,
+          // c'est une erreur avalée : le service est mort.
           if (!(await serviceEncoreVivant())) {
             mortSilencieuse = true
             resoudreStop?.()
@@ -310,6 +335,16 @@ export function useSpeechRecognition() {
         }, POULS_SERVICE_MS)
 
         await arret
+        // Fin de parole normale sans le mot-clé déjà reconnu : le final
+        // peut encore arriver, on lui laisse ATTENTE_FINAL_MS.
+        if (flux.stoppedRecu && !flux.suffit && !flux.finalRecu) {
+          await Promise.race([
+            new Promise<void>((resolve) => {
+              resoudreFinal = resolve
+            }),
+            attendre(ATTENTE_FINAL_MS),
+          ])
+        }
         const resultat = await borner(enCours, 600)
 
         // Le résultat final d'Android est mieux ponctué que le dernier
@@ -319,6 +354,8 @@ export function useSpeechRecognition() {
           duree_ms: Date.now() - debutAt,
           partiels: nbPartiels,
           mot_cle: flux.suffit,
+          final_attendu: flux.stoppedRecu && !flux.suffit,
+          final_recu: flux.finalRecu,
           mort_silencieuse: mortSilencieuse,
           demarrage_refuse: demarrageRefuse,
           entendu: extraitEntendu(transcript),
@@ -352,6 +389,8 @@ export function useSpeechRecognition() {
       let nbSessions = 0
       let mortsSilencieuses = 0
       let sessionDebutAt = 0
+      let stoppedRecu = false
+      let finalApresStop = 0
 
       setListening(true)
       noterEcoute("commande_debut")
@@ -366,6 +405,7 @@ export function useSpeechRecognition() {
           const texte = matches?.[0]
           if (typeof texte !== "string") return
           nbPartiels++
+          if (stoppedRecu) finalApresStop++
           const avant = flux.etat.courant
           flux.etat = noterTexte(flux.etat, texte, Date.now())
           if (flux.etat.courant !== avant) o.onTexte?.(texteDuTour(flux.etat))
@@ -373,7 +413,10 @@ export function useSpeechRecognition() {
       )
       const etats = await NativeSpeechRecognition.addListener("listeningState", ({ status }) => {
         setReady(status === "started")
-        if (status === "stopped") resoudreStop?.()
+        if (status === "stopped") {
+          stoppedRecu = true
+          resoudreStop?.()
+        }
       })
 
       // C'est ce battement — pas Android — qui décide que la prise de parole
@@ -395,7 +438,8 @@ export function useSpeechRecognition() {
       // la session en cours ; la boucle décide ensuite de relancer ou de
       // rendre le texte, comme pour une coupure ordinaire.
       const pouls = setInterval(async () => {
-        if (flux.stopDemande || !sessionDebutAt || Date.now() - sessionDebutAt < GRACE_DEMARRAGE_MS) return
+        if (flux.stopDemande || stoppedRecu || !sessionDebutAt) return
+        if (Date.now() - sessionDebutAt < GRACE_DEMARRAGE_MS) return
         if (!(await serviceEncoreVivant())) {
           mortsSilencieuses++
           sessionDebutAt = 0
@@ -419,6 +463,7 @@ export function useSpeechRecognition() {
           })
           nbSessions++
           sessionDebutAt = Date.now()
+          stoppedRecu = false
           const demarre = await borner(
             NativeSpeechRecognition.start({
               language: "fr-FR",
@@ -433,9 +478,18 @@ export function useSpeechRecognition() {
           if (demarre) setReady(true)
           await arret
           if (filet) clearTimeout(filet)
-          // Le résultat final post-traité par Android arrive parfois juste
-          // après l'événement "stopped".
-          await attendre(250)
+          // Le résultat final post-traité par Android arrive APRÈS
+          // « stopped » (300 à 1000 ms, lu dans le journal du téléphone) :
+          // 250 ms ne suffisaient pas, la fin de phrase se perdait.
+          if (stoppedRecu) {
+            const avantFinal = finalApresStop
+            const debutAttente = Date.now()
+            while (finalApresStop === avantFinal && Date.now() - debutAttente < ATTENTE_FINAL_MS) {
+              await attendre(50)
+            }
+          } else {
+            await attendre(250)
+          }
           flux.etat = cloturerSegment(flux.etat)
           o.onTexte?.(texteDuTour(flux.etat))
           if (flux.stopDemande || arretManuelRef.current) break
@@ -450,6 +504,7 @@ export function useSpeechRecognition() {
           sessions: nbSessions,
           partiels: nbPartiels,
           morts_silencieuses: mortsSilencieuses,
+          finals_apres_stop: finalApresStop,
           arret_manuel: arretManuelRef.current,
           entendu: extraitEntendu(transcript),
         })
