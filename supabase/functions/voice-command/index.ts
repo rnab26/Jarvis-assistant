@@ -24,7 +24,7 @@ const corsHeaders = {
  */
 const CHAMPS_MODIFIABLES: Record<string, string[]> = {
   update_task: ["title", "notes", "status", "category_id", "due_date", "due_time"],
-  update_dev_item: ["title", "notes", "status", "priority"],
+  update_dev_item: ["title", "notes", "status", "priority", "theme"],
   update_contact: ["name", "notes"],
 }
 
@@ -150,6 +150,10 @@ const ACTION_SCHEMA = {
       enum: ["todo", "in_progress", "done"],
       description: "add_dev_item UNIQUEMENT : statut initial du chantier à créer, 'todo' par défaut. Pour MODIFIER le statut d'un chantier existant, ne pas utiliser ce champ : mettre { \"status\": ... } dans \"changes\" avec action=update_dev_item.",
     },
+    theme: {
+      type: ["string", "null"],
+      description: "add_dev_item : sujet auquel rattacher le chantier. Reprends TEL QUEL un thème déjà utilisé dès qu'il convient — un thème presque identique en crée un doublon et éparpille le sujet. N'en invente un nouveau que si aucun ne va, en quelques mots. Aussi utilisable dans \"changes\" avec update_dev_item pour reclasser un chantier existant.",
+    },
     task_id: {
       type: "string",
       description: "id de la tâche existante ciblée (update_task, delete_task), résolu depuis la liste de tâches fournie.",
@@ -180,12 +184,13 @@ const ACTION_SCHEMA = {
     },
     changes: {
       type: "object",
-      description: "OBLIGATOIRE et NON VIDE pour update_task, update_dev_item et update_contact : les champs à modifier, et eux seuls. update_task : title, notes, status ('todo'/'done'), category_id, due_date, due_time. update_dev_item : title, notes, status ('todo'/'in_progress'/'done'), priority ('low'/'normal'/'high'). update_contact : name, notes. Exemples : { \"priority\": \"high\" } pour monter un chantier en priorité, { \"status\": \"in_progress\" } pour le passer en cours.",
+      description: "OBLIGATOIRE et NON VIDE pour update_task, update_dev_item et update_contact : les champs à modifier, et eux seuls. update_task : title, notes, status ('todo'/'done'), category_id, due_date, due_time. update_dev_item : title, notes, status ('todo'/'in_progress'/'done'), priority ('low'/'normal'/'high'), theme. update_contact : name, notes. Exemples : { \"priority\": \"high\" } pour monter un chantier en priorité, { \"status\": \"in_progress\" } pour le passer en cours.",
       properties: {
         title: { type: "string" },
         notes: { type: ["string", "null"] },
         status: { type: "string", enum: ["todo", "in_progress", "done"] },
         priority: { type: "string", enum: ["low", "normal", "high"] },
+        theme: { type: ["string", "null"] },
         category_id: { type: ["string", "null"] },
         due_date: { type: ["string", "null"] },
         due_time: { type: ["string", "null"] },
@@ -261,6 +266,7 @@ Deno.serve(async (req: Request) => {
       categories,
       tasks,
       devItems,
+      themes,
       documents,
       contacts,
       placeReminders,
@@ -297,6 +303,7 @@ Date du jour : ${todayISO}.
 Catégories de tâches existantes : ${JSON.stringify(categories)}.
 Tâches existantes de l'utilisateur : ${JSON.stringify(tasks)}.
 Chantiers de dev Jarvis existants (cockpit) : ${JSON.stringify(devItems)}.
+Thèmes de chantiers déjà utilisés : ${JSON.stringify(themes ?? [])}.
 Documents existants de l'utilisateur : ${JSON.stringify(documents)}.
 Contacts existants de l'utilisateur : ${JSON.stringify(contacts)}.
 Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
@@ -314,6 +321,7 @@ Pour add_task : si l'utilisateur précise une heure ("à 14h", "ce midi", "à 9h
 Pour save_document : synthétise un nom de fichier court dans "filename", et reformule proprement tout ce que l'utilisateur a dicté comme contenu dans "content".
 Pour configure_widget : ne renvoie que les champs (max_tasks, urgent_only, category_id) que l'utilisateur a explicitement mentionnés — laisse les autres absents plutôt que de les redéfinir à une valeur par défaut.
 Pour add_contact : si le contact existe déjà dans la liste fournie (même nom ou très proche), utilise update_contact à la place pour ajouter l'information à ses notes existantes plutôt que de créer un doublon.
+Pour add_dev_item : classe le chantier dans un thème. Reprends un thème existant à l'identique dès qu'il convient — c'est ce qui permet de traiter un sujet entier d'un coup au lieu de le rafistoler chantier par chantier. N'en crée un nouveau que si aucun ne colle.
 Pour add_place_reminder : "place" doit être un mot-clé court et probable à être redit tel quel (nom de lieu, de chantier, de client) — pas une phrase entière. "reminder" est la phrase que Jarvis doit dire, reformulée proprement.
 Une seule phrase peut contenir PLUSIEURS demandes ("ajoute une tâche pour le plombier et marque la facture comme payée") : renvoie alors autant d'actions que de demandes, dans l'ordre où elles ont été dites. N'en invente aucune, et ne découpe pas une demande unique.
 Reprendre quelque chose d'existant : la liste fournie contient AUSSI les tâches déjà faites (status "done") et les chantiers terminés. Si l'utilisateur veut revenir sur une tâche déjà faite ("remets la tâche du plombier à faire", "finalement je dois refaire les carreaux", "rouvre celle que j'ai terminée hier"), n'en crée pas une nouvelle : utilise update_task sur la tâche existante avec changes={"status":"todo"} plus ce qu'il change d'autre. Une tâche n'a que deux statuts, "todo" et "done" — "en cours" pour une tâche vaut "todo".

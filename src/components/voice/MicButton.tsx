@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { JarvisCore } from "@/components/JarvisCore"
+import { themesDe } from "@/components/cockpit/CockpitBoard"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { supabase } from "@/lib/supabase"
@@ -108,7 +109,9 @@ export function MicButton({
           notes: extrait(i.notes),
           status: i.status,
           priority: i.priority,
+          theme: i.theme,
         })),
+        themes: themesDe(devItemsApi.devItems),
         documents: documentsApi.documents.map((d) => ({ name: d.name })),
         contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes })),
         placeReminders: placeRemindersApi.placeReminders.map((p) => ({
