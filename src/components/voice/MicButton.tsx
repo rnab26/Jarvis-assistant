@@ -445,6 +445,7 @@ export function MicButton({
 
     async function wakeLoop() {
       let echecDemarrage = false
+      let rafalesMuettes = 0
       while (!cancelled) {
         if (!peutEcouterEnVeille({ actif: true, visible: true, statut: statusRef.current })) {
           await new Promise((r) => setTimeout(r, 400))
@@ -471,6 +472,7 @@ export function MicButton({
           echecDemarrage = err instanceof Error && err.message === MOTEUR_OCCUPE
         }
         if (cancelled) return
+        rafalesMuettes = transcript ? 0 : rafalesMuettes + 1
 
         const { suite, demande } = apresRafale({
           priseAvant: prise,
@@ -500,7 +502,9 @@ export function MicButton({
         } else {
           setStatus("idle")
         }
-        if (!cancelled) await new Promise((r) => setTimeout(r, delaiAvantRafaleSuivante(echecDemarrage)))
+        if (!cancelled) {
+          await new Promise((r) => setTimeout(r, delaiAvantRafaleSuivante(echecDemarrage, rafalesMuettes)))
+        }
       }
     }
 
