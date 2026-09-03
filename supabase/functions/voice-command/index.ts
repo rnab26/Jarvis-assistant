@@ -465,22 +465,29 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouv
       // Le Flash stable le plus récent de l'offre gratuite. Pas d'alias
       // « latest » : un changement de modèle doit être un choix, pas une
       // surprise un matin.
-      // Mesuré le 3 sept. 2026, pas choisi au catalogue : sur la même phrase à
-      // découper, flash-lite répond en 640 ms, gemini-3.5-flash en 3 s, et
-      // gemini-3-flash-preview en 138 s. gemini-3.8-flash, lui, renvoie 429
-      // dès le premier appel — son quota gratuit est nul, le nommer en tête
-      // laissait Jarvis muet. Dans une conversation parlée, la latence est une
-      // fonctionnalité.
-      modele: "gemini-flash-lite-latest",
-      secours: ["gemini-3.5-flash", "gemini-3.1-flash-lite"],
+      // Choisi sur mesure, pas au catalogue (3 sept. 2026).
+      //
+      // gemini-3.8-flash renvoie 429 dès le premier appel : son quota gratuit
+      // est nul, le nommer en tête laissait Jarvis muet.
+      //
+      // Restaient flash-lite (640 ms) et gemini-3.5-flash (3 s). Le rapide a
+      // échoué sur cinq des vingt-cinq contrôles, tous des actions dans les
+      // applications — dont « appeler un contact ». Déclencher un appel par
+      // erreur coûte plus cher que deux secondes d'attente, et ces phrases-là
+      // sont devenues rares : l'essentiel est interprété sur le téléphone.
+      // Le rapide reste en secours, pour quand la minute est saturée.
+      modele: "gemini-3.5-flash",
+      secours: ["gemini-flash-lite-latest", "gemini-3.1-flash-lite"],
       // Les consignes d'abord, le contexte ensuite : voir CONSIGNES.
       systeme: `${CONSIGNES}\n\n${contexte}`,
       texte: transcript,
       outil: VOICE_ACTION_TOOL,
       // Les modèles Gemini 3 réfléchissent avant de répondre et cette
-      // réflexion compte dans le plafond : de la marge, sinon la réponse
-      // est coupée avant l'appel d'outil.
-      maxTokens: 2048,
+      // réflexion compte dans le plafond : de la marge, sinon la réponse est
+      // coupée avant l'appel d'outil. Mesuré le 3 sept. : à 2048, deux des
+      // vingt-cinq contrôles tombaient — la réflexion mangeait la place de la
+      // réponse sur les phrases qui demandent de croiser la liste de contacts.
+      maxTokens: 4096,
       cle: cleGemini,
     })
 
