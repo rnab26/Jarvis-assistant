@@ -3,6 +3,7 @@ import { Download, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { Interrupteur } from "@/components/settings/Interrupteur"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -92,14 +93,13 @@ function RappelsGeolocalises() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <Button
-          variant={geofenceState.enabled ? "default" : "outline"}
+        <Interrupteur
+          titre="Me prévenir en arrivant sur place"
+          description="Utilise la position du téléphone, en plus du déclenchement par la conversation."
+          actif={geofenceState.enabled}
           disabled={enAttente}
-          onClick={geofenceState.enabled ? desactiver : activer}
-          className="w-fit"
-        >
-          {geofenceState.enabled ? "Activé" : "Désactivé"}
-        </Button>
+          onChange={(actif) => (actif ? activer() : desactiver())}
+        />
 
         {geofenceState.enabled && arrierePlanOk === false && (
           <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
@@ -659,24 +659,16 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
-            <div className="flex-1">
-              <p className="font-medium">
-                {voiceState.muted ? "Voix coupée" : "Voix activée"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {voiceState.muted
-                  ? "Il te répond à l'écrit seulement. Dis-lui « remets ta voix » pour le rallumer."
-                  : "Tu peux aussi lui dire « coupe ta voix » en pleine discussion."}
-              </p>
-            </div>
-            <Button
-              variant={voiceState.muted ? "default" : "outline"}
-              onClick={() => voiceState.setMuted(!voiceState.muted)}
-            >
-              {voiceState.muted ? "Rallumer" : "Couper"}
-            </Button>
-          </div>
+          <Interrupteur
+            titre="Jarvis répond à voix haute"
+            description={
+              voiceState.muted
+                ? "Il te répond à l'écrit seulement. Dis-lui « remets ta voix » pour le rallumer."
+                : "Tu peux aussi lui dire « coupe ta voix » en pleine discussion."
+            }
+            actif={!voiceState.muted}
+            onChange={(actif) => voiceState.setMuted(!actif)}
+          />
 
           <div className="flex flex-col gap-2">
             <Select
@@ -846,13 +838,12 @@ export function SettingsPage() {
             </Select>
           </div>
 
-          <Button
-            variant={widgetState.config.urgentOnly ? "default" : "outline"}
-            className="w-fit"
-            onClick={() => widgetState.setConfig({ urgentOnly: !widgetState.config.urgentOnly })}
-          >
-            {widgetState.config.urgentOnly ? "Urgentes uniquement : activé" : "Urgentes uniquement : désactivé"}
-          </Button>
+          <Interrupteur
+            titre="Urgentes uniquement"
+            description="N'afficher sur le widget que les tâches en retard ou dues aujourd'hui."
+            actif={widgetState.config.urgentOnly}
+            onChange={(actif) => widgetState.setConfig({ urgentOnly: actif })}
+          />
         </CardContent>
       </Card>
 
@@ -941,12 +932,12 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button
-            variant={wakeWordState.enabled ? "default" : "outline"}
-            onClick={() => wakeWordState.setEnabled(!wakeWordState.enabled)}
-          >
-            {wakeWordState.enabled ? "Activé" : "Désactivé"}
-          </Button>
+          <Interrupteur
+            titre="Écouter le mot-clé « Jarvis »"
+            description="Le micro reste à l'écoute tant que l'app est ouverte à l'écran."
+            actif={wakeWordState.enabled}
+            onChange={wakeWordState.setEnabled}
+          />
         </CardContent>
       </Card>
     </div>

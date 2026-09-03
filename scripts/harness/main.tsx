@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
+import { chercherMotCle } from "@/lib/motCle"
 
 /**
  * Banc d'essai du moteur d'écoute — pas une page de l'app.
@@ -16,11 +17,23 @@ function BancDEssai() {
   const [resultat, setResultat] = useState("")
 
   useEffect(() => {
-    const w = window as unknown as { lancer: () => void; arreter: () => void }
+    const w = window as unknown as {
+      lancer: () => void
+      lancerMotCle: () => void
+      arreter: () => void
+    }
     w.arreter = stop
     w.lancer = () => {
       setResultat("")
       listen()
+        .then((texte) => setResultat(`OK:${texte}`))
+        .catch((e: Error) => setResultat(`ERR:${e.message}`))
+    }
+    // L'écoute du mot-clé, montée comme dans MicButton : elle doit rendre la
+    // main dès que « Jarvis » est reconnu, sans attendre le silence.
+    w.lancerMotCle = () => {
+      setResultat("")
+      listen("wake", { arreterSi: (texte) => chercherMotCle(texte).trouve })
         .then((texte) => setResultat(`OK:${texte}`))
         .catch((e: Error) => setResultat(`ERR:${e.message}`))
     }

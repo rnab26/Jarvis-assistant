@@ -6,6 +6,7 @@ import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
+import { chercherMotCle } from "@/lib/motCle"
 import { withTimeout } from "@/lib/withTimeout"
 import {
   executeVoiceAction,
@@ -54,14 +55,6 @@ function normalizeText(text: string) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-}
-
-function containsWakeWord(transcript: string) {
-  const normalized = transcript
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-  return normalized.includes("jarvis")
 }
 
 export function MicButton({
@@ -339,16 +332,21 @@ export function MicButton({
         }
         setStatus("wake-listening")
         try {
-          const transcript = await listen("wake")
+          // arreterSi coupe la rafale dès que « Jarvis » est reconnu dans un
+          // résultat partiel : plus besoin d'attendre la fin de la phrase.
+          const transcript = await listen("wake", {
+            arreterSi: (texte) => chercherMotCle(texte).trouve,
+          })
           if (cancelled) return
-          if (containsWakeWord(transcript)) {
-            const rest = transcript.replace(/jarvis/i, "").trim()
-            if (rest.length > 3) {
-              // "Jarvis" + la demande dans la même phrase : direct.
+
+          const { trouve, reste } = chercherMotCle(transcript)
+          if (trouve) {
+            if (reste.length > 3) {
+              // « Jarvis, ajoute une tâche » : la demande est déjà là.
               setStatus("idle")
-              await conduireConversation(rest)
+              await conduireConversation(reste)
             } else {
-              // "Jarvis" seul : confirmation orale courte avant d'écouter
+              // « Jarvis » seul : confirmation orale courte avant d'écouter
               // la demande, pour que l'utilisateur sache qu'il peut parler
               // sans avoir à toucher le bouton.
               setStatus("speaking")
@@ -363,8 +361,11 @@ export function MicButton({
         } catch {
           // Silence, erreur de reconnaissance, etc. : on relance simplement.
           if (!cancelled) setStatus("idle")
-          await new Promise((r) => setTimeout(r, 500))
         }
+        // Souffle minimum entre deux rafales : Android refuse un redémarrage
+        // immédiat du service. 150 ms au lieu de 500 — c'est autant de temps
+        // en moins pendant lequel le micro n'entend rien.
+        if (!cancelled) await new Promise((r) => setTimeout(r, 150))
       }
     }
 
@@ -421,8 +422,18 @@ export function MicButton({
           {micReady ? "Je t'écoute — touche le cœur quand tu as fini." : "Préparation du micro..."}
         </p>
       )}
-      {status === "wake-listening" && (
-        <p className="text-xs text-muted-foreground">En écoute du mot-clé "Jarvis"...</p>
+      {/* Tant que le mot-clé est activé, on le dit — même entre deux rafales
+          d'écoute. Raphaël signalait le 3 sept. qu'il ne savait jamais ce qui
+          était réellement actif : un indicateur qui n'apparaît qu'une fraction
+          du temps revient à ne rien indiquer. */}
+      {wakeWordEnabled && (status === "wake-listening" || status === "idle") && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
+            <span className="relative inline-flex size-2 rounded-full bg-primary" />
+          </span>
+          Dis « Jarvis » quand tu veux
+        </p>
       )}
       {(lastUserText || lastReply) && (
         <div className="max-w-xs text-center text-sm">
