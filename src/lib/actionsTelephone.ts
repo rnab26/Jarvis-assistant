@@ -17,7 +17,7 @@ interface ActionsTelephonePlugin {
   commanderMedia(options: { commande: CommandeMedia }): Promise<void>
   mettreAlarme(options: { heure: number; minute: number; libelle?: string }): Promise<void>
   mettreMinuteur(options: { secondes: number; libelle?: string }): Promise<void>
-  itineraire(options: { destination: string }): Promise<void>
+  itineraire(options: { destination: string; paquet?: string }): Promise<void>
 }
 
 /** Pont vers android/.../ActionsTelephonePlugin.java. N'existe que dans l'app

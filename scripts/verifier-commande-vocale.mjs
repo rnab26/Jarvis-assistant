@@ -260,50 +260,6 @@ cas.push(
       return [true]
     },
   },
-  {
-    nom: "gmail : consulter ce qu'il a reçu",
-    phrase: "Qu'est-ce que j'ai reçu comme mails aujourd'hui ?",
-    controle: (r) => {
-      const types = (r.actions ?? []).map((x) => x.action)
-      if (!types.includes("list_emails")) return [false, `actions : ${JSON.stringify(types)}`]
-      return [true]
-    },
-  },
-  {
-    nom: "gmail : se faire lire un message",
-    phrase: "Lis-moi le mail de Yoni.",
-    controle: (r) => {
-      const a = (r.actions ?? []).find((x) => x.action === "read_email")
-      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
-      if (!/yoni/i.test(a.mail_cible ?? "")) return [false, `mail_cible = ${a.mail_cible}`]
-      return [true]
-    },
-  },
-  {
-    // LE contrôle qui compte : une réponse dictée se PRÉPARE. Si send_email
-    // apparaît ici, un e-mail peut partir au nom de Raphaël sans qu'il ait
-    // relu quoi que ce soit. Le serveur le refuserait (confirme:true absent),
-    // mais Jarvis lui annoncerait un envoi qui n'a pas eu lieu.
-    nom: "gmail : une réponse dictée est préparée, JAMAIS envoyée dans le même tour",
-    phrase: "Réponds au mail de Yoni que je passe sur le chantier demain matin vers neuf heures.",
-    controle: (r) => {
-      const types = (r.actions ?? []).map((x) => x.action)
-      if (types.includes("send_email")) return [false, `ENVOI DIRECT, garde-fou franchi : ${JSON.stringify(types)}`]
-      const a = (r.actions ?? []).find((x) => x.action === "prepare_email_reply")
-      if (!a) return [false, `aucune préparation : ${JSON.stringify(types)}`]
-      if (!a.mail_texte) return [false, "mail_texte vide : rien à lui relire"]
-      return [true]
-    },
-  },
-  {
-    nom: "gmail : retrouver ses reçus",
-    phrase: "Retrouve-moi les factures que j'ai reçues ce mois-ci.",
-    controle: (r) => {
-      const types = (r.actions ?? []).map((x) => x.action)
-      if (!types.includes("find_receipts")) return [false, `actions : ${JSON.stringify(types)}`]
-      return [true]
-    },
-  },
 )
 
 cas.push({
@@ -461,6 +417,58 @@ cas.push(
     },
   },
   {
+    // Le canal n'est renseigné QUE si l'utilisateur le dit — sinon c'est le
+    // téléphone qui tranche (préférence retenue, ou question posée), pas le
+    // modèle qui ne doit plus se rabattre sur "whatsapp" par défaut de son
+    // propre chef.
+    nom: "message sans canal précisé : le modèle ne choisit pas à sa place",
+    phrase: "Envoie un message à Dylan pour lui dire que je passe demain matin sur le chantier.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "send_message")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.message_channel) return [false, `message_channel renseigné à tort : ${a.message_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "message avec canal précisé : SMS explicite respecté",
+    phrase: "Envoie un SMS à Dylan pour lui dire que je suis en retard.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "send_message")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.message_channel !== "sms") return [false, `message_channel = ${a.message_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "apprentissage direct : quelle app pour la navigation",
+    phrase: "Utilise Waze pour la navigation.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_app_preference")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.category !== "navigation") return [false, `category = ${a.category}`]
+      if (!/waze/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      return [true]
+    },
+  },
+  {
+    nom: "apprentissage direct : quel canal pour les messages",
+    phrase: "Préfère les SMS pour mes messages.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_app_preference")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.category !== "messages") return [false, `category = ${a.category}`]
+      if (!/sms/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      return [true]
+    },
+  },
+)
+
+// ── Gmail. Ajoutés par la session « Messagerie et agenda ». En bloc séparé
+//    volontairement : les cas de deux sessions se retrouvaient au même endroit
+//    du fichier et la fusion en supprimait un jeu sur deux, sans bruit.
+cas.push(
+  {
     nom: "gmail : consulter ce qu'il a reçu",
     phrase: "Qu'est-ce que j'ai reçu comme mails aujourd'hui ?",
     controle: (r) => {
@@ -481,11 +489,11 @@ cas.push(
   },
   {
     // LE contrôle qui compte : une réponse dictée se PRÉPARE. Si send_email
-    // apparaît ici, un e-mail peut partir au nom de Raphaël sans qu'il ait
-    // relu quoi que ce soit. Le serveur le refuserait (confirme:true absent),
-    // mais Jarvis lui annoncerait un envoi qui n'a pas eu lieu.
+    // apparaît ici, Jarvis annoncerait à Raphaël un envoi en son nom qu'il n'a
+    // pas relu. Le serveur le refuserait (confirme:true absent), mais la
+    // promesse, elle, aurait été faite.
     nom: "gmail : une réponse dictée est préparée, JAMAIS envoyée dans le même tour",
-    phrase: "Réponds à Yoni que je passe sur le chantier demain matin vers neuf heures.",
+    phrase: "Réponds au mail de Yoni que je passe sur le chantier demain matin vers neuf heures.",
     controle: (r) => {
       const types = (r.actions ?? []).map((x) => x.action)
       if (types.includes("send_email")) return [false, `ENVOI DIRECT, garde-fou franchi : ${JSON.stringify(types)}`]
@@ -501,6 +509,18 @@ cas.push(
     controle: (r) => {
       const types = (r.actions ?? []).map((x) => x.action)
       if (!types.includes("find_receipts")) return [false, `actions : ${JSON.stringify(types)}`]
+      return [true]
+    },
+  },
+  {
+    // Sa correction du 3 sept. : « va récupérer la facture chez ma femme ».
+    // Le nom doit arriver jusqu'au serveur, qui le traduit en from:.
+    nom: "gmail : un reçu cherché chez une personne précise",
+    phrase: "Va me récupérer la facture que Melissa m'a envoyée.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "find_receipts")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/melissa/i.test(a.mail_recherche ?? "")) return [false, `mail_recherche = ${a.mail_recherche}`]
       return [true]
     },
   },

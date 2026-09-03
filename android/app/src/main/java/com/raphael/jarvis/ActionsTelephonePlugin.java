@@ -285,8 +285,10 @@ public class ActionsTelephonePlugin extends Plugin {
 
     /**
      * Ouvre un itinéraire. On passe par le schéma "geo:", commun à toutes les
-     * applications de cartes, plutôt que par un lien Google : n'importe quelle
-     * app installée peut répondre, et l'utilisateur garde son choix.
+     * applications de cartes. Sans paquet visé, ET avec Waze ET Google Maps
+     * installés, Android ouvre son sélecteur ("Terminer l'action avec…") —
+     * même défaut que la musique, même correctif : si Raphaël a déjà dit
+     * quelle application il utilise, on la vise directement.
      */
     @PluginMethod
     public void itineraire(PluginCall call) {
@@ -295,8 +297,11 @@ public class ActionsTelephonePlugin extends Plugin {
             call.reject("Il me manque la destination.");
             return;
         }
+        String paquet = call.getString("paquet");
         Uri lieu = Uri.parse("geo:0,0?q=" + Uri.encode(destination));
-        if (lancer(new Intent(Intent.ACTION_VIEW, lieu), call, "Aucune application de cartes n'a répondu.")) {
+        Intent itineraire = new Intent(Intent.ACTION_VIEW, lieu);
+        if (paquet != null && !paquet.isEmpty()) itineraire.setPackage(paquet);
+        if (lancer(itineraire, call, "Aucune application de cartes n'a répondu.")) {
             call.resolve();
         }
     }

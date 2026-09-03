@@ -1,4 +1,5 @@
 import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react"
+import { useState } from "react"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -81,20 +82,34 @@ export function DevItemCard({
   onArchive,
   onUnarchive,
 }: DevItemCardProps) {
+  const [deplie, setDeplie] = useState(false)
+
   // Même densité que les tâches (option « compact » choisie par Raphaël le
   // 3 sept. 2026) : plus de cadre par chantier, un filet entre deux, les
   // étiquettes dans la ligne du titre. Deux listes qui se ressemblent doivent
   // se lire pareil — sinon le cockpit paraît inachevé à côté des tâches.
   return (
     <div className="flex items-start gap-2 py-1.5">
-      <div className="min-w-0 flex-1">
+      {/* Appuyer sur la ligne déplie le chantier. Avant, le seul moyen de lire
+          une note entière était le crayon — qui annonce « modifier » et ouvre
+          un formulaire : on ouvrait une fenêtre d'édition pour lire, avec le
+          risque d'enregistrer sans le vouloir. Raphaël l'a signalé le 3 sept.
+          Le bouton porte tout le bloc titre + note, pas seulement le titre :
+          sur un téléphone, viser une ligne de texte de trois millimètres ne
+          marche pas. */}
+      <button
+        type="button"
+        className="min-w-0 flex-1 text-left"
+        aria-expanded={deplie}
+        onClick={() => setDeplie(!deplie)}
+      >
         {/* Une seule ligne, donc au plus deux étiquettes courtes à droite du
             titre : à trois, elles écrasaient le titre jusqu'à le faire
             disparaître sur un écran de téléphone. « Prise par … » descend donc
             avec la note, dont elle a la nature — un détail qu'on lit après
             avoir trouvé le chantier, pas un critère pour le trouver. */}
         <div className="flex items-center gap-1.5">
-          <span className="min-w-0 flex-1 truncate text-sm" title={item.title}>
+          <span className={`min-w-0 flex-1 text-sm ${deplie ? "" : "truncate"}`}>
             {item.title}
           </span>
           {STATUS_LABEL[item.status] && (
@@ -119,11 +134,15 @@ export function DevItemCard({
         {item.notes && (
           // Trois lignes ici, contre deux pour une tâche : les notes d'un
           // chantier portent le cadrage, et c'est ce qu'on vient y lire.
-          <p className="line-clamp-3 text-xs whitespace-pre-line text-muted-foreground">
+          <p
+            className={`text-xs whitespace-pre-line text-muted-foreground ${
+              deplie ? "" : "line-clamp-2"
+            }`}
+          >
             {renderNotes(item.notes)}
           </p>
         )}
-      </div>
+      </button>
       {onArchive && item.status === "done" && (
         <Button
           variant="ghost"

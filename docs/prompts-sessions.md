@@ -366,3 +366,124 @@ Avant de t'arrêter : écris ton état dans dev_log, libère tes réservations.
   rendus dans la fiche « Les 4 verrous » — la voix, WhatsApp, et le moteur de
   recherche web. Deux chantiers du thème « Messagerie et agenda » (WhatsApp et
   reçus/factures) attendent le même arbitrage WhatsApp.
+
+---
+
+## Répartition du 4 sept. (nuit) — après le test en direct de Raphaël
+
+Écrit par la session `claude/cockpit-chantiers-ikfpnq` (Voix et écoute), à
+partir de deux sources qu'on n'avait pas avant : la table `journal_ecoute`
+(ce que fait vraiment le micro sur son téléphone, APK b74) et les journaux
+de `voice-command` (quota Gemini). Trois chantiers nouveaux, trois prompts.
+Chacun se colle dans une session neuve.
+
+### Prompt B-bis — Le téléphone : service Google, et la musique qui ne joue pas
+
+```
+Tu reprends le thème « Le téléphone ». Deux chantiers, dans cet ordre, et
+tous deux prouvés par des données réelles — lis leurs notes en entier :
+  scripts/sql.sh "select id, title, notes from dev_items where id in ('bb79f3e4-bf4f-4285-a8f7-bded55c42e85','3de0e08a-9fdb-4ed2-a98c-66678aa39026')"
+Réserve-les avec le nom de ta branche (claim_dev_item).
+
+1. bb79f3e4 (high) — PASSER SUR LE SERVICE DE RECONNAISSANCE GOOGLE, en
+   natif. La table journal_ecoute montre que chaque phrase de Raphaël enchaîne
+   2 à 4 sessions du service Samsung (il coupe à chaque respiration), donc
+   une tonalité et ~0,7 s de sourdité au milieu de ses phrases ; en veille, une
+   tonalité toutes les ~10 s. Il ne veut plus de la tonalité, et rien côté JS
+   ne peut la couper. Le correctif est dans les notes : créer le
+   SpeechRecognizer avec le service Google quand il est présent (pas de
+   tonalité, DICTATION_MODE respecté), sinon garder le défaut. Ça se fait
+   dans le plugin @capacitor-community/speech-recognition (patch-package qui
+   s'applique en CI) ou en plugin local dans android/. Écris dans
+   journal_ecoute quel service a été choisi (evenement service_reconnaissance)
+   pour qu'on le sache sans deviner. Côté JS rien ne change : la veille et la
+   commande passent par le même plugin.
+2. 3de0e08a (high) — la musique : la question du lecteur marche, Apple Music
+   s'ouvre, mais le TITRE demandé ne se lance pas (« mets-moi la musique de
+   Booba Dolce Camara », journal du 3 sept. 01:02). Il manque la lecture dans
+   l'app choisie : INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH avec le paquet cible,
+   ou ce qu'Apple Music Android accepte — vérifie, ne suppose pas.
+
+Périmètre : le tien (android/**, package.json pour patch-package,
+commandeLocale.ts, actionsTelephone*.ts, voice-command/**). Tu es la seule
+session sur ces fichiers. Après tout pull ou merge :
+  grep -rn '^<<<<<<< ' --exclude-dir=node_modules .
+Vérifie avec scripts/verifier-commande-locale.ts et, pour la fonction,
+ANON_KEY=... PAUSE_MS=5000 node scripts/verifier-commande-vocale.mjs — mais
+lis d'abord le chantier 4eaf9c1d (quota) : tant qu'il n'est pas livré, chaque
+passage de ce script consomme le quota du jour de Raphaël.
+Ton travail touche l'app Android : dis-lui à la fin qu'il doit mettre à jour
+l'APK (Paramètres → Mettre à jour). Écris ton état avant de t'arrêter et
+libère ta réservation.
+```
+
+### Prompt M — Le moteur : quota Gemini et clé de test
+
+```
+Tu prends le thème « Cout de fonctionnement » : un seul chantier, prouvé
+dans les journaux de voice-command, lis ses notes en entier :
+  scripts/sql.sh "select id, title, notes from dev_items where id = '4eaf9c1d-594f-48cd-b49a-ba29d3801e75'"
+Réserve-le avec le nom de ta branche.
+
+Le quota JOURNALIER de gemini-3.1-flash-lite (500/jour) est épuisé depuis le
+3 sept. 21h28 UTC : il sert à la fois de secours à la commande vocale et de
+modèle de la mémoire, et les contrôles lancés par quatre sessions dans la
+journée l'ont vidé. Raphaël s'est retrouvé avec « J'ai atteint la limite de
+l'offre gratuite » en pleine conversation. Il a dit : ne limitez pas vos
+tests, c'est eux qui font avancer le moteur — donc une clé séparée pour eux.
+
+À faire, dans supabase/functions/_shared/gemini.ts, voice-command/index.ts,
+voice-command/memoire.ts et scripts/verifier-commande-vocale.mjs (annonce-le
+dans dev_log : voice-command appartient à la session « Le téléphone », tu
+n'y touches que pour ce chantier) :
+(a) secret GEMINI_API_KEY_TEST, utilisé par la fonction quand la requête
+    porte la marque du script de vérification (en-tête ou champ du corps) ;
+    Raphaël crée cette clé sur un AUTRE projet Google AI Studio (les quotas
+    sont par projet) et la dépose dans les variables d'environnement, puis
+    scripts/pousser-secret.sh GEMINI_API_KEY_TEST — ne lui demande jamais de
+    la coller dans la conversation ;
+(b) la mémoire sur un modèle hors de la chaîne de secours, et qui SAUTE en
+    silence sur un 429 ;
+(c) une chaîne de secours à seaux vraiment distincts (voir les notes), et
+    une ligne de journal quand un secours est utilisé ;
+(d) le quotaId et la limite journalisés quand un 429 arrive.
+Déploie avec scripts/deployer-fonction.sh voice-command, vérifie avec
+ANON_KEY=... PAUSE_MS=5000 node scripts/verifier-commande-vocale.mjs.
+Jarvis tourne sur Gemini gratuit, décision de Raphaël, ne remets pas
+Anthropic. Écris ton état avant de t'arrêter et libère ta réservation.
+```
+
+### Prompt E — Apprentissage : l'auto-audit de Jarvis
+
+```
+Tu prends le chantier « Auto-audit » du thème « Mémoire et apprentissage »,
+demandé par Raphaël le 3 sept. au soir. Lis ses notes en entier, elles
+contiennent sa demande ET une proposition de mécanique :
+  scripts/sql.sh "select id, title, notes from dev_items where id = '25a58902-c131-4966-b67d-76c3e115af44'"
+Réserve-le avec le nom de ta branche.
+
+Ce qu'il veut : que Jarvis détecte ses échecs (par lui-même, ou quand
+Raphaël lui dit « tu n'as pas… »), les enregistre dans un secteur dédié, se
+corrige par CONTEXTE de requête (pas par phrase), et signale automatiquement
+aux sessions Claude Code un rapport pour qu'elles corrigent. Il est ouvert à
+une meilleure mécanique que la sienne — mais pas à du code qui se modifie
+tout seul à l'exécution : la boucle de ce dépôt, c'est Jarvis constate et
+documente, Claude Code corrige, le cockpit relie les deux.
+
+Phase 1, [LIBRE] : table retours (migration numérotée, RLS) alimentée côté
+client ; détection des trois signaux (erreur d'action, plainte de Raphaël,
+demande identique répétée dans la minute) ; regroupement par contexte
+(famille d'action + app + version) ; injection des échecs récents groupés
+dans le bloc de démarrage de chaque session (.claude/hooks/session-start.sh)
+; création automatique d'un dev_item « auto-généré » par contexte à partir de
+deux échecs, avec les transcripts en preuve et le thème déduit de la famille
+d'action. Un exemple réel à rejouer pour te calibrer : journal_ecoute du
+3 sept. 01:02-01:04 (Israël), la musique Booba.
+
+Périmètre : nouveau src/lib/retours.ts, la migration, le hook de démarrage.
+MicButton.tsx appartient à « Voix et écoute » : annonce dans dev_log avant
+d'y toucher et fais un diff minimal (un appel après executeVoiceAction).
+Ne touche ni à voice-command ni à commandeLocale.ts. Après tout pull ou
+merge : grep -rn '^<<<<<<< ' --exclude-dir=node_modules .
+Écris ton état avant de t'arrêter et libère ta réservation.
+```

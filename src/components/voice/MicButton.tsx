@@ -16,7 +16,13 @@ import {
 } from "@/lib/veille"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
-import { appMusiquePreferee } from "@/lib/actionsTelephoneVocales"
+import {
+  appPreferee,
+  canalMessagesPrefere,
+  executerActionTelephone,
+  questionAppPreferee,
+  type CategorieAppTelephone,
+} from "@/lib/actionsTelephoneVocales"
 import { withTimeout } from "@/lib/withTimeout"
 import type { DevItem } from "@/types/database"
 import {
@@ -36,6 +42,27 @@ type Status = "idle" | "wake-listening" | "listening" | "processing" | "speaking
 
 /** Temps laissé à la Edge Function pour répondre avant de le dire. */
 const REPONSE_MAX_MS = 25000
+
+/**
+ * Une action qui touche une app du téléphone sans savoir laquelle utiliser,
+ * et qu'on ne lui a encore jamais demandé — musique, itinéraire ou canal de
+ * message. `null` si l'action n'a pas besoin de le savoir ou que la
+ * préférence est déjà connue : ne pas redemander.
+ */
+function questionAmbigueAppTelephone(
+  action: VoiceAction,
+): { message: string; category: CategorieAppTelephone } | null {
+  if (action.action === "open_app" && action.music_query && !action.app_name && !appPreferee("musique")) {
+    return { message: questionAppPreferee("musique"), category: "musique" }
+  }
+  if (action.action === "navigate_to" && !appPreferee("navigation")) {
+    return { message: questionAppPreferee("navigation"), category: "navigation" }
+  }
+  if (action.action === "send_message" && !action.message_channel && !canalMessagesPrefere()) {
+    return { message: questionAppPreferee("messages"), category: "messages" }
+  }
+  return null
+}
 
 interface MicButtonProps {
   tasksApi: TasksApi
@@ -246,35 +273,43 @@ export function MicButton({
 
     // Quand quelque chose est ambigu, la Edge Function renvoie une seule
     // action clarify : on pose la question plutôt que d'exécuter à moitié.
-    //
-    // "mets-moi la musique X" sans application nommée et sans préférence
-    // connue est ambigu de la même façon (que la commande vienne du local ou
-    // du modèle) — sinon executerActionTelephone laisserait Android ouvrir
-    // son sélecteur ("Terminer l'action avec…"), ce que Raphaël a signalé ne
-    // pas vouloir. On la traite donc comme un clarify : la question posée
-    // une fois, la réponse repart avec la demande initiale pour que le tour
-    // suivant retienne l'application ET joue le morceau demandé.
     const premiere = actions[0]
-    const demandeAppMusique =
-      actions.length === 1 &&
-      premiere.action === "open_app" &&
-      !!premiere.music_query &&
-      !premiere.app_name &&
-      !appMusiquePreferee()
-    if ((premiere.action === "clarify" || demandeAppMusique) && round < 3) {
-      const message =
-        premiere.action === "clarify" ? premiere.message : "Quelle application utilises-tu pour la musique ?"
-      setLastReply(message)
+    if (premiere.action === "clarify" && round < 3) {
+      const action = premiere
+      setLastReply(action.message)
       setStatus("speaking")
       bargeInRef.current = false
-      await speak(message, voiceIndex ?? undefined)
+      await speak(action.message, voiceIndex ?? undefined)
       if (bargeInRef.current) return false // un tap a déjà repris la main entre-temps
 
       setStatus("listening")
       const answer = await listen("command", { onTexte: setLastUserText })
       setLastUserText(answer)
-      const combined = `Demande initiale : "${originalTranscript}". Question posée : "${message}". Réponse de l'utilisateur : "${answer}".`
+      const combined = `Demande initiale : "${originalTranscript}". Question posée : "${action.message}". Réponse de l'utilisateur : "${answer}".`
       return await runTurn(combined, originalTranscript, round + 1)
+    }
+
+    // Musique sans application nommée, itinéraire, ou message sans canal :
+    // ambigu de la même façon que ci-dessus, mais qui touche une app du
+    // téléphone plutôt que Jarvis lui-même — sinon Android ouvrirait son
+    // sélecteur ("Terminer l'action avec…"), ce que Raphaël a signalé ne pas
+    // vouloir. On le demande une fois, on retient directement la réponse
+    // (pas besoin du modèle : c'est un nom d'appli ou "SMS"/"WhatsApp", pas
+    // une phrase à interpréter), puis on rejoue la demande initiale — la
+    // préférence connue lui suffit maintenant.
+    const question = actions.length === 1 ? questionAmbigueAppTelephone(premiere) : null
+    if (question && round < 3) {
+      setLastReply(question.message)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(question.message, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+
+      setStatus("listening")
+      const reponse = await listen("command", { onTexte: setLastUserText })
+      setLastUserText(reponse)
+      await executerActionTelephone({ action: "set_app_preference", category: question.category, app_name: reponse }, [])
+      return await runTurn(originalTranscript, originalTranscript, round + 1)
     }
 
     // Plusieurs demandes dans une phrase : on les exécute dans l'ordre dicté

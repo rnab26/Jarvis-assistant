@@ -32,13 +32,22 @@ const CHAMPS_MODIFIABLES: Record<string, string[]> = {
 /** Une suite de chiffres qui ressemble à un numéro dicté : « 07 88 99 00 11 ». */
 const NUMERO_DICTE = /(?:\+?\d[\d .-]{7,}\d)/
 
+/** Pour comparer sans se soucier des accents ni de la casse. */
+function plat(texte: string): string {
+  return texte
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+}
+
 function normaliserAction(
   input: Record<string, unknown>,
   contexte: { idsContacts: Set<string>; transcript: string },
 ): Record<string, unknown> {
-  // Deux redressements nés du passage à un petit modèle (Flash-Lite), qui se
+  // Redressements nés du passage à un petit modèle (Flash-Lite), qui se
   // trompe de champ là où un grand ne se trompait pas. Déterministes et sans
-  // risque : on ne devine rien, on déplace ce qui est identifiable.
+  // risque : on ne devine rien, on déplace ou on retire ce qui est
+  // identifiable.
   //
   // 1. send_message / call_contact : l'identifiant d'un contact connu posé
   //    dans phone_number au lieu de contact_id.
@@ -49,6 +58,33 @@ function normaliserAction(
     contexte.idsContacts.has(input.phone_number)
   ) {
     input = { ...input, contact_id: input.phone_number, phone_number: undefined }
+  }
+
+  // 1b. open_app + music_query sans application dictée : malgré la consigne
+  //     de laisser app_name absent, Flash-Lite invente parfois "Spotify" —
+  //     constaté à plusieurs reprises le 3 sept. 2026, sur des phrases qui ne
+  //     nomment aucune application. On ne garde app_name que si son nom
+  //     apparaît vraiment dans ce qui a été dicté ; sinon c'est une
+  //     invention, pas une extraction.
+  if (
+    input.action === "open_app" &&
+    input.music_query &&
+    typeof input.app_name === "string" &&
+    input.app_name &&
+    !plat(contexte.transcript).includes(plat(input.app_name))
+  ) {
+    input = { ...input, app_name: undefined }
+  }
+
+  // 1c. send_message : même défaut pour message_channel, qui retombe parfois
+  //     sur "whatsapp" sans qu'il ait été question de canal. Le canal
+  //     appartient à ce qui a été dit, pas à un réflexe du modèle.
+  if (
+    input.action === "send_message" &&
+    typeof input.message_channel === "string" &&
+    !/whatsapp|\bsms\b|texto/.test(plat(contexte.transcript))
+  ) {
+    input = { ...input, message_channel: undefined }
   }
 
   const champs = CHAMPS_MODIFIABLES[String(input.action)]
@@ -136,12 +172,13 @@ const ACTION_SCHEMA = {
         "set_alarm",
         "navigate_to",
         "media_control",
+        "set_app_preference",
         "chat",
         "clarify",
         "unknown",
       ],
       description:
-        "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. configure_widget (max_tasks, urgent_only, category_id) — utilisé quand l'utilisateur parle du widget d'écran d'accueil (ex: 'montre-moi 5 tâches sur le widget', 'affiche que les urgentes sur le widget', 'widget catégorie perso'). Contacts : list_contacts, add_contact (name + notes + phone), update_contact (contact_id + changes), delete_contact (contact_id) — utilisé quand l'utilisateur présente quelqu'un, donne une consigne à son sujet, ou dicte son numéro de téléphone (ex: 'Dylan c'est le client de Melissa', 'pour Yoni toujours confirmer avant d'envoyer un message'). Rappels de lieu : list_place_reminders, add_place_reminder (place + reminder), delete_place_reminder (reminder_id) — utilisé quand l'utilisateur demande de lui rappeler quelque chose la prochaine fois qu'il parle d'un lieu précis (ex: 'quand je parle du chantier Dan, rappelle-moi de commander les carreaux'). Prononciations : list_pronunciations, add_pronunciation (entendu + veut_dire), delete_pronunciation (pronunciation_id) — utilisé quand l'utilisateur corrige la façon dont la dictée a écrit un mot ou un nom (ex: 'ce n'est pas Avirail, c'est Avihail, le h est muet', 'quand je dis Melissa tu écris Mélissa'). set_voice (voice_enabled) — utilisé quand l'utilisateur demande de couper ou de remettre la voix de Jarvis ('arrête de parler', 'coupe ta voix', 'réponds-moi juste à l'écrit', 'remets ta voix', 'reparle'). voice_enabled=false pour se taire, true pour reparler. Ne PAS l'utiliser pour un simple 'tais-toi' qui interrompt une phrase en cours : là il ne s'agit que d'arrêter la lecture, pas de couper la voix pour de bon. Agenda Google : list_calendar_events (event_depuis / event_jusqu_a / event_recherche), add_calendar_event (event_titre + event_debut), update_calendar_event (event_cible + le ou les champs event_* qui changent), delete_calendar_event (event_cible) — utilisé quand l'utilisateur parle de son agenda, de ses rendez-vous, de son planning, de sa journée ou de sa semaine (ex: 'qu'est-ce que j'ai demain ?', 'ajoute un rendez-vous avec Yoni mardi à 14h', 'décale mon rendez-vous de jeudi à 16h', 'annule le rendez-vous chez le dentiste'). À ne pas confondre avec add_task : une tâche est quelque chose à faire, un événement d'agenda occupe un créneau. Gmail : list_emails (mail_recherche / mail_limite) pour voir ce qu'il a reçu ('qu'est-ce que j'ai reçu ?', 'des mails de Yoni ?') ; read_email (mail_cible) quand il demande de LIRE un message ('lis-moi le mail de Yoni', 'qu'est-ce qu'il dit ?') ; prepare_email_reply (mail_cible + mail_texte) quand il dicte une réponse à un message — cette action PRÉPARE le mail et le lui fait relire, elle ne l'envoie pas ; send_email (aucun autre paramètre) UNIQUEMENT quand il valide un brouillon qui vient de lui être relu ('envoie', 'c'est bon', 'vas-y') — jamais depuis une phrase isolée, jamais dans la même réponse que prepare_email_reply ; find_receipts (mail_jours / mail_limite, et mail_recherche pour un fournisseur précis) quand il parle de ses reçus, factures ou justificatifs ('retrouve mes reçus', 'la facture de la station essence'). Actions dans les autres applications du téléphone (uniquement quand il demande explicitement d'agir dans une app) : open_app (app_name, et music_query pour lancer une lecture — 'mets du Brassens sur Spotify', 'ouvre WhatsApp', 'lance la musique'). Si le contexte contient 'Question posée : \"Quelle application utilises-tu pour la musique ?\"' suivie de sa réponse, c'est qu'il vient de nommer son application : renvoie open_app avec cet app_name ET le music_query de la demande initiale, pour jouer le morceau au lieu de se contenter d'ouvrir l'app ; send_message (message_channel 'whatsapp' ou 'sms', message_text, et contact_id si le destinataire est un contact connu — 'envoie un message à Dylan pour lui dire que je passe demain') ; call_contact (contact_id ou phone_number — 'appelle Yoni') ; set_alarm (alarm_time en HH:MM pour une heure précise, OU alarm_duration_seconds pour un minuteur, plus alarm_label — 'réveille-moi à 7h', 'minuteur de 10 minutes') ; navigate_to (destination — 'emmène-moi au chantier de la villa Dan') ; media_control (media_command 'play_pause', 'lecture', 'pause', 'suivant', 'precedent' ou 'stop') — pilote ce qui joue DÉJÀ, quelle que soit l'application : 'mets pause', 'reprends', 'chanson suivante', 'coupe la musique'. À distinguer d'open_app avec music_query, qui sert à LANCER quelque chose de précis. Ces actions PRÉPARENT le geste, elles ne l'accomplissent pas : le message s'affiche prêt à partir et l'appel est composé, mais c'est l'utilisateur qui appuie. Dis-le naturellement dans ta réponse, sans t'excuser. N'utilise JAMAIS ces actions pour quelque chose qui se fait dans Jarvis lui-même : une tâche reste add_task, un rappel reste add_place_reminder, un rendez-vous reste add_calendar_event. chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents ni le widget ni les contacts ni les rappels de lieu (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
+        "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. configure_widget (max_tasks, urgent_only, category_id) — utilisé quand l'utilisateur parle du widget d'écran d'accueil (ex: 'montre-moi 5 tâches sur le widget', 'affiche que les urgentes sur le widget', 'widget catégorie perso'). Contacts : list_contacts, add_contact (name + notes + phone), update_contact (contact_id + changes), delete_contact (contact_id) — utilisé quand l'utilisateur présente quelqu'un, donne une consigne à son sujet, ou dicte son numéro de téléphone (ex: 'Dylan c'est le client de Melissa', 'pour Yoni toujours confirmer avant d'envoyer un message'). Rappels de lieu : list_place_reminders, add_place_reminder (place + reminder), delete_place_reminder (reminder_id) — utilisé quand l'utilisateur demande de lui rappeler quelque chose la prochaine fois qu'il parle d'un lieu précis (ex: 'quand je parle du chantier Dan, rappelle-moi de commander les carreaux'). Prononciations : list_pronunciations, add_pronunciation (entendu + veut_dire), delete_pronunciation (pronunciation_id) — utilisé quand l'utilisateur corrige la façon dont la dictée a écrit un mot ou un nom (ex: 'ce n'est pas Avirail, c'est Avihail, le h est muet', 'quand je dis Melissa tu écris Mélissa'). set_voice (voice_enabled) — utilisé quand l'utilisateur demande de couper ou de remettre la voix de Jarvis ('arrête de parler', 'coupe ta voix', 'réponds-moi juste à l'écrit', 'remets ta voix', 'reparle'). voice_enabled=false pour se taire, true pour reparler. Ne PAS l'utiliser pour un simple 'tais-toi' qui interrompt une phrase en cours : là il ne s'agit que d'arrêter la lecture, pas de couper la voix pour de bon. Agenda Google : list_calendar_events (event_depuis / event_jusqu_a / event_recherche), add_calendar_event (event_titre + event_debut), update_calendar_event (event_cible + le ou les champs event_* qui changent), delete_calendar_event (event_cible) — utilisé quand l'utilisateur parle de son agenda, de ses rendez-vous, de son planning, de sa journée ou de sa semaine (ex: 'qu'est-ce que j'ai demain ?', 'ajoute un rendez-vous avec Yoni mardi à 14h', 'décale mon rendez-vous de jeudi à 16h', 'annule le rendez-vous chez le dentiste'). À ne pas confondre avec add_task : une tâche est quelque chose à faire, un événement d'agenda occupe un créneau.  Gmail : list_emails (mail_recherche / mail_limite) pour voir ce qu'il a reçu ('qu'est-ce que j'ai reçu ?', 'des mails de Yoni ?') ; read_email (mail_cible) quand il demande de LIRE un message ('lis-moi le mail de Yoni', 'qu'est-ce qu'il dit ?') ; prepare_email_reply (mail_cible + mail_texte) quand il dicte une réponse à un message — cette action PRÉPARE le mail et le lui fait relire, elle ne l'envoie pas ; send_email (aucun autre paramètre) UNIQUEMENT quand il valide un brouillon qui vient de lui être relu ('envoie', 'c'est bon', 'vas-y') — jamais depuis une phrase isolée, jamais dans la même réponse que prepare_email_reply ; find_receipts (mail_jours / mail_limite, et mail_recherche pour un fournisseur précis) quand il parle de ses reçus, factures ou justificatifs ('retrouve mes reçus', 'la facture de la station essence'). Actions dans les autres applications du téléphone (uniquement quand il demande explicitement d'agir dans une app) : open_app (app_name, et music_query pour lancer une lecture — 'mets du Brassens sur Spotify', 'ouvre WhatsApp', 'lance la musique') ; send_message (message_channel 'whatsapp' ou 'sms' UNIQUEMENT s'il le précise ('en SMS', 'par whatsapp') — sinon laisse absent, le choix par défaut vient du téléphone, pas de toi ; message_text, et contact_id si le destinataire est un contact connu — 'envoie un message à Dylan pour lui dire que je passe demain') ; call_contact (contact_id ou phone_number — 'appelle Yoni') ; set_alarm (alarm_time en HH:MM pour une heure précise, OU alarm_duration_seconds pour un minuteur, plus alarm_label — 'réveille-moi à 7h', 'minuteur de 10 minutes') ; navigate_to (destination — 'emmène-moi au chantier de la villa Dan') ; media_control (media_command 'play_pause', 'lecture', 'pause', 'suivant', 'precedent' ou 'stop') — pilote ce qui joue DÉJÀ, quelle que soit l'application : 'mets pause', 'reprends', 'chanson suivante', 'coupe la musique'. À distinguer d'open_app avec music_query, qui sert à LANCER quelque chose de précis. set_app_preference (category 'musique', 'navigation' ou 'messages', + app_name) — UNIQUEMENT quand l'utilisateur dit explicitement quelle application utiliser pour une catégorie SANS rien demander d'autre en même temps ('utilise Waze pour la navigation', 'préfère les SMS pour mes messages', 'utilise Deezer pour la musique') : mémorise son choix côté téléphone, ne l'utilise jamais pour deviner ou pour répondre à une question posée par le téléphone lui-même. Ces actions PRÉPARENT le geste, elles ne l'accomplissent pas : le message s'affiche prêt à partir et l'appel est composé, mais c'est l'utilisateur qui appuie. Dis-le naturellement dans ta réponse, sans t'excuser. N'utilise JAMAIS ces actions pour quelque chose qui se fait dans Jarvis lui-même : une tâche reste add_task, un rappel reste add_place_reminder, un rendez-vous reste add_calendar_event. chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents ni le widget ni les contacts ni les rappels de lieu (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
     },
     title: {
       type: "string",
@@ -312,7 +349,7 @@ const ACTION_SCHEMA = {
     },
     app_name: {
       type: "string",
-      description: "open_app uniquement : le nom de l'application tel que l'utilisateur l'a dit (\"Spotify\", \"WhatsApp\", \"YouTube\"). L'app est retrouvée ensuite parmi celles réellement installées, la casse et les accents n'ont pas d'importance. Absent si l'utilisateur veut juste lancer de la musique sans préciser où.",
+      description: "open_app : le nom de l'application tel que l'utilisateur l'a dit (\"WhatsApp\", \"YouTube\", \"Waze\"...). L'app est retrouvée ensuite parmi celles réellement installées, la casse et les accents n'ont pas d'importance. LAISSE CE CHAMP ABSENT si l'utilisateur ne dit pas où jouer/ouvrir (\"mets de la musique\", \"lance Balance ton quoi\") : NE DEVINE JAMAIS un nom d'application, même un exemple courant vu ailleurs dans ces instructions — le téléphone se charge lui-même de retrouver ou de demander la bonne. set_app_preference : l'application qu'il vient de choisir pour la catégorie donnée.",
     },
     music_query: {
       type: "string",
@@ -321,7 +358,12 @@ const ACTION_SCHEMA = {
     message_channel: {
       type: "string",
       enum: ["whatsapp", "sms"],
-      description: "send_message uniquement : par où passe le message. WhatsApp par défaut si l'utilisateur ne précise pas, SMS s'il dit \"SMS\", \"texto\" ou \"message classique\".",
+      description: "send_message uniquement : par où passe le message, UNIQUEMENT si l'utilisateur le dit explicitement (\"SMS\", \"texto\", \"whatsapp\"). Absent sinon — le choix par défaut se fait côté téléphone (déjà retenu, ou demandé directement), pas ici.",
+    },
+    category: {
+      type: "string",
+      enum: ["musique", "navigation", "messages"],
+      description: "set_app_preference uniquement : la catégorie dont l'utilisateur vient de nommer l'application.",
     },
     message_text: {
       type: "string",
