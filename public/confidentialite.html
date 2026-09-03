@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jarvis — Confidentialité</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0 auto; max-width: 70ch; padding: 32px 20px 64px;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f1318; color: #e7ecf2;
+  }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 32px 0 8px; }
+  p, li { color: #c3ccd5; }
+  .date { color: #79858f; font-size: 14px; margin: 0 0 24px; }
+  a { color: #e3a855; }
+  code { background: #1b222a; padding: 1px 5px; border-radius: 3px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<h1>Confidentialité — Jarvis</h1>
+<p class="date">Dernière mise à jour : 3 septembre 2026</p>
+
+<p>
+  Jarvis est un assistant vocal personnel. Il est développé et utilisé par
+  Raphaël Nabet pour son usage propre et celui de ses proches. Il n'est ni
+  vendu, ni distribué publiquement, et ne comporte aucune publicité.
+</p>
+
+<h2>Les données que Jarvis conserve</h2>
+<p>
+  Vos tâches, chantiers, contacts, documents, rappels et réglages sont
+  enregistrés dans une base Supabase privée, hébergée dans l'Union
+  européenne. Chaque compte ne voit que ses propres données : la séparation
+  est appliquée par la base elle-même, pas seulement par l'affichage.
+</p>
+
+<h2>L'accès à votre compte Google</h2>
+<p>
+  Si vous connectez votre compte Google, Jarvis demande deux autorisations,
+  et uniquement celles-là :
+</p>
+<ul>
+  <li>
+    <strong>Agenda</strong> (<code>calendar.events</code>) — consulter vos
+    événements, en créer, les modifier ou les supprimer, à votre demande.
+  </li>
+  <li>
+    <strong>Gmail</strong> (<code>gmail.modify</code>) — lire un message que
+    vous demandez à consulter, et en rédiger ou en envoyer un lorsque vous le
+    demandez explicitement.
+  </li>
+</ul>
+<p>
+  Ces données ne servent qu'à répondre à la demande que vous venez de faire.
+  Jarvis ne parcourt pas votre boîte mail en arrière-plan, ne conserve pas
+  vos messages, et ne transmet vos données Google à aucun tiers à des fins
+  publicitaires ou commerciales. Les jetons d'accès sont stockés côté
+  serveur, dans une table que l'application elle-même ne peut pas lire.
+</p>
+<p>
+  L'usage que Jarvis fait des données reçues des API Google respecte la
+  <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noreferrer">Politique
+  relative aux données utilisateur des services API Google</a>, y compris ses
+  exigences d'utilisation limitée.
+</p>
+
+<h2>La reconnaissance et l'interprétation de la parole</h2>
+<p>
+  La reconnaissance vocale est assurée par votre appareil ou votre
+  navigateur. La plupart des commandes courantes sont comprises directement
+  sur l'appareil, sans qu'aucun texte ne quitte le téléphone.
+</p>
+<p>
+  Les phrases que l'appareil ne sait pas interpréter seul sont envoyées à
+  l'API Gemini de Google pour être traduites en action. Google indique que
+  les contenus soumis via son offre gratuite peuvent être utilisés pour
+  améliorer ses produits.
+</p>
+
+<h2>Ce que Jarvis retient</h2>
+<p>
+  Jarvis conserve des faits courts que vous lui dictez (personnes, dossiers,
+  engagements, préférences), afin de s'en souvenir plus tard. Le texte brut
+  des échanges est supprimé automatiquement au bout de sept jours. Vous
+  pouvez consulter et supprimer ces souvenirs à tout moment depuis
+  l'application.
+</p>
+
+<h2>Suppression</h2>
+<p>
+  Vous pouvez débrancher votre compte Google depuis les Paramètres de
+  l'application : les jetons sont alors révoqués auprès de Google et effacés.
+  Pour supprimer l'ensemble de vos données, écrivez à l'adresse ci-dessous —
+  elles seront effacées sans copie conservée.
+</p>
+
+<h2>Contact</h2>
+<p>Raphaël Nabet — <a href="mailto:r.nabet26@gmail.com">r.nabet26@gmail.com</a></p>
+
+</body>
+</html>
