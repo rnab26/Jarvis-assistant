@@ -104,6 +104,21 @@ export interface PlaceReminderInput {
   lng?: number | null
 }
 
+/** Une correction de transcription : ce que la dictée entend, et ce que
+ * l'utilisateur dit en réalité. */
+export interface Pronunciation {
+  id: string
+  user_id: string
+  entendu: string
+  veut_dire: string
+  created_at: string
+}
+
+export interface PronunciationInput {
+  entendu: string
+  veut_dire: string
+}
+
 export interface DocumentFile {
   name: string
   path: string
