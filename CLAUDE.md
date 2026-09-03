@@ -3,6 +3,11 @@
 Complète le CLAUDE.md global de Raphaël (ne le remplace pas). Spécifique au
 projet Jarvis (assistant vocal personnel, PWA + app Android via Capacitor).
 
+Sa méthode de travail générale — celle qui vaut pour tous ses projets, pas
+seulement celui-ci — est consignée dans `docs/methode-de-travail.md`. Lis-la
+si tu débarques : elle explique pourquoi le cockpit et le journal existent, et
+ce qu'il attend d'une session qui reprend un travail commencé ailleurs.
+
 ## Cockpit de développement (chantiers)
 
 Ce projet a un **cockpit interne** dans l'app elle-même (`/cockpit`), soutenu
