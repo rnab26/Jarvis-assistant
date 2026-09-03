@@ -112,15 +112,32 @@ public class ApkDownloaderPlugin extends Plugin {
             public void run() {
                 int status = -1;
                 int reason = 0;
+                long recus = -1;
+                long total = -1;
                 Cursor cursor = downloadManager.query(new DownloadManager.Query().setFilterById(downloadId));
                 if (cursor != null) {
                     if (cursor.moveToFirst()) {
                         int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
                         int reasonIndex = cursor.getColumnIndex(DownloadManager.COLUMN_REASON);
+                        int recusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR);
+                        int totalIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES);
                         if (statusIndex >= 0) status = cursor.getInt(statusIndex);
                         if (reasonIndex >= 0) reason = cursor.getInt(reasonIndex);
+                        if (recusIndex >= 0) recus = cursor.getLong(recusIndex);
+                        if (totalIndex >= 0) total = cursor.getLong(totalIndex);
                     }
                     cursor.close();
+                }
+
+                // Émis à chaque tour tant que ça télécharge, pour la barre de
+                // progression côté app. La taille totale n'est parfois pas
+                // connue tout de suite (réponse chunkée) : on ne prétend pas
+                // avoir un pourcentage avant de l'avoir vraiment.
+                if (status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PENDING) {
+                    JSObject progres = new JSObject();
+                    progres.put("recus", recus);
+                    progres.put("total", total);
+                    notifyListeners("progression", progres);
                 }
 
                 if (status == DownloadManager.STATUS_SUCCESSFUL) {

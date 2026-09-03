@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { JarvisCore, CORE_IMAGE_CHANGEE, type CoreEtat } from "@/components/JarvisCore"
-import { ApkDownloader } from "@/lib/apkDownloader"
+import { ApkDownloader, type ProgressionTelechargement } from "@/lib/apkDownloader"
 import { detourerCore, ecrireCoreImage, lireCoreImage } from "@/lib/coreImage"
 import { Geofence } from "@/lib/geofencePlugin"
 import {
@@ -278,6 +278,40 @@ function libellePubliee(published: PublishedBuild | null): string {
  * a fait perdre à Raphaël une vingtaine de builds sans qu'il puisse le
  * constater.
  */
+/** Poids en Mo si on connaît la taille totale, sinon juste les Mo reçus —
+ * mieux vaut une progression sans total qu'aucune information du tout. */
+function libelleProgression(p: ProgressionTelechargement): string {
+  const recusMo = (p.recus / 1_000_000).toFixed(1)
+  if (p.total > 0) {
+    const pct = Math.min(100, Math.round((p.recus / p.total) * 100))
+    return `${pct}% · ${recusMo} / ${(p.total / 1_000_000).toFixed(1)} Mo`
+  }
+  return `${recusMo} Mo reçus…`
+}
+
+function BarreProgression({ progression }: { progression: ProgressionTelechargement }) {
+  const pct = progression.total > 0
+    ? Math.min(100, Math.round((progression.recus / progression.total) * 100))
+    : null
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn(
+            "h-full rounded-full bg-primary transition-[width]",
+            // Taille totale pas encore connue : on ne fige pas la barre à
+            // 0 %, un mouvement continu dit "ça avance" sans mentir sur le
+            // pourcentage.
+            pct === null && "w-1/3 animate-pulse",
+          )}
+          style={pct !== null ? { width: `${pct}%` } : undefined}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">{libelleProgression(progression)}</p>
+    </div>
+  )
+}
+
 function MettreAJour({
   status,
   published,
@@ -291,6 +325,19 @@ function MettreAJour({
 }) {
   const [etat, setEtat] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
   const [erreur, setErreur] = useState<string | null>(null)
+  const [progression, setProgression] = useState<ProgressionTelechargement | null>(null)
+
+  useEffect(() => {
+    if (!isNative) return
+    // Écouté en permanence plutôt que seulement pendant le téléchargement :
+    // s'abonner APRÈS avoir lancé downloadAndInstall risquerait de rater les
+    // tout premiers événements natifs, envoyés dès l'enregistrement de la
+    // requête.
+    const poignee = ApkDownloader.addListener("progression", (p) => setProgression(p))
+    return () => {
+      poignee.then((h) => h.remove())
+    }
+  }, [])
 
   /* Une vérification qui aboutit sans rien changer à l'écran passe pour un
      bouton mort — c'est le retour de Raphaël, deux fois. Le résultat est donc
@@ -320,12 +367,15 @@ function MettreAJour({
       return
     }
     setEtat("telechargement")
+    setProgression(null)
     try {
       await ApkDownloader.downloadAndInstall({ url: APK_DOWNLOAD_URL })
       setEtat("idle")
     } catch (e) {
       setEtat("erreur")
       setErreur(e instanceof Error ? e.message : "Échec du téléchargement.")
+    } finally {
+      setProgression(null)
     }
   }
 
@@ -378,6 +428,10 @@ function MettreAJour({
             Revérifier
           </Button>
         </div>
+
+        {etat === "telechargement" && progression && (
+          <BarreProgression progression={progression} />
+        )}
 
         {/* Sans cette ligne, revérifier alors qu'on est déjà à jour ne
             change rien à l'écran : le bouton paraît cassé. L'heure qui
