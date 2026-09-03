@@ -275,7 +275,7 @@ utilisateur de test éphémère créé puis supprimé. La clé publique se récu
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 
-## Les sept vérifications du dépôt
+## Les huit vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
@@ -287,6 +287,7 @@ node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarv
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
+node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
