@@ -11,6 +11,7 @@ import {
   type EtatTour,
   type OptionsTour,
 } from "@/lib/dialogueTour"
+import { extraitEntendu, noterEcoute } from "@/lib/journalEcoute"
 
 type SpeechRecognitionCtor = new () => SpeechRecognition
 
@@ -40,6 +41,16 @@ function friendlyErrorMessage(code: string): string {
 
 const RIEN_ENTENDU = "Je n'ai rien entendu, réessaie."
 
+/** Le service de reconnaissance a refusé de démarrer (encore occupé par la
+ * session précédente, ou app passée en arrière-plan). Distinct du silence :
+ * l'appelant doit reculer un peu avant de réessayer, pas repartir aussitôt. */
+export const MOTEUR_OCCUPE = "Le moteur d'écoute est occupé."
+
+/** Temps laissé à une écoute en cours pour se clore quand une nouvelle la
+ * remplace. Au-delà on part sans elle : deux reconnaissances en même temps
+ * est pire qu'un arrêt un peu brutal. */
+const DELAI_RELEVE_MS = 1500
+
 function attendre(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -63,6 +74,31 @@ function borner<T>(appel: Promise<T>, ms: number): Promise<T | null> {
 
 /** Au-delà, le service de reconnaissance d'Android est considéré muet. */
 const DELAI_PLUGIN_MS = 8000
+
+/**
+ * Cadence à laquelle on demande au plugin s'il écoute encore.
+ *
+ * LU DANS LE CODE JAVA DU PLUGIN (3 sept.) : sur n'importe quelle erreur du
+ * service Android — silence de quelques secondes (SPEECH_TIMEOUT), rien
+ * reconnu (NO_MATCH), service occupé, app en arrière-plan — `onError`
+ * n'émet AUCUN événement vers nous : il tente de rejeter une promesse déjà
+ * résolue (en mode partiels, `start()` se résout tout de suite), et c'est
+ * perdu. Le service meurt, nous restons « à l'écoute » d'un micro mort
+ * jusqu'au filet — 25 s en veille, jusqu'à 3 min en commande. C'est
+ * pourquoi « Jarvis » n'était entendu que dans les secondes qui suivaient
+ * une tonalité. `isListening()` est le seul signal qui reste : on le relit.
+ */
+const POULS_SERVICE_MS = 500
+
+/** Après un démarrage, le temps que le plugin passe `listening` à vrai. */
+const GRACE_DEMARRAGE_MS = 1500
+
+/** Le service a-t-il lâché sans rien dire ? Borné : un plugin muet n'est
+ * pas un service vivant. */
+async function serviceEncoreVivant(): Promise<boolean> {
+  const r = await borner(NativeSpeechRecognition.isListening(), 400)
+  return r?.listening === true
+}
 
 /** Marge du filet de dernier recours, au-delà de la durée max d'un tour. */
 const PLAFOND_MARGE_MS = 15000
@@ -139,6 +175,13 @@ export function useSpeechRecognition() {
   const arretManuelRef = useRef(false)
   // Permission micro déjà accordée : évite de la redemander à chaque rafale.
   const microPretRef = useRef(false)
+  // UN SEUL PROPRIÉTAIRE DU MICRO. L'écoute en cours, et de quoi la clore
+  // depuis l'extérieur. Deux `listen()` qui se chevauchaient (rafale du
+  // mot-clé + appui sur le cœur) lançaient deux reconnaissances Android en
+  // même temps : micro qui clignote, tour de parole écrasé. Maintenant une
+  // nouvelle écoute relève l'ancienne, et attend qu'elle soit close.
+  const enCoursRef = useRef<Promise<unknown> | null>(null)
+  const clorePresenteRef = useRef<(() => void) | null>(null)
 
   const isSupported = isNative || getSpeechRecognitionCtor() !== null
 
@@ -195,6 +238,7 @@ export function useSpeechRecognition() {
         ({ matches }) => {
           const texte = matches?.[0]
           if (typeof texte !== "string" || !texte.trim()) return
+          nbPartiels++
           flux.texte = texte
           o.onTexte?.(texte)
           if (!flux.suffit && o.arreterSi?.(texte)) {
@@ -210,9 +254,16 @@ export function useSpeechRecognition() {
         if (status === "stopped") resoudreStop?.()
       })
 
+      let demarrageRefuse = false
+      let mortSilencieuse = false
+      let nbPartiels = 0
+      const debutAt = Date.now()
+      let pouls: ReturnType<typeof setInterval> | null = null
+      noterEcoute("rafale_debut")
       try {
         const arret = new Promise<void>((resolve) => {
           resoudreStop = resolve
+          clorePresenteRef.current = resolve
           filet = setTimeout(() => {
             NativeSpeechRecognition.stop().catch(() => {})
             resolve()
@@ -225,30 +276,67 @@ export function useSpeechRecognition() {
         // et on ne laisse ensuite qu'un court instant au plugin pour rendre
         // son résultat final. Sans ça, reconnaître « Jarvis » à la troisième
         // seconde ne servait à rien : on restait suspendu au plugin.
-        const enCours = borner(
-          NativeSpeechRecognition.start({
-            language: "fr-FR",
-            maxResults: 1,
-            partialResults: true,
-            popup: false,
-          }),
-          WAKE_LISTEN_MS + DELAI_PLUGIN_MS,
-        )
+        //
+        // Un REJET, lui, arrive tout de suite : service encore occupé, app
+        // en arrière-plan. Avant, il était avalé et on attendait la fin de
+        // la rafale — 25 s de micro « allumé » pour rien, puis relance
+        // immédiate, puis nouveau refus : le clignotement signalé.
+        const enCours = NativeSpeechRecognition.start({
+          language: "fr-FR",
+          maxResults: 1,
+          partialResults: true,
+          popup: false,
+        })
+          .then((r) => {
+            // En mode partiels, `start()` se résout dès que le service est
+            // lancé : c'est LE moment où le micro devient vraiment ouvert.
+            setReady(true)
+            return r
+          })
+          .catch(() => {
+            demarrageRefuse = true
+            resoudreStop?.()
+            return null
+          })
+
+        // Le pouls : si le service est mort sans le dire, on clôt la rafale
+        // tout de suite au lieu d'attendre le filet avec un micro mort.
+        pouls = setInterval(async () => {
+          if (flux.suffit || demarrageRefuse || Date.now() - debutAt < GRACE_DEMARRAGE_MS) return
+          if (!(await serviceEncoreVivant())) {
+            mortSilencieuse = true
+            resoudreStop?.()
+          }
+        }, POULS_SERVICE_MS)
+
         await arret
         const resultat = await borner(enCours, 600)
 
         // Le résultat final d'Android est mieux ponctué que le dernier
         // partiel ; on le préfère quand il existe.
         const transcript = (resultat?.matches?.[0] ?? flux.texte).trim()
-        if (!transcript) throw new Error(RIEN_ENTENDU)
+        noterEcoute("rafale_fin", {
+          duree_ms: Date.now() - debutAt,
+          partiels: nbPartiels,
+          mot_cle: flux.suffit,
+          mort_silencieuse: mortSilencieuse,
+          demarrage_refuse: demarrageRefuse,
+          entendu: extraitEntendu(transcript),
+        })
+        if (!transcript) throw new Error(demarrageRefuse ? MOTEUR_OCCUPE : RIEN_ENTENDU)
         return transcript
       } finally {
         if (filet) clearTimeout(filet)
+        if (pouls) clearInterval(pouls)
+        clorePresenteRef.current = null
+        // L'interface d'abord, sans rien attendre (voir le mode commande).
         setListening(false)
         setReady(false)
-        NativeSpeechRecognition.stop().catch(() => {})
         partiels.remove().catch(() => {})
         etats.remove().catch(() => {})
+        // Puis un arrêt BORNÉ, attendu : repartir avant que le service ait
+        // lâché le micro, c'est le prochain start() refusé.
+        await borner(NativeSpeechRecognition.stop(), 800)
       }
     },
     [preparerNatif],
@@ -260,8 +348,13 @@ export function useSpeechRecognition() {
       const opts = optionsTour(o)
       const flux: FluxEcoute = { etat: creerTour(Date.now()), stopDemande: false, erreur: null }
       let resoudreStop: (() => void) | undefined
+      let nbPartiels = 0
+      let nbSessions = 0
+      let mortsSilencieuses = 0
+      let sessionDebutAt = 0
 
       setListening(true)
+      noterEcoute("commande_debut")
 
       // partialResults:true active le "DICTATION_MODE" natif d'Android, dont
       // la tolérance au silence est plus longue que le mode commande — et
@@ -272,6 +365,7 @@ export function useSpeechRecognition() {
         ({ matches }) => {
           const texte = matches?.[0]
           if (typeof texte !== "string") return
+          nbPartiels++
           const avant = flux.etat.courant
           flux.etat = noterTexte(flux.etat, texte, Date.now())
           if (flux.etat.courant !== avant) o.onTexte?.(texteDuTour(flux.etat))
@@ -297,15 +391,35 @@ export function useSpeechRecognition() {
         }
       }, 250)
 
+      // Le pouls (voir POULS_SERVICE_MS) : un service mort sans le dire clôt
+      // la session en cours ; la boucle décide ensuite de relancer ou de
+      // rendre le texte, comme pour une coupure ordinaire.
+      const pouls = setInterval(async () => {
+        if (flux.stopDemande || !sessionDebutAt || Date.now() - sessionDebutAt < GRACE_DEMARRAGE_MS) return
+        if (!(await serviceEncoreVivant())) {
+          mortsSilencieuses++
+          sessionDebutAt = 0
+          resoudreStop?.()
+        }
+      }, POULS_SERVICE_MS)
+
       try {
         for (;;) {
           let filet: ReturnType<typeof setTimeout> | null = null
           const arret = new Promise<void>((resolve) => {
             resoudreStop = resolve
+            // Relevé par une autre écoute : on clôt pour de bon, pas
+            // seulement cette session — sinon la boucle pourrait la relancer.
+            clorePresenteRef.current = () => {
+              flux.stopDemande = true
+              resolve()
+            }
             const restant = opts.maxMs - (Date.now() - flux.etat.debutAt)
             filet = setTimeout(resolve, Math.max(2000, restant + 2000))
           })
-          await borner(
+          nbSessions++
+          sessionDebutAt = Date.now()
+          const demarre = await borner(
             NativeSpeechRecognition.start({
               language: "fr-FR",
               maxResults: 1,
@@ -314,6 +428,9 @@ export function useSpeechRecognition() {
             }),
             DELAI_PLUGIN_MS,
           )
+          // En mode partiels, `start()` se résout dès que le service est
+          // lancé : le micro est ouvert, même si personne n'a encore parlé.
+          if (demarre) setReady(true)
           await arret
           if (filet) clearTimeout(filet)
           // Le résultat final post-traité par Android arrive parfois juste
@@ -328,20 +445,30 @@ export function useSpeechRecognition() {
         }
 
         const transcript = texteDuTour(flux.etat)
+        noterEcoute("commande_fin", {
+          duree_ms: Date.now() - flux.etat.debutAt,
+          sessions: nbSessions,
+          partiels: nbPartiels,
+          morts_silencieuses: mortsSilencieuses,
+          arret_manuel: arretManuelRef.current,
+          entendu: extraitEntendu(transcript),
+        })
         if (!transcript) throw new Error(RIEN_ENTENDU)
         return transcript
       } finally {
+        clearInterval(pouls)
         // L'interface d'abord, et sans rien attendre. Mettre un
         // `await NativeSpeechRecognition.stop()` avant ces deux lignes
         // suffisait à figer le micro pour de bon quand le plugin ne
         // résolvait pas : le texte était entendu, le tour ne se terminait
         // jamais, et Jarvis restait muet en écoute.
         clearInterval(battement)
+        clorePresenteRef.current = null
         setListening(false)
         setReady(false)
-        NativeSpeechRecognition.stop().catch(() => {})
         partiels.remove().catch(() => {})
         etats.remove().catch(() => {})
+        await borner(NativeSpeechRecognition.stop(), 800)
       }
     },
     [preparerNatif],
@@ -449,6 +576,10 @@ export function useSpeechRecognition() {
           courante.reco?.stop()
         }
       }, 250)
+      clorePresenteRef.current = () => {
+        flux.stopDemande = true
+        courante.reco?.stop()
+      }
 
       setListening(true)
       try {
@@ -463,6 +594,7 @@ export function useSpeechRecognition() {
         return transcript
       } finally {
         clearInterval(battement)
+        clorePresenteRef.current = null
         courante.reco = null
         recognitionRef.current = null
         setListening(false)
@@ -475,6 +607,20 @@ export function useSpeechRecognition() {
   const listen = useCallback(
     async (mode: "command" | "wake" = "command", options: OptionsEcoute = {}): Promise<string> => {
       setError(null)
+
+      // Relève : une écoute est déjà en cours (typiquement la rafale du
+      // mot-clé quand on touche le cœur). On la clôt et on attend qu'elle
+      // ait rendu la main — bornée — avant d'ouvrir la nôtre. Jamais deux
+      // reconnaissances à la fois.
+      const precedente = enCoursRef.current
+      if (precedente) {
+        arretManuelRef.current = true
+        clorePresenteRef.current?.()
+        if (isNative) NativeSpeechRecognition.stop().catch(() => {})
+        else recognitionRef.current?.stop()
+        await borner(precedente, DELAI_RELEVE_MS)
+      }
+
       arretManuelRef.current = false
       try {
         const ecoute = isNative
@@ -482,6 +628,11 @@ export function useSpeechRecognition() {
             ? ecouterWakeNatif(options)
             : ecouterCommandeNative(options)
           : ecouterWeb(mode, options)
+        const suivi = ecoute.catch(() => null)
+        enCoursRef.current = suivi
+        suivi.finally(() => {
+          if (enCoursRef.current === suivi) enCoursRef.current = null
+        })
 
         // Filet de dernier recours. Chaque attente du moteur est déjà bornée
         // une par une ; celui-ci garantit la propriété qui compte vraiment :
@@ -509,6 +660,7 @@ export function useSpeechRecognition() {
   /** Clôt le tour en cours avec ce qui a déjà été entendu. */
   const stop = useCallback(() => {
     arretManuelRef.current = true
+    clorePresenteRef.current?.()
     if (isNative) {
       NativeSpeechRecognition.stop().catch(() => {})
     } else {

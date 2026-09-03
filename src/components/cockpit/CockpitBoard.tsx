@@ -1,3 +1,4 @@
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DevItemCard } from "@/components/cockpit/DevItemCard"
 import type { DevItem, DevItemInput, DevPriority, DevStatus } from "@/types/database"
@@ -45,6 +46,11 @@ function grouperParTheme(items: DevItem[]) {
       theme,
       chantiers: trierChantiers(chantiers),
       urgence: Math.max(...chantiers.map((i) => POIDS_PRIORITE[i.priority])),
+      // « Terminé » sans être archivé reste dans la liste, mais n'est plus du
+      // travail à faire : le compter dans les restants ferait croire à un
+      // retard qui n'existe pas.
+      restants: chantiers.filter((i) => i.status !== "done").length,
+      enCours: chantiers.filter((i) => i.status === "in_progress").length,
     }))
     .sort(
       (a, b) =>
@@ -85,16 +91,35 @@ export function CockpitBoard({
     )
   }
 
+  const totalRestants = groupes.reduce((n, g) => n + g.restants, 0)
+
   return (
     <div className="flex flex-col gap-4">
-      {groupes.map(({ theme, chantiers }) => (
+      {/* Ce qu'il reste, d'un coup d'œil : sinon il faut additionner les
+          en-têtes de thème soi-même pour savoir où on en est. */}
+      <p className="text-sm text-muted-foreground">
+        {totalRestants} chantier{totalRestants > 1 ? "s" : ""} à traiter, réparti
+        {totalRestants > 1 ? "s" : ""} sur {groupes.length} thème
+        {groupes.length > 1 ? "s" : ""}.
+      </p>
+
+      {groupes.map(({ theme, chantiers, restants, enCours }) => (
         <Card key={theme}>
-          <CardHeader>
-            <CardTitle className="text-base">
-              {theme} ({chantiers.length})
+          <CardHeader className="grid-cols-[1fr_auto] items-center gap-2">
+            <CardTitle className="min-w-0 flex-1 text-base">
+              {theme}{" "}
+              <span className="font-normal text-muted-foreground">
+                — {restants} restant{restants > 1 ? "s" : ""}
+                {chantiers.length > restants && ` sur ${chantiers.length}`}
+              </span>
             </CardTitle>
+            {enCours > 0 && (
+              <Badge variant="default" className="shrink-0">
+                {enCours} en cours
+              </Badge>
+            )}
           </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+          <CardContent className="divide-y">
             {chantiers.map((item) => (
               <DevItemCard
                 key={item.id}
@@ -116,7 +141,7 @@ export function CockpitBoard({
               Archivées ({archived.length})
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-2">
+          <CardContent className="divide-y">
             {archived.map((item) => (
               <DevItemCard
                 key={item.id}

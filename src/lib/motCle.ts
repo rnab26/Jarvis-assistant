@@ -114,7 +114,11 @@ export function chercherMotCle(transcript: string): Reveil {
   if (index === -1) return { trouve: false, reste: "" }
 
   // Tout ce qui suit le mot-clé est la demande. Ce qui le précède
-  // ("dis donc Jarvis", "eh Jarvis") n'en fait pas partie.
-  const reste = mots.slice(index + 1).join(" ").trim()
+  // ("dis donc Jarvis", "eh Jarvis") n'en fait pas partie. Un mot-clé
+  // répété (« Jarvis, Jarvis ! », quand le premier n'a pas semblé pris)
+  // n'est pas une demande non plus.
+  let fin = index + 1
+  while (fin < mots.length && ressembleAuMotCle(mots[fin])) fin++
+  const reste = mots.slice(fin).join(" ").trim()
   return { trouve: true, reste }
 }

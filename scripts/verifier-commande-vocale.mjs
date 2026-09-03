@@ -27,7 +27,6 @@ const ANON = process.env.ANON_KEY
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
 const FONCTION = process.env.FONCTION ?? "voice-command"
 const PAUSE_MS = Number(process.env.PAUSE_MS ?? 4000)
-const respirer = (ms) => new Promise((r) => setTimeout(r, ms))
 
 if (!ANON || !SERVICE) {
   console.error("Il manque ANON_KEY et/ou SUPABASE_SERVICE_ROLE_KEY (voir l'en-tête du fichier).")
@@ -314,6 +313,22 @@ cas.push(
     },
   },
   {
+    // Signalé par Raphaël le 3 sept. (capture) : sans "sur", Android ouvrait
+    // son sélecteur ("Terminer l'action avec…") au lieu de jouer le morceau.
+    // Le correctif vit côté app (executerActionTelephone/open_app) : ici on
+    // vérifie seulement que le modèle continue de laisser app_name absent
+    // quand aucune application n'est nommée, comme le décrit son schéma.
+    nom: "mettre de la musique sans nommer d'application",
+    phrase: "Mets-moi la musique Maes la planque.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "open_app")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.app_name) return [false, `app_name renseigné à tort : ${a.app_name}`]
+      if (!/maes/i.test(a.music_query ?? "")) return [false, `music_query = ${a.music_query}`]
+      return [true]
+    },
+  },
+  {
     nom: "ouvrir une app sans rien jouer",
     phrase: "Ouvre WhatsApp.",
     controle: (r) => {
@@ -403,14 +418,13 @@ cas.push(
   },
 )
 
-// L'offre gratuite compte les requêtes À LA MINUTE (cinq pour
-// gemini-3.5-flash, mesuré le 3 sept.). Envoyer les vingt-cinq cas en rafale
 // sature le quota et fait échouer la vérification pour une raison étrangère
 // au code : d'où la pause entre deux cas, réglable par PAUSE_MS.
 let premier = true
 for (const c of cas) {
-  // Pas de pause avant le premier cas : rien ne l'a précédé.
-  if (!premier && PAUSE_MS > 0) await respirer(PAUSE_MS)
+  // Rien à attendre avant le tout premier appel : la pause ne sert qu'à
+  // espacer deux requêtes déjà envoyées.
+  if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))
   premier = false
   c.avant?.()
   const r = await demander(c.phrase)

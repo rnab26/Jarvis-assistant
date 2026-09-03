@@ -18,8 +18,13 @@ export const PAUSE_MIN_MS = 600
 export const PAUSE_MAX_MS = 6000
 
 /** Temps pendant lequel le micro reste ouvert après que Jarvis a répondu,
- * pour enchaîner sans retoucher le bouton. 0 = désactivé. */
-export const DEFAULT_SUITE_MS = 5000
+ * pour enchaîner sans retoucher le bouton. 0 = désactivé.
+ *
+ * 8 s, et non plus 5 : en direct (3 sept.), Raphaël réfléchissait à sa
+ * reformulation, le micro se refermait, et la veille du mot-clé avalait
+ * ensuite sa phrase — qui ne contenait pas « Jarvis » — sans un mot. Une
+ * conversation, c'est le temps de se reprendre. */
+export const DEFAULT_SUITE_MS = 8000
 export const SUITE_MIN_MS = 0
 export const SUITE_MAX_MS = 15000
 

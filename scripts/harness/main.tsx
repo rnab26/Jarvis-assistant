@@ -20,6 +20,7 @@ function BancDEssai() {
     const w = window as unknown as {
       lancer: () => void
       lancerMotCle: () => void
+      lancerParDessus: () => void
       arreter: () => void
     }
     w.arreter = stop
@@ -33,7 +34,20 @@ function BancDEssai() {
     // main dès que « Jarvis » est reconnu, sans attendre le silence.
     w.lancerMotCle = () => {
       setResultat("")
-      listen("wake", { arreterSi: (texte) => chercherMotCle(texte).trouve })
+      ;(window as unknown as { __partiels: string[] }).__partiels = []
+      listen("wake", {
+        arreterSi: (texte) => chercherMotCle(texte).trouve,
+        onTexte: (texte) => (window as unknown as { __partiels: string[] }).__partiels.push(texte),
+      })
+        .then((texte) => setResultat(`OK:${texte}`))
+        .catch((e: Error) => setResultat(`ERR:${e.message}`))
+    }
+    // Un appui sur le cœur pendant la rafale du mot-clé : la seconde écoute
+    // doit RELEVER la première, jamais tourner en même temps qu'elle.
+    w.lancerParDessus = () => {
+      setResultat("")
+      w.lancerMotCle()
+      listen("command")
         .then((texte) => setResultat(`OK:${texte}`))
         .catch((e: Error) => setResultat(`ERR:${e.message}`))
     }

@@ -1,0 +1,59 @@
+import { BUILD_VERSION } from "@/lib/version"
+
+/**
+ * Journal d'écoute : ce que fait réellement le micro, écrit en base.
+ *
+ * Le réveil au mot « Jarvis » ne marchait pas chez Raphaël, et rien ne
+ * permettait de savoir pourquoi depuis un poste de développement : le
+ * moteur de reconnaissance de son téléphone (Samsung) ne se reproduit pas
+ * ici. Chaque rafale d'écoute laisse donc une trace — démarrage, nombre de
+ * partiels reçus, mort silencieuse du service, durée, issue — qu'une session
+ * Claude Code relit avec `scripts/sql.sh "select ... from journal_ecoute"`.
+ *
+ * Silencieux et sans attente : rien de ce qui est écrit ici ne doit ralentir
+ * ni faire échouer une écoute. Les lignes partent par paquets, et une panne
+ * réseau les perd sans bruit — c'est un journal, pas une donnée.
+ *
+ * Le client Supabase est chargé PARESSEUSEMENT : ce module est importé par
+ * le moteur d'écoute, que le banc d'essai (scripts/harness) monte sans
+ * aucune configuration Supabase. Un journal qui empêche le moteur de se
+ * charger serait pire que pas de journal.
+ */
+
+type Detail = Record<string, string | number | boolean | null>
+
+const TAMPON: Array<{ evenement: string; detail: Detail; at: string; version: string }> = []
+let minuteur: ReturnType<typeof setTimeout> | null = null
+let purgeFaite = false
+
+/** Version de l'app qui tourne, pour lire le journal en sachant quoi. */
+const versionApp = BUILD_VERSION ?? "web"
+
+/** Ce qu'on garde d'un texte entendu : de quoi comprendre, pas de quoi relire. */
+export function extraitEntendu(texte: string | null | undefined): string | null {
+  if (!texte) return null
+  const propre = texte.replace(/\s+/g, " ").trim()
+  return propre.length > 80 ? `${propre.slice(0, 80)}…` : propre
+}
+
+export function noterEcoute(evenement: string, detail: Detail = {}) {
+  TAMPON.push({ evenement, detail, at: new Date().toISOString(), version: versionApp })
+  if (!minuteur) minuteur = setTimeout(vider, 1500)
+}
+
+async function vider() {
+  minuteur = null
+  const lignes = TAMPON.splice(0, TAMPON.length)
+  if (!lignes.length) return
+  try {
+    const { supabase } = await import("@/lib/supabase")
+    await supabase.from("journal_ecoute").insert(lignes)
+    if (!purgeFaite) {
+      purgeFaite = true
+      await supabase.rpc("purger_journal_ecoute")
+    }
+  } catch {
+    // Un journal qui ne part pas ne doit jamais se voir — et un client
+    // Supabase absent (banc d'essai) non plus.
+  }
+}

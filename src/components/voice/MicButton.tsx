@@ -2,13 +2,21 @@ import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { JarvisCore } from "@/components/JarvisCore"
 import { themesDe } from "@/components/cockpit/CockpitBoard"
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
+import { MOTEUR_OCCUPE, useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { messageErreurServeurVocal } from "@/lib/erreurServeurVocal"
 import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
+import {
+  apresRafale,
+  delaiAvantRafaleSuivante,
+  peutEcouterEnVeille,
+  sansAccuse,
+  texteAAfficherEnVeille,
+} from "@/lib/veille"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
+import { appMusiquePreferee } from "@/lib/actionsTelephoneVocales"
 import { withTimeout } from "@/lib/withTimeout"
 import type { DevItem } from "@/types/database"
 import {
@@ -127,6 +135,10 @@ export function MicButton({
   const bargeInRef = useRef(false)
   const statusRef = useRef<Status>("idle")
   statusRef.current = status
+  // Numéro de prise du micro : incrémenté à chaque fois qu'une interaction
+  // (appui, mot-clé reconnu) prend la main. La veille compare avant/après sa
+  // rafale : s'il a changé, elle ne touche plus à rien.
+  const priseRef = useRef(0)
 
   /**
    * Envoie un transcript à la Edge Function et renvoie les actions à exécuter.
@@ -234,19 +246,34 @@ export function MicButton({
 
     // Quand quelque chose est ambigu, la Edge Function renvoie une seule
     // action clarify : on pose la question plutôt que d'exécuter à moitié.
+    //
+    // "mets-moi la musique X" sans application nommée et sans préférence
+    // connue est ambigu de la même façon (que la commande vienne du local ou
+    // du modèle) — sinon executerActionTelephone laisserait Android ouvrir
+    // son sélecteur ("Terminer l'action avec…"), ce que Raphaël a signalé ne
+    // pas vouloir. On la traite donc comme un clarify : la question posée
+    // une fois, la réponse repart avec la demande initiale pour que le tour
+    // suivant retienne l'application ET joue le morceau demandé.
     const premiere = actions[0]
-    if (premiere.action === "clarify" && round < 3) {
-      const action = premiere
-      setLastReply(action.message)
+    const demandeAppMusique =
+      actions.length === 1 &&
+      premiere.action === "open_app" &&
+      !!premiere.music_query &&
+      !premiere.app_name &&
+      !appMusiquePreferee()
+    if ((premiere.action === "clarify" || demandeAppMusique) && round < 3) {
+      const message =
+        premiere.action === "clarify" ? premiere.message : "Quelle application utilises-tu pour la musique ?"
+      setLastReply(message)
       setStatus("speaking")
       bargeInRef.current = false
-      await speak(action.message, voiceIndex ?? undefined)
+      await speak(message, voiceIndex ?? undefined)
       if (bargeInRef.current) return false // un tap a déjà repris la main entre-temps
 
       setStatus("listening")
       const answer = await listen("command", { onTexte: setLastUserText })
       setLastUserText(answer)
-      const combined = `Demande initiale : "${originalTranscript}". Question posée : "${action.message}". Réponse de l'utilisateur : "${answer}".`
+      const combined = `Demande initiale : "${originalTranscript}". Question posée : "${message}". Réponse de l'utilisateur : "${answer}".`
       return await runTurn(combined, originalTranscript, round + 1)
     }
 
@@ -339,10 +366,11 @@ export function MicButton({
     }
   }
 
-  async function startListening() {
+  async function startListening(nettoyer: (t: string) => string = (t) => t) {
+    priseRef.current++
     try {
       setStatus("listening")
-      const transcript = await listen("command", { onTexte: setLastUserText })
+      const transcript = nettoyer(await listen("command", { onTexte: setLastUserText }))
       await conduireConversation(transcript)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue."
@@ -382,78 +410,116 @@ export function MicButton({
   }
 
   /**
-   * Écoute passive du mot-clé "Jarvis" tant que l'app est ouverte (pas de
-   * service en arrière-plan — désactivé par défaut, à activer dans
-   * Paramètres). Écoute par courtes rafales en mode "wake" (coupe sur un
-   * silence court, contrairement à l'écoute de commande qui tolère de
-   * longues pauses) pour ne pas laisser le micro "en attente" plusieurs
-   * secondes après que l'utilisateur a dit "Jarvis". Redémarre en boucle
-   * quand l'app est inactive (status "idle"), s'arrête dès qu'une
-   * interaction (manuelle ou déclenchée par le mot-clé) est en cours.
+   * La veille : écoute du mot-clé « Jarvis » — SEULEMENT quand l'app est
+   * réellement à l'écran, et quand personne d'autre ne se sert du micro.
+   *
+   * Pas de service en arrière-plan (décision de Raphaël, reportée). Et pas
+   * non plus d'écoute « app derrière une autre » : la WebView continue de
+   * tourner quand l'activité est en pause, Android refuse alors le micro,
+   * et la boucle relançait un démarrage refusé toutes les 150 ms — le micro
+   * que Raphaël voyait clignoter pendant qu'il dictait à un autre assistant.
+   * La politique est dans src/lib/veille.ts, vérifiée sans appareil.
    */
+  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden")
   useEffect(() => {
-    if (!wakeWordEnabled) return
+    const relire = () => setVisible(document.visibilityState !== "hidden")
+    const cacher = () => setVisible(false)
+    document.addEventListener("visibilitychange", relire)
+    window.addEventListener("pageshow", relire)
+    window.addEventListener("focus", relire)
+    // Pas « blur » : la fenêtre de permission d'Android le déclenche, et
+    // couperait l'écoute qui vient justement de demander le micro.
+    window.addEventListener("pagehide", cacher)
+    return () => {
+      document.removeEventListener("visibilitychange", relire)
+      window.removeEventListener("pageshow", relire)
+      window.removeEventListener("focus", relire)
+      window.removeEventListener("pagehide", cacher)
+    }
+  }, [])
+
+  const veilleActive = wakeWordEnabled && visible
+  useEffect(() => {
+    if (!veilleActive) return
     let cancelled = false
 
     async function wakeLoop() {
+      let echecDemarrage = false
+      let rafalesMuettes = 0
       while (!cancelled) {
-        // "error" compte comme un état de repos, et c'est capital : sans ça,
-        // la moindre erreur tuait le réveil vocal pour de bon. Le cas le plus
-        // fréquent n'a rien d'exceptionnel — Raphaël dit « Jarvis », Jarvis
-        // répond « Oui ? », il n'enchaîne pas tout de suite : l'écoute rend
-        // « Je n'ai rien entendu », le statut passe en "error" et n'en
-        // revient jamais tout seul. La boucle attendait alors un "idle" qui
-        // n'arrivait plus, et il fallait toucher le cœur pour repartir —
-        // exactement ce qu'il décrivait.
-        if (statusRef.current !== "idle" && statusRef.current !== "error") {
+        if (!peutEcouterEnVeille({ actif: true, visible: true, statut: statusRef.current })) {
           await new Promise((r) => setTimeout(r, 400))
           continue
         }
+        const prise = priseRef.current
         setStatus("wake-listening")
+        let transcript: string | null = null
+        echecDemarrage = false
         try {
           // arreterSi coupe la rafale dès que « Jarvis » est reconnu dans un
-          // résultat partiel : plus besoin d'attendre la fin de la phrase.
-          const transcript = await listen("wake", {
+          // résultat partiel. onTexte n'affiche que ce qui suit le mot-clé :
+          // une phrase qui ne nous est pas adressée ne s'affiche pas.
+          transcript = await listen("wake", {
             arreterSi: (texte) => chercherMotCle(texte).trouve,
+            onTexte: (texte) => {
+              const demande = texteAAfficherEnVeille(texte)
+              if (demande !== null) setLastUserText(demande)
+            },
           })
-          if (cancelled) return
-
-          const { trouve, reste } = chercherMotCle(transcript)
-          if (trouve) {
-            if (reste.length > 3) {
-              // « Jarvis, ajoute une tâche » : la demande est déjà là.
-              setStatus("idle")
-              await conduireConversation(reste)
-            } else {
-              // « Jarvis » seul : confirmation orale courte avant d'écouter
-              // la demande, pour que l'utilisateur sache qu'il peut parler
-              // sans avoir à toucher le bouton.
-              setStatus("speaking")
-              bargeInRef.current = false
-              await speak("Oui ?", voiceIndex ?? undefined)
-              if (bargeInRef.current || cancelled) return
-              await startListening()
-            }
-          } else {
-            setStatus("idle")
-          }
-        } catch {
-          // Silence, erreur de reconnaissance, etc. : on relance simplement.
-          if (!cancelled) setStatus("idle")
+        } catch (err) {
+          // Silence : normal. Démarrage refusé : on recule avant de
+          // réessayer, au lieu de harceler le service.
+          echecDemarrage = err instanceof Error && err.message === MOTEUR_OCCUPE
         }
-        // Souffle minimum entre deux rafales : Android refuse un redémarrage
-        // immédiat du service. 150 ms au lieu de 500 — c'est autant de temps
-        // en moins pendant lequel le micro n'entend rien.
-        if (!cancelled) await new Promise((r) => setTimeout(r, 150))
+        if (cancelled) return
+        rafalesMuettes = transcript ? 0 : rafalesMuettes + 1
+
+        const { suite, demande } = apresRafale({
+          priseAvant: prise,
+          priseApres: priseRef.current,
+          transcript,
+        })
+        if (suite === "laisser") {
+          // Un appui sur le cœur a pris la main pendant la rafale : c'est son
+          // tour, pas le nôtre. Avant, on remettait ici l'état au repos par-
+          // dessus son écoute, et la boucle repartait aussitôt en concurrence.
+          await new Promise((r) => setTimeout(r, 400))
+          continue
+        }
+        if (suite === "conversation") {
+          // « Jarvis, ajoute une tâche » : la demande est déjà là.
+          priseRef.current++
+          setStatus("idle")
+          await conduireConversation(demande)
+        } else if (suite === "oui") {
+          // « Jarvis » seul : on dit « Oui ? » PENDANT que le micro s'ouvre,
+          // pas avant. Le service met une bonne demi-seconde à démarrer, la
+          // confirmation en dure autant : les deux en même temps, c'est une
+          // seconde de moins avant que Raphaël puisse parler.
+          bargeInRef.current = false
+          void speak("Oui ?", voiceIndex ?? undefined)
+          await startListening(sansAccuse)
+        } else {
+          setStatus("idle")
+        }
+        if (!cancelled) {
+          await new Promise((r) => setTimeout(r, delaiAvantRafaleSuivante(echecDemarrage, rafalesMuettes)))
+        }
       }
     }
 
     wakeLoop()
     return () => {
       cancelled = true
+      // L'app passe derrière une autre : on rend le micro tout de suite, on
+      // n'attend pas la fin de la rafale.
+      if (statusRef.current === "wake-listening") {
+        stopListening()
+        setStatus("idle")
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wakeWordEnabled])
+  }, [veilleActive])
 
   // Ouverture avec ?mic=1 (ex: depuis un widget ou le bouton latéral
   // réassigné, Phase 3) : lance directement l'écoute sans avoir à taper

@@ -54,9 +54,10 @@ class FauxMoteur {
     // Un moteur qui refuse de démarrer lève tout de suite, sans déclencher
     // le moindre gestionnaire — cas réel : micro refusé, moteur déjà lancé.
     if (window.__sr.refuseDeDemarrer) throw new Error("moteur indisponible")
+    this.actif = true
     setTimeout(() => this.onstart && this.onstart(), 0)
   }
-  stop()  { setTimeout(() => this.onend && this.onend(), 0) }
+  stop()  { this.actif = false; setTimeout(() => this.onend && this.onend(), 0) }
   abort() { this.stop() }
   /** Simule ce que le moteur a entendu. */
   dire(texte, final) {
@@ -66,8 +67,9 @@ class FauxMoteur {
     })
   }
   /** Simule Android qui coupe l'écoute de lui-même, sur une respiration. */
-  finTouteSeule() { this.onend && this.onend() }
+  finTouteSeule() { this.actif = false; this.onend && this.onend() }
 }
+window.__actifs = () => window.__sr.instances.filter((i) => i.actif).length
 window.__sr = { instances: [], starts: 0, refuseDeDemarrer: false }
 window.SpeechRecognition = FauxMoteur
 window.webkitSpeechRecognition = FauxMoteur
@@ -220,6 +222,52 @@ try {
     echec.startsWith("ERR:"),
     true,
   )
+  await page.evaluate("window.__sr.refuseDeDemarrer = false")
+
+  // --- Test en direct du 3 sept., symptôme 4 : UN SEUL moteur à la fois ---
+  // Un appui sur le cœur pendant la rafale du mot-clé lançait une seconde
+  // reconnaissance par-dessus la première : micro qui clignote, tour écrasé.
+  // La seconde écoute doit relever la première, et une seule rester active.
+  await page.evaluate("window.__sr.starts = 0")
+  await page.evaluate("window.lancerParDessus()")
+  await pause(600)
+  verifier("appui pendant la rafale : une seule reconnaissance active", await page.evaluate("window.__actifs()"), 1)
+  await page.evaluate("window.__derniere().dire('ajoute une tache pour le plombier', true)")
+  await pause(2800)
+  verifier(
+    "appui pendant la rafale : c'est bien la commande qui est entendue",
+    await resultat(),
+    "OK:ajoute une tache pour le plombier",
+  )
+
+  // --- Symptôme 2 : pendant la veille, ce qui suit « Jarvis » est transmis
+  // au fil de l'eau, pas seulement à la fin de la rafale.
+  await page.evaluate("window.lancerMotCle()")
+  await page.waitForFunction("window.__actifs() === 1")
+  await page.evaluate("window.__derniere().dire('bonjour', false)")
+  await pause(100)
+  await page.evaluate("window.__derniere().dire('bonjour jarvice mets la mus', false)")
+  await pause(300)
+  verifier(
+    "veille : les partiels sont transmis pendant l'écoute",
+    await page.evaluate("window.__partiels.length >= 2"),
+    true,
+  )
+  await pause(500)
+
+  // --- Symptôme 1 : le moteur refuse de démarrer en pleine veille — la
+  // rafale doit se terminer TOUT DE SUITE, pas rester « allumée » 25 s.
+  await page.evaluate("window.__sr.refuseDeDemarrer = true")
+  const avantRefus = Date.now()
+  await page.evaluate("window.lancerMotCle()")
+  await page
+    .waitForFunction("document.querySelector('#resultat').textContent !== ''", null, { timeout: 3000 })
+    .catch(() => {
+      echecs++
+      console.log("ÉCHEC veille : le refus du moteur n'a pas été détecté")
+    })
+  verifier("veille : démarrage refusé → rendu en moins de 2 s", Date.now() - avantRefus < 2000, true)
+  verifier("veille : démarrage refusé → c'est dit, pas avalé", (await resultat()).startsWith("ERR:"), true)
   await page.evaluate("window.__sr.refuseDeDemarrer = false")
 } finally {
   await navigateur?.close()

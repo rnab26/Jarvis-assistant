@@ -193,17 +193,24 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   S'il bute quelque part, il l'écrit dans le champ du bas : document
   `fiche/brancher-google` (`action: "read_db"`, `db_op: "get"`).
 
-- **L'arbitrage WhatsApp** — les 4 décisions qui débloquent les chantiers
-  « messages à la voix » (ed32cbcc) et « reçus vers finbot » (4dabe586) :
-  par où Jarvis parle à WhatsApp (téléphone / compte business / non
-  officiel — le dernier est écarté, il fait bannir des numéros), les envois
-  programmés, la source des reçus, et ce qu'est finbot exactement. Publiée
-  par la session « Messagerie et agenda » le 3 sept. :
+- **L'arbitrage WhatsApp** — **RÉPONDU le 3 sept. au soir, ne repose pas la
+  question.** Ses décisions, à traiter comme acquises : (1) on reste sur le
+  TÉLÉPHONE — pas de compte business, pas de bibliothèque non officielle ;
+  (2) les envois programmés passent par une intervention de Jarvis au moment
+  dit, il valide à la voix ; (3) les reçus arrivent par mail ET par SMS ;
+  (4) **finbot est un service automatique sur WhatsApp**, à qui il envoie des
+  reçus en photo. La fiche et le détail de ses mots :
   https://claude.ai/code/artifact/c12ec042-2873-423b-af88-c5cf68370cf3
-  Ses réponses : outil Artifact, `action: "read_db"`, `db_op: "get"`,
-  collection `fiche`, doc_id `whatsapp`. **Ces deux chantiers restent
-  [À CADRER] tant que la question 01 est sans réponse** — les trois chemins
-  n'ont ni le même coût ni les mêmes conséquences.
+  (`action: "read_db"`, `db_op: "get"`, collection `fiche`, doc_id `whatsapp`).
+- **Ce qui ferait grandir Jarvis** — les deux chantiers non codables du thème
+  « L'app elle-même » : quatre décisions de capacité (cache du contexte,
+  recherche web, lecture de liens/PDF, mémoire des conversations) et trois
+  densités d'affichage des tâches qu'il choisit au pouce.
+  https://claude.ai/code/artifact/067c81c1-88de-4ca9-8947-8df34eb9f89e
+  Ses réponses : document `fiche/capacite-et-visuel` (`action: "read_db"`,
+  `db_op: "get"`). **Ne code rien de ces deux chantiers avant de les avoir
+  lues** — c'est un [À CADRER] pour le visuel, et un arbitrage de coût pour la
+  recherche web.
 
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
@@ -298,6 +305,8 @@ node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
+node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
+node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
