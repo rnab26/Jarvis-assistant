@@ -406,8 +406,12 @@ cas.push(
 // gemini-3.5-flash, mesuré le 3 sept.). Envoyer les vingt-cinq cas en rafale
 // sature le quota et fait échouer la vérification pour une raison étrangère
 // au code : d'où la pause entre deux cas, réglable par PAUSE_MS.
+let premier = true
 for (const c of cas) {
-  if (PAUSE_MS) await new Promise((r) => setTimeout(r, PAUSE_MS))
+  // Rien à attendre avant le tout premier appel : la pause ne sert qu'à
+  // espacer deux requêtes déjà envoyées.
+  if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))
+  premier = false
   c.avant?.()
   const r = await demander(c.phrase)
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }

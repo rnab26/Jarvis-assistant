@@ -79,6 +79,13 @@ discuter d'abord avec Raphaël — même s'il est dans le cockpit en statut
 "todo" (conforme à la règle de son CLAUDE.md global sur les actions à fort
 enjeu).
 
+## Les prompts des sessions parallèles
+
+Quand Raphaël ouvre plusieurs sessions d'un coup, une par thème, les prompts
+qu'il colle et le découpage des fichiers qui évite les collisions sont dans
+`docs/prompts-sessions.md`. Si tu ouvres un nouveau front, mets ce fichier à
+jour dans le même commit.
+
 ## Travail en parallèle : réserver un chantier et se parler
 
 Plusieurs sessions Claude Code travaillent souvent sur ce repo en même temps.
