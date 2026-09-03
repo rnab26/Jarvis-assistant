@@ -21,17 +21,23 @@ set -euo pipefail
 
 URL="${SUPABASE_URL:-https://bexiyvmdbxcwxasgslxp.supabase.co}"
 
-if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
-  cat >&2 <<'FIN'
-Erreur : SUPABASE_SERVICE_ROLE_KEY n'est pas définie.
-
-Cette clé doit être ajoutée aux variables d'environnement de l'environnement cloud
-Claude Code (claude.ai > Code > environnement « Full access » > variables), pas dans
-le dépôt. On la récupère dans Supabase : Project Settings > API > service_role.
-
-Sans elle, repasser par l'outil MCP Supabase (avec le pop-up).
-FIN
-  exit 2
+# Deux façons d'être authentifié, et le script s'accommode des deux :
+#
+# 1. En-tête posé par le proxy (le bon mode). La clé est enregistrée en « API
+#    credential » sur l'environnement cloud, avec l'en-tête `apikey` et un
+#    préfixe vide. Le proxy d'Anthropic l'ajoute à la requête APRÈS qu'elle a
+#    quitté la machine : la clé n'existe nulle part dans la session, donc aucune
+#    session ne peut la lire ni la faire fuiter. Rien à faire ici.
+#
+# 2. Clé en variable d'environnement (mode historique). On pose les en-têtes
+#    nous-mêmes. La clé est alors lisible par toute session de l'environnement.
+#
+# Vérifié le 3 sept. 2026 : Supabase exige l'en-tête `apikey`. `Authorization`
+# seul renvoie 401, `apikey` seul suffit. D'où le préfixe vide côté proxy.
+entetes=(-H "Content-Type: application/json")
+if [ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+  entetes+=(-H "apikey: $SUPABASE_SERVICE_ROLE_KEY"
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
 fi
 
 # La requête vient du premier argument, sinon de l'entrée standard.
@@ -50,17 +56,23 @@ fi
 # soient échappés correctement.
 corps="$(jq -n --arg q "$requete" '{query: $q}')"
 
-reponse="$(curl -sS --max-time 60 \
-  -X POST "$URL/rest/v1/rpc/exec_sql" \
-  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
-  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
-  -H "Content-Type: application/json" \
-  -d "$corps")"
+reponse="$(curl -sS --max-time 60 -X POST "$URL/rest/v1/rpc/exec_sql" \
+  "${entetes[@]}" -d "$corps")"
 
 # Réponse inattendue (erreur PostgREST, HTML d'un proxy...) : on la montre telle quelle.
 if ! echo "$reponse" | jq -e 'type == "object" and has("ok")' >/dev/null 2>&1; then
   echo "Réponse inattendue de Supabase :" >&2
   echo "$reponse" >&2
+  if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+    cat >&2 <<'FIN'
+
+Aucune clé dans l'environnement, et la requête n'a pas abouti : l'« API
+credential » de l'environnement cloud n'est probablement pas en place, ou son
+en-tête n'est pas nommé « apikey » avec un préfixe vide. À vérifier dans
+claude.ai > Code > environnement > API credentials. En attendant, repasser par
+l'outil MCP Supabase (avec le pop-up) et le signaler à Raphaël.
+FIN
+  fi
   exit 1
 fi
 

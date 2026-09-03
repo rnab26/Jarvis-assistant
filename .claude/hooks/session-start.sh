@@ -35,10 +35,10 @@ if [ ! -x "$SQL" ]; then
   exit 0
 fi
 
-if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
-  emettre "Cockpit non chargé : SUPABASE_SERVICE_ROLE_KEY est absente de cet environnement — cette session a probablement démarré avant que la variable soit ajoutée. Lis les chantiers et le journal via l'outil MCP Supabase (Raphaël devra valider), et signale-lui que la variable manque."
-  exit 0
-fi
+# Pas de contrôle de la clé ici : l'authentification peut venir soit d'une
+# variable d'environnement, soit d'un en-tête posé par le proxy (« API
+# credential »), auquel cas rien n'est visible depuis la session. On tente la
+# requête et on juge sur le résultat.
 
 chantiers=$(interroger "select coalesce(string_agg(format('- %s | %s | %s | %s%s%s', id, title, status, priority, case when claimed_by is not null then ' | PRIS PAR ' || claimed_by else '' end, case when coalesce(notes, '') <> '' then chr(10) || '    ' || left(replace(notes, chr(10), ' '), 160) else '' end), chr(10) order by priority desc, created_at), '(aucun)') as t from dev_items where archived_at is null")
 
