@@ -80,8 +80,24 @@ export function texteAAfficherEnVeille(partiel: string): string | null {
   return trouve ? reste : null
 }
 
-export function delaiAvantRafaleSuivante(echecDemarrage: boolean): number {
-  return echecDemarrage ? RECUL_APRES_ECHEC_MS : RESPIRATION_MS
+/** Plafond du recul entre deux rafales muettes. Au-delà, « Jarvis » dit
+ * dans le trou serait raté trop souvent. */
+export const RECUL_MAX_MS = 8000
+
+/**
+ * Délai avant la rafale suivante.
+ *
+ * Le service Android meurt après quelques secondes de silence, et chaque
+ * redémarrage joue une tonalité sur Samsung. Tant que personne ne parle, on
+ * espace donc les rafales — 1 s, 2 s, 4 s, 8 s — au lieu de biper toutes
+ * les cinq secondes. Dès qu'un mot est entendu, on repart serré.
+ *
+ * @param rafalesMuettes  nombre de rafales consécutives sans un seul mot
+ */
+export function delaiAvantRafaleSuivante(echecDemarrage: boolean, rafalesMuettes = 0): number {
+  if (echecDemarrage) return RECUL_APRES_ECHEC_MS
+  if (rafalesMuettes <= 0) return RESPIRATION_MS
+  return Math.min(RECUL_MAX_MS, 1000 * 2 ** (rafalesMuettes - 1))
 }
 
 /**
