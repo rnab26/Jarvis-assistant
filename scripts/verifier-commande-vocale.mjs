@@ -418,8 +418,6 @@ cas.push(
   },
 )
 
-// L'offre gratuite compte les requêtes À LA MINUTE (cinq pour
-// gemini-3.5-flash, mesuré le 3 sept.). Envoyer les vingt-cinq cas en rafale
 // sature le quota et fait échouer la vérification pour une raison étrangère
 // au code : d'où la pause entre deux cas, réglable par PAUSE_MS.
 let premier = true

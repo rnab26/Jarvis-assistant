@@ -81,7 +81,7 @@ export function DevLogFeed({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+      <CardHeader className="grid-cols-[1fr_auto] items-center gap-2">
         <CardTitle className="text-base">Journal de bord</CardTitle>
         {enAttente > 0 && (
           <Badge variant="default">
