@@ -7,6 +7,7 @@ import type {
   DevPriority,
   DevStatus,
   DocumentFile,
+  EvenementAgenda,
   PlaceReminder,
   PlaceReminderInput,
   Pronunciation,
@@ -57,6 +58,31 @@ export type VoiceAction =
   | { action: "list_pronunciations" }
   | { action: "add_pronunciation"; entendu: string; veut_dire: string }
   | { action: "delete_pronunciation"; pronunciation_id: string }
+  | {
+      action: "list_calendar_events"
+      event_depuis?: string
+      event_jusqu_a?: string
+      event_recherche?: string
+    }
+  | {
+      action: "add_calendar_event"
+      event_titre: string
+      event_debut: string
+      event_fin?: string
+      event_journee_entiere?: boolean
+      event_lieu?: string
+    }
+  | {
+      action: "update_calendar_event"
+      event_id?: string
+      event_cible?: string
+      event_titre?: string
+      event_debut?: string
+      event_fin?: string
+      event_journee_entiere?: boolean
+      event_lieu?: string
+    }
+  | { action: "delete_calendar_event"; event_id?: string; event_cible?: string }
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
@@ -104,6 +130,31 @@ export interface PronunciationsApi {
   deletePronunciation: (id: string) => Promise<void>
 }
 
+export interface AgendaApi {
+  listerEvenements: (options: {
+    depuis?: string
+    jusqu_a?: string
+    limite?: number
+    recherche?: string
+  }) => Promise<EvenementAgenda[]>
+  creerEvenement: (options: {
+    titre: string
+    debut: string
+    fin?: string | null
+    journee_entiere?: boolean
+    lieu?: string | null
+  }) => Promise<EvenementAgenda | null>
+  modifierEvenement: (options: {
+    event_id: string
+    titre?: string
+    debut?: string
+    fin?: string | null
+    journee_entiere?: boolean
+    lieu?: string | null
+  }) => Promise<EvenementAgenda | null>
+  supprimerEvenement: (eventId: string) => Promise<void>
+}
+
 export interface WidgetApi {
   config: { maxTasks: number; urgentOnly: boolean; categoryId: string | null }
   setConfig: (config: { maxTasks?: number; urgentOnly?: boolean; categoryId?: string | null }) => void
@@ -133,6 +184,66 @@ function riensAModifier(changes: object | undefined | null): boolean {
   return !changes || Object.keys(changes).length === 0
 }
 
+
+/** "jeudi 4 septembre à 14 h" — lu à voix haute, donc pas de format ISO. */
+function direQuand(evenement: EvenementAgenda): string {
+  if (!evenement.debut) return "sans date"
+  const date = new Date(evenement.debut)
+  if (Number.isNaN(date.getTime())) return evenement.debut
+  const jour = date.toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  })
+  if (evenement.journee_entiere) return `${jour}, toute la journée`
+  const heure = date
+    .toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+    .replace(":", " h ")
+    .replace(" 00", "")
+  return `${jour} à ${heure}`
+}
+
+/** Sans accents ni casse : "Rendez-vous Dentiste" doit répondre à "dentiste". */
+function sansAccents(texte: string): string {
+  return texte
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+}
+
+/**
+ * Retrouve l'événement dont parle l'utilisateur. Il ne connaît pas les
+ * identifiants Google et n'a aucune raison de les connaître : il dit "le
+ * rendez-vous chez le dentiste". On cherche donc dans son agenda à venir.
+ *
+ * Trois issues, et aucune ne ment : rien trouvé, plusieurs candidats (on lui
+ * demande lequel), ou un seul (on agit).
+ */
+async function retrouverEvenement(
+  agenda: AgendaApi,
+  cible: string,
+): Promise<{ evenement?: EvenementAgenda; reponse?: string }> {
+  const mots = sansAccents(cible)
+  const evenements = await agenda.listerEvenements({ limite: 50 })
+  const candidats = evenements.filter((e) => {
+    const titre = sansAccents(e.titre)
+    return titre.includes(mots) || mots.includes(titre)
+  })
+
+  if (candidats.length === 0) {
+    return { reponse: `Je ne trouve pas « ${cible} » dans ton agenda à venir.` }
+  }
+  if (candidats.length > 1) {
+    const liste = candidats
+      .slice(0, 4)
+      .map((e) => `${e.titre} ${direQuand(e)}`)
+      .join(", ")
+    return { reponse: `J'en trouve plusieurs : ${liste}. Lequel ?` }
+  }
+  return { evenement: candidats[0] }
+}
+
 /** Exécute une VoiceAction résolue par la Edge Function et renvoie la phrase à énoncer. */
 export async function executeVoiceAction(
   action: VoiceAction,
@@ -143,6 +254,7 @@ export async function executeVoiceAction(
   { placeReminders, addPlaceReminder, deletePlaceReminder, geocodePlace }: PlaceRemindersApi,
   { pronunciations, addPronunciation, deletePronunciation }: PronunciationsApi,
   { setConfig }: WidgetApi,
+  agenda: AgendaApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -328,6 +440,71 @@ export async function executeVoiceAction(
       const p = pronunciations.find((x) => x.id === action.pronunciation_id)
       await deletePronunciation(action.pronunciation_id)
       return `Prononciation "${p?.veut_dire ?? "supprimée"}" oubliée.`
+    }
+
+    case "list_calendar_events": {
+      const evenements = await agenda.listerEvenements({
+        depuis: action.event_depuis,
+        jusqu_a: action.event_jusqu_a,
+        recherche: action.event_recherche,
+        limite: 10,
+      })
+      if (evenements.length === 0) {
+        return action.event_depuis || action.event_jusqu_a
+          ? "Rien dans ton agenda sur cette période."
+          : "Rien de prévu dans ton agenda."
+      }
+      const liste = evenements
+        .slice(0, 6)
+        .map((e) => `${e.titre} ${direQuand(e)}`)
+        .join(", ")
+      return `Tu as ${evenements.length} rendez-vous : ${liste}.`
+    }
+
+    case "add_calendar_event": {
+      const evenement = await agenda.creerEvenement({
+        titre: action.event_titre,
+        debut: action.event_debut,
+        fin: action.event_fin ?? null,
+        journee_entiere: action.event_journee_entiere,
+        lieu: action.event_lieu ?? null,
+      })
+      if (!evenement) return "L'événement n'a pas pu être créé."
+      return `C'est noté dans ton agenda : ${evenement.titre} ${direQuand(evenement)}.`
+    }
+
+    case "update_calendar_event": {
+      let eventId = action.event_id
+      if (!eventId) {
+        if (!action.event_cible) return "Je ne sais pas quel rendez-vous modifier."
+        const { evenement, reponse } = await retrouverEvenement(agenda, action.event_cible)
+        if (!evenement) return reponse!
+        eventId = evenement.id
+      }
+      const modifie = await agenda.modifierEvenement({
+        event_id: eventId,
+        titre: action.event_titre,
+        debut: action.event_debut,
+        fin: action.event_fin ?? null,
+        journee_entiere: action.event_journee_entiere,
+        lieu: action.event_lieu ?? null,
+      })
+      if (!modifie) return "La modification n'a pas abouti."
+      return `C'est modifié : ${modifie.titre} ${direQuand(modifie)}.`
+    }
+
+    case "delete_calendar_event": {
+      let eventId = action.event_id
+      let titre = "Le rendez-vous"
+      if (!eventId) {
+        if (!action.event_cible) return "Je ne sais pas quel rendez-vous annuler."
+        const { evenement, reponse } = await retrouverEvenement(agenda, action.event_cible)
+        if (!evenement) return reponse!
+        eventId = evenement.id
+        titre = evenement.titre
+      }
+      await agenda.supprimerEvenement(eventId)
+      return `${titre} est supprimé de ton agenda.`
     }
 
     case "chat":

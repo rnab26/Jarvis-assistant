@@ -143,3 +143,26 @@ export interface Souvenir {
   created_at: string
   updated_at: string
 }
+
+/** Le compte Google branché, tel que l'interface a le droit de le voir : ni
+ * jeton d'accès ni jeton de rafraîchissement — ceux-là restent côté serveur,
+ * dans une table sans aucune policy (migration 0013). */
+export interface GoogleAccount {
+  user_id: string
+  email: string | null
+  /** Les autorisations réellement accordées, séparées par des espaces. */
+  scopes: string
+  connected_at: string
+}
+
+/** Un événement d'agenda, tel que la fonction google-calendar le renvoie. */
+export interface EvenementAgenda {
+  id: string
+  titre: string
+  description: string | null
+  lieu: string | null
+  debut: string | null
+  fin: string | null
+  journee_entiere: boolean
+  lien: string | null
+}

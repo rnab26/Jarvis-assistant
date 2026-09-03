@@ -160,6 +160,53 @@ cas.push(
   },
 )
 
+// Agenda Google. Ces cas ne touchent PAS à l'agenda réel : ils vérifient
+// seulement que le modèle range la demande dans le bon domaine et en extrait
+// les bons champs. L'exécution, elle, passe par la fonction google-calendar.
+cas.push(
+  {
+    nom: "agenda : consulter une journée",
+    phrase: "Qu'est-ce que j'ai demain dans mon agenda ?",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "list_calendar_events")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!a.event_depuis) return [false, "aucune période de début pour « demain »"]
+      return [true]
+    },
+  },
+  {
+    nom: "agenda : créer un rendez-vous à une heure dite",
+    phrase: "Ajoute un rendez-vous avec Yoni mardi prochain à 14 heures.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_calendar_event")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/yoni/i.test(a.event_titre ?? "")) return [false, `titre = ${a.event_titre}`]
+      if (!/T14:00/.test(a.event_debut ?? "")) return [false, `debut = ${a.event_debut} (14:00 attendu, en heure locale)`]
+      return [true]
+    },
+  },
+  {
+    nom: "agenda : annuler en désignant le rendez-vous",
+    phrase: "Annule mon rendez-vous chez le dentiste.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "delete_calendar_event")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/dentiste/i.test(a.event_cible ?? "")) return [false, `cible = ${a.event_cible}`]
+      return [true]
+    },
+  },
+  {
+    nom: "agenda : une chose à faire reste une tâche, pas un événement",
+    phrase: "Rappelle-moi d'appeler l'assurance, c'est à faire cette semaine.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.includes("add_calendar_event")) return [false, `parti dans l'agenda : ${types}`]
+      if (!types.includes("add_task")) return [false, `aucune tâche créée : ${types}`]
+      return [true]
+    },
+  },
+)
+
 for (const c of cas) {
   c.avant?.()
   const r = await demander(c.phrase)

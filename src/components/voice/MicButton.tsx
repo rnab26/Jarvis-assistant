@@ -4,6 +4,7 @@ import { JarvisCore } from "@/components/JarvisCore"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { supabase } from "@/lib/supabase"
+import { AgendaError, agendaApi } from "@/lib/googleCalendar"
 import {
   executeVoiceAction,
   type ContactsApi,
@@ -171,18 +172,28 @@ export function MicButton({
     // en laissant croire que le reste a été fait.
     const reponses: string[] = []
     for (const action of actions) {
-      reponses.push(
-        await executeVoiceAction(
-          action,
-          tasksApi,
-          devItemsApi,
-          documentsApi,
-          contactsApi,
-          placeRemindersApi,
-          pronunciationsApi,
-          widgetApi,
-        ),
-      )
+      try {
+        reponses.push(
+          await executeVoiceAction(
+            action,
+            tasksApi,
+            devItemsApi,
+            documentsApi,
+            contactsApi,
+            placeRemindersApi,
+            pronunciationsApi,
+            widgetApi,
+            agendaApi,
+          ),
+        )
+      } catch (e) {
+        // L'agenda est le seul domaine qui dépend d'un service extérieur :
+        // compte Google pas encore branché, accès retiré, Google qui refuse.
+        // Ces messages-là sont écrits pour être dits — les avaler ferait
+        // croire que Jarvis n'a pas entendu la demande.
+        if (e instanceof AgendaError) reponses.push(e.message)
+        else throw e
+      }
     }
     let reply = reponses.join(" ")
 

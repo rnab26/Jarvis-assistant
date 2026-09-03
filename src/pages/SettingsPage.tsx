@@ -116,6 +116,95 @@ function RappelsGeolocalises() {
   )
 }
 
+/**
+ * Le compte Google : agenda et mails. Une seule carte, un seul bouton — la
+ * configuration côté Google Cloud est faite une fois pour toutes par le
+ * propriétaire de l'application, personne d'autre n'a de console à ouvrir.
+ */
+function CompteGoogle() {
+  const { googleAccountState } = useJarvisData()
+  const { account, connected, loading, error, enCours, urlAOuvrir, connecter, deconnecter } =
+    googleAccountState
+  const [confirmation, setConfirmation] = useState(false)
+
+  const peutAgenda = account?.scopes.includes("calendar") ?? false
+  const peutGmail = account?.scopes.includes("gmail") ?? false
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Compte Google</CardTitle>
+        <CardDescription>
+          Donne à Jarvis l'accès à ton agenda et à tes mails, pour qu'il puisse consulter tes
+          rendez-vous, en créer, et lire ou envoyer un message quand tu le lui demandes.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col items-start gap-3">
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Vérification…</p>
+        ) : connected ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge>Connecté</Badge>
+              {account?.email && <span className="text-sm">{account.email}</span>}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Jarvis peut {peutAgenda && "voir et modifier tes événements"}
+              {peutAgenda && peutGmail && ", "}
+              {peutGmail && "lire et envoyer tes mails"}
+              {!peutAgenda && !peutGmail && "accéder à ton compte"}. Rien ne part sans que tu le
+              demandes.
+            </p>
+            {confirmation ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <p>
+                  Débrancher retire l'accès de Jarvis à cet agenda et à ces mails. Tes événements et
+                  tes messages ne sont pas touchés.
+                </p>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="destructive" disabled={enCours} onClick={deconnecter}>
+                    Débrancher
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setConfirmation(false)}>
+                    Annuler
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setConfirmation(true)}>
+                Débrancher ce compte
+              </Button>
+            )}
+          </>
+        ) : (
+          <>
+            <Button disabled={enCours} onClick={connecter}>
+              {enCours ? "Ouverture…" : "Connecter mon compte Google"}
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              L'autorisation s'ouvre dans ton navigateur — Google refuse de s'afficher à l'intérieur
+              d'une application. Une fois que c'est accepté, reviens ici : l'écran se met à jour tout
+              seul.
+            </p>
+          </>
+        )}
+
+        {urlAOuvrir && (
+          <a
+            href={urlAOuvrir}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-medium underline underline-offset-4"
+          >
+            Ouvrir l'autorisation Google
+          </a>
+        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
 const APK_DOWNLOAD_URL =
   "https://github.com/rnab26/Jarvis-assistant/releases/download/latest-debug/app-debug.apk"
 
@@ -491,6 +580,8 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col gap-4">
       <MettreAJour status={status} published={published} recheck={recheck} />
+
+      <CompteGoogle />
 
       <Card>
         <CardHeader>

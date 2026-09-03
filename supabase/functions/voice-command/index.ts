@@ -91,12 +91,16 @@ const ACTION_SCHEMA = {
         "list_pronunciations",
         "add_pronunciation",
         "delete_pronunciation",
+        "list_calendar_events",
+        "add_calendar_event",
+        "update_calendar_event",
+        "delete_calendar_event",
         "chat",
         "clarify",
         "unknown",
       ],
       description:
-        "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. configure_widget (max_tasks, urgent_only, category_id) — utilisé quand l'utilisateur parle du widget d'écran d'accueil (ex: 'montre-moi 5 tâches sur le widget', 'affiche que les urgentes sur le widget', 'widget catégorie perso'). Contacts : list_contacts, add_contact (name + notes), update_contact (contact_id + changes), delete_contact (contact_id) — utilisé quand l'utilisateur présente quelqu'un ou donne une consigne à son sujet (ex: 'Dylan c'est le client de Melissa', 'pour Yoni toujours confirmer avant d'envoyer un message'). Rappels de lieu : list_place_reminders, add_place_reminder (place + reminder), delete_place_reminder (reminder_id) — utilisé quand l'utilisateur demande de lui rappeler quelque chose la prochaine fois qu'il parle d'un lieu précis (ex: 'quand je parle du chantier Dan, rappelle-moi de commander les carreaux'). Prononciations : list_pronunciations, add_pronunciation (entendu + veut_dire), delete_pronunciation (pronunciation_id) — utilisé quand l'utilisateur corrige la façon dont la dictée a écrit un mot ou un nom (ex: 'ce n'est pas Avirail, c'est Avihail, le h est muet', 'quand je dis Melissa tu écris Mélissa'). chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents ni le widget ni les contacts ni les rappels de lieu (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
+        "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. configure_widget (max_tasks, urgent_only, category_id) — utilisé quand l'utilisateur parle du widget d'écran d'accueil (ex: 'montre-moi 5 tâches sur le widget', 'affiche que les urgentes sur le widget', 'widget catégorie perso'). Contacts : list_contacts, add_contact (name + notes), update_contact (contact_id + changes), delete_contact (contact_id) — utilisé quand l'utilisateur présente quelqu'un ou donne une consigne à son sujet (ex: 'Dylan c'est le client de Melissa', 'pour Yoni toujours confirmer avant d'envoyer un message'). Rappels de lieu : list_place_reminders, add_place_reminder (place + reminder), delete_place_reminder (reminder_id) — utilisé quand l'utilisateur demande de lui rappeler quelque chose la prochaine fois qu'il parle d'un lieu précis (ex: 'quand je parle du chantier Dan, rappelle-moi de commander les carreaux'). Prononciations : list_pronunciations, add_pronunciation (entendu + veut_dire), delete_pronunciation (pronunciation_id) — utilisé quand l'utilisateur corrige la façon dont la dictée a écrit un mot ou un nom (ex: 'ce n'est pas Avirail, c'est Avihail, le h est muet', 'quand je dis Melissa tu écris Mélissa'). Agenda Google : list_calendar_events (event_depuis / event_jusqu_a / event_recherche), add_calendar_event (event_titre + event_debut), update_calendar_event (event_cible + le ou les champs event_* qui changent), delete_calendar_event (event_cible) — utilisé quand l'utilisateur parle de son agenda, de ses rendez-vous, de son planning, de sa journée ou de sa semaine (ex: 'qu'est-ce que j'ai demain ?', 'ajoute un rendez-vous avec Yoni mardi à 14h', 'décale mon rendez-vous de jeudi à 16h', 'annule le rendez-vous chez le dentiste'). À ne pas confondre avec add_task : une tâche est quelque chose à faire, un événement d'agenda occupe un créneau. chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents ni le widget ni les contacts ni les rappels de lieu (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
     },
     title: {
       type: "string",
@@ -114,6 +118,46 @@ const ACTION_SCHEMA = {
     reminder: {
       type: "string",
       description: "add_place_reminder uniquement : ce que Jarvis doit rappeler à l'utilisateur, reformulé comme une phrase courte à dire.",
+    },
+    event_id: {
+      type: "string",
+      description: "Agenda : identifiant Google de l'événement, quand il est déjà connu. En pratique tu ne l'as jamais — utilise event_cible à la place.",
+    },
+    event_cible: {
+      type: "string",
+      description: "update_calendar_event / delete_calendar_event : de quel rendez-vous il s'agit, tel que l'utilisateur le désigne (quelques mots : 'dentiste', 'rendez-vous avec Yoni'). L'app le retrouvera dans l'agenda.",
+    },
+    event_titre: {
+      type: "string",
+      description: "Agenda : intitulé de l'événement, court (ex: 'Rendez-vous Yoni'). Pour update_calendar_event, ne le renseigne que si l'utilisateur change le titre.",
+    },
+    event_debut: {
+      type: "string",
+      description: "Agenda : début au format ISO local sans fuseau, YYYY-MM-DDTHH:MM:SS (ex: 2026-09-04T14:00:00). Pour un événement sur la journée entière, la date seule suffit. Déduis-le de 'demain', 'mardi prochain', 'ce soir' à partir de la date et de l'heure courantes fournies.",
+    },
+    event_fin: {
+      type: "string",
+      description: "Agenda : fin au même format que event_debut. Omets-le si l'utilisateur ne dit pas combien de temps ça dure — l'app comptera une heure.",
+    },
+    event_journee_entiere: {
+      type: "boolean",
+      description: "Agenda : true quand l'événement occupe toute la journée sans heure précise (ex: 'note mon anniversaire le 12').",
+    },
+    event_lieu: {
+      type: "string",
+      description: "Agenda : lieu de l'événement, si l'utilisateur le précise.",
+    },
+    event_recherche: {
+      type: "string",
+      description: "list_calendar_events : mot-clé quand l'utilisateur cherche un rendez-vous précis plutôt que son planning ('quand est-ce que je vois Yoni ?').",
+    },
+    event_depuis: {
+      type: "string",
+      description: "list_calendar_events : début de la période au format ISO. Pour 'demain', mets le début de la journée de demain. Absent = à partir de maintenant.",
+    },
+    event_jusqu_a: {
+      type: "string",
+      description: "list_calendar_events : fin de la période au format ISO. Pour 'demain', mets la fin de la journée de demain ; pour 'cette semaine', dimanche soir.",
     },
     notes: {
       type: ["string", "null"],
@@ -276,6 +320,16 @@ Deno.serve(async (req: Request) => {
       })
     }
 
+    // Pour l'agenda, l'heure compte autant que la date : "prends-moi un
+    // rendez-vous à 14h" dicté à 15 h veut dire demain. Calculée ici dans le
+    // fuseau de Raphaël plutôt que reçue du client — l'heure d'un téléphone
+    // mal réglé ne doit pas se retrouver dans son agenda.
+    const heureLocale = new Intl.DateTimeFormat("fr-FR", {
+      timeZone: "Asia/Jerusalem",
+      dateStyle: "full",
+      timeStyle: "short",
+    }).format(new Date())
+
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY")
     if (!anthropicKey) {
       return new Response(
@@ -293,7 +347,7 @@ Deno.serve(async (req: Request) => {
 6. Ses rappels liés à un lieu — utilise ce domaine quand l'utilisateur demande explicitement d'être rappelé de quelque chose la prochaine fois qu'il mentionnera un lieu précis en lui parlant (ex: "quand je parle du chantier Dan, rappelle-moi de commander les carreaux"). Ce n'est PAS de la géolocalisation : le rappel se déclenche uniquement quand l'utilisateur reparle du lieu à voix haute.
 7. La discussion généraliste : toute question ou échange qui ne concerne ni les tâches, ni le cockpit, ni les documents, ni le widget, ni les contacts, ni les rappels de lieu — culture générale, conseil, actualité, calcul, définition, etc. Réponds comme le ferait un assistant conversationnel normal (Claude), avec tes connaissances, sans te limiter aux tâches/chantiers.
 
-Date du jour : ${todayISO}.
+Date du jour : ${todayISO}. Heure locale actuelle (Israël) : ${heureLocale}.
 Catégories de tâches existantes : ${JSON.stringify(categories)}.
 Tâches existantes de l'utilisateur : ${JSON.stringify(tasks)}.
 Chantiers de dev Jarvis existants (cockpit) : ${JSON.stringify(devItems)}.
@@ -318,6 +372,7 @@ Pour add_place_reminder : "place" doit être un mot-clé court et probable à ê
 Une seule phrase peut contenir PLUSIEURS demandes ("ajoute une tâche pour le plombier et marque la facture comme payée") : renvoie alors autant d'actions que de demandes, dans l'ordre où elles ont été dites. N'en invente aucune, et ne découpe pas une demande unique.
 Reprendre quelque chose d'existant : la liste fournie contient AUSSI les tâches déjà faites (status "done") et les chantiers terminés. Si l'utilisateur veut revenir sur une tâche déjà faite ("remets la tâche du plombier à faire", "finalement je dois refaire les carreaux", "rouvre celle que j'ai terminée hier"), n'en crée pas une nouvelle : utilise update_task sur la tâche existante avec changes={"status":"todo"} plus ce qu'il change d'autre. Une tâche n'a que deux statuts, "todo" et "done" — "en cours" pour une tâche vaut "todo".
 Pour retrouver la bonne tâche ou le bon chantier, appuie-toi sur les notes autant que sur le titre : l'utilisateur redit souvent un détail de la note plutôt que le titre exact. À égalité de correspondance, préfère ce qui est encore à faire, sauf si l'utilisateur parle explicitement de quelque chose de terminé ou d'archivé.
+Agenda : l'utilisateur a branché son compte Google, tu peux lire et écrire dans son agenda. Toutes les heures qu'il dicte sont des heures locales (Israël) — renvoie-les telles quelles dans event_debut/event_fin, sans conversion ni fuseau. Pour update_calendar_event et delete_calendar_event, tu ne connais pas l'identifiant des événements : renseigne event_cible avec la façon dont il les désigne, l'app se charge de retrouver le bon et de demander à l'utilisateur s'il y a une ambiguïté. Un rendez-vous, une réunion, un créneau qui occupe du temps va dans l'agenda ; quelque chose à faire sans créneau reste une tâche (add_task).
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
 Réponds toujours en français dans le champ message.${await rappelerSouvenirs(supabase, transcript)}`
 
