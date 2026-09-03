@@ -193,6 +193,18 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   S'il bute quelque part, il l'écrit dans le champ du bas : document
   `fiche/brancher-google` (`action: "read_db"`, `db_op: "get"`).
 
+- **L'arbitrage WhatsApp** — les 4 décisions qui débloquent les chantiers
+  « messages à la voix » (ed32cbcc) et « reçus vers finbot » (4dabe586) :
+  par où Jarvis parle à WhatsApp (téléphone / compte business / non
+  officiel — le dernier est écarté, il fait bannir des numéros), les envois
+  programmés, la source des reçus, et ce qu'est finbot exactement. Publiée
+  par la session « Messagerie et agenda » le 3 sept. :
+  https://claude.ai/code/artifact/c12ec042-2873-423b-af88-c5cf68370cf3
+  Ses réponses : outil Artifact, `action: "read_db"`, `db_op: "get"`,
+  collection `fiche`, doc_id `whatsapp`. **Ces deux chantiers restent
+  [À CADRER] tant que la question 01 est sans réponse** — les trois chemins
+  n'ont ni le même coût ni les mêmes conséquences.
+
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
