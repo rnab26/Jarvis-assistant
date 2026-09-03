@@ -219,7 +219,13 @@ export function useSpeechRecognition() {
           }, WAKE_LISTEN_MS)
         })
 
-        const resultat = await borner(
+        // La promesse de `start` ne se résout qu'à la fin de l'écoute, au
+        // rythme d'Android. On ne l'attend donc PAS directement : on attend
+        // notre propre signal d'arrêt (mot-clé reconnu, "stopped", ou filet),
+        // et on ne laisse ensuite qu'un court instant au plugin pour rendre
+        // son résultat final. Sans ça, reconnaître « Jarvis » à la troisième
+        // seconde ne servait à rien : on restait suspendu au plugin.
+        const enCours = borner(
           NativeSpeechRecognition.start({
             language: "fr-FR",
             maxResults: 1,
@@ -229,6 +235,7 @@ export function useSpeechRecognition() {
           WAKE_LISTEN_MS + DELAI_PLUGIN_MS,
         )
         await arret
+        const resultat = await borner(enCours, 600)
 
         // Le résultat final d'Android est mieux ponctué que le dernier
         // partiel ; on le préfère quand il existe.
