@@ -123,17 +123,36 @@ Chaque fait tient en une phrase courte et se suffit à lui-même. Zéro fait est
  * Silencieux par construction (choix de Raphaël) : rien n'est annoncé à
  * l'utilisateur, la page « Ce que Jarvis sait de moi » lui sert de contrôle.
  */
+export interface ClesModele {
+  anthropic?: string
+  /** Préférée quand elle est là : son offre gratuite suffit à ce travail. */
+  gemini?: string
+}
+
 export async function memoriser(
   supabase: SupabaseClient,
   userId: string,
   transcript: string,
   reponse: string | null,
-  anthropicKey: string,
+  cles: ClesModele,
 ): Promise<void> {
   try {
     await supabase.from("echanges").insert({ user_id: userId, transcript, reponse })
     // Purge paresseuse : pas de tâche planifiée à maintenir.
     await supabase.rpc("purger_echanges")
+
+    const echange = `Raphaël a dit : « ${transcript} »\n${reponse ? `Jarvis a répondu : « ${reponse} »` : ""}`
+
+    // Gemini quand sa clé est là. L'extraction de faits est un travail court
+    // et répétitif : c'est exactement ce que le modèle gratuit fait bien, et
+    // ça évite de payer une seconde fois pour chaque phrase dictée.
+    if (cles.gemini) {
+      const faits = await extraireAvecGemini(cles.gemini, echange)
+      await rangerFaits(supabase, userId, transcript, faits)
+      return
+    }
+    if (!cles.anthropic) return
+    const anthropicKey = cles.anthropic
 
     const extraction = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -164,21 +183,85 @@ export async function memoriser(
     const faits: Souvenir[] = outil?.input?.faits ?? []
     if (!faits.length) return
 
-    const aRanger = faits.slice(0, MAX_FAITS_PAR_ECHANGE)
-    const lignes = []
-    for (const fait of aRanger) {
-      if (!fait?.contenu?.trim()) continue
-      lignes.push({
-        user_id: userId,
-        contenu: fait.contenu.trim(),
-        categorie: fait.categorie ?? "fait",
-        source: transcript.slice(0, 500),
-        embedding: JSON.stringify(await empreinte(fait.contenu)),
-      })
-    }
-    if (lignes.length) await supabase.from("souvenirs").insert(lignes)
+    await rangerFaits(supabase, userId, transcript, faits)
   } catch {
     // Un échec de mémorisation ne doit jamais remonter à l'utilisateur :
     // sa commande a déjà été exécutée et sa réponse déjà donnée.
   }
+}
+
+/** Écrit les faits retenus, quel que soit le modèle qui les a extraits. */
+async function rangerFaits(
+  supabase: SupabaseClient,
+  userId: string,
+  transcript: string,
+  faits: Souvenir[],
+): Promise<void> {
+  const lignes = []
+  for (const fait of faits.slice(0, MAX_FAITS_PAR_ECHANGE)) {
+    if (!fait?.contenu?.trim()) continue
+    lignes.push({
+      user_id: userId,
+      contenu: fait.contenu.trim(),
+      categorie: fait.categorie ?? "fait",
+      source: transcript.slice(0, 500),
+      embedding: JSON.stringify(await empreinte(fait.contenu)),
+    })
+  }
+  if (lignes.length) await supabase.from("souvenirs").insert(lignes)
+}
+
+/** Même consigne, même sortie, modèle gratuit. */
+async function extraireAvecGemini(cle: string, echange: string): Promise<Souvenir[]> {
+  const reponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${cle}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: CONSIGNE_EXTRACTION }] },
+        contents: [{ role: "user", parts: [{ text: echange }] }],
+        tools: [
+          {
+            functionDeclarations: [
+              {
+                name: OUTIL_EXTRACTION.name,
+                description: OUTIL_EXTRACTION.description,
+                parameters: {
+                  type: "object",
+                  properties: {
+                    faits: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          contenu: { type: "string" },
+                          categorie: {
+                            type: "string",
+                            enum: ["personne", "dossier", "engagement", "preference", "fait"],
+                          },
+                        },
+                        required: ["contenu", "categorie"],
+                      },
+                    },
+                  },
+                  required: ["faits"],
+                },
+              },
+            ],
+          },
+        ],
+        toolConfig: {
+          functionCallingConfig: { mode: "ANY", allowedFunctionNames: [OUTIL_EXTRACTION.name] },
+        },
+      }),
+    },
+  )
+  if (!reponse.ok) return []
+  const donnees = await reponse.json()
+  const appel = donnees.candidates?.[0]?.content?.parts?.find(
+    (p: { functionCall?: unknown }) => p.functionCall,
+  )?.functionCall
+  const faits = appel?.args?.faits
+  return Array.isArray(faits) ? faits : []
 }

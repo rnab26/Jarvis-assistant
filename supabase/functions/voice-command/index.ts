@@ -387,6 +387,7 @@ Une seule phrase peut contenir PLUSIEURS demandes ("ajoute une tâche pour le pl
 Reprendre quelque chose d'existant : la liste fournie contient AUSSI les tâches déjà faites (status "done") et les chantiers terminés. Si l'utilisateur veut revenir sur une tâche déjà faite ("remets la tâche du plombier à faire", "finalement je dois refaire les carreaux", "rouvre celle que j'ai terminée hier"), n'en crée pas une nouvelle : utilise update_task sur la tâche existante avec changes={"status":"todo"} plus ce qu'il change d'autre. Une tâche n'a que deux statuts, "todo" et "done" — "en cours" pour une tâche vaut "todo".
 Pour retrouver la bonne tâche ou le bon chantier, appuie-toi sur les notes autant que sur le titre : l'utilisateur redit souvent un détail de la note plutôt que le titre exact. À égalité de correspondance, préfère ce qui est encore à faire, sauf si l'utilisateur parle explicitement de quelque chose de terminé ou d'archivé.
 Agenda : l'utilisateur a branché son compte Google, tu peux lire et écrire dans son agenda. Toutes les heures qu'il dicte sont des heures locales (Israël) — renvoie-les telles quelles dans event_debut/event_fin, sans conversion ni fuseau. Pour update_calendar_event et delete_calendar_event, tu ne connais pas l'identifiant des événements : renseigne event_cible avec la façon dont il les désigne, l'app se charge de retrouver le bon et de demander à l'utilisateur s'il y a une ambiguïté. Un rendez-vous, une réunion, un créneau qui occupe du temps va dans l'agenda ; quelque chose à faire sans créneau reste une tâche (add_task).
+Quand la phrase COMMENCE par une demande de note ("ajoute une tâche", "rajoute un chantier", "note que…"), tout ce qui suit est le CONTENU de cette note, même si on y lit "appeler", "envoyer un message" ou "ouvrir" : tu enregistres UNE tâche ou UN chantier, et tu ne déclenches aucune action dans une application. "Ajoute une tâche : appeler le plombier et envoyer un message à Melissa" fait une seule action, add_task — le plombier ne doit pas être appelé maintenant.
 Pour send_message et call_contact : résous contact_id depuis la liste de contacts fournie, par nom approchant. Si le contact existe mais n'a pas de numéro (champ phone vide) et que l'utilisateur n'en a pas dicté un, utilise quand même send_message : WhatsApp demandera à qui envoyer. Pour call_contact en revanche, sans numéro l'appel est impossible : renvoie une action clarify qui demande le numéro de la personne.
 Ces actions préparent le geste sans l'accomplir : le message s'affiche prêt à partir, l'appel est composé, et c'est l'utilisateur qui appuie. Dis-le simplement dans ta réponse ("je te l'ai préparé, tu n'as plus qu'à envoyer"), sans t'en excuser ni t'étendre dessus.
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
@@ -444,6 +445,127 @@ async function appelerClaude(
   return { echec: dernier }
 }
 
+/**
+ * Modèle de secours, gratuit.
+ *
+ * Raphaël ne veut plus payer de crédit pour interpréter des commandes — il a
+ * raison, et l'essentiel se fait désormais sur son téléphone
+ * (src/lib/commandeLocale.ts). Ce qui arrive jusqu'ici est le reste : les
+ * phrases longues à découper, les informations sur les contacts, l'ambigu.
+ * Gemini Flash le fait dans son offre gratuite (~1 500 demandes par jour,
+ * sans carte bancaire), largement au-dessus de son usage.
+ *
+ * Le modèle est nommé explicitement plutôt que par un alias « latest » : une
+ * mise à jour silencieuse du modèle sous nos pieds changerait la façon dont
+ * les commandes sont comprises, sans que rien ne le signale.
+ */
+/**
+ * Mesuré le 3 sept. 2026, et c'est le détail qui décide de tout : l'offre
+ * gratuite plafonne à CINQ requêtes par minute pour gemini-3.5-flash. Mais le
+ * quota est compté PAR MODÈLE (« GenerateRequestsPerMinutePerProjectPerModel »),
+ * donc en descendant la liste on additionne les quotas au lieu de se cogner
+ * au même mur.
+ *
+ * L'ordre vient d'une mesure, pas d'une intuition. Sur la même phrase à
+ * découper en titre et notes : flash-lite répond en 768 ms avec un résultat
+ * juste, gemini-3.5-flash en 3 s, et gemini-3-flash-preview en 138 s — celui-là
+ * est écarté, il rendrait Jarvis inutilisable. Dans une conversation parlée,
+ * deux secondes de silence s'entendent ; on prend donc le plus rapide d'abord,
+ * les autres servant quand sa minute est saturée.
+ */
+const MODELES_GEMINI = ["gemini-flash-lite-latest", "gemini-3.5-flash", "gemini-3.1-flash-lite"]
+
+/**
+ * Le schéma d'outil, traduit pour Gemini.
+ *
+ * Une seule source de vérité (ACTION_SCHEMA) plutôt que deux schémas à tenir
+ * en phase : on convertit à la volée. La seule vraie différence est que
+ * Gemini refuse les unions de types (`["string", "null"]`) et veut un
+ * booléen `nullable` à la place.
+ */
+function pourGemini(noeud: unknown): unknown {
+  if (Array.isArray(noeud)) return noeud.map(pourGemini)
+  if (!noeud || typeof noeud !== "object") return noeud
+
+  const sortie: Record<string, unknown> = {}
+  for (const [cle, valeur] of Object.entries(noeud as Record<string, unknown>)) {
+    if (cle === "type" && Array.isArray(valeur)) {
+      const types = valeur as string[]
+      sortie.type = types.find((t) => t !== "null") ?? "string"
+      if (types.includes("null")) sortie.nullable = true
+      continue
+    }
+    sortie[cle] = pourGemini(valeur)
+  }
+  return sortie
+}
+
+async function resoudreAvecGemini(
+  cle: string,
+  systemPrompt: string,
+  transcript: string,
+): Promise<Record<string, unknown>[]> {
+  let dernierEchec = ""
+
+  for (const modele of MODELES_GEMINI) {
+    const resultat = await tenterGemini(cle, modele, systemPrompt, transcript)
+    if (resultat.actions) return resultat.actions
+    dernierEchec = resultat.echec ?? ""
+    // 429 : quota de la minute atteint sur CE modèle. Le suivant a le sien.
+    // Toute autre erreur est un vrai problème : inutile de la rejouer trois
+    // fois, on la remonte tout de suite.
+    if (!resultat.quotaAtteint) break
+  }
+
+  throw new Error(`Erreur Gemini: ${dernierEchec}`)
+}
+
+async function tenterGemini(
+  cle: string,
+  modele: string,
+  systemPrompt: string,
+  transcript: string,
+): Promise<{ actions?: Record<string, unknown>[]; quotaAtteint?: boolean; echec?: string }> {
+  const reponse = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent?key=${cle}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: transcript }] }],
+        tools: [
+          {
+            functionDeclarations: [
+              {
+                name: VOICE_ACTION_TOOL.name,
+                description: VOICE_ACTION_TOOL.description,
+                parameters: pourGemini(VOICE_ACTION_TOOL.input_schema),
+              },
+            ],
+          },
+        ],
+        // ANY : on veut toujours une action structurée, jamais une réponse
+        // en texte libre que l'app ne saurait pas exécuter.
+        toolConfig: {
+          functionCallingConfig: { mode: "ANY", allowedFunctionNames: [VOICE_ACTION_TOOL.name] },
+        },
+      }),
+    },
+  )
+
+  if (!reponse.ok) {
+    return { quotaAtteint: reponse.status === 429, echec: `${modele}: ${await reponse.text()}` }
+  }
+
+  const donnees = await reponse.json()
+  const appel = donnees.candidates?.[0]?.content?.parts?.find(
+    (p: { functionCall?: unknown }) => p.functionCall,
+  )?.functionCall
+  const actions = appel?.args?.actions
+  return { actions: Array.isArray(actions) ? actions : [] }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
@@ -499,10 +621,15 @@ Deno.serve(async (req: Request) => {
       timeStyle: "short",
     }).format(new Date())
 
+    // Gemini d'abord quand sa clé est là : son offre gratuite couvre
+    // largement l'usage, et Raphaël a décidé le 3 sept. de ne plus payer de
+    // crédit pour interpréter des commandes. Claude reste le chemin de repli
+    // si sa clé redevient utilisable un jour.
+    const geminiKey = Deno.env.get("GEMINI_API_KEY")
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY")
-    if (!anthropicKey) {
+    if (!geminiKey && !anthropicKey) {
       return new Response(
-        JSON.stringify({ error: "ANTHROPIC_API_KEY non configurée côté serveur." }),
+        JSON.stringify({ error: "Aucun modèle configuré côté serveur (GEMINI_API_KEY ou ANTHROPIC_API_KEY)." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       )
     }
@@ -520,86 +647,98 @@ Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
 Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?? [])}.
 Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouvenirs(supabase, transcript)}`
 
-    const { reponse: anthropicResponse, echec } = await appelerClaude(
-      {
-        model: "claude-sonnet-5",
-        max_tokens: 1024,
-        // Le point de césure porte sur les consignes, mais le cache remonte
-        // plus haut que lui : l'ordre est tools → system → messages, donc le
-        // schéma de l'outil (17 800 caractères) est mis en cache avec elles.
-        // TTL par défaut, 5 minutes : dans une conversation suivie chaque
-        // tour retombe dessus. Le 1 h coûte 2× à l'écriture et ne serait
-        // rentable que si Raphaël parlait à Jarvis toutes les demi-heures.
-        system: [
-          { type: "text", text: CONSIGNES, cache_control: { type: "ephemeral" } },
-          { type: "text", text: contexte },
-        ],
-        messages: [{ role: "user", content: transcript }],
-        tools: [VOICE_ACTION_TOOL],
-        tool_choice: { type: "tool", name: "resolve_voice_command" },
-      },
-      anthropicKey,
-    )
+    // Gemini quand sa clé est là, Claude sinon. Les deux rendent la même
+    // liste d'actions : tout ce qui suit est commun.
+    let brutes: Record<string, unknown>[] = []
 
-    if (echec || !anthropicResponse) {
-      // Le détail technique va dans les journaux de la fonction, pas à
-      // l'écran : Raphaël se retrouvait devant le JSON brut de l'API, ce qui
-      // ressemble à « Jarvis est cassé » quel que soit le vrai problème.
-      // Lui, il entend une phrase qui lui dit quoi faire.
-      console.error("Appel au modèle en échec", echec?.statut, echec?.texte)
-
-      // Mêmes phrases que src/lib/erreurServeurVocal.ts, qui rattrape côté app
-      // ce que le serveur ne peut pas habiller (fonction plantée, réseau
-      // coupé, session expirée). Deux chemins, une seule formulation : si tu
-      // en changes une, change l'autre.
-      const detail = echec?.texte ?? ""
-      const message = /credit balance|billing/i.test(detail)
-        ? "Ma clé Anthropic n'a plus de crédit : je ne peux plus réfléchir tant qu'elle n'est pas rechargée. C'est à faire sur console.anthropic.com, rubrique facturation."
-        : /api key|authentication/i.test(detail)
-          ? "Ma clé Anthropic est refusée par le serveur : elle a dû être changée ou révoquée."
-          : echec?.passager
-            ? "Le modèle est débordé en ce moment. Redis-moi ça dans quelques secondes."
-            : "Je n'arrive pas à joindre le modèle en ce moment. Réessaie, et regarde les journaux de voice-command si ça dure."
-
-      return new Response(
-        JSON.stringify({
-          action: { action: "unknown", message },
-          actions: [{ action: "unknown", message }],
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    if (geminiKey) {
+      brutes = await resoudreAvecGemini(
+        geminiKey,
+        `${CONSIGNES}\n\n${contexte}`,
+        transcript,
       )
+    } else {
+      const { reponse: anthropicResponse, echec } = await appelerClaude(
+        {
+          model: "claude-sonnet-5",
+          max_tokens: 1024,
+          // Le point de césure porte sur les consignes, mais le cache remonte
+          // plus haut que lui : l'ordre est tools → system → messages, donc le
+          // schéma de l'outil (17 800 caractères) est mis en cache avec elles.
+          // TTL par défaut, 5 minutes : dans une conversation suivie chaque
+          // tour retombe dessus. Le 1 h coûte 2× à l'écriture et ne serait
+          // rentable que si Raphaël parlait à Jarvis toutes les demi-heures.
+          system: [
+            { type: "text", text: CONSIGNES, cache_control: { type: "ephemeral" } },
+            { type: "text", text: contexte },
+          ],
+          messages: [{ role: "user", content: transcript }],
+          tools: [VOICE_ACTION_TOOL],
+          tool_choice: { type: "tool", name: "resolve_voice_command" },
+        },
+        anthropicKey,
+      )
+
+      if (echec || !anthropicResponse) {
+        // Le détail technique va dans les journaux de la fonction, pas à
+        // l'écran : Raphaël se retrouvait devant le JSON brut de l'API, ce qui
+        // ressemble à « Jarvis est cassé » quel que soit le vrai problème.
+        // Lui, il entend une phrase qui lui dit quoi faire.
+        console.error("Appel au modèle en échec", echec?.statut, echec?.texte)
+
+        // Mêmes phrases que src/lib/erreurServeurVocal.ts, qui rattrape côté app
+        // ce que le serveur ne peut pas habiller (fonction plantée, réseau
+        // coupé, session expirée). Deux chemins, une seule formulation : si tu
+        // en changes une, change l'autre.
+        const detail = echec?.texte ?? ""
+        const message = /credit balance|billing/i.test(detail)
+          ? "Ma clé Anthropic n'a plus de crédit : je ne peux plus réfléchir tant qu'elle n'est pas rechargée. C'est à faire sur console.anthropic.com, rubrique facturation."
+          : /api key|authentication/i.test(detail)
+            ? "Ma clé Anthropic est refusée par le serveur : elle a dû être changée ou révoquée."
+            : echec?.passager
+              ? "Le modèle est débordé en ce moment. Redis-moi ça dans quelques secondes."
+              : "Je n'arrive pas à joindre le modèle en ce moment. Réessaie, et regarde les journaux de voice-command si ça dure."
+
+        return new Response(
+          JSON.stringify({
+            action: { action: "unknown", message },
+            actions: [{ action: "unknown", message }],
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        )
+      }
+
+      const anthropicData = await anthropicResponse.json()
+
+      // Ce que la phrase a réellement coûté, dans les journaux de la fonction.
+      // Avant ça, le coût par commande ne pouvait être qu'estimé à partir du
+      // nombre de caractères envoyés — et personne ne voyait le contexte
+      // grossir. `cache_lu` à 0 alors que `cache_ecrit` est élevé à chaque
+      // appel veut dire que le cache ne retombe jamais : quelque chose de
+      // variable a été glissé dans CONSIGNES ou dans le schéma de l'outil.
+      const u = anthropicData.usage ?? {}
+      console.log(
+        "coût",
+        JSON.stringify({
+          entree: u.input_tokens,
+          cache_ecrit: u.cache_creation_input_tokens,
+          cache_lu: u.cache_read_input_tokens,
+          sortie: u.output_tokens,
+        }),
+      )
+
+      const toolUse = anthropicData.content?.find(
+        (block: { type: string }) => block.type === "tool_use",
+      )
+
+      // Le modèle renvoie une liste. On tolère l'ancienne forme (une action à
+      // plat) pour ne rien casser si le schéma n'est pas suivi.
+      brutes = Array.isArray(toolUse?.input?.actions)
+        ? toolUse.input.actions
+        : toolUse?.input?.action
+          ? [toolUse.input]
+          : []
     }
-
-    const anthropicData = await anthropicResponse.json()
-
-    // Ce que la phrase a réellement coûté, dans les journaux de la fonction.
-    // Avant ça, le coût par commande ne pouvait être qu'estimé à partir du
-    // nombre de caractères envoyés — et personne ne voyait le contexte
-    // grossir. `cache_lu` à 0 alors que `cache_ecrit` est élevé à chaque
-    // appel veut dire que le cache ne retombe jamais : quelque chose de
-    // variable a été glissé dans CONSIGNES ou dans le schéma de l'outil.
-    const u = anthropicData.usage ?? {}
-    console.log(
-      "coût",
-      JSON.stringify({
-        entree: u.input_tokens,
-        cache_ecrit: u.cache_creation_input_tokens,
-        cache_lu: u.cache_read_input_tokens,
-        sortie: u.output_tokens,
-      }),
-    )
-
-    const toolUse = anthropicData.content?.find(
-      (block: { type: string }) => block.type === "tool_use",
-    )
-
-    // Le modèle renvoie une liste. On tolère l'ancienne forme (une action à
-    // plat) pour ne rien casser si le schéma n'est pas suivi.
-    const brutes: Record<string, unknown>[] = Array.isArray(toolUse?.input?.actions)
-      ? toolUse.input.actions
-      : toolUse?.input?.action
-        ? [toolUse.input]
-        : []
     const actions = brutes
       .filter((a) => a && typeof a.action === "string")
       .map((a) => normaliserAction(a))
@@ -622,7 +761,7 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouv
       user.id,
       transcript,
       (actions.find((a) => typeof a.message === "string")?.message as string) ?? null,
-      anthropicKey,
+      { anthropic: anthropicKey, gemini: geminiKey },
     )
     const runtime = globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }
     if (runtime.EdgeRuntime?.waitUntil) runtime.EdgeRuntime.waitUntil(rangement)

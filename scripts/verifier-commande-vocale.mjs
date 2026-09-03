@@ -398,7 +398,18 @@ cas.push(
   },
 )
 
+// L'offre gratuite de Gemini compte les requêtes À LA MINUTE (cinq pour
+// gemini-3.5-flash, mesuré le 3 sept.). Envoyer les vingt-cinq cas en rafale
+// sature le quota et fait échouer la vérification pour une raison qui n'a
+// rien à voir avec le code. On respire entre deux cas ; PAUSE_MS=0 pour
+// retrouver l'ancien comportement quand le modèle n'a pas cette limite.
+const PAUSE_MS = Number(process.env.PAUSE_MS ?? 4000)
+const respirer = (ms) => new Promise((r) => setTimeout(r, ms))
+
+let premier = true
 for (const c of cas) {
+  if (!premier && PAUSE_MS > 0) await respirer(PAUSE_MS)
+  premier = false
   c.avant?.()
   const r = await demander(c.phrase)
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }
