@@ -21,6 +21,7 @@ import {
   delaiAvantRafaleSuivante,
   peutEcouterEnVeille,
   RECUL_APRES_ECHEC_MS,
+  RECUL_MAX_MS,
   RESPIRATION_MS,
   sansAccuse,
   texteAAfficherEnVeille,
@@ -154,6 +155,13 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
   verifier("rafale suivante : après un refus, on recule", delaiAvantRafaleSuivante(true), RECUL_APRES_ECHEC_MS)
   verifier("rafale suivante : normalement, juste une respiration", delaiAvantRafaleSuivante(false), RESPIRATION_MS)
   verifier("le recul est plus long que la respiration", RECUL_APRES_ECHEC_MS > RESPIRATION_MS, true)
+  // Le service meurt après quelques secondes de silence et chaque
+  // redémarrage bipe : tant que personne ne parle, on espace.
+  verifier("rafales muettes : 1 → 1 s", delaiAvantRafaleSuivante(false, 1), 1000)
+  verifier("rafales muettes : 2 → 2 s", delaiAvantRafaleSuivante(false, 2), 2000)
+  verifier("rafales muettes : 3 → 4 s", delaiAvantRafaleSuivante(false, 3), 4000)
+  verifier("rafales muettes : plafonné", delaiAvantRafaleSuivante(false, 9), RECUL_MAX_MS)
+  verifier("un mot entendu remet le rythme serré", delaiAvantRafaleSuivante(false, 0), RESPIRATION_MS)
 }
 
 // 12. Le « Oui ? » de Jarvis, dit pendant que le micro s'ouvre, ne doit pas
