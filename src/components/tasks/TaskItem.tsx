@@ -40,7 +40,10 @@ export function TaskItem({
         )}
       </div>
       {task.due_date && (
-        <Badge variant="outline">{task.due_date}</Badge>
+        <Badge variant="outline">
+          {task.due_date}
+          {task.due_time && ` ${task.due_time.slice(0, 5)}`}
+        </Badge>
       )}
       <TaskFormDialog
         categories={categories}

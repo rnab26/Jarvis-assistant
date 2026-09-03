@@ -40,6 +40,7 @@ export function TaskFormDialog({
   const [title, setTitle] = useState(task?.title ?? "")
   const [notes, setNotes] = useState(task?.notes ?? "")
   const [dueDate, setDueDate] = useState(task?.due_date ?? "")
+  const [dueTime, setDueTime] = useState(task?.due_time?.slice(0, 5) ?? "")
   const [categoryId, setCategoryId] = useState(task?.category_id ?? NO_CATEGORY)
   const [submitting, setSubmitting] = useState(false)
 
@@ -48,6 +49,7 @@ export function TaskFormDialog({
       setTitle(task?.title ?? "")
       setNotes(task?.notes ?? "")
       setDueDate(task?.due_date ?? "")
+      setDueTime(task?.due_time?.slice(0, 5) ?? "")
       setCategoryId(task?.category_id ?? NO_CATEGORY)
     }
   }, [open, task])
@@ -60,6 +62,7 @@ export function TaskFormDialog({
         title,
         notes: notes || null,
         due_date: dueDate || null,
+        due_time: dueDate ? dueTime || null : null,
         category_id: categoryId === NO_CATEGORY ? null : categoryId,
         status: task?.status ?? "todo",
       })
@@ -109,14 +112,26 @@ export function TaskFormDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="due_date">Échéance</Label>
-              <Input
-                id="due_date"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
+            <div className="flex gap-2">
+              <div className="flex flex-1 flex-col gap-2">
+                <Label htmlFor="due_date">Échéance</Label>
+                <Input
+                  id="due_date"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-1 flex-col gap-2">
+                <Label htmlFor="due_time">Heure</Label>
+                <Input
+                  id="due_time"
+                  type="time"
+                  value={dueTime}
+                  disabled={!dueDate}
+                  onChange={(e) => setDueTime(e.target.value)}
+                />
+              </div>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="notes">Notes</Label>

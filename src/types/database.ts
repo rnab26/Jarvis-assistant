@@ -14,6 +14,8 @@ export interface Task {
   title: string
   notes: string | null
   due_date: string | null
+  /** Heure du rappel, format HH:MM ou HH:MM:SS. null si seule la date compte. */
+  due_time: string | null
   status: TaskStatus
   created_at: string
   updated_at: string
@@ -23,6 +25,7 @@ export interface TaskInput {
   title: string
   notes: string | null
   due_date: string | null
+  due_time: string | null
   category_id: string | null
   status: TaskStatus
 }
