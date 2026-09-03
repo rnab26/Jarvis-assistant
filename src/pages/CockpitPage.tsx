@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { LoadError } from "@/components/LoadError"
-import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
+import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
@@ -31,6 +31,7 @@ export function CockpitPage() {
           Chantiers de développement de Jarvis lui-même.
         </p>
         <DevItemFormDialog
+          themes={themesDe(devItems)}
           onSubmit={addDevItem}
           trigger={
             <Button size="sm">

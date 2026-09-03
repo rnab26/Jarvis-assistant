@@ -35,6 +35,7 @@ export type VoiceAction =
       notes?: string | null
       priority?: DevPriority
       status?: DevStatus
+      theme?: string | null
     }
   | { action: "update_dev_item"; item_id: string; changes: Partial<DevItemInput> }
   | { action: "delete_dev_item"; item_id: string }
@@ -202,8 +203,11 @@ export async function executeVoiceAction(
         notes: action.notes ?? null,
         status: action.status ?? "todo",
         priority: action.priority ?? "normal",
+        theme: action.theme ?? null,
       })
-      return `Chantier "${action.title}" ajouté au cockpit.`
+      // Le thème est dit à voix haute : c'est le seul moment où Raphaël peut
+      // corriger un classement qui part de travers.
+      return `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}.`
     }
 
     case "update_dev_item": {
@@ -219,6 +223,7 @@ export async function executeVoiceAction(
       const dits: string[] = []
       if (action.changes.status) dits.push(STATUS_LABEL[action.changes.status])
       if (action.changes.priority) dits.push(PRIORITY_LABEL[action.changes.priority])
+      if (action.changes.theme) dits.push(`thème ${action.changes.theme}`)
       if (dits.length > 0) return `"${label}" passé en ${dits.join(", ")}.`
       return `"${label}" mis à jour.`
     }

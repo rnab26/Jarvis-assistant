@@ -25,14 +25,23 @@ interface DevItemFormDialogProps {
   item?: DevItem
   onSubmit: (input: DevItemInput) => Promise<void>
   trigger: ReactNode
+  /** Thèmes déjà utilisés, proposés à la saisie pour éviter d'en créer un
+   * quasi-identique ("Voix" à côté de "Voix et écoute"). */
+  themes?: string[]
 }
 
-export function DevItemFormDialog({ item, onSubmit, trigger }: DevItemFormDialogProps) {
+export function DevItemFormDialog({
+  item,
+  onSubmit,
+  trigger,
+  themes = [],
+}: DevItemFormDialogProps) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState(item?.title ?? "")
   const [notes, setNotes] = useState(item?.notes ?? "")
   const [status, setStatus] = useState<DevStatus>(item?.status ?? "todo")
   const [priority, setPriority] = useState<DevPriority>(item?.priority ?? "normal")
+  const [theme, setTheme] = useState(item?.theme ?? "")
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -41,6 +50,7 @@ export function DevItemFormDialog({ item, onSubmit, trigger }: DevItemFormDialog
       setNotes(item?.notes ?? "")
       setStatus(item?.status ?? "todo")
       setPriority(item?.priority ?? "normal")
+      setTheme(item?.theme ?? "")
     }
   }, [open, item])
 
@@ -48,7 +58,7 @@ export function DevItemFormDialog({ item, onSubmit, trigger }: DevItemFormDialog
     e.preventDefault()
     setSubmitting(true)
     try {
-      await onSubmit({ title, notes: notes || null, status, priority })
+      await onSubmit({ title, notes: notes || null, status, priority, theme: theme.trim() || null })
       setOpen(false)
     } catch {
       // L'erreur est déjà signalée par un toast : on garde la fenêtre ouverte
@@ -78,6 +88,21 @@ export function DevItemFormDialog({ item, onSubmit, trigger }: DevItemFormDialog
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="dev-theme">Thème</Label>
+              <Input
+                id="dev-theme"
+                list="dev-themes"
+                value={theme}
+                placeholder="Voix et écoute, Le téléphone…"
+                onChange={(e) => setTheme(e.target.value)}
+              />
+              <datalist id="dev-themes">
+                {themes.map((t) => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="dev-status">Statut</Label>
