@@ -169,6 +169,15 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   qu'il doit choisir « Externe ». Publiée par la session C :
   https://claude.ai/code/artifact/8e38d78d-82b3-437f-ad74-dce4dbd4fde2
 
+- **Les 4 verrous** — les configurations manuelles qui débloquent 12 chantiers
+  (Google, notifications Firebase, recherche web, et 3 arbitrages : voix,
+  WhatsApp, géocodage payant). Remplace et prolonge la fiche « Brancher Google »
+  ci-dessus, qui restait bloquée à son étape 3 :
+  https://claude.ai/code/artifact/8e38d78d-82b3-437f-ad74-dce4dbd4fde2
+  Ses réponses et son avancement sont dans le document `fiche/deverrouillage`
+  (outil Artifact, `action: "read_db"`, `db_op: "get"`) : **relis-les avant de
+  lui redemander quoi que ce soit** sur ces sujets.
+
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.

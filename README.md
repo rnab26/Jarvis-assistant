@@ -34,10 +34,46 @@ Secret requis côté Supabase (Dashboard → Edge Functions → Secrets, ou
 Project Settings → Edge Functions) : `ANTHROPIC_API_KEY` (clé obtenue sur
 console.anthropic.com). Jamais dans le code ni dans `.env`.
 
+## Compte Google : agenda et mails
+
+`google-oauth` branche le compte Google de l'utilisateur, `google-calendar`
+lit et écrit ses événements. La configuration côté Google Cloud est un geste
+de PROPRIÉTAIRE, fait une seule fois pour toute l'application : les
+utilisateurs n'ouvrent jamais de console, ils appuient sur « Connecter mon
+compte Google » dans Paramètres.
+
+Secrets requis côté Supabase : `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET`,
+pris sur le client OAuth « Application Web » du projet Google Cloud. Sans
+eux, la fonction répond explicitement qu'elle n'est pas configurée — elle
+n'échoue pas en silence.
+
+L'URI de redirection déclaré chez Google doit être **exactement** :
+
+```
+https://bexiyvmdbxcwxasgslxp.supabase.co/functions/v1/google-oauth/callback
+```
+
+Deux pièges déjà payés, à ne pas repayer :
+
+- **L'application doit être publiée en production chez Google**, sans
+  demander de vérification (l'exemption « usage personnel » l'autorise). En
+  statut « Test », Google fait expirer le jeton de rafraîchissement au bout
+  de 7 jours et Jarvis se déconnecterait chaque semaine.
+- **`google-oauth` est déployée avec `verify_jwt: false`**, parce que Google
+  appelle son `/callback` sans jeton Supabase. Elle vérifie donc elle-même
+  l'identité sur `/start` et `/disconnect`, et le `state` à usage unique
+  protège le retour. Ne pas la redéployer avec `verify_jwt: true` : le
+  callback tomberait en 401 et la connexion échouerait sans message clair.
+
+Les jetons Google vivent dans `google_tokens`, une table **sans aucune
+policy RLS** : seule la clé service_role, côté Edge Function, y accède.
+L'interface lit `google_accounts`, qui ne contient que l'adresse du compte
+et les autorisations accordées (migration `0013_google_oauth.sql`).
+
 ## Commandes vocales : comment les vérifier
 
-La Edge Function `voice-command` **ne se déploie pas au push** — il faut la
-redéployer explicitement (outil MCP Supabase `deploy_edge_function`). Et un
+Les Edge Functions **ne se déploient pas au push** — il faut les redéployer
+explicitement (outil MCP Supabase `deploy_edge_function`). Et un
 typecheck ne dit rien de ce qui compte vraiment ici : est-ce que le modèle
 suit encore la consigne.
 
