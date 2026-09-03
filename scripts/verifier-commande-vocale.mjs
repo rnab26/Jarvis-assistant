@@ -18,11 +18,15 @@
  * créer et supprimer l'utilisateur de test.
  *
  * FONCTION=voice-command-essai permet de viser une autre fonction déployée.
+ * PAUSE_MS=4000 espace les contrôles : l'offre gratuite de Gemini limite les
+ * requêtes par minute, et 25 phrases en rafale mesurent ce quota au lieu du
+ * comportement de Jarvis. Raphaël, lui, ne dicte pas 25 phrases par minute.
  */
 const URL_PROJET = "https://bexiyvmdbxcwxasgslxp.supabase.co"
 const ANON = process.env.ANON_KEY
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
 const FONCTION = process.env.FONCTION ?? "voice-command"
+const PAUSE_MS = Number(process.env.PAUSE_MS ?? 0)
 
 if (!ANON || !SERVICE) {
   console.error("Il manque ANON_KEY et/ou SUPABASE_SERVICE_ROLE_KEY (voir l'en-tête du fichier).")
@@ -399,6 +403,7 @@ cas.push(
 )
 
 for (const c of cas) {
+  if (PAUSE_MS) await new Promise((r) => setTimeout(r, PAUSE_MS))
   c.avant?.()
   const r = await demander(c.phrase)
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }

@@ -29,7 +29,28 @@ const CHAMPS_MODIFIABLES: Record<string, string[]> = {
   update_contact: ["name", "notes", "phone"],
 }
 
-function normaliserAction(input: Record<string, unknown>): Record<string, unknown> {
+/** Une suite de chiffres qui ressemble à un numéro dicté : « 07 88 99 00 11 ». */
+const NUMERO_DICTE = /(?:\+?\d[\d .-]{7,}\d)/
+
+function normaliserAction(
+  input: Record<string, unknown>,
+  contexte: { idsContacts: Set<string>; transcript: string },
+): Record<string, unknown> {
+  // Deux redressements nés du passage à un petit modèle (Flash-Lite), qui se
+  // trompe de champ là où un grand ne se trompait pas. Déterministes et sans
+  // risque : on ne devine rien, on déplace ce qui est identifiable.
+  //
+  // 1. send_message / call_contact : l'identifiant d'un contact connu posé
+  //    dans phone_number au lieu de contact_id.
+  if (
+    (input.action === "send_message" || input.action === "call_contact") &&
+    !input.contact_id &&
+    typeof input.phone_number === "string" &&
+    contexte.idsContacts.has(input.phone_number)
+  ) {
+    input = { ...input, contact_id: input.phone_number, phone_number: undefined }
+  }
+
   const champs = CHAMPS_MODIFIABLES[String(input.action)]
   if (!champs) return input
 
@@ -52,6 +73,13 @@ function normaliserAction(input: Record<string, unknown>): Record<string, unknow
   // tâche à faire.
   if (input.action === "update_task" && changes.status === "in_progress") {
     changes.status = "todo"
+  }
+
+  // 2. update_contact : un numéro dicté dans la phrase, mais absent de
+  //    "changes" — le modèle a recopié le nom et les notes à la place.
+  if (input.action === "update_contact" && !changes.phone) {
+    const numero = contexte.transcript.match(NUMERO_DICTE)?.[0]
+    if (numero) changes.phone = numero.trim()
   }
 
   normalise.changes = changes
@@ -351,6 +379,9 @@ const VOICE_ACTION_TOOL = {
  * par minute, moins de jetons par phrase veut dire plus de phrases avant
  * de buter sur la limite. N'y insère jamais une donnée variable.
  */
+/** Voir le commentaire sur `modele` dans l'appel, plus bas. */
+const MODELE_PAR_DEFAUT = "gemini-3.5-flash-lite"
+
 const CONSIGNES = `Tu es l'assistant vocal de Jarvis, qui gère sept domaines pour l'utilisateur :
 1. Ses tâches personnelles/clients, organisées par catégorie.
 2. Le cockpit de développement de Jarvis lui-même (les chantiers/fonctionnalités à coder pour l'assistant) — utilise ce domaine quand l'utilisateur parle explicitement de "chantier", de développer/coder Jarvis, du "cockpit", ou d'une fonctionnalité de l'app elle-même.
@@ -461,10 +492,13 @@ Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?
 Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouvenirs(supabase, transcript)}`
 
     const { args, consommation, echec } = await appelerGemini({
-      // Le Flash stable le plus récent de l'offre gratuite. Pas d'alias
-      // « latest » : un changement de modèle doit être un choix, pas une
-      // surprise un matin.
-      modele: "gemini-3.8-flash",
+      // Réglable par le secret GEMINI_MODELE, sans redéployer : les quotas
+      // de l'offre gratuite ne sont publiés nulle part (visibles seulement
+      // dans AI Studio) et diffèrent par modèle. Mesuré le 3 sept. 2026 :
+      // gemini-3.8-flash est plafonné à 20 requêtes PAR JOUR — inutilisable.
+      // Le Lite est le modèle que Google destine à l'offre gratuite. Pas
+      // d'alias « latest » : un changement de modèle doit être un choix.
+      modele: Deno.env.get("GEMINI_MODELE") || MODELE_PAR_DEFAUT,
       // Les consignes d'abord, le contexte ensuite : voir CONSIGNES.
       systeme: `${CONSIGNES}\n\n${contexte}`,
       texte: transcript,
@@ -508,7 +542,14 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouv
         : []
     const actions = brutes
       .filter((a) => a && typeof a.action === "string")
-      .map((a) => normaliserAction(a))
+      .map((a) =>
+        normaliserAction(a, {
+          idsContacts: new Set(
+            (Array.isArray(contacts) ? contacts : []).map((c: { id?: unknown }) => String(c?.id ?? "")),
+          ),
+          transcript,
+        }),
+      )
 
     if (actions.length === 0) {
       return new Response(

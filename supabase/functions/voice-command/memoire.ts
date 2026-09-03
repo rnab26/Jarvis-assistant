@@ -11,8 +11,14 @@
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2"
 import { appelerGemini } from "../_shared/gemini.ts"
 
-/** Le plus petit modèle de l'offre gratuite : trier des faits n'en demande pas plus. */
-const MODELE_EXTRACTION = "gemini-3.5-flash-lite"
+/**
+ * Un modèle DIFFÉRENT de celui de la commande vocale, exprès : les quotas
+ * de l'offre gratuite sont comptés par modèle. Chaque phrase de Raphaël
+ * déclenche deux appels (comprendre, puis mémoriser) ; sur le même modèle,
+ * la mémoire consommerait la moitié du quota de Jarvis. Trier des faits
+ * n'en demande pas plus. Réglable par le secret GEMINI_MODELE_MEMOIRE.
+ */
+const MODELE_EXTRACTION = Deno.env.get("GEMINI_MODELE_MEMOIRE") || "gemini-3.1-flash-lite"
 
 /** Modèle embarqué dans les Edge Functions Supabase : gratuit, sur place. */
 const MODELE_EMBEDDING = "gte-small"
