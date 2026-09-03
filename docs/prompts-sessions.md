@@ -1,7 +1,7 @@
-# Trois prompts pour trois sessions parallèles (3 sept. 2026)
+# Quatre prompts pour quatre sessions parallèles (3 sept. 2026)
 
 Écrit par la session `claude/resume-sections-chantier-6bahcv`. Raphaël ouvre
-trois sessions Claude Code et colle un de ces prompts dans chacune. Chaque
+quatre sessions Claude Code et colle un de ces prompts dans chacune. Chaque
 session prend **un thème entier**, pas un chantier isolé.
 
 ## Réparé avant d'ouvrir les sessions (3 sept., 19h)
@@ -15,10 +15,10 @@ avec les autres versions du Lite en secours de quota. Vérifié : build vert,
 les trois contrôles hors réseau verts, **25/25 sur la fonction déployée
 (v42)**.
 
-Leçon pour les trois sessions : après un `git pull` ou un merge, faites
+Leçon pour les quatre sessions : après un `git pull` ou un merge, faites
 `grep -rn '^<<<<<<< ' --exclude-dir=node_modules .` avant de commiter.
 
-## Règle de non-collision — à respecter par les trois
+## Règle de non-collision — à respecter par les quatre
 
 Le découpage des fichiers ci-dessous n'est pas indicatif, c'est le contrat qui
 évite que deux sessions écrasent le travail l'une de l'autre :
@@ -28,6 +28,7 @@ Le découpage des fichiers ci-dessous n'est pas indicatif, c'est le contrat qui
 | **A — Voix et écoute** | `src/hooks/useSpeechRecognition.ts`, `useSpeechSynthesis.ts`, `useWakeWordSetting.ts`, `useDialogueSetting.ts`, `useVoiceSetting.ts`, `src/lib/motCle.ts`, `dialogueTour.ts`, `dialoguePrefs.ts`, `voicePrefs.ts`, `src/components/voice/MicButton.tsx`, `scripts/verifier-dialogue.ts`, `verifier-mot-cle.ts`, `verifier-ecoute-web.mjs` |
 | **B — Le téléphone** | `src/lib/actionsTelephone.ts`, `actionsTelephoneVocales.ts`, `commandeLocale.ts`, `voiceActions.ts`, `android/**`, `capacitor.config.ts`, `supabase/functions/voice-command/**`, `scripts/verifier-commande-locale.ts`, `verifier-commande-vocale.mjs` |
 | **C — L'app elle-même** | `src/components/cockpit/**`, `tasks/**`, `layout/**`, `settings/**`, `ui/**`, `src/hooks/useDevItems.ts`, `useDevLog.ts`, `useTasks.ts` |
+| **D — Messagerie et agenda** | `supabase/functions/google-calendar/**`, `google-gmail/**` (à créer), `google-oauth/**`, `_shared/google.ts`, `src/lib/googleCalendar.ts`, `src/hooks/useGoogleAccount.ts` |
 
 **`supabase/functions/voice-command/index.ts` et `src/lib/commandeLocale.ts`
 appartiennent à la session B, à elle seule.** Une session qui a besoin d'une
@@ -266,14 +267,102 @@ dans les notes du chantier, et libère ta réservation.
 
 ---
 
-## Ce qui reste hors de ces trois sessions
+## Prompt session D — Messagerie et agenda (débloquée le 3 sept. à 20h05)
 
-- **Messagerie et agenda** (4 chantiers, 3 en `high`) : le code Gmail/Agenda
-  est écrit et déployé, les secrets `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
-  sont bien en place (vérifié le 3 sept. : `POST /google-oauth/start` répond
-  `401 Non authentifié`, pas `503 non configuré`). Il ne manque plus que la
-  **publication de l'app Google** en statut « En production », côté Raphaël.
-  Une 4ᵉ session dès que c'est fait.
+Le verrou Google est levé : Raphaël a publié l'application en production et
+branché son compte. Vérifié en direct contre l'API Google avec son jeton :
+Gmail `200` (r.nabet26@gmail.com, 16 782 messages), Agenda `200`, refresh token
+enregistré, portées `gmail.modify` + `calendar.events`.
+
+```
+Tu prends le thème « Messagerie et agenda » du cockpit. Il vient d'être débloqué :
+Raphaël a publié l'application Google en production et branché son compte le 3 sept.
+à 20h05. Vérifié en direct contre l'API Google avec son jeton réel : Gmail 200
+(r.nabet26@gmail.com, 16782 messages), Agenda 200, refresh_token enregistré,
+portées gmail.modify + calendar.events. Ne lui redemande RIEN sur la configuration
+Google, c'est fait.
+
+AVANT TOUT : la branche principale porte des marqueurs de conflit commités. Fais
+  git merge origin/claude/resume-sections-chantier-6bahcv
+et lis docs/prompts-sessions.md. Après tout pull ou merge :
+  grep -rn '^<<<<<<< ' --exclude-dir=node_modules .
+
+Réserve avec le nom de ta branche :
+  scripts/sql.sh "select claim_dev_item('ea220515-24d1-4fc4-9483-e596df1250c0', '<ta branche>', 180)"
+  scripts/sql.sh "select claim_dev_item('37ffbe6b-4a53-45b0-b758-0af55b48d98d', '<ta branche>', 180)"
+
+Puis lis les notes complètes :
+  scripts/sql.sh "select id, title, status, notes from dev_items where theme = 'Messagerie et agenda' and archived_at is null"
+
+- ea220515 (high, in_progress) — GOOGLE AGENDA. Le code est écrit et déployé
+  (Edge Function google-calendar avec list/create/update/delete, quatre actions
+  vocales dans voice-command, carte Compte Google dans Paramètres). Il n'avait
+  jamais pu être essayé sur un vrai compte. COMMENCE PAR LÀ, et par une
+  vérification de bout en bout sur SON compte à lui, pas sur l'utilisateur de test :
+  lire sa journée, créer un rendez-vous, le modifier, le supprimer. Les heures
+  qu'il dicte sont des heures locales (Israël) et doivent le rester. Si tout passe,
+  marque le chantier fait et archive-le avec le commit en référence. S'il y a un
+  écart, corrige-le : c'est ça, le vrai travail de ce chantier.
+  Piège de portée : calendar.events donne accès aux ÉVÉNEMENTS, pas à la liste des
+  agendas ni à leur création. Si une action a besoin d'autre chose, il faudra que
+  Raphaël reconnecte son compte après ajout de la portée — dis-le-lui plutôt que de
+  le découvrir en marche.
+
+- 37ffbe6b (normal) — GMAIL, lecture ET écriture, avec pièces jointes. Tout est à
+  construire : il n'existe AUCUNE fonction gmail dans supabase/functions/ (vérifié).
+  Ce qu'il veut, dans ses mots : « Lecture et écriture, récupération de documents et
+  envoi de fichiers si nécessaire. Si j'ai reçu un mail qui m'intéresse, lui dire de
+  me lire ce mail et que moi je lui dise quoi répondre. » Donc le cœur, c'est le
+  cycle lire → il dicte → répondre, pas une boîte de réception complète.
+  Construis-le sur le modèle de google-calendar : une Edge Function google-gmail à
+  côté, qui réutilise _shared/google.ts pour le rafraîchissement du jeton. La portée
+  gmail.modify couvre la lecture, l'envoi et les pièces jointes — pas besoin d'une
+  portée de plus.
+  RÈGLE ABSOLUE : envoyer un mail part vers l'extérieur au nom de Raphaël. Jarvis
+  PRÉPARE et lui fait valider à la voix avant l'envoi, jamais d'envoi direct sans
+  confirmation — c'est la même règle que pour les messages, et elle n'est pas
+  négociable.
+
+- ed32cbcc (high) — WhatsApp, et 4dabe586 (high) — reçus/factures vers finbot.
+  Les deux restent [À CADRER AVEC RAPHAËL] : ils dépendent d'un arbitrage WhatsApp
+  qu'il n'a pas encore rendu. NE LES CODE PAS. Si tu as fini les deux premiers,
+  prépare-lui plutôt une fiche (artefact) sur l'arbitrage WhatsApp : options
+  cliquables, ta recommandation marquée, un champ libre.
+
+Fichiers qui t'appartiennent :
+  supabase/functions/google-calendar/**, supabase/functions/google-gmail/** (à créer),
+  supabase/functions/google-oauth/**, supabase/functions/_shared/google.ts,
+  src/lib/googleCalendar.ts, src/hooks/useGoogleAccount.ts,
+  supabase/migrations/ (migration numérotée si tu as besoin de DDL)
+
+NE TOUCHE PAS à supabase/functions/voice-command/index.ts : il appartient à la
+session « Le téléphone », qui travaille dedans en ce moment. Deux sessions dans ce
+fichier = un déploiement qui écrase l'autre, et Jarvis muet. Pour tes nouvelles
+actions vocales Gmail, écris ta demande dans dev_log (kind = 'question', avec le nom
+de l'action et ses paramètres) et elle l'ajoutera. Les quatre actions AGENDA y sont
+déjà, tu n'as rien à demander pour ea220515.
+
+Attention aussi à _shared/google.ts : si tu le modifies, tu changes une dépendance de
+voice-command. Annonce-le dans dev_log avant, et garde un diff minimal.
+
+Déploiement — les Edge Functions NE se déploient PAS au push :
+  scripts/deployer-fonction.sh google-calendar
+  scripts/deployer-fonction.sh google-gmail
+Le script conserve le réglage verify_jwt existant : google-oauth DOIT rester ouvert
+(verify_jwt false), Google appelle son callback sans jeton et le refermer casserait
+la connexion du compte.
+
+Vérifie, et n'annonce rien sans preuve :
+  ANON_KEY=... PAUSE_MS=5000 node scripts/verifier-commande-vocale.mjs
+Ajoute à ce script les cas Gmail que tu livres, comme les cas agenda y sont déjà.
+
+Avant de t'arrêter : écris ton état dans dev_log, libère tes réservations.
+```
+
+## Ce qui reste hors de ces quatre sessions
+
 - **Ce qu'il me signale**, **Mémoire et apprentissage**, **Recherche et veille**
   (11 chantiers) : bloqués sur trois arbitrages que Raphaël n'a pas encore
-  rendus dans la fiche « Les 4 verrous ».
+  rendus dans la fiche « Les 4 verrous » — la voix, WhatsApp, et le moteur de
+  recherche web. Deux chantiers du thème « Messagerie et agenda » (WhatsApp et
+  reçus/factures) attendent le même arbitrage WhatsApp.
