@@ -162,6 +162,51 @@ cas.push(
   },
 )
 
+// Le bug le plus sournois rencontré sur cette fonction : le modèle plaçait
+// "priority" au premier niveau au lieu de "changes", l'app envoyait une
+// modification sans aucun champ, et Jarvis confirmait quand même. Rien en
+// base, rien à l'écran, et une confirmation à l'oral par-dessus. La fonction
+// replie maintenant ces champs dans "changes" — ces deux contrôles sont là
+// pour que ça ne reparte jamais en silence.
+cas.push(
+  {
+    nom: "modifier la priorité d'un chantier à l'oral",
+    phrase: "Passe le chantier du micro en priorité haute.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "update_dev_item")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.item_id !== "c-micro") return [false, `mauvais chantier : ${a.item_id}`]
+      if (a.priority !== undefined) return [false, `priority est resté au premier niveau : ${a.priority}`]
+      if (a.changes?.priority !== "high") return [false, `changes : ${JSON.stringify(a.changes)}`]
+      return [true]
+    },
+  },
+  {
+    nom: "modifier le statut d'un chantier à l'oral",
+    phrase: "Marque le chantier du widget comme en cours.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "update_dev_item")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.item_id !== "c-widget") return [false, `mauvais chantier : ${a.item_id}`]
+      if (a.status !== undefined) return [false, `status est resté au premier niveau : ${a.status}`]
+      if (a.changes?.status !== "in_progress") return [false, `changes : ${JSON.stringify(a.changes)}`]
+      return [true]
+    },
+  },
+  {
+    nom: "une modification n'arrive jamais avec un changes vide",
+    phrase: "Le chantier du micro, mets-le en priorité basse.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "update_dev_item")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!a.changes || Object.keys(a.changes).length === 0) {
+        return [false, "changes vide : l'app ferait une mise à jour sans aucun champ"]
+      }
+      return [true]
+    },
+  },
+)
+
 cas.push({
   nom: "un nouveau chantier est rangé dans un thème existant",
   phrase: "Ajoute un chantier : quand je chuchote, Jarvis n'entend rien du tout.",

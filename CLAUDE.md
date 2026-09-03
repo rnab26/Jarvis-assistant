@@ -163,6 +163,11 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   https://claude.ai/code/artifact/fc8f0416-f799-4fc6-b9ae-3951b1486dbd
 - **Brancher Google à Jarvis** — actions à faire côté Google Cloud :
   https://claude.ai/code/artifact/27f79fa6-2f64-49bd-879e-5215df9f88cd
+- **Déblocage Google (refaite le 3 sept.)** — remplace la précédente, où il
+  restait bloqué à l'étape 3 : le bouton « Interne » grisé lui faisait croire
+  à une erreur, alors qu'il n'existe que pour une organisation Workspace et
+  qu'il doit choisir « Externe ». Publiée par la session C :
+  https://claude.ai/code/artifact/8e38d78d-82b3-437f-ad74-dce4dbd4fde2
 
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
@@ -183,10 +188,28 @@ encore la consigne. Après chaque déploiement :
 ANON_KEY=... node scripts/verifier-commande-vocale.mjs
 ```
 
-Sept contrôles bout-en-bout sur la fonction réellement déployée, avec un
+Dix contrôles bout-en-bout sur la fonction réellement déployée, avec un
 utilisateur de test éphémère créé puis supprimé. La clé publique se récupère
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
+
+## Les quatre vérifications du dépôt
+
+Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
+
+```bash
+ANON_KEY=... node scripts/verifier-commande-vocale.mjs   # la Edge Function déployée
+ANON_KEY=... node scripts/verifier-donnees.mjs           # temps réel + réglages, RLS comprise
+node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole, sans réseau
+node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
+```
+
+`verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
+réel qui annonce « SUBSCRIBED » et ne reçoit jamais rien (jeton utilisateur
+absent → RLS refuse sans le dire), et les réglages qui ne remonteraient pas
+en base. Piège à connaître si tu écris un script du même genre : « SUBSCRIBED »
+ne veut pas dire que le serveur diffuse déjà — le tout premier canal d'une
+connexion neuve rate une écriture faite dans la seconde qui suit.
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
