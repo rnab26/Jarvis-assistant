@@ -16,7 +16,20 @@ Raphaël y ajoute des chantiers par la voix ou depuis l'interface.
 
 - **Projet Supabase** : `bexiyvmdbxcwxasgslxp` (org `rnab26's Org`).
 - **Table** : `dev_items` (`id`, `title`, `notes`, `status`
-  todo/in_progress/done, `priority` low/normal/high, `archived_at`).
+  todo/in_progress/done, `priority` low/normal/high, `theme`, `archived_at`).
+
+### Prends un THÈME, pas un chantier isolé
+
+Les chantiers sont groupés par `theme` — dans l'app comme dans le bloc injecté
+au démarrage. C'est une demande explicite de Raphaël : il en a assez des
+correctifs ponctuels posés en pansement, un symptôme à la fois. Les chantiers
+d'un même thème partagent presque toujours la même cause racine, et se
+traitent ensemble à un coût bien moindre que séparément.
+
+Un chantier arrivé sans thème (dicté trop vite, mal classé) : classe-le en le
+traitant, `update dev_items set theme = '...' where id = '...'`. Reprends un
+thème existant **à l'identique** ; un thème presque identique éparpille le
+sujet au lieu de le rassembler.
 
 ### Au démarrage de CHAQUE session, avant toute autre chose
 
@@ -154,6 +167,26 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
+
+## La Edge Function `voice-command` ne se déploie PAS au push
+
+Le site web se republie à chaque push, la Edge Function non : il faut la
+redéployer explicitement (outil MCP `mcp__Supabase__deploy_edge_function`,
+projet `bexiyvmdbxcwxasgslxp`, fonction `voice-command`, avec `index.ts` ET
+`memoire.ts`). Un chantier qui touche `supabase/functions/voice-command/`
+n'est donc pas fini une fois la CI verte.
+
+Et un typecheck ne dit rien de ce qui compte ici : est-ce que le modèle suit
+encore la consigne. Après chaque déploiement :
+
+```bash
+ANON_KEY=... node scripts/verifier-commande-vocale.mjs
+```
+
+Sept contrôles bout-en-bout sur la fonction réellement déployée, avec un
+utilisateur de test éphémère créé puis supprimé. La clé publique se récupère
+avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
+site, ce n'est pas un secret — la clé de service, si).
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
