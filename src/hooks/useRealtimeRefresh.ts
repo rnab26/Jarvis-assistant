@@ -26,7 +26,11 @@ export function useRealtimeRefresh(
   refresh: () => void,
 ) {
   const refreshRef = useRef(refresh)
-  refreshRef.current = refresh
+  // Affectation dans un effet, pas pendant le rendu : lire ou écrire
+  // une ref pendant le rendu est un anti-patron React.
+  useEffect(() => {
+    refreshRef.current = refresh
+  })
 
   useEffect(() => {
     if (!userId) return

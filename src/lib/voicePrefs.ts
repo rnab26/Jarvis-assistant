@@ -1,3 +1,5 @@
+import { ecrireReglage } from "@/lib/reglages"
+
 /**
  * Réglages de la voix de Jarvis, propres à l'appareil.
  *
@@ -55,10 +57,5 @@ export function readVoicePrefs(): VoicePrefs {
 }
 
 export function writeVoicePref(key: string, value: number | null) {
-  try {
-    if (value === null) localStorage.removeItem(key)
-    else localStorage.setItem(key, String(value))
-  } catch {
-    // Stockage indisponible : le réglage vaut pour la session en cours seulement.
-  }
+  ecrireReglage(key, value === null ? null : String(value))
 }

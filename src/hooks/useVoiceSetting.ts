@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import {
   DEFAULT_PITCH,
   DEFAULT_RATE,
@@ -19,6 +20,8 @@ import {
  */
 export function useVoiceSetting() {
   const [prefs, setPrefs] = useState(readVoicePrefs)
+
+  useRelireApresRestauration(() => setPrefs(readVoicePrefs()))
 
   function setVoiceIndex(value: number | null) {
     setPrefs((p) => ({ ...p, voiceIndex: value }))

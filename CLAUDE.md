@@ -245,6 +245,25 @@ rien. Fais juste la vérification dans un appel séparé.
 Et dans tous les cas, ne fais pas un appel par ligne à mettre à jour :
 `where id in (...)`, `update ... from (values ...)` ou des `case when`.
 
+## Réglages personnels : une clé de plus se déclare
+
+Tout ce que Raphaël enregistre (tâches, chantiers, documents, contacts,
+rappels, souvenirs, prononciations) vit en base et ne peut pas être perdu par
+une mise à jour de l'app. Ses **réglages**, eux, vivaient dans le seul
+`localStorage` du téléphone : préservés par une mise à jour normale de l'APK,
+mais effacés par une réinstallation ou un nettoyage des données — l'image du
+réacteur qu'il a importée comprise.
+
+Depuis le 3 sept. 2026, ils sont recopiés dans la table `reglages`
+(migration 0014) et restaurés à la connexion. **Si tu ajoutes une préférence
+stockée en local, ajoute sa clé à `CLES_REGLAGES` dans `src/lib/reglages.ts`
+et écris-la avec `ecrireReglage()`** — sinon elle ne remontera jamais en base
+et sera perdue à la prochaine réinstallation, en silence. C'est le seul
+endroit à tenir à jour.
+
+Règle de résolution : à la connexion, la base gagne ; ensuite toute
+modification locale y est poussée dans la seconde.
+
 ## Stack
 
 React + Vite + TypeScript + Tailwind + shadcn/ui, Supabase (Auth + Postgres

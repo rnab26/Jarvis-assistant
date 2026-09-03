@@ -8,6 +8,7 @@ import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
 import { usePlaceGeofences } from "@/hooks/usePlaceGeofences"
 import { usePlaceReminders } from "@/hooks/usePlaceReminders"
 import { usePronunciations } from "@/hooks/usePronunciations"
+import { useReglagesSync } from "@/hooks/useReglagesSync"
 import { useTasks } from "@/hooks/useTasks"
 import { useVoiceSetting } from "@/hooks/useVoiceSetting"
 import { useWakeWordSetting } from "@/hooks/useWakeWordSetting"
@@ -66,6 +67,12 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const widgetState = useWidgetSetting()
 
   usePlaceGeofences(placeRemindersState.placeReminders, geofenceState.enabled)
+
+  // Les réglages personnels (voix, rythme, widget, mot-clé, géolocalisation,
+  // image du réacteur) ne vivaient que sur l'appareil : une réinstallation de
+  // l'app les effaçait, et ils n'existaient pas côté web. Ils sont maintenant
+  // conservés en base et restaurés à la connexion.
+  useReglagesSync(userId)
 
   // Met à jour le widget d'écran d'accueil à chaque changement de tâches
   // (ajout/modif/suppression, y compris par la voix) ou de sa config

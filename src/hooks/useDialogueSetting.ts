@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import {
   DEFAULT_PAUSE_MS,
   DEFAULT_SUITE_MS,
@@ -19,6 +20,8 @@ import {
  */
 export function useDialogueSetting() {
   const [prefs, setPrefs] = useState(readDialoguePrefs)
+
+  useRelireApresRestauration(() => setPrefs(readDialoguePrefs()))
 
   function setPauseMs(valeur: number) {
     const borne = Math.min(Math.max(Math.round(valeur), PAUSE_MIN_MS), PAUSE_MAX_MS)
