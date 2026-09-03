@@ -1,3 +1,4 @@
+import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
 import type {
   Category,
   Contact,
@@ -50,7 +51,7 @@ export type VoiceAction =
       category_id?: string | null
     }
   | { action: "list_contacts" }
-  | { action: "add_contact"; name: string; notes?: string | null }
+  | { action: "add_contact"; name: string; notes?: string | null; phone?: string | null }
   | { action: "update_contact"; contact_id: string; changes: Partial<ContactInput> }
   | { action: "delete_contact"; contact_id: string }
   | { action: "list_place_reminders" }
@@ -85,6 +86,11 @@ export type VoiceAction =
     }
   | { action: "delete_calendar_event"; event_id?: string; event_cible?: string }
   | { action: "set_voice"; voice_enabled: boolean }
+  // Actions qui sortent de Jarvis pour aller dans une autre application du
+  // téléphone (ouvrir une app, préparer un message, composer un numéro,
+  // poser une alarme, ouvrir un itinéraire). Leur exécution vit dans son
+  // propre module : elle ne touche à aucune donnée de l'app.
+  | ActionTelephone
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
@@ -393,7 +399,7 @@ export async function executeVoiceAction(
     }
 
     case "add_contact": {
-      await addContact({ name: action.name, notes: action.notes ?? null })
+      await addContact({ name: action.name, notes: action.notes ?? null, phone: action.phone ?? null })
       return `Contact "${action.name}" ajouté.`
     }
 
@@ -529,6 +535,13 @@ export async function executeVoiceAction(
         ? "Voix rallumée, tu m'entends à nouveau."
         : "D'accord, je me tais. Je continue de te répondre à l'écrit."
     }
+
+    case "open_app":
+    case "send_message":
+    case "call_contact":
+    case "set_alarm":
+    case "navigate_to":
+      return await executerActionTelephone(action, contacts)
 
     case "chat":
     case "clarify":

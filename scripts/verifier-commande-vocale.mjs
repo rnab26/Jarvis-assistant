@@ -66,6 +66,10 @@ const CHANTIERS = [
   { id: "c-widget", title: "Widget", notes: null, status: "todo", priority: "low", theme: "L'app elle-même" },
 ]
 const THEMES = ["Voix et écoute", "L'app elle-même"]
+const CONTACTS = [
+  { id: "ct-yoni", name: "Yoni", notes: "Chef de chantier", phone: "0612345678" },
+  { id: "ct-dylan", name: "Dylan", notes: "Client de Melissa, villa Dan", phone: null },
+]
 
 let PRONONCIATIONS = []
 
@@ -75,7 +79,7 @@ async function demander(phrase) {
     headers: { apikey: ANON, Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       transcript: phrase,
-      categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, documents: [], contacts: [],
+      categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, documents: [], contacts: CONTACTS,
       placeReminders: [], pronunciations: PRONONCIATIONS,
       widgetConfig: { maxTasks: 3, urgentOnly: false, categoryId: null },
       todayISO: new Date().toISOString().slice(0, 10),
@@ -283,6 +287,112 @@ cas.push(
       const a = (r.actions ?? []).find((x) => x.action === "set_voice")
       if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
       if (a.voice_enabled !== true) return [false, `voice_enabled = ${a.voice_enabled}`]
+      return [true]
+    },
+  },
+)
+
+// Actions dans les autres applications du téléphone. Le risque n'est pas
+// qu'elles ne marchent pas — c'est qu'elles se déclenchent à tort : "ajoute
+// une tâche : appeler le plombier" ne doit surtout pas composer un numéro.
+// Le dernier cas est là pour ça.
+cas.push(
+  {
+    nom: "mettre de la musique dans une app",
+    phrase: "Mets du Brassens sur Spotify.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "open_app")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/spotify/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      if (!/brassens/i.test(a.music_query ?? "")) return [false, `music_query = ${a.music_query}`]
+      return [true]
+    },
+  },
+  {
+    nom: "ouvrir une app sans rien jouer",
+    phrase: "Ouvre WhatsApp.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "open_app")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/whatsapp/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      if (a.music_query) return [false, `music_query renseigné à tort : ${a.music_query}`]
+      return [true]
+    },
+  },
+  {
+    nom: "préparer un message pour un contact connu",
+    phrase: "Envoie un message à Dylan pour lui dire que je passe demain matin sur le chantier.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "send_message")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.contact_id !== "ct-dylan") return [false, `contact_id = ${a.contact_id}`]
+      if (!a.message_text || a.message_text.length < 10) return [false, `message_text = ${a.message_text}`]
+      return [true]
+    },
+  },
+  {
+    nom: "appeler un contact dont on a le numéro",
+    phrase: "Appelle Yoni.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "call_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.contact_id !== "ct-yoni" && !/0612345678/.test(a.phone_number ?? "")) {
+        return [false, `ni contact_id ni numéro : ${JSON.stringify(a)}`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "retenir le numéro dicté d'un contact existant",
+    phrase: "Le numéro de Dylan c'est le 07 88 99 00 11.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "update_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.contact_id !== "ct-dylan") return [false, `contact_id = ${a.contact_id}`]
+      const tel = (a.changes?.phone ?? "").replace(/\D/g, "")
+      if (tel !== "0788990011") return [false, `changes = ${JSON.stringify(a.changes)}`]
+      return [true]
+    },
+  },
+  {
+    nom: "régler une alarme à une heure précise",
+    phrase: "Réveille-moi demain à 7h.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_alarm")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.alarm_time !== "07:00") return [false, `alarm_time = ${a.alarm_time}`]
+      return [true]
+    },
+  },
+  {
+    nom: "lancer un minuteur",
+    phrase: "Mets un minuteur de 10 minutes pour les pâtes.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_alarm")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.alarm_duration_seconds !== 600) return [false, `durée = ${a.alarm_duration_seconds}`]
+      return [true]
+    },
+  },
+  {
+    nom: "ouvrir un itinéraire",
+    phrase: "Emmène-moi au 12 rue de la Paix à Paris.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "navigate_to")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/rue de la paix/i.test(a.destination ?? "")) return [false, `destination = ${a.destination}`]
+      return [true]
+    },
+  },
+  {
+    nom: "une tâche à faire ne déclenche AUCUNE action dans une app",
+    phrase: "Ajoute une tâche : appeler le plombier et envoyer un message à Melissa.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      const debordements = types.filter((t) =>
+        ["call_contact", "send_message", "open_app", "navigate_to", "set_alarm"].includes(t))
+      if (debordements.length > 0) return [false, `a déclenché ${debordements.join(", ")} au lieu de noter une tâche`]
+      if (!types.includes("add_task")) return [false, `aucune tâche créée : ${types}`]
       return [true]
     },
   },

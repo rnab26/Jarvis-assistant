@@ -24,12 +24,14 @@ export function ContactFormDialog({ contact, onSubmit, trigger }: ContactFormDia
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(contact?.name ?? "")
   const [notes, setNotes] = useState(contact?.notes ?? "")
+  const [phone, setPhone] = useState(contact?.phone ?? "")
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     if (open) {
       setName(contact?.name ?? "")
       setNotes(contact?.notes ?? "")
+      setPhone(contact?.phone ?? "")
     }
   }, [open, contact])
 
@@ -37,7 +39,7 @@ export function ContactFormDialog({ contact, onSubmit, trigger }: ContactFormDia
     e.preventDefault()
     setSubmitting(true)
     try {
-      await onSubmit({ name, notes: notes || null })
+      await onSubmit({ name, notes: notes || null, phone: phone || null })
       setOpen(false)
     } catch {
       // Erreur déjà signalée par un toast : on garde la fenêtre ouverte.
@@ -61,6 +63,17 @@ export function ContactFormDialog({ contact, onSubmit, trigger }: ContactFormDia
             <div className="flex flex-col gap-2">
               <Label htmlFor="name">Nom</Label>
               <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="phone">Téléphone</Label>
+              <Input
+                id="phone"
+                type="tel"
+                inputMode="tel"
+                value={phone}
+                placeholder="Sert à l'appeler ou à lui préparer un message à la voix"
+                onChange={(e) => setPhone(e.target.value)}
+              />
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="notes">Notes</Label>

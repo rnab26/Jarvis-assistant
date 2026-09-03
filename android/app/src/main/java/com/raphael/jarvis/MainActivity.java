@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ShareReceiverPlugin.class);
         registerPlugin(GeofencePlugin.class);
         registerPlugin(ApkDownloaderPlugin.class);
+        registerPlugin(ActionsTelephonePlugin.class);
         super.onCreate(savedInstanceState);
         handleShareIntent(getIntent());
     }
