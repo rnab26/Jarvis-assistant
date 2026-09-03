@@ -1,3 +1,5 @@
+import { ecrireReglage } from "@/lib/reglages"
+
 /**
  * Rythme de la discussion avec Jarvis, propre à l'appareil.
  *
@@ -51,9 +53,5 @@ export function readDialoguePrefs(): DialoguePrefs {
 }
 
 export function writeDialoguePref(key: string, valeur: number) {
-  try {
-    localStorage.setItem(key, String(valeur))
-  } catch {
-    // Stockage indisponible : le réglage vaut pour la session en cours seulement.
-  }
+  ecrireReglage(key, String(valeur))
 }

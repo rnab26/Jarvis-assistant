@@ -40,6 +40,9 @@ export interface DevItem {
   notes: string | null
   status: DevStatus
   priority: DevPriority
+  /** Sujet auquel le chantier appartient, pour le traiter avec ses voisins
+   * plutôt qu'isolément. Texte libre, null tant qu'il n'est pas classé. */
+  theme: string | null
   archived_at: string | null
   /** Session Claude Code qui travaille dessus (nom de sa branche), si réservé. */
   claimed_by: string | null
@@ -69,6 +72,7 @@ export interface DevItemInput {
   notes: string | null
   status: DevStatus
   priority: DevPriority
+  theme?: string | null
 }
 
 export interface Contact {

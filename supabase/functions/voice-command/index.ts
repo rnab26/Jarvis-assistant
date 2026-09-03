@@ -24,7 +24,7 @@ const corsHeaders = {
  */
 const CHAMPS_MODIFIABLES: Record<string, string[]> = {
   update_task: ["title", "notes", "status", "category_id", "due_date", "due_time"],
-  update_dev_item: ["title", "notes", "status", "priority"],
+  update_dev_item: ["title", "notes", "status", "priority", "theme"],
   update_contact: ["name", "notes"],
 }
 
@@ -95,12 +95,13 @@ const ACTION_SCHEMA = {
         "add_calendar_event",
         "update_calendar_event",
         "delete_calendar_event",
+        "set_voice",
         "chat",
         "clarify",
         "unknown",
       ],
       description:
-        "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. configure_widget (max_tasks, urgent_only, category_id) — utilisé quand l'utilisateur parle du widget d'écran d'accueil (ex: 'montre-moi 5 tâches sur le widget', 'affiche que les urgentes sur le widget', 'widget catégorie perso'). Contacts : list_contacts, add_contact (name + notes), update_contact (contact_id + changes), delete_contact (contact_id) — utilisé quand l'utilisateur présente quelqu'un ou donne une consigne à son sujet (ex: 'Dylan c'est le client de Melissa', 'pour Yoni toujours confirmer avant d'envoyer un message'). Rappels de lieu : list_place_reminders, add_place_reminder (place + reminder), delete_place_reminder (reminder_id) — utilisé quand l'utilisateur demande de lui rappeler quelque chose la prochaine fois qu'il parle d'un lieu précis (ex: 'quand je parle du chantier Dan, rappelle-moi de commander les carreaux'). Prononciations : list_pronunciations, add_pronunciation (entendu + veut_dire), delete_pronunciation (pronunciation_id) — utilisé quand l'utilisateur corrige la façon dont la dictée a écrit un mot ou un nom (ex: 'ce n'est pas Avirail, c'est Avihail, le h est muet', 'quand je dis Melissa tu écris Mélissa'). Agenda Google : list_calendar_events (event_depuis / event_jusqu_a / event_recherche), add_calendar_event (event_titre + event_debut), update_calendar_event (event_cible + le ou les champs event_* qui changent), delete_calendar_event (event_cible) — utilisé quand l'utilisateur parle de son agenda, de ses rendez-vous, de son planning, de sa journée ou de sa semaine (ex: 'qu'est-ce que j'ai demain ?', 'ajoute un rendez-vous avec Yoni mardi à 14h', 'décale mon rendez-vous de jeudi à 16h', 'annule le rendez-vous chez le dentiste'). À ne pas confondre avec add_task : une tâche est quelque chose à faire, un événement d'agenda occupe un créneau. chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents ni le widget ni les contacts ni les rappels de lieu (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
+        "Tâches perso/clients : list_tasks, add_task, update_task (task_id + changes), delete_task (task_id). Chantiers de dev Jarvis (cockpit) : list_dev_items, add_dev_item, update_dev_item (item_id + changes), delete_dev_item (item_id), archive_dev_item (item_id) — marque le chantier comme fait et l'archive, utilisé quand l'utilisateur dit qu'un chantier est terminé/traité et veut l'archiver — utilisés quand l'utilisateur parle explicitement de 'chantier', de développement de Jarvis, du cockpit, ou d'une fonctionnalité à coder pour l'assistant lui-même. Documents : list_documents, save_document (filename + content) — utilisé quand l'utilisateur demande explicitement d'enregistrer/noter/sauvegarder un document ou un texte. configure_widget (max_tasks, urgent_only, category_id) — utilisé quand l'utilisateur parle du widget d'écran d'accueil (ex: 'montre-moi 5 tâches sur le widget', 'affiche que les urgentes sur le widget', 'widget catégorie perso'). Contacts : list_contacts, add_contact (name + notes), update_contact (contact_id + changes), delete_contact (contact_id) — utilisé quand l'utilisateur présente quelqu'un ou donne une consigne à son sujet (ex: 'Dylan c'est le client de Melissa', 'pour Yoni toujours confirmer avant d'envoyer un message'). Rappels de lieu : list_place_reminders, add_place_reminder (place + reminder), delete_place_reminder (reminder_id) — utilisé quand l'utilisateur demande de lui rappeler quelque chose la prochaine fois qu'il parle d'un lieu précis (ex: 'quand je parle du chantier Dan, rappelle-moi de commander les carreaux'). Prononciations : list_pronunciations, add_pronunciation (entendu + veut_dire), delete_pronunciation (pronunciation_id) — utilisé quand l'utilisateur corrige la façon dont la dictée a écrit un mot ou un nom (ex: 'ce n'est pas Avirail, c'est Avihail, le h est muet', 'quand je dis Melissa tu écris Mélissa'). set_voice (voice_enabled) — utilisé quand l'utilisateur demande de couper ou de remettre la voix de Jarvis ('arrête de parler', 'coupe ta voix', 'réponds-moi juste à l'écrit', 'remets ta voix', 'reparle'). voice_enabled=false pour se taire, true pour reparler. Ne PAS l'utiliser pour un simple 'tais-toi' qui interrompt une phrase en cours : là il ne s'agit que d'arrêter la lecture, pas de couper la voix pour de bon. Agenda Google : list_calendar_events (event_depuis / event_jusqu_a / event_recherche), add_calendar_event (event_titre + event_debut), update_calendar_event (event_cible + le ou les champs event_* qui changent), delete_calendar_event (event_cible) — utilisé quand l'utilisateur parle de son agenda, de ses rendez-vous, de son planning, de sa journée ou de sa semaine (ex: 'qu'est-ce que j'ai demain ?', 'ajoute un rendez-vous avec Yoni mardi à 14h', 'décale mon rendez-vous de jeudi à 16h', 'annule le rendez-vous chez le dentiste'). À ne pas confondre avec add_task : une tâche est quelque chose à faire, un événement d'agenda occupe un créneau. chat: toute question ou discussion qui ne concerne ni les tâches ni le cockpit ni les documents ni le widget ni les contacts ni les rappels de lieu (culture générale, conseil, actualité, calcul, etc.) — répondre directement et utilement via `message`. clarify: commande ambiguë (plusieurs éléments possibles, ou infos manquantes) — poser une question via `message`. unknown: audio incompréhensible/inaudible, pas une question hors-sujet (ça, c'est 'chat').",
     },
     title: {
       type: "string",
@@ -194,6 +195,10 @@ const ACTION_SCHEMA = {
       enum: ["todo", "in_progress", "done"],
       description: "add_dev_item UNIQUEMENT : statut initial du chantier à créer, 'todo' par défaut. Pour MODIFIER le statut d'un chantier existant, ne pas utiliser ce champ : mettre { \"status\": ... } dans \"changes\" avec action=update_dev_item.",
     },
+    theme: {
+      type: ["string", "null"],
+      description: "add_dev_item : sujet auquel rattacher le chantier. Reprends TEL QUEL un thème déjà utilisé dès qu'il convient — un thème presque identique en crée un doublon et éparpille le sujet. N'en invente un nouveau que si aucun ne va, en quelques mots. Aussi utilisable dans \"changes\" avec update_dev_item pour reclasser un chantier existant.",
+    },
     task_id: {
       type: "string",
       description: "id de la tâche existante ciblée (update_task, delete_task), résolu depuis la liste de tâches fournie.",
@@ -205,6 +210,10 @@ const ACTION_SCHEMA = {
     contact_id: {
       type: "string",
       description: "id du contact existant ciblé (update_contact, delete_contact), résolu depuis la liste de contacts fournie (par nom approchant).",
+    },
+    voice_enabled: {
+      type: "boolean",
+      description: "set_voice uniquement : true pour que Jarvis reparle à voix haute, false pour qu'il ne réponde plus qu'à l'écrit.",
     },
     entendu: {
       type: "string",
@@ -224,12 +233,13 @@ const ACTION_SCHEMA = {
     },
     changes: {
       type: "object",
-      description: "OBLIGATOIRE et NON VIDE pour update_task, update_dev_item et update_contact : les champs à modifier, et eux seuls. update_task : title, notes, status ('todo'/'done'), category_id, due_date, due_time. update_dev_item : title, notes, status ('todo'/'in_progress'/'done'), priority ('low'/'normal'/'high'). update_contact : name, notes. Exemples : { \"priority\": \"high\" } pour monter un chantier en priorité, { \"status\": \"in_progress\" } pour le passer en cours.",
+      description: "OBLIGATOIRE et NON VIDE pour update_task, update_dev_item et update_contact : les champs à modifier, et eux seuls. update_task : title, notes, status ('todo'/'done'), category_id, due_date, due_time. update_dev_item : title, notes, status ('todo'/'in_progress'/'done'), priority ('low'/'normal'/'high'), theme. update_contact : name, notes. Exemples : { \"priority\": \"high\" } pour monter un chantier en priorité, { \"status\": \"in_progress\" } pour le passer en cours.",
       properties: {
         title: { type: "string" },
         notes: { type: ["string", "null"] },
         status: { type: "string", enum: ["todo", "in_progress", "done"] },
         priority: { type: "string", enum: ["low", "normal", "high"] },
+        theme: { type: ["string", "null"] },
         category_id: { type: ["string", "null"] },
         due_date: { type: ["string", "null"] },
         due_time: { type: ["string", "null"] },
@@ -305,6 +315,7 @@ Deno.serve(async (req: Request) => {
       categories,
       tasks,
       devItems,
+      themes,
       documents,
       contacts,
       placeReminders,
@@ -351,6 +362,7 @@ Date du jour : ${todayISO}. Heure locale actuelle (Israël) : ${heureLocale}.
 Catégories de tâches existantes : ${JSON.stringify(categories)}.
 Tâches existantes de l'utilisateur : ${JSON.stringify(tasks)}.
 Chantiers de dev Jarvis existants (cockpit) : ${JSON.stringify(devItems)}.
+Thèmes de chantiers déjà utilisés : ${JSON.stringify(themes ?? [])}.
 Documents existants de l'utilisateur : ${JSON.stringify(documents)}.
 Contacts existants de l'utilisateur : ${JSON.stringify(contacts)}.
 Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
@@ -368,6 +380,7 @@ Pour add_task : si l'utilisateur précise une heure ("à 14h", "ce midi", "à 9h
 Pour save_document : synthétise un nom de fichier court dans "filename", et reformule proprement tout ce que l'utilisateur a dicté comme contenu dans "content".
 Pour configure_widget : ne renvoie que les champs (max_tasks, urgent_only, category_id) que l'utilisateur a explicitement mentionnés — laisse les autres absents plutôt que de les redéfinir à une valeur par défaut.
 Pour add_contact : si le contact existe déjà dans la liste fournie (même nom ou très proche), utilise update_contact à la place pour ajouter l'information à ses notes existantes plutôt que de créer un doublon.
+Pour add_dev_item : classe le chantier dans un thème. Reprends un thème existant à l'identique dès qu'il convient — c'est ce qui permet de traiter un sujet entier d'un coup au lieu de le rafistoler chantier par chantier. N'en crée un nouveau que si aucun ne colle.
 Pour add_place_reminder : "place" doit être un mot-clé court et probable à être redit tel quel (nom de lieu, de chantier, de client) — pas une phrase entière. "reminder" est la phrase que Jarvis doit dire, reformulée proprement.
 Une seule phrase peut contenir PLUSIEURS demandes ("ajoute une tâche pour le plombier et marque la facture comme payée") : renvoie alors autant d'actions que de demandes, dans l'ordre où elles ont été dites. N'en invente aucune, et ne découpe pas une demande unique.
 Reprendre quelque chose d'existant : la liste fournie contient AUSSI les tâches déjà faites (status "done") et les chantiers terminés. Si l'utilisateur veut revenir sur une tâche déjà faite ("remets la tâche du plombier à faire", "finalement je dois refaire les carreaux", "rouvre celle que j'ai terminée hier"), n'en crée pas une nouvelle : utilise update_task sur la tâche existante avec changes={"status":"todo"} plus ce qu'il change d'autre. Une tâche n'a que deux statuts, "todo" et "done" — "en cours" pour une tâche vaut "todo".

@@ -16,7 +16,20 @@ Raphaël y ajoute des chantiers par la voix ou depuis l'interface.
 
 - **Projet Supabase** : `bexiyvmdbxcwxasgslxp` (org `rnab26's Org`).
 - **Table** : `dev_items` (`id`, `title`, `notes`, `status`
-  todo/in_progress/done, `priority` low/normal/high, `archived_at`).
+  todo/in_progress/done, `priority` low/normal/high, `theme`, `archived_at`).
+
+### Prends un THÈME, pas un chantier isolé
+
+Les chantiers sont groupés par `theme` — dans l'app comme dans le bloc injecté
+au démarrage. C'est une demande explicite de Raphaël : il en a assez des
+correctifs ponctuels posés en pansement, un symptôme à la fois. Les chantiers
+d'un même thème partagent presque toujours la même cause racine, et se
+traitent ensemble à un coût bien moindre que séparément.
+
+Un chantier arrivé sans thème (dicté trop vite, mal classé) : classe-le en le
+traitant, `update dev_items set theme = '...' where id = '...'`. Reprends un
+thème existant **à l'identique** ; un thème presque identique éparpille le
+sujet au lieu de le rassembler.
 
 ### Au démarrage de CHAQUE session, avant toute autre chose
 
@@ -164,6 +177,26 @@ Les deux premières servent aussi de modèle : catalogue oui/non, et décisions 
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
 
+## La Edge Function `voice-command` ne se déploie PAS au push
+
+Le site web se republie à chaque push, la Edge Function non : il faut la
+redéployer explicitement (outil MCP `mcp__Supabase__deploy_edge_function`,
+projet `bexiyvmdbxcwxasgslxp`, fonction `voice-command`, avec `index.ts` ET
+`memoire.ts`). Un chantier qui touche `supabase/functions/voice-command/`
+n'est donc pas fini une fois la CI verte.
+
+Et un typecheck ne dit rien de ce qui compte ici : est-ce que le modèle suit
+encore la consigne. Après chaque déploiement :
+
+```bash
+ANON_KEY=... node scripts/verifier-commande-vocale.mjs
+```
+
+Sept contrôles bout-en-bout sur la fonction réellement déployée, avec un
+utilisateur de test éphémère créé puis supprimé. La clé publique se récupère
+avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
+site, ce n'est pas un secret — la clé de service, si).
+
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
 **N'utilise pas `mcp__Supabase__execute_sql`.** Le serveur MCP Supabase marque
@@ -220,6 +253,25 @@ rien. Fais juste la vérification dans un appel séparé.
 
 Et dans tous les cas, ne fais pas un appel par ligne à mettre à jour :
 `where id in (...)`, `update ... from (values ...)` ou des `case when`.
+
+## Réglages personnels : une clé de plus se déclare
+
+Tout ce que Raphaël enregistre (tâches, chantiers, documents, contacts,
+rappels, souvenirs, prononciations) vit en base et ne peut pas être perdu par
+une mise à jour de l'app. Ses **réglages**, eux, vivaient dans le seul
+`localStorage` du téléphone : préservés par une mise à jour normale de l'APK,
+mais effacés par une réinstallation ou un nettoyage des données — l'image du
+réacteur qu'il a importée comprise.
+
+Depuis le 3 sept. 2026, ils sont recopiés dans la table `reglages`
+(migration 0014) et restaurés à la connexion. **Si tu ajoutes une préférence
+stockée en local, ajoute sa clé à `CLES_REGLAGES` dans `src/lib/reglages.ts`
+et écris-la avec `ecrireReglage()`** — sinon elle ne remontera jamais en base
+et sera perdue à la prochaine réinstallation, en silence. C'est le seul
+endroit à tenir à jour.
+
+Règle de résolution : à la connexion, la base gagne ; ensuite toute
+modification locale y est poussée dans la seconde.
 
 ## Stack
 

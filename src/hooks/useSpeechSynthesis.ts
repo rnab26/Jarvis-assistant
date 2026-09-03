@@ -45,10 +45,15 @@ export function useSpeechSynthesis() {
    * la voix par défaut du système.
    */
   const speak = useCallback(
-    async (text: string, voiceIndex?: number) => {
+    async (text: string, voiceIndex?: number, forcer = false) => {
       if (!isSupported) return
 
       const prefs = readVoicePrefs()
+      // Voix coupée : on ne dit rien, mais l'appelant continue normalement —
+      // la réponse reste affichée à l'écran. `forcer` sert au bouton
+      // « Tester » des Paramètres, qui doit pouvoir faire entendre la voix
+      // même quand elle est coupée.
+      if (prefs.muted && !forcer) return
       const index = voiceIndex ?? prefs.voiceIndex ?? undefined
       const voix = index === undefined ? undefined : voixEnCache?.[index]
 

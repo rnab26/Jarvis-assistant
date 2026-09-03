@@ -40,7 +40,9 @@ fi
 # credential »), auquel cas rien n'est visible depuis la session. On tente la
 # requête et on juge sur le résultat.
 
-chantiers=$(interroger "select coalesce(string_agg(format('- %s | %s | %s | %s%s%s', id, title, status, priority, case when claimed_by is not null then ' | PRIS PAR ' || claimed_by else '' end, case when coalesce(notes, '') <> '' then chr(10) || '    ' || left(replace(notes, chr(10), ' '), 160) else '' end), chr(10) order by priority desc, created_at), '(aucun)') as t from dev_items where archived_at is null")
+# Groupés par thème, pas à plat : un sujet se traite en entier, pas chantier
+# par chantier. Les thèmes qui contiennent de la priorité haute passent devant.
+chantiers=$(interroger "select coalesce(string_agg(bloc, chr(10) || chr(10) order by urgence, taille desc, th), '(aucun)') as t from (select coalesce(nullif(trim(theme), ''), 'À classer') as th, min(case when priority = 'high' then 1 else 2 end) as urgence, count(*) as taille, '### ' || coalesce(nullif(trim(theme), ''), 'À classer') || ' (' || count(*) || ')' || chr(10) || string_agg(format('- %s | %s | %s | %s%s%s', id, title, status, priority, case when claimed_by is not null and claim_expires_at > now() then ' | PRIS PAR ' || claimed_by else '' end, case when coalesce(notes, '') <> '' then chr(10) || '    ' || left(replace(notes, chr(10), ' '), 160) else '' end), chr(10) order by priority desc, created_at) as bloc from dev_items where archived_at is null group by 1) g")
 
 journal=$(interroger "select coalesce(string_agg(format('- %s | %s | %s%s%s', to_char(created_at, 'DD/MM HH24:MI'), author, kind, case when answered_at is not null then ' (repondu)' else '' end, chr(10) || '    ' || left(replace(body, chr(10), ' '), 300)), chr(10) order by created_at desc), '(vide)') as t from (select * from dev_log order by created_at desc limit 12) d")
 
@@ -58,10 +60,14 @@ Chargé automatiquement depuis la base. Raphaël n'a rien eu à te demander : ne
 fais donc pas répéter ce qui est déjà écrit ci-dessous. Les notes sont tronquées —
 utilise \`scripts/sql.sh\` pour le détail complet d'un chantier.
 
-## Chantiers en cours
+## Chantiers en cours, groupés par thème
 Format : id | titre | statut | priorité | réservation
 Marqueurs en tête des notes : [À CADRER AVEC RAPHAËL AVANT DE COMMENCER] = ne pas
 coder, en discuter d'abord. [LIBRE] = à prendre sans rien demander.
+
+Prends un THÈME, pas un chantier isolé : c'est la demande explicite de Raphaël,
+qui en a assez des correctifs ponctuels posés en pansement. Les chantiers d'un
+même thème partagent presque toujours la même cause racine.
 
 ${chantiers:-(non chargé)}
 
@@ -76,7 +82,8 @@ Ne les refais pas, ne les défais pas.
 ${livres:-(non chargé)}
 
 ## Avant de te mettre au travail
-- Réserve un chantier avant d'y toucher : \`scripts/sql.sh "select claim_dev_item('<id>', '<ta branche>', 120)"\`
+- Réserve chaque chantier avant d'y toucher : \`scripts/sql.sh "select claim_dev_item('<id>', '<ta branche>', 120)"\`
+- Un chantier sans thème, classe-le en le traitant : \`update dev_items set theme = '...' where id = '...'\`
 - Tout le SQL passe par \`scripts/sql.sh\`, jamais par l'outil MCP Supabase (il impose une validation manuelle à Raphaël à chaque appel).
 - Avant de t'arrêter, écris ton état dans \`dev_log\` ou dans les notes du chantier.
 - La méthode de travail générale de Raphaël est dans \`docs/methode-de-travail.md\`.

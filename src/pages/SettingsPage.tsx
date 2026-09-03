@@ -1,7 +1,9 @@
 import { Capacitor } from "@capacitor/core"
 import { Download, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -25,7 +27,12 @@ import {
   SUITE_MIN_MS,
 } from "@/lib/dialoguePrefs"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
-import { useUpdateCheck, type PublishedBuild, type UpdateStatus } from "@/hooks/useUpdateCheck"
+import {
+  useUpdateCheck,
+  type PublishedBuild,
+  type UpdateStatus,
+  type Verdict,
+} from "@/hooks/useUpdateCheck"
 import { formatBuildDate, versionInstallee } from "@/lib/version"
 
 const isNative = Capacitor.isNativePlatform()
@@ -274,14 +281,36 @@ function libellePubliee(published: PublishedBuild | null): string {
 function MettreAJour({
   status,
   published,
+  verifieA,
   recheck,
 }: {
   status: UpdateStatus
   published: PublishedBuild | null
-  recheck: () => void
+  verifieA: Date | null
+  recheck: () => Promise<Verdict>
 }) {
   const [etat, setEtat] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
   const [erreur, setErreur] = useState<string | null>(null)
+
+  /* Une vérification qui aboutit sans rien changer à l'écran passe pour un
+     bouton mort — c'est le retour de Raphaël, deux fois. Le résultat est donc
+     annoncé explicitement, avec le numéro de build : on ne lui demande plus
+     de deviner que quelque chose s'est produit. */
+  async function revérifier() {
+    const { status: verdict, published: infos } = await recheck()
+    const build = infos?.buildNumber !== null && infos?.buildNumber !== undefined
+      ? ` (build ${infos.buildNumber})`
+      : ""
+    if (verdict === "up-to-date") {
+      toast.success(`Vérifié : tu es à jour${build}.`)
+    } else if (verdict === "update-available") {
+      toast.warning(`Vérifié : une nouvelle version existe${build}.`)
+    } else {
+      toast.error("Vérification impossible", {
+        description: "GitHub n'a pas répondu. Réessaie dans un moment.",
+      })
+    }
+  }
 
   async function telecharger() {
     setErreur(null)
@@ -341,14 +370,23 @@ function MettreAJour({
           <Button
             variant="ghost"
             size="sm"
-            onClick={recheck}
+            onClick={revérifier}
             disabled={status === "checking"}
             aria-label="Revérifier"
           >
-            <RefreshCw className="size-4" />
+            <RefreshCw className={cn("size-4", status === "checking" && "animate-spin")} />
             Revérifier
           </Button>
         </div>
+
+        {/* Sans cette ligne, revérifier alors qu'on est déjà à jour ne
+            change rien à l'écran : le bouton paraît cassé. L'heure qui
+            avance est la preuve que la vérification a bien eu lieu. */}
+        {verifieA && (
+          <p className="text-xs text-muted-foreground">
+            Dernière vérification à {verifieA.toLocaleTimeString("fr-FR")}
+          </p>
+        )}
 
         {isNative && status === "update-available" && (
           <p className="text-sm text-muted-foreground">
@@ -526,7 +564,7 @@ export function SettingsPage() {
     placeRemindersState,
     pronunciationsState,
   } = useJarvisData()
-  const { status, published, recheck } = useUpdateCheck()
+  const { status, published, verifieA, recheck } = useUpdateCheck()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
@@ -579,7 +617,12 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <MettreAJour status={status} published={published} recheck={recheck} />
+      <MettreAJour
+        status={status}
+        published={published}
+        verifieA={verifieA}
+        recheck={recheck}
+      />
 
       <CompteGoogle />
 
@@ -616,6 +659,25 @@ export function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+            <div className="flex-1">
+              <p className="font-medium">
+                {voiceState.muted ? "Voix coupée" : "Voix activée"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {voiceState.muted
+                  ? "Il te répond à l'écrit seulement. Dis-lui « remets ta voix » pour le rallumer."
+                  : "Tu peux aussi lui dire « coupe ta voix » en pleine discussion."}
+              </p>
+            </div>
+            <Button
+              variant={voiceState.muted ? "default" : "outline"}
+              onClick={() => voiceState.setMuted(!voiceState.muted)}
+            >
+              {voiceState.muted ? "Rallumer" : "Couper"}
+            </Button>
+          </div>
+
           <div className="flex flex-col gap-2">
             <Select
               value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}
@@ -668,9 +730,12 @@ export function SettingsPage() {
               variant="outline"
               disabled={speaking}
               onClick={() =>
+                // Forcé : on doit pouvoir écouter la voix pour la régler,
+                // même quand elle est coupée pour les réponses.
                 speak(
                   "Bonjour Raphaël, voici comment je sonne avec ces réglages.",
                   voiceState.voiceIndex ?? undefined,
+                  true,
                 )
               }
             >

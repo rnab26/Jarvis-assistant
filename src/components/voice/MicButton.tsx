@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { JarvisCore } from "@/components/JarvisCore"
+import { themesDe } from "@/components/cockpit/CockpitBoard"
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
+import { withTimeout } from "@/lib/withTimeout"
 import {
   executeVoiceAction,
   type ContactsApi,
@@ -13,11 +15,15 @@ import {
   type PlaceRemindersApi,
   type PronunciationsApi,
   type TasksApi,
+  type VoiceSettingApi,
   type VoiceAction,
   type WidgetApi,
 } from "@/lib/voiceActions"
 
 type Status = "idle" | "wake-listening" | "listening" | "processing" | "speaking" | "error"
+
+/** Temps laissé à la Edge Function pour répondre avant de le dire. */
+const REPONSE_MAX_MS = 25000
 
 interface MicButtonProps {
   tasksApi: TasksApi
@@ -26,6 +32,7 @@ interface MicButtonProps {
   contactsApi: ContactsApi
   placeRemindersApi: PlaceRemindersApi
   pronunciationsApi: PronunciationsApi
+  voiceSettingApi: VoiceSettingApi
   widgetApi: WidgetApi
   wakeWordEnabled: boolean
   voiceIndex: number | null
@@ -64,6 +71,7 @@ export function MicButton({
   contactsApi,
   placeRemindersApi,
   pronunciationsApi,
+  voiceSettingApi,
   widgetApi,
   wakeWordEnabled,
   voiceIndex,
@@ -87,45 +95,56 @@ export function MicButton({
    * l'autre comme faite") : elles reviennent dans l'ordre dicté.
    */
   async function resolveTranscript(transcript: string): Promise<VoiceAction[]> {
-    const { data, error } = await supabase.functions.invoke<{
-      action: VoiceAction
-      actions?: VoiceAction[]
-    }>("voice-command", {
-      body: {
-        transcript,
-        categories: tasksApi.categories.map((c) => ({ id: c.id, name: c.name })),
-        tasks: tasksApi.tasks.map((t) => ({
-          id: t.id,
-          title: t.title,
-          notes: extrait(t.notes),
-          category_id: t.category_id,
-          status: t.status,
-          due_date: t.due_date,
-          due_time: t.due_time,
-        })),
-        devItems: devItemsApi.devItems.map((i) => ({
-          id: i.id,
-          title: i.title,
-          notes: extrait(i.notes),
-          status: i.status,
-          priority: i.priority,
-        })),
-        documents: documentsApi.documents.map((d) => ({ name: d.name })),
-        contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes })),
-        placeReminders: placeRemindersApi.placeReminders.map((p) => ({
-          id: p.id,
-          place: p.place,
-          reminder: p.reminder,
-        })),
-        pronunciations: pronunciationsApi.pronunciations.map((p) => ({
-          id: p.id,
-          entendu: p.entendu,
-          veut_dire: p.veut_dire,
-        })),
-        widgetConfig: widgetApi.config,
-        todayISO: new Date().toISOString().slice(0, 10),
-      },
-    })
+    // Borné dans le temps, comme tout le reste des appels du projet :
+    // supabase-js ne rejette JAMAIS sur coupure réseau, il retente et laisse
+    // la promesse en attente. Sans cette borne, une commande partie de
+    // travers laissait Jarvis figé sans un mot. Plus long que le défaut de
+    // 8 s : la Edge Function interroge le modèle, quelques secondes sont
+    // normales.
+    const { data, error } = await withTimeout(
+      supabase.functions.invoke<{
+        action: VoiceAction
+        actions?: VoiceAction[]
+      }>("voice-command", {
+        body: {
+          transcript,
+          categories: tasksApi.categories.map((c) => ({ id: c.id, name: c.name })),
+          tasks: tasksApi.tasks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            notes: extrait(t.notes),
+            category_id: t.category_id,
+            status: t.status,
+            due_date: t.due_date,
+            due_time: t.due_time,
+          })),
+          devItems: devItemsApi.devItems.map((i) => ({
+            id: i.id,
+            title: i.title,
+            notes: extrait(i.notes),
+            status: i.status,
+            priority: i.priority,
+            theme: i.theme,
+          })),
+          themes: themesDe(devItemsApi.devItems),
+          documents: documentsApi.documents.map((d) => ({ name: d.name })),
+          contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes })),
+          placeReminders: placeRemindersApi.placeReminders.map((p) => ({
+            id: p.id,
+            place: p.place,
+            reminder: p.reminder,
+          })),
+          pronunciations: pronunciationsApi.pronunciations.map((p) => ({
+            id: p.id,
+            entendu: p.entendu,
+            veut_dire: p.veut_dire,
+          })),
+          widgetConfig: widgetApi.config,
+          todayISO: new Date().toISOString().slice(0, 10),
+        },
+      }),
+      REPONSE_MAX_MS,
+    )
 
     if (error || !data) {
       throw new Error(error?.message ?? "Réponse vide du serveur vocal.")
@@ -182,6 +201,7 @@ export function MicButton({
             contactsApi,
             placeRemindersApi,
             pronunciationsApi,
+            voiceSettingApi,
             widgetApi,
             agendaApi,
           ),
@@ -238,8 +258,18 @@ export function MicButton({
           premierMotMs: suiteMs,
           onTexte: setLastUserText,
         })
-      } catch {
-        setStatus("idle")
+      } catch (err) {
+        // Un silence après une réponse, c'est une conversation qui se termine :
+        // on rend la main sans rien afficher. Une vraie panne (micro refusé,
+        // moteur muet), en revanche, doit se voir — un retour silencieux à
+        // l'état de repos laisserait croire que Jarvis a compris.
+        const message = err instanceof Error ? err.message : ""
+        if (message.startsWith("Je n'ai rien entendu")) {
+          setStatus("idle")
+        } else {
+          setLastReply(message || "Le micro s'est arrêté.")
+          setStatus("error")
+        }
         return
       }
     }

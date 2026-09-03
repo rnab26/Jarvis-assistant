@@ -1,4 +1,6 @@
 import { useState } from "react"
+import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
+import { ecrireReglage } from "@/lib/reglages"
 
 const STORAGE_KEY = "jarvis_widget_config"
 
@@ -29,14 +31,12 @@ function readStoredConfig(): WidgetConfig {
 export function useWidgetSetting() {
   const [config, setConfigState] = useState<WidgetConfig>(readStoredConfig)
 
+  useRelireApresRestauration(() => setConfigState(readStoredConfig()))
+
   function setConfig(next: Partial<WidgetConfig>) {
     setConfigState((prev) => {
       const merged = { ...prev, ...next }
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
-      } catch {
-        // Stockage indisponible : la config reste active pour la session en cours seulement.
-      }
+      ecrireReglage(STORAGE_KEY, JSON.stringify(merged))
       return merged
     })
   }

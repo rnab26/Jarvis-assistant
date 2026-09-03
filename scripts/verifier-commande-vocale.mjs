@@ -62,8 +62,10 @@ const TACHES = [
   { id: "t-carreaux", title: "Commander les carreaux", notes: "Chantier villa Dan, 40 m2 de gres cerame", category_id: null, status: "done", due_date: null, due_time: null },
 ]
 const CHANTIERS = [
-  { id: "c-micro", title: "Micro", notes: "Le micro se coupe entre les phrases", status: "todo", priority: "normal" },
+  { id: "c-micro", title: "Micro", notes: "Le micro se coupe entre les phrases", status: "todo", priority: "normal", theme: "Voix et écoute" },
+  { id: "c-widget", title: "Widget", notes: null, status: "todo", priority: "low", theme: "L'app elle-même" },
 ]
+const THEMES = ["Voix et écoute", "L'app elle-même"]
 
 let PRONONCIATIONS = []
 
@@ -73,7 +75,7 @@ async function demander(phrase) {
     headers: { apikey: ANON, Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       transcript: phrase,
-      categories: [], tasks: TACHES, devItems: CHANTIERS, documents: [], contacts: [],
+      categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, documents: [], contacts: [],
       placeReminders: [], pronunciations: PRONONCIATIONS,
       widgetConfig: { maxTasks: 3, urgentOnly: false, categoryId: null },
       todayISO: new Date().toISOString().slice(0, 10),
@@ -202,6 +204,40 @@ cas.push(
       const types = (r.actions ?? []).map((x) => x.action)
       if (types.includes("add_calendar_event")) return [false, `parti dans l'agenda : ${types}`]
       if (!types.includes("add_task")) return [false, `aucune tâche créée : ${types}`]
+      return [true]
+    },
+  },
+)
+
+cas.push({
+  nom: "un nouveau chantier est rangé dans un thème existant",
+  phrase: "Ajoute un chantier : quand je chuchote, Jarvis n'entend rien du tout.",
+  controle: (r) => {
+    const a = (r.actions ?? []).find((x) => x.action === "add_dev_item")
+    if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+    if (a.theme !== "Voix et écoute") return [false, `thème = ${JSON.stringify(a.theme)}`]
+    return [true]
+  },
+})
+
+cas.push(
+  {
+    nom: "couper la voix à l'oral",
+    phrase: "Arrête de parler, réponds-moi juste à l'écrit.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_voice")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.voice_enabled !== false) return [false, `voice_enabled = ${a.voice_enabled}`]
+      return [true]
+    },
+  },
+  {
+    nom: "remettre la voix à l'oral",
+    phrase: "Tu peux reparler maintenant, remets ta voix.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_voice")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.voice_enabled !== true) return [false, `voice_enabled = ${a.voice_enabled}`]
       return [true]
     },
   },

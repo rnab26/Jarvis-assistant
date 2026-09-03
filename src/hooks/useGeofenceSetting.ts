@@ -1,6 +1,16 @@
 import { useState } from "react"
+import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
+import { ecrireReglage } from "@/lib/reglages"
 
 const STORAGE_KEY = "jarvis_geofence_enabled"
+
+function lire() {
+  try {
+    return localStorage.getItem(STORAGE_KEY) === "1"
+  } catch {
+    return false
+  }
+}
 
 /**
  * Préférence "rappels de lieu par géolocalisation réelle" (activation
@@ -8,22 +18,13 @@ const STORAGE_KEY = "jarvis_geofence_enabled"
  * persistée en local, propre à cet appareil.
  */
 export function useGeofenceSetting() {
-  const [enabled, setEnabledState] = useState(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) === "1"
-    } catch {
-      return false
-    }
-  })
+  const [enabled, setEnabledState] = useState(lire)
+
+  useRelireApresRestauration(() => setEnabledState(lire()))
 
   function setEnabled(value: boolean) {
     setEnabledState(value)
-    try {
-      localStorage.setItem(STORAGE_KEY, value ? "1" : "0")
-    } catch {
-      // Stockage indisponible (navigation privée, etc.) : la préférence
-      // reste active pour la session en cours seulement.
-    }
+    ecrireReglage(STORAGE_KEY, value ? "1" : "0")
   }
 
   return { enabled, setEnabled }

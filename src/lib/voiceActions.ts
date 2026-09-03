@@ -36,6 +36,7 @@ export type VoiceAction =
       notes?: string | null
       priority?: DevPriority
       status?: DevStatus
+      theme?: string | null
     }
   | { action: "update_dev_item"; item_id: string; changes: Partial<DevItemInput> }
   | { action: "delete_dev_item"; item_id: string }
@@ -83,6 +84,7 @@ export type VoiceAction =
       event_lieu?: string
     }
   | { action: "delete_calendar_event"; event_id?: string; event_cible?: string }
+  | { action: "set_voice"; voice_enabled: boolean }
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
   | { action: "unknown"; message: string }
@@ -153,6 +155,11 @@ export interface AgendaApi {
     lieu?: string | null
   }) => Promise<EvenementAgenda | null>
   supprimerEvenement: (eventId: string) => Promise<void>
+}
+
+export interface VoiceSettingApi {
+  muted: boolean
+  setMuted: (muted: boolean) => void
 }
 
 export interface WidgetApi {
@@ -253,6 +260,7 @@ export async function executeVoiceAction(
   { contacts, addContact, updateContact, deleteContact }: ContactsApi,
   { placeReminders, addPlaceReminder, deletePlaceReminder, geocodePlace }: PlaceRemindersApi,
   { pronunciations, addPronunciation, deletePronunciation }: PronunciationsApi,
+  { muted, setMuted }: VoiceSettingApi,
   { setConfig }: WidgetApi,
   agenda: AgendaApi,
 ): Promise<string> {
@@ -314,8 +322,11 @@ export async function executeVoiceAction(
         notes: action.notes ?? null,
         status: action.status ?? "todo",
         priority: action.priority ?? "normal",
+        theme: action.theme ?? null,
       })
-      return `Chantier "${action.title}" ajouté au cockpit.`
+      // Le thème est dit à voix haute : c'est le seul moment où Raphaël peut
+      // corriger un classement qui part de travers.
+      return `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}.`
     }
 
     case "update_dev_item": {
@@ -331,6 +342,7 @@ export async function executeVoiceAction(
       const dits: string[] = []
       if (action.changes.status) dits.push(STATUS_LABEL[action.changes.status])
       if (action.changes.priority) dits.push(PRIORITY_LABEL[action.changes.priority])
+      if (action.changes.theme) dits.push(`thème ${action.changes.theme}`)
       if (dits.length > 0) return `"${label}" passé en ${dits.join(", ")}.`
       return `"${label}" mis à jour.`
     }
@@ -505,6 +517,17 @@ export async function executeVoiceAction(
       }
       await agenda.supprimerEvenement(eventId)
       return `${titre} est supprimé de ton agenda.`
+    }
+
+    case "set_voice": {
+      // Écrit avant que la réponse ne soit prononcée : "coupe ta voix" est
+      // donc la dernière phrase qu'on n'entend pas, et "remets ta voix" la
+      // première qu'on entend à nouveau. La réponse reste affichée dans les
+      // deux cas.
+      if (action.voice_enabled === muted) setMuted(!action.voice_enabled)
+      return action.voice_enabled
+        ? "Voix rallumée, tu m'entends à nouveau."
+        : "D'accord, je me tais. Je continue de te répondre à l'écrit."
     }
 
     case "chat":

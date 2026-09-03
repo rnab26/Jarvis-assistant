@@ -6,6 +6,8 @@
  * repérer le disque, le recadrer, et rendre transparent tout ce qui l'entoure.
  */
 
+import { ecrireReglage } from "@/lib/reglages"
+
 const STORAGE_KEY = "jarvis_core_image"
 
 /** Image livrée avec l'app, déjà détourée. */
@@ -26,12 +28,10 @@ export function lireCoreImage(): string | null {
 }
 
 export function ecrireCoreImage(dataUrl: string | null) {
-  try {
-    if (dataUrl === null) localStorage.removeItem(STORAGE_KEY)
-    else localStorage.setItem(STORAGE_KEY, dataUrl)
-  } catch {
-    // Stockage plein ou refusé : on garde l'image d'origine.
-  }
+  // Passe par ecrireReglage : c'est ce qui fait remonter l'image en base.
+  // Sans ça, le réacteur importé à la main disparaissait à la première
+  // réinstallation de l'app, sans possibilité de le retrouver.
+  ecrireReglage(STORAGE_KEY, dataUrl)
 }
 
 function chargerImage(file: File): Promise<HTMLImageElement> {

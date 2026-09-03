@@ -35,6 +35,7 @@ function ShellContent() {
           geocodePlace: geofenceState.enabled ? geocodePlace : null,
         }}
         pronunciationsApi={pronunciationsState}
+        voiceSettingApi={{ muted: voiceState.muted, setMuted: voiceState.setMuted }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
         voiceIndex={voiceState.voiceIndex}

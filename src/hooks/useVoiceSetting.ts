@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import {
   DEFAULT_PITCH,
   DEFAULT_RATE,
@@ -10,6 +11,7 @@ import {
   VOICE_INDEX_KEY,
   VOICE_PITCH_KEY,
   VOICE_RATE_KEY,
+  writeVoiceMuted,
   writeVoicePref,
 } from "@/lib/voicePrefs"
 
@@ -19,6 +21,8 @@ import {
  */
 export function useVoiceSetting() {
   const [prefs, setPrefs] = useState(readVoicePrefs)
+
+  useRelireApresRestauration(() => setPrefs(readVoicePrefs()))
 
   function setVoiceIndex(value: number | null) {
     setPrefs((p) => ({ ...p, voiceIndex: value }))
@@ -37,6 +41,14 @@ export function useVoiceSetting() {
     writeVoicePref(VOICE_PITCH_KEY, borne)
   }
 
+  /** Coupe ou remet la voix. Écrit tout de suite en local : la synthèse lit
+   *  cette préférence à chaque lecture, y compris juste après une commande
+   *  vocale, sans attendre un nouveau rendu React. */
+  function setMuted(value: boolean) {
+    setPrefs((p) => ({ ...p, muted: value }))
+    writeVoiceMuted(value)
+  }
+
   /** Remet vitesse et hauteur aux valeurs d'origine, sans toucher à la voix. */
   function resetTon() {
     setPrefs((p) => ({ ...p, rate: DEFAULT_RATE, pitch: DEFAULT_PITCH }))
@@ -48,6 +60,8 @@ export function useVoiceSetting() {
     voiceIndex: prefs.voiceIndex,
     rate: prefs.rate,
     pitch: prefs.pitch,
+    muted: prefs.muted,
+    setMuted,
     setVoiceIndex,
     setRate,
     setPitch,
