@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
@@ -23,6 +24,16 @@ async function messageDeLaFonction(fnError: unknown): Promise<string> {
     }
   }
   return errorMessage(fnError)
+}
+
+/** Où Google doit renvoyer l'utilisateur une fois le consentement donné.
+ * Sur le web, l'onglet ouvert par la connexion revient sur la page qui l'a
+ * ouvert. Sur l'app installée, un onglet du navigateur système ne sert à
+ * rien à Raphaël : il faut revenir dans l'app elle-même, via son schéma de
+ * lien personnalisé (voir AndroidManifest.xml et la liste blanche côté
+ * Edge Function, retourAutorise). */
+function adresseDeRetour(): string {
+  return Capacitor.isNativePlatform() ? "com.raphael.jarvis://oauth-retour" : window.location.href
 }
 
 /**
@@ -93,7 +104,7 @@ export function useGoogleAccount(userId: string | undefined) {
     try {
       const { data, error: fnError } = await withTimeout(
         supabase.functions.invoke("google-oauth/start", {
-          body: { redirect_to: window.location.href },
+          body: { redirect_to: adresseDeRetour() },
         }),
         15000,
       )

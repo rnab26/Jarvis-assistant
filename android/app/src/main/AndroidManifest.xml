@@ -23,6 +23,25 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- Retour dans l'app après la connexion Google. Google refuse de
+                 s'afficher dans la WebView embarquée de l'app (erreur
+                 disallowed_useragent) : le consentement se donne forcément
+                 dans un vrai navigateur, et sans ce chemin de retour, la page
+                 de confirmation n'avait que le site web à proposer — Raphaël
+                 se retrouvait dans le navigateur au lieu de revenir dans
+                 l'app installée. Schéma personnalisé plutôt qu'App Links
+                 HTTPS : ceux-ci demandent d'héberger un fichier de
+                 vérification à la RACINE du domaine (rnab26.github.io), qui
+                 n'appartient pas à ce dépôt (le site est publié sous
+                 /Jarvis-assistant/). Le schéma est celui de l'application
+                 elle-même (com.raphael.jarvis), donc garanti unique sur
+                 l'appareil. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.raphael.jarvis" android:host="oauth-retour" />
+            </intent-filter>
         </activity>
 
         <receiver android:name=".JarvisWidgetProvider" android:exported="false">

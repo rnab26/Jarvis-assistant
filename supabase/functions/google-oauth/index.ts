@@ -41,6 +41,10 @@ const json = (corps: unknown, status = 200) =>
  * ce garde-fou, l'URL de callback deviendrait un tremplin vers n'importe
  * quel site — une redirection ouverte, que les hameçonneurs adorent.
  */
+/** Schéma de retour propre à l'app Android — voir AndroidManifest.xml pour
+ * pourquoi un schéma personnalisé plutôt qu'un App Link HTTPS. */
+const SCHEMA_APP_ANDROID = "com.raphael.jarvis:"
+
 function retourAutorise(url: string | null | undefined): string | null {
   if (!url) return null
   let cible: URL
@@ -49,6 +53,11 @@ function retourAutorise(url: string | null | undefined): string | null {
   } catch {
     return null
   }
+  // Retour direct dans l'app native, plutôt que dans un onglet vers le site
+  // web : c'est le schéma exact de l'application, garanti unique sur
+  // l'appareil, donc pas de risque qu'une autre app se l'approprie.
+  if (cible.protocol === SCHEMA_APP_ANDROID) return cible.toString()
+
   const hotesAutorises = [
     "rnab26.github.io",
     "localhost",
