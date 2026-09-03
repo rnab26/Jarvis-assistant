@@ -28,7 +28,13 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         </Button>
       </header>
 
-      <nav className="flex gap-2 border-b pb-2">
+      {/* flex-wrap, pas de défilement horizontal : à six onglets, la barre
+          sur une seule ligne débordait de l'écran d'un téléphone et les
+          deux derniers (Mémoire, Paramètres) devenaient inatteignables —
+          sans aucun indice qu'ils existaient encore. Un onglet caché est
+          un onglet perdu ; ils passent donc à la ligne. whitespace-nowrap
+          empêche au passage "Cockpit dev" de se couper en deux lignes. */}
+      <nav className="flex flex-wrap gap-2 border-b pb-2">
         {TABS.map((tab) => (
           <NavLink
             key={tab.to}
@@ -36,7 +42,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             end={tab.end}
             className={({ isActive }) =>
               cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium",
+                "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium",
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent",

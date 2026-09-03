@@ -40,13 +40,26 @@ export function useUpdateCheck() {
     COMMIT_SHA === "dev" ? "unknown" : "checking",
   )
   const [published, setPublished] = useState<PublishedBuild | null>(null)
+  const [verifieA, setVerifieA] = useState<Date | null>(null)
 
   const check = useCallback(async () => {
     if (COMMIT_SHA === "dev") {
       setStatus("unknown")
+      setVerifieA(new Date())
       return
     }
     setStatus("checking")
+    // Quand la réponse arrive en 200 ms et que le verdict ne change pas
+    // (le cas normal : on est déjà à jour), l'écran reste strictement
+    // identique et le bouton passe pour mort — signalé comme cassé alors
+    // qu'il fonctionnait. On garde donc l'état "Vérification" assez
+    // longtemps pour qu'il se voie, et on horodate le résultat.
+    const debut = Date.now()
+    const rendreVisible = async () => {
+      const reste = 600 - (Date.now() - debut)
+      if (reste > 0) await new Promise((r) => setTimeout(r, reste))
+      setVerifieA(new Date())
+    }
     try {
       const res = await fetch(
         `https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`,
@@ -72,26 +85,25 @@ export function useUpdateCheck() {
         // Release publiée par l'ancienne version du workflow : rien de
         // fiable à comparer, ne pas inventer un verdict.
         setStatus("unknown")
-        return
-      }
-      if (commit === COMMIT_SHA) {
+      } else if (commit === COMMIT_SHA) {
         setStatus("up-to-date")
-        return
+      } else {
+        const installe = BUILD_NUMBER ? Number(BUILD_NUMBER) : null
+        setStatus(
+          installe !== null && buildNumber !== null && installe >= buildNumber
+            ? "up-to-date"
+            : "update-available",
+        )
       }
-      const installe = BUILD_NUMBER ? Number(BUILD_NUMBER) : null
-      if (installe !== null && buildNumber !== null && installe >= buildNumber) {
-        setStatus("up-to-date")
-        return
-      }
-      setStatus("update-available")
     } catch {
       setStatus("unknown")
     }
+    await rendreVisible()
   }, [])
 
   useEffect(() => {
     void check()
   }, [check])
 
-  return { status, published, recheck: check }
+  return { status, published, verifieA, recheck: check }
 }
