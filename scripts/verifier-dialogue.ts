@@ -16,6 +16,15 @@ import {
   texteDuTour,
   type OptionsTour,
 } from "../src/lib/dialogueTour.ts"
+import {
+  apresRafale,
+  delaiAvantRafaleSuivante,
+  peutEcouterEnVeille,
+  RECUL_APRES_ECHEC_MS,
+  RESPIRATION_MS,
+  sansAccuse,
+  texteAAfficherEnVeille,
+} from "../src/lib/veille.ts"
 
 const OPTS: OptionsTour = { silenceMs: 2000, premierMotMs: 12000, maxMs: 180000 }
 
@@ -92,6 +101,68 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
   let etat = creerTour(0)
   etat = noterTexte(etat, "une très longue dictée", 179000)
   verifier("garde-fou : on rend ce qu'on a", decider(etat, 180001, OPTS, false), "terminer")
+}
+
+// 8. La veille (test en direct du 3 sept., symptôme 4) : le micro ne
+//    s'ouvre pas tout seul quand l'app est derrière une autre, ni quand
+//    quelqu'un s'en sert déjà.
+{
+  verifier("veille : app à l'écran, au repos → on écoute",
+    peutEcouterEnVeille({ actif: true, visible: true, statut: "idle" }), true)
+  verifier("veille : après une erreur, on écoute quand même",
+    peutEcouterEnVeille({ actif: true, visible: true, statut: "error" }), true)
+  verifier("veille : app derrière une autre → JAMAIS",
+    peutEcouterEnVeille({ actif: true, visible: false, statut: "idle" }), false)
+  verifier("veille : réglage coupé → jamais",
+    peutEcouterEnVeille({ actif: false, visible: true, statut: "idle" }), false)
+  verifier("veille : une écoute est en cours → on ne double pas",
+    peutEcouterEnVeille({ actif: true, visible: true, statut: "listening" }), false)
+  verifier("veille : Jarvis parle → on attend",
+    peutEcouterEnVeille({ actif: true, visible: true, statut: "speaking" }), false)
+}
+
+// 9. Fin de rafale (symptôme 3) : un appui sur le cœur pendant la rafale a
+//    pris la main — la veille ne doit plus écraser ce tour.
+{
+  verifier("rafale : quelqu'un a pris la main → on ne touche à rien",
+    apresRafale({ priseAvant: 3, priseApres: 4, transcript: "jarvis ajoute une tâche" }).suite, "laisser")
+  verifier("rafale : « Jarvis, ajoute une tâche » → la demande part",
+    apresRafale({ priseAvant: 3, priseApres: 3, transcript: "jarvis ajoute une tâche" }),
+    { suite: "conversation", demande: "ajoute une tache" })
+  verifier("rafale : « Jarvis » seul → « Oui ? »",
+    apresRafale({ priseAvant: 3, priseApres: 3, transcript: "Jarvis" }).suite, "oui")
+  verifier("rafale : « Jarvis, Jarvis » → « Oui ? », pas une demande « jarvis »",
+    apresRafale({ priseAvant: 3, priseApres: 3, transcript: "Jarvis, Jarvis !" }).suite, "oui")
+  verifier("rafale : une phrase sans mot-clé → repos, en silence",
+    apresRafale({ priseAvant: 3, priseApres: 3, transcript: "je passe à la banque demain" }).suite, "repos")
+  verifier("rafale : rien entendu → repos",
+    apresRafale({ priseAvant: 3, priseApres: 3, transcript: null }).suite, "repos")
+}
+
+// 10. Ce qu'on affiche pendant la veille : rien tant que « Jarvis » n'est
+//     pas dit, puis la demande au fil de l'eau (symptôme 2 : Raphaël ne
+//     voyait rien apparaître pendant qu'il parlait).
+{
+  verifier("veille : phrase non adressée → rien à l'écran",
+    texteAAfficherEnVeille("bon je passe à la banque"), null)
+  verifier("veille : « jarvice mets la mus » → la demande s'affiche déjà",
+    texteAAfficherEnVeille("jarvice mets la mus"), "mets la mus")
+}
+
+// 11. Démarrage refusé par le service : on recule au lieu de harceler.
+{
+  verifier("rafale suivante : après un refus, on recule", delaiAvantRafaleSuivante(true), RECUL_APRES_ECHEC_MS)
+  verifier("rafale suivante : normalement, juste une respiration", delaiAvantRafaleSuivante(false), RESPIRATION_MS)
+  verifier("le recul est plus long que la respiration", RECUL_APRES_ECHEC_MS > RESPIRATION_MS, true)
+}
+
+// 12. Le « Oui ? » de Jarvis, dit pendant que le micro s'ouvre, ne doit pas
+//     se retrouver en tête de la demande — mais un vrai « oui » reste un oui.
+{
+  verifier("écho du « Oui ? » retiré", sansAccuse("oui ? ajoute une tâche"), "ajoute une tâche")
+  verifier("écho en majuscule, sans ponctuation", sansAccuse("Oui ajoute une tâche"), "ajoute une tâche")
+  verifier("un « oui » seul est une réponse, pas un écho", sansAccuse("oui"), "oui")
+  verifier("une phrase qui commence autrement est intacte", sansAccuse("ouvre l'agenda"), "ouvre l'agenda")
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

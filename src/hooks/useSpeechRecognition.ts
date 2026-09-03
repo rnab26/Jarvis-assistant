@@ -40,6 +40,16 @@ function friendlyErrorMessage(code: string): string {
 
 const RIEN_ENTENDU = "Je n'ai rien entendu, réessaie."
 
+/** Le service de reconnaissance a refusé de démarrer (encore occupé par la
+ * session précédente, ou app passée en arrière-plan). Distinct du silence :
+ * l'appelant doit reculer un peu avant de réessayer, pas repartir aussitôt. */
+export const MOTEUR_OCCUPE = "Le moteur d'écoute est occupé."
+
+/** Temps laissé à une écoute en cours pour se clore quand une nouvelle la
+ * remplace. Au-delà on part sans elle : deux reconnaissances en même temps
+ * est pire qu'un arrêt un peu brutal. */
+const DELAI_RELEVE_MS = 1500
+
 function attendre(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -139,6 +149,13 @@ export function useSpeechRecognition() {
   const arretManuelRef = useRef(false)
   // Permission micro déjà accordée : évite de la redemander à chaque rafale.
   const microPretRef = useRef(false)
+  // UN SEUL PROPRIÉTAIRE DU MICRO. L'écoute en cours, et de quoi la clore
+  // depuis l'extérieur. Deux `listen()` qui se chevauchaient (rafale du
+  // mot-clé + appui sur le cœur) lançaient deux reconnaissances Android en
+  // même temps : micro qui clignote, tour de parole écrasé. Maintenant une
+  // nouvelle écoute relève l'ancienne, et attend qu'elle soit close.
+  const enCoursRef = useRef<Promise<unknown> | null>(null)
+  const clorePresenteRef = useRef<(() => void) | null>(null)
 
   const isSupported = isNative || getSpeechRecognitionCtor() !== null
 
@@ -210,9 +227,11 @@ export function useSpeechRecognition() {
         if (status === "stopped") resoudreStop?.()
       })
 
+      let demarrageRefuse = false
       try {
         const arret = new Promise<void>((resolve) => {
           resoudreStop = resolve
+          clorePresenteRef.current = resolve
           filet = setTimeout(() => {
             NativeSpeechRecognition.stop().catch(() => {})
             resolve()
@@ -225,30 +244,40 @@ export function useSpeechRecognition() {
         // et on ne laisse ensuite qu'un court instant au plugin pour rendre
         // son résultat final. Sans ça, reconnaître « Jarvis » à la troisième
         // seconde ne servait à rien : on restait suspendu au plugin.
-        const enCours = borner(
-          NativeSpeechRecognition.start({
-            language: "fr-FR",
-            maxResults: 1,
-            partialResults: true,
-            popup: false,
-          }),
-          WAKE_LISTEN_MS + DELAI_PLUGIN_MS,
-        )
+        //
+        // Un REJET, lui, arrive tout de suite : service encore occupé, app
+        // en arrière-plan. Avant, il était avalé et on attendait la fin de
+        // la rafale — 25 s de micro « allumé » pour rien, puis relance
+        // immédiate, puis nouveau refus : le clignotement signalé.
+        const enCours = NativeSpeechRecognition.start({
+          language: "fr-FR",
+          maxResults: 1,
+          partialResults: true,
+          popup: false,
+        }).catch(() => {
+          demarrageRefuse = true
+          resoudreStop?.()
+          return null
+        })
         await arret
         const resultat = await borner(enCours, 600)
 
         // Le résultat final d'Android est mieux ponctué que le dernier
         // partiel ; on le préfère quand il existe.
         const transcript = (resultat?.matches?.[0] ?? flux.texte).trim()
-        if (!transcript) throw new Error(RIEN_ENTENDU)
+        if (!transcript) throw new Error(demarrageRefuse ? MOTEUR_OCCUPE : RIEN_ENTENDU)
         return transcript
       } finally {
         if (filet) clearTimeout(filet)
+        clorePresenteRef.current = null
+        // L'interface d'abord, sans rien attendre (voir le mode commande).
         setListening(false)
         setReady(false)
-        NativeSpeechRecognition.stop().catch(() => {})
         partiels.remove().catch(() => {})
         etats.remove().catch(() => {})
+        // Puis un arrêt BORNÉ, attendu : repartir avant que le service ait
+        // lâché le micro, c'est le prochain start() refusé.
+        await borner(NativeSpeechRecognition.stop(), 800)
       }
     },
     [preparerNatif],
@@ -302,6 +331,12 @@ export function useSpeechRecognition() {
           let filet: ReturnType<typeof setTimeout> | null = null
           const arret = new Promise<void>((resolve) => {
             resoudreStop = resolve
+            // Relevé par une autre écoute : on clôt pour de bon, pas
+            // seulement cette session — sinon la boucle pourrait la relancer.
+            clorePresenteRef.current = () => {
+              flux.stopDemande = true
+              resolve()
+            }
             const restant = opts.maxMs - (Date.now() - flux.etat.debutAt)
             filet = setTimeout(resolve, Math.max(2000, restant + 2000))
           })
@@ -337,11 +372,12 @@ export function useSpeechRecognition() {
         // résolvait pas : le texte était entendu, le tour ne se terminait
         // jamais, et Jarvis restait muet en écoute.
         clearInterval(battement)
+        clorePresenteRef.current = null
         setListening(false)
         setReady(false)
-        NativeSpeechRecognition.stop().catch(() => {})
         partiels.remove().catch(() => {})
         etats.remove().catch(() => {})
+        await borner(NativeSpeechRecognition.stop(), 800)
       }
     },
     [preparerNatif],
@@ -449,6 +485,10 @@ export function useSpeechRecognition() {
           courante.reco?.stop()
         }
       }, 250)
+      clorePresenteRef.current = () => {
+        flux.stopDemande = true
+        courante.reco?.stop()
+      }
 
       setListening(true)
       try {
@@ -463,6 +503,7 @@ export function useSpeechRecognition() {
         return transcript
       } finally {
         clearInterval(battement)
+        clorePresenteRef.current = null
         courante.reco = null
         recognitionRef.current = null
         setListening(false)
@@ -475,6 +516,20 @@ export function useSpeechRecognition() {
   const listen = useCallback(
     async (mode: "command" | "wake" = "command", options: OptionsEcoute = {}): Promise<string> => {
       setError(null)
+
+      // Relève : une écoute est déjà en cours (typiquement la rafale du
+      // mot-clé quand on touche le cœur). On la clôt et on attend qu'elle
+      // ait rendu la main — bornée — avant d'ouvrir la nôtre. Jamais deux
+      // reconnaissances à la fois.
+      const precedente = enCoursRef.current
+      if (precedente) {
+        arretManuelRef.current = true
+        clorePresenteRef.current?.()
+        if (isNative) NativeSpeechRecognition.stop().catch(() => {})
+        else recognitionRef.current?.stop()
+        await borner(precedente, DELAI_RELEVE_MS)
+      }
+
       arretManuelRef.current = false
       try {
         const ecoute = isNative
@@ -482,6 +537,11 @@ export function useSpeechRecognition() {
             ? ecouterWakeNatif(options)
             : ecouterCommandeNative(options)
           : ecouterWeb(mode, options)
+        const suivi = ecoute.catch(() => null)
+        enCoursRef.current = suivi
+        suivi.finally(() => {
+          if (enCoursRef.current === suivi) enCoursRef.current = null
+        })
 
         // Filet de dernier recours. Chaque attente du moteur est déjà bornée
         // une par une ; celui-ci garantit la propriété qui compte vraiment :
@@ -509,6 +569,7 @@ export function useSpeechRecognition() {
   /** Clôt le tour en cours avec ce qui a déjà été entendu. */
   const stop = useCallback(() => {
     arretManuelRef.current = true
+    clorePresenteRef.current?.()
     if (isNative) {
       NativeSpeechRecognition.stop().catch(() => {})
     } else {

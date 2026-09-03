@@ -29,6 +29,12 @@ const DOIT_REVEILLER: [string, string][] = [
   ["JARVIS !", ""],
   ["eh Jarvis, tu m'entends", "tu m'entends"],
   ["jarvisse ajoute un chantier", "ajoute un chantier"],
+  // Test en direct du 3 sept. : le mot-clé répété quand le premier n'a pas
+  // semblé pris, et le mot-clé en fin de phrase.
+  ["Jarvis, Jarvis !", ""],
+  ["jarvis jarvis ajoute une tâche", "ajoute une tache"],
+  ["dis-moi Jarvis", ""],
+  ["ok jarvis mets de la musique", "mets de la musique"],
 ]
 
 for (const [entendu, resteAttendu] of DOIT_REVEILLER) {
