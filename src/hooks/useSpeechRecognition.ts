@@ -74,8 +74,22 @@ const PLAFOND_MARGE_MS = 15000
 // (Chrome mobile, où le micro a déjà été validé), on garde l'API Web.
 const isNative = Capacitor.isNativePlatform()
 
-/** Écoute passive du mot-clé "Jarvis" : une phrase courte, pas une dictée. */
-const WAKE_LISTEN_MS = 8000
+/**
+ * Durée d'une rafale d'écoute du mot-clé.
+ *
+ * Elle était de 8 s, mais surtout : entre deux rafales, l'app redemandait la
+ * disponibilité et la permission du micro (deux allers-retours avec Android),
+ * attendait 500 ms, puis relançait le moteur — qui met lui-même une bonne
+ * demi-seconde à devenir sourd-muet. Le micro passait ainsi une part énorme
+ * du temps à ne PAS écouter, et un « Jarvis » tombé dans un de ces trous
+ * n'était jamais entendu. C'est la cause racine du réveil qui ne marchait
+ * qu'une fois sur deux.
+ *
+ * Maintenant la rafale dure plus longtemps, la préparation n'a lieu qu'une
+ * fois, et la détection se fait sur les résultats partiels : la longueur ne
+ * retarde plus la réaction.
+ */
+const WAKE_LISTEN_MS = 25000
 
 export interface OptionsEcoute {
   /** Silence toléré en pleine phrase. Défaut : le réglage de l'utilisateur. */
@@ -84,6 +98,13 @@ export interface OptionsEcoute {
   premierMotMs?: number
   /** Appelé chaque fois que le texte entendu change (affichage en direct). */
   onTexte?: (texte: string) => void
+  /**
+   * Clôt le tour dès que ce qui est entendu suffit, sans attendre le silence
+   * ni la fin de la rafale. C'est ce qui rend le réveil vocal instantané :
+   * on reconnaît « Jarvis » dans un résultat PARTIEL, pendant que la personne
+   * finit sa phrase, au lieu d'attendre qu'Android rende son résultat final.
+   */
+  arreterSi?: (texte: string) => boolean
 }
 
 /** État mutable d'un tour, dans un objet plutôt qu'en variables libres : il
@@ -116,6 +137,8 @@ export function useSpeechRecognition() {
   // Un appui volontaire sur le micro pendant l'écoute vaut « j'ai fini » :
   // on clôt le tour avec ce qui a déjà été entendu, sans attendre le silence.
   const arretManuelRef = useRef(false)
+  // Permission micro déjà accordée : évite de la redemander à chaque rafale.
+  const microPretRef = useRef(false)
 
   const isSupported = isNative || getSpeechRecognitionCtor() !== null
 
@@ -131,6 +154,12 @@ export function useSpeechRecognition() {
   // --- Android natif -------------------------------------------------------
 
   const preparerNatif = useCallback(async () => {
+    // Une fois la permission accordée, ces deux allers-retours avec Android
+    // ne changent plus rien — mais ils coûtent des centaines de millisecondes
+    // À CHAQUE rafale d'écoute du mot-clé, pendant lesquelles le micro est
+    // sourd. On ne les refait donc plus une fois qu'ils ont dit oui.
+    if (microPretRef.current) return
+
     const dispo = await borner(NativeSpeechRecognition.available(), DELAI_PLUGIN_MS)
     if (!dispo?.available) throw new Error("Reconnaissance vocale indisponible sur cet appareil.")
 
@@ -140,39 +169,83 @@ export function useSpeechRecognition() {
     if (permission.speechRecognition !== "granted") {
       throw new Error("Micro refusé. Autorise l'accès au micro dans les paramètres de l'app.")
     }
+    microPretRef.current = true
   }, [])
 
-  /** Rafale courte pour le mot-clé : mode commande natif, coupe sur un silence court. */
-  const ecouterWakeNatif = useCallback(async (): Promise<string> => {
-    await preparerNatif()
-    setListening(true)
-    let filet: ReturnType<typeof setTimeout> | null = null
-    const etats = await NativeSpeechRecognition.addListener("listeningState", ({ status }) =>
-      setReady(status === "started"),
-    )
-    try {
-      filet = setTimeout(() => {
-        NativeSpeechRecognition.stop().catch(() => {})
-      }, WAKE_LISTEN_MS)
-      const resultat = await borner(
-        NativeSpeechRecognition.start({
-          language: "fr-FR",
-          maxResults: 1,
-          partialResults: false,
-          popup: false,
-        }),
-        WAKE_LISTEN_MS + DELAI_PLUGIN_MS,
+  /**
+   * Écoute du mot-clé : une longue rafale en mode dictée, analysée au vol.
+   *
+   * L'ancienne version demandait un résultat FINAL à Android (partialResults
+   * à false) : il fallait attendre qu'il décide que la phrase était finie
+   * avant de savoir si « Jarvis » avait été dit. Avec les partiels, on le
+   * reconnaît pendant que Raphaël parle encore, et on rend la main tout de
+   * suite — la demande qui suit le mot-clé est déjà dans le texte.
+   */
+  const ecouterWakeNatif = useCallback(
+    async (o: OptionsEcoute): Promise<string> => {
+      await preparerNatif()
+      setListening(true)
+
+      const flux = { texte: "", suffit: false }
+      let resoudreStop: (() => void) | undefined
+      let filet: ReturnType<typeof setTimeout> | null = null
+
+      const partiels = await NativeSpeechRecognition.addListener(
+        "partialResults",
+        ({ matches }) => {
+          const texte = matches?.[0]
+          if (typeof texte !== "string" || !texte.trim()) return
+          flux.texte = texte
+          o.onTexte?.(texte)
+          if (!flux.suffit && o.arreterSi?.(texte)) {
+            flux.suffit = true
+            NativeSpeechRecognition.stop().catch(() => {})
+            // Si "stopped" ne vient jamais, on n'attend pas pour autant.
+            setTimeout(() => resoudreStop?.(), 800)
+          }
+        },
       )
-      const transcript = (resultat?.matches?.[0] ?? "").trim()
-      if (!transcript) throw new Error(RIEN_ENTENDU)
-      return transcript
-    } finally {
-      if (filet) clearTimeout(filet)
-      setListening(false)
-      setReady(false)
-      etats.remove().catch(() => {})
-    }
-  }, [preparerNatif])
+      const etats = await NativeSpeechRecognition.addListener("listeningState", ({ status }) => {
+        setReady(status === "started")
+        if (status === "stopped") resoudreStop?.()
+      })
+
+      try {
+        const arret = new Promise<void>((resolve) => {
+          resoudreStop = resolve
+          filet = setTimeout(() => {
+            NativeSpeechRecognition.stop().catch(() => {})
+            resolve()
+          }, WAKE_LISTEN_MS)
+        })
+
+        const resultat = await borner(
+          NativeSpeechRecognition.start({
+            language: "fr-FR",
+            maxResults: 1,
+            partialResults: true,
+            popup: false,
+          }),
+          WAKE_LISTEN_MS + DELAI_PLUGIN_MS,
+        )
+        await arret
+
+        // Le résultat final d'Android est mieux ponctué que le dernier
+        // partiel ; on le préfère quand il existe.
+        const transcript = (resultat?.matches?.[0] ?? flux.texte).trim()
+        if (!transcript) throw new Error(RIEN_ENTENDU)
+        return transcript
+      } finally {
+        if (filet) clearTimeout(filet)
+        setListening(false)
+        setReady(false)
+        NativeSpeechRecognition.stop().catch(() => {})
+        partiels.remove().catch(() => {})
+        etats.remove().catch(() => {})
+      }
+    },
+    [preparerNatif],
+  )
 
   const ecouterCommandeNative = useCallback(
     async (o: OptionsEcoute): Promise<string> => {
@@ -279,7 +352,7 @@ export function useSpeechRecognition() {
       }
 
       const isWake = mode === "wake"
-      const opts = optionsTour(isWake ? { silenceMs: 800, premierMotMs: WAKE_LISTEN_MS } : o)
+      const opts = optionsTour(isWake ? { silenceMs: 1200, premierMotMs: WAKE_LISTEN_MS } : o)
       const flux: FluxEcoute = { etat: creerTour(Date.now()), stopDemande: false, erreur: null }
       // Le web rend un flux cumulatif : on garde nous-mêmes les résultats
       // finaux pour qu'ils survivent au redémarrage du moteur.
@@ -294,6 +367,12 @@ export function useSpeechRecognition() {
         const avant = flux.etat.courant
         flux.etat = noterTexte(flux.etat, texte, Date.now())
         if (flux.etat.courant !== avant) o.onTexte?.(texteDuTour(flux.etat))
+        // Ce qui a été entendu suffit déjà (le mot-clé, par exemple) : on
+        // clôt sans attendre le silence.
+        if (!flux.stopDemande && texte && o.arreterSi?.(texte)) {
+          flux.stopDemande = true
+          courante.reco?.stop()
+        }
       }
 
       function session(): Promise<void> {
@@ -305,8 +384,13 @@ export function useSpeechRecognition() {
           // continuous : le moteur ne rend pas la main à la première pause.
           // interimResults : les mots en cours de reconnaissance remettent le
           // minuteur de silence à zéro pendant qu'on parle.
-          reco.continuous = !isWake
-          reco.interimResults = !isWake
+          //
+          // Le mode mot-clé les active AUSSI depuis la correction du réveil
+          // vocal : sans eux, Chrome coupait à la première pause et il fallait
+          // relancer une session — le micro était sourd pendant ce temps, et
+          // « Jarvis » dit à cet instant se perdait.
+          reco.continuous = true
+          reco.interimResults = true
           reco.maxAlternatives = 1
 
           let interim = ""
@@ -388,7 +472,7 @@ export function useSpeechRecognition() {
       try {
         const ecoute = isNative
           ? mode === "wake"
-            ? ecouterWakeNatif()
+            ? ecouterWakeNatif(options)
             : ecouterCommandeNative(options)
           : ecouterWeb(mode, options)
 
