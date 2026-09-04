@@ -281,6 +281,15 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   champ libre. **À lire avant de coder quoi que ce soit du chantier
   « Systèmes de notifications » (5d03a192).**
 
+- **La clé de test Gemini** — les six étapes pour créer un SECOND projet
+  Google AI Studio et sa clé, afin que les vérifications des sessions cessent
+  de vider le quota du jour de Raphaël (c'est ce qui l'a laissé sans Jarvis le
+  3 sept. à 21h28). Chaque étape se coche, avec commentaire et capture.
+  https://claude.ai/code/artifact/e1bfdff8-c18e-4642-9752-1c4029d046aa
+  Son avancement : document `fiche/cle-test` (`action: "read_db"`,
+  `db_op: "get"`) — un booléen par étape (projet, studio, creer, copier,
+  deposer, dire) plus ses commentaires. **Chantier 4eaf9c1d.**
+
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
