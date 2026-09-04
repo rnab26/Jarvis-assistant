@@ -604,6 +604,16 @@ de voix, la fin de tour, l'interruption et la transcription. Derrière la case
   en Live comme en classique — un appui sur le cœur, lui, voyait tout). Le
   banc du cœur de `verifier-ecoute-web.mjs` monte le vrai `MicButton` avec
   des tâches chargées après le montage et rejoue exactement ce cas.
+- **Les souvenirs sont joints par `live-jeton`, pas par l'app.** En mode
+  classique, `voice-command` cherche les souvenirs pertinents à CHAQUE phrase ;
+  en Live le contexte est scellé une seule fois à l'ouverture, donc on ne peut
+  rien chercher « par rapport à la question » — on joint ce qu'il sait, tout
+  court (`souvenirsDeLUtilisateur`, 40 max). Côté serveur exprès : ça reste
+  vrai même si `contexteLive()` change dans `MicButton`. Sans ça Jarvis était
+  amnésique en Live et pas en classique. Le mot-à-mot des conversations, lui,
+  ne peut pas être scellé d'avance : la consigne Live dit d'appeler
+  `commande_jarvis` pour « on avait parlé de quoi… », qui repasse par la
+  recherche de `memoire.ts`.
 - Vérification : `ANON_KEY=... node scripts/verifier-live-jeton.mjs` (fonction
   déployée, utilisateur de test éphémère). Le comportement audio réel ne se
   vérifie que sur un appareil ; `journal_ecoute` trace `live_debut`,
