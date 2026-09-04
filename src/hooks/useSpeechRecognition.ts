@@ -216,7 +216,7 @@ export function useSpeechRecognition() {
   // d'un Samsung. On lit une fois quel service a été retenu, pour le
   // journal d'écoute — rien ne dépend de cette valeur côté comportement.
   const serviceUtilise = NativeSpeechRecognition as unknown as {
-    serviceUtilise?: () => Promise<{ nom: string }>
+    serviceUtilise?: () => Promise<{ nom: string; disponibles: string }>
   }
 
   const preparerNatif = useCallback(async () => {
@@ -238,7 +238,7 @@ export function useSpeechRecognition() {
     microPretRef.current = true
 
     const service = await borner(serviceUtilise.serviceUtilise?.() ?? Promise.resolve(null), 400)
-    if (service) noterEcoute("service_reconnaissance", { nom: service.nom })
+    if (service) noterEcoute("service_reconnaissance", { nom: service.nom, disponibles: service.disponibles })
   }, [])
 
   /**

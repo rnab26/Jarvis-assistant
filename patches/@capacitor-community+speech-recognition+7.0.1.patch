@@ -1,5 +1,5 @@
 diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
-index a99ea69..c224389 100644
+index a99ea69..83f0728 100644
 --- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 +++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 @@ -2,10 +2,15 @@ package com.getcapacitor.community.speechrecognition;
@@ -53,28 +53,40 @@ index a99ea69..c224389 100644
 +     * qui ne peut pas le savoir autrement. */
 +    @PluginMethod
 +    public void serviceUtilise(PluginCall call) {
-+        call.resolve(new JSObject().put("nom", serviceChoisi));
++        call.resolve(new JSObject().put("nom", serviceChoisi).put("disponibles", servicesDisponibles));
 +    }
 +
      @ActivityCallback
      private void listeningResult(PluginCall call, ActivityResult result) {
          if (call == null) {
-@@ -151,6 +174,32 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -151,6 +174,44 @@ public class SpeechRecognition extends Plugin implements Constants {
          this.listening = value;
      }
  
++    // Diagnostic : ce que queryIntentServices() a vraiment trouve, pour
++    // savoir -- au lieu de deviner une deuxieme fois -- pourquoi "defaut"
++    // reste choisi sur un telephone donne (Play Services absent, service
++    // sous un autre paquet, ou requete filtree par le systeme).
++    private String servicesDisponibles = "";
++
 +    /** Le composant du service de reconnaissance de Google, si l'app est
 +     * installee -- null sinon (elle est absente sur un telephone sans
-+     * Play Services). */
++     * Play Services, ou son paquet differe de celui attendu ici). */
 +    private ComponentName trouverServiceGoogle() {
 +        PackageManager pm = bridge.getContext().getPackageManager();
 +        List<ResolveInfo> services = pm.queryIntentServices(new Intent(RecognitionService.SERVICE_INTERFACE), 0);
++        StringBuilder trouves = new StringBuilder();
++        ComponentName google = null;
 +        for (ResolveInfo info : services) {
-+            if (info.serviceInfo != null && "com.google.android.googlequicksearchbox".equals(info.serviceInfo.packageName)) {
-+                return new ComponentName(info.serviceInfo.packageName, info.serviceInfo.name);
++            if (info.serviceInfo == null) continue;
++            if (trouves.length() > 0) trouves.append(",");
++            trouves.append(info.serviceInfo.packageName);
++            if ("com.google.android.googlequicksearchbox".equals(info.serviceInfo.packageName)) {
++                google = new ComponentName(info.serviceInfo.packageName, info.serviceInfo.name);
 +            }
 +        }
-+        return null;
++        servicesDisponibles = trouves.length() > 0 ? trouves.toString() : "aucun";
++        return google;
 +    }
 +
 +    /** Cree le recognizer en visant Google quand il est present, pour
@@ -92,7 +104,7 @@ index a99ea69..c224389 100644
      private void beginListening(
          String language,
          int maxResults,
-@@ -188,11 +237,18 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -188,11 +249,18 @@ public class SpeechRecognition extends Plugin implements Constants {
                              speechRecognizer = null;
                          }
  
@@ -112,7 +124,7 @@ index a99ea69..c224389 100644
                          speechRecognizer.startListening(intent);
                          SpeechRecognition.this.listening(true);
                          if (partialResults) {
-@@ -245,6 +301,11 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -245,6 +313,11 @@ public class SpeechRecognition extends Plugin implements Constants {
          public void onBeginningOfSpeech() {
              try {
                  SpeechRecognition.this.lock.lock();

@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core"
 import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/actionsTelephone"
 import { ecrireReglage } from "@/lib/reglages"
+import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
 
 /** Les catégories du téléphone où Jarvis doit choisir une application sans
@@ -138,7 +139,8 @@ export async function executerActionTelephone(
         // MicButton pose la question une fois, avant d'arriver ici, quand
         // aucune n'est encore connue ; ici on ne fait qu'appliquer et
         // qu'apprendre la réponse pour la prochaine fois.
-        let nomCible = action.app_name || (action.music_query ? appPreferee("musique") ?? undefined : undefined)
+        const preferee = action.music_query ? appPreferee("musique") : null
+        let nomCible = action.app_name || preferee || undefined
 
         if (nomCible) {
           const { applications } = await ActionsTelephone.listerApplications()
@@ -149,6 +151,18 @@ export async function executerActionTelephone(
           paquet = trouvee.paquet
           nomAffiche = trouvee.nom
           if (action.music_query) ecrireReglage(CLES_APP.musique, trouvee.nom)
+        }
+
+        // Diagnostic : signalé par Raphaël le 4 sept. (deux demandes de suite,
+        // deux applications différentes sans rapport) — de quoi voir si
+        // app_name vient du modèle, de la préférence retenue, ou de rien.
+        if (action.music_query) {
+          noterEcoute("open_app_musique", {
+            app_name_modele: action.app_name ?? null,
+            preference_retenue: preferee,
+            app_choisie: nomAffiche || null,
+            paquet_trouve: paquet ?? null,
+          })
         }
 
         await ActionsTelephone.ouvrirApplication({ paquet, recherche: action.music_query })
