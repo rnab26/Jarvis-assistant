@@ -251,6 +251,15 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   lues** — c'est un [À CADRER] pour le visuel, et un arbitrage de coût pour la
   recherche web.
 
+- **Quand Jarvis doit te déranger** — les neuf notifications proposées à
+  Raphaël, classées par ce qu'elles coûtent en attention (ça sonne / une fois
+  par jour / silencieux / déconseillé), avec mes recommandations déjà cochées.
+  https://claude.ai/code/artifact/7d87dcb4-4cfd-48fb-9e52-603d4143ab2d
+  Ses choix : document `fiche/notifications` (`action: "read_db"`,
+  `db_op: "get"`) — un booléen par notification, plus `heure_matin` et un
+  champ libre. **À lire avant de coder quoi que ce soit du chantier
+  « Systèmes de notifications » (5d03a192).**
+
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
