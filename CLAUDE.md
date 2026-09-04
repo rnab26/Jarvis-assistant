@@ -556,7 +556,7 @@ La CI a les vraies valeurs. Et le typecheck qui compte est celui de la CI,
 `npx tsc --noEmit` à la racine ne vérifie PAS l'app et dit « OK » à tort
 (constaté le 4 sept. : CI rouge sur une erreur qu'il n'avait pas vue).
 
-## Les dix vérifications du dépôt
+## Les vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
