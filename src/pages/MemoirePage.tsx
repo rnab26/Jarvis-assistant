@@ -3,12 +3,14 @@ import { useState } from "react"
 import { ConfirmerSuppression } from "@/components/ConfirmerSuppression"
 import { LoadError } from "@/components/LoadError"
 import { ConversationsRecentes } from "@/components/memoire/ConversationsRecentes"
+import { SanteMemoire } from "@/components/memoire/SanteMemoire"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/useAuth"
 import { useEchanges } from "@/hooks/useEchanges"
+import { useSanteMemoire } from "@/hooks/useSanteMemoire"
 import { useSouvenirs } from "@/hooks/useSouvenirs"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { Souvenir, SouvenirCategorie } from "@/types/database"
@@ -128,11 +130,16 @@ export function MemoirePage() {
     session?.user.id,
   )
   const echanges = useEchanges(session?.user.id)
+  const sante = useSanteMemoire(session?.user.id)
 
   const vivants = souvenirs.filter((s) => !s.perime_at)
 
   return (
     <div className="flex flex-col gap-4">
+      {/* En tête, parce qu'une mémoire morte rend tout le reste de la page
+          trompeur : la liste aurait l'air normale, simplement figée. */}
+      <SanteMemoire api={sante} />
+
       <p className="text-sm text-muted-foreground">
         Jarvis retient au fil de vos échanges, sans rien te demander. Voilà tout ce qu'il a gardé —
         corrige ce qui est faux, fais-lui oublier ce qui ne sert plus. Le mot-à-mot des

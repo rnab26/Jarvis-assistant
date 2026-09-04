@@ -90,6 +90,18 @@ const connexion = await fetch(`${URL_PROJET}/auth/v1/token?grant_type=password`,
 const jeton = (await connexion.json()).access_token
 if (!jeton) { console.error("connexion impossible"); process.exit(1) }
 
+/** Appelle une fonction SQL AVEC LE JETON de l'utilisateur de test : c'est le
+ *  seul moyen de vérifier ce que voit vraiment l'app, puisque ces fonctions
+ *  s'appuient sur auth.uid() — que la clé de service ne renseigne pas. */
+async function rpc(nom, corps = {}) {
+  const r = await fetch(`${URL_PROJET}/rest/v1/rpc/${nom}`, {
+    method: "POST",
+    headers: { apikey: ANON, Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" },
+    body: JSON.stringify(corps),
+  })
+  return await r.json()
+}
+
 async function dire(phrase) {
   const r = await fetch(`${URL_PROJET}/functions/v1/${FONCTION}`, {
     method: "POST",
@@ -300,6 +312,90 @@ if (souvenirCulture === 0) {
       "le contrôle décisif reste celui de la proximité ci-dessus)",
   )
 }
+
+// ---------------------------------------------------------------------------
+// Le témoin de la mémoire (chantier 9ab3ca4d).
+//
+// La mémorisation est silencieuse et avale ses erreurs : le 4 sept. elle est
+// restée morte des heures sans que rien ne le dise. sante_memoire() est ce qui
+// rend l'état consultable — encore faut-il qu'elle dise vrai.
+// ---------------------------------------------------------------------------
+
+const sante = (await rpc("sante_memoire"))[0]
+console.log(`\nSanté de la mémoire : ${JSON.stringify(sante)}`)
+
+verifier(
+  "le témoin voit que la mémoire a travaillé",
+  sante && sante.dernier_souvenir !== null,
+  "dernier_souvenir vide alors que des souvenirs viennent d'être écrits",
+)
+verifier(
+  "il compte les souvenirs vivants, pas les périmés",
+  sante && sante.souvenirs_vivants === vivants.length + 1,
+  `${sante?.souvenirs_vivants} contre ${vivants.length + 1} attendus (le loyer à 4500 s'est ajouté)`,
+)
+verifier(
+  "il ne crie pas au loup quand tout va bien",
+  sante && sante.echanges_depuis < 12 && sante.erreur_titre === null,
+  `${sante?.echanges_depuis} échanges depuis, erreur « ${sante?.erreur_titre} »`,
+)
+
+// Une correction à la main ne doit PAS passer pour un travail de la mémoire :
+// sinon le témoin repasserait au vert dès que Raphaël retouche un souvenir,
+// exactement au moment où il faudrait qu'il reste rouge.
+const aCorriger = (await rpc("sante_memoire"))[0]
+await fetch(`${URL_PROJET}/rest/v1/souvenirs?user_id=eq.${userId}&perime_at=is.null&limit=1`, {
+  method: "PATCH",
+  headers: {
+    apikey: ANON,
+    Authorization: `Bearer ${jeton}`,
+    "Content-Type": "application/json",
+    Prefer: "return=minimal",
+  },
+  body: JSON.stringify({ contenu: "Corrigé à la main par Raphaël.", updated_at: new Date().toISOString() }),
+})
+const apresCorrection = (await rpc("sante_memoire"))[0]
+verifier(
+  "corriger un souvenir à la main ne fait pas passer le témoin pour actif",
+  apresCorrection?.dernier_souvenir === aCorriger?.dernier_souvenir,
+  `la date a bougé (${aCorriger?.dernier_souvenir} → ${apresCorrection?.dernier_souvenir}) : ` +
+    "le témoin repasserait au vert dès que Raphaël retouche un souvenir, au pire moment",
+)
+
+// Une panne signalée par la mémoire elle-même doit remonter jusqu'au témoin.
+await rpc("signaler_erreur", {
+  p_categorie: "serveur",
+  p_titre: "La mémoire n'a rien pu retenir de cet échange",
+  p_detail: "Contrôle automatique : quota du modèle épuisé (simulé).",
+  p_contexte: "verifier-memoire.mjs",
+  p_source: "memoire",
+})
+const santeApres = (await rpc("sante_memoire"))[0]
+verifier(
+  "une panne signalée par la mémoire remonte jusqu'au témoin",
+  santeApres?.erreur_titre === "La mémoire n'a rien pu retenir de cet échange",
+  `erreur_titre = ${JSON.stringify(santeApres?.erreur_titre)} — la panne resterait invisible`,
+)
+verifier(
+  "et le témoin dit POURQUOI, pas seulement QUE",
+  typeof santeApres?.erreur_detail === "string" && santeApres.erreur_detail.length > 0,
+  "sans le détail, il faudrait rouvrir les journaux Supabase — c'est ce qu'on voulait éviter",
+)
+
+// Le cloisonnement : le témoin d'un utilisateur ne voit que sa propre mémoire.
+const anonyme = await fetch(`${URL_PROJET}/rest/v1/rpc/sante_memoire`, {
+  method: "POST",
+  headers: { apikey: ANON, "Content-Type": "application/json" },
+  body: "{}",
+})
+const vuParUnAnonyme = await anonyme.json().catch(() => null)
+verifier(
+  "un anonyme ne voit rien de la mémoire de Raphaël",
+  !Array.isArray(vuParUnAnonyme) ||
+    vuParUnAnonyme.length === 0 ||
+    (vuParUnAnonyme[0]?.dernier_souvenir == null && vuParUnAnonyme[0]?.souvenirs_vivants === 0),
+  `réponse : ${JSON.stringify(vuParUnAnonyme).slice(0, 200)}`,
+)
 
 await admin(`/auth/v1/admin/users/${userId}`, { method: "DELETE" })
 const restes = sql(`select count(*)::int as n from souvenirs where user_id = '${userId}'`)

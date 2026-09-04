@@ -630,6 +630,23 @@ node --experimental-strip-types scripts/nettoyer-souvenirs.ts             # mont
 node --experimental-strip-types scripts/nettoyer-souvenirs.ts --appliquer # écrit
 ```
 
+**La mémoire peut mourir sans un bruit — d'où le témoin.** Elle est
+silencieuse par construction (choix de Raphaël) et elle avale ses erreurs : le
+4 sept. elle est restée morte des heures, 42 échanges dictés sans rien retenir,
+alors que le plus long silence NORMAL de tout son historique est de 5 échanges.
+Deux pièces désormais, et il faut les deux : `memoriser()` signale ses pannes
+dans le registre des erreurs (`signaler_erreur`, source `memoire`) — c'est le
+POURQUOI ; et `sante_memoire()` (migration 0020) compte les échanges depuis la
+dernière chose retenue — c'est le filet pour les pannes qu'elle n'a même pas pu
+signaler. Le témoin s'affiche en tête de l'onglet Mémoire, il ne notifie rien.
+
+**`updated_at` ne peut pas servir de témoin, et `created_at` non plus.** Le
+premier bouge aussi quand Raphaël corrige un souvenir à la main — le témoin
+repasserait au vert au pire moment. Le second rate les fusions, qui sont
+justement du travail de la mémoire sans nouvelle ligne. D'où `fusionne_at`, une
+date que SEULE `ranger()` pose. Un contrôle de `verifier-memoire.mjs` protège
+cette distinction.
+
 **Retrouver une conversation, pas seulement un fait.** Depuis la migration
 0018, `echanges` porte une empreinte et `chercher_echanges()` cherche dedans
 par le sens : « on avait parlé de quoi pour la villa Dan ? » trouve enfin sa

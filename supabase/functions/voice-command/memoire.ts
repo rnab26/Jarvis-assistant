@@ -266,6 +266,41 @@ MÉFIE-TOI DE LA TRANSCRIPTION. Ces phrases viennent d'une dictée vocale : un n
 Chaque fait tient en une phrase courte et se suffit à lui-même. Zéro fait est une réponse normale et fréquente : la plupart des échanges n'ont rien à retenir. N'invente jamais, ne déduis pas au-delà de ce qui a été dit.`
 
 /**
+ * Dit au registre des erreurs que la mémoire a lâché.
+ *
+ * POURQUOI. La mémorisation est silencieuse par construction — choix de
+ * Raphaël, elle ne doit jamais le déranger — et elle avale ses erreurs. Le
+ * 4 sept. 2026, le modèle de la mémoire s'est révélé plafonné à vingt
+ * requêtes par jour : passé vingt phrases, plus rien n'était retenu, et
+ * personne ne l'a vu pendant des heures. Silencieuse ne doit pas vouloir dire
+ * invisible : elle ne dérange pas, mais elle laisse une trace là où Raphaël
+ * peut aller la lire (le registre des erreurs du cockpit, migration 0019).
+ *
+ * Ne lève jamais, n'attend rien de l'appelant : un registre d'erreurs qui
+ * ferait échouer ce qu'il observe serait la pire des ironies.
+ */
+async function signalerPanneMemoire(
+  supabase: SupabaseClient,
+  titre: string,
+  erreur: unknown,
+  transcript: string,
+): Promise<void> {
+  try {
+    await supabase.rpc("signaler_erreur", {
+      p_categorie: "serveur",
+      p_titre: titre,
+      p_detail: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 2000),
+      p_contexte: `Phrase en cours de mémorisation : « ${transcript.slice(0, 300)} »`,
+      // `source` est du texte libre, affiché tel quel dans le cockpit : elle
+      // dit d'où vient la panne, et c'est aussi ce que lit sante_memoire().
+      p_source: "memoire",
+    })
+  } catch {
+    // Rien à faire de plus : on ne va pas signaler l'échec du signalement.
+  }
+}
+
+/**
  * Range l'échange : garde le mot-à-mot 7 jours, en extrait les faits durables.
  *
  * Silencieux par construction (choix de Raphaël) : rien n'est annoncé à
@@ -311,9 +346,17 @@ export async function memoriser(
     if (!faits.length) return
 
     await ranger(supabase, userId, faits.slice(0, MAX_FAITS_PAR_ECHANGE), transcript)
-  } catch {
-    // Un échec de mémorisation ne doit jamais remonter à l'utilisateur :
-    // sa commande a déjà été exécutée et sa réponse déjà donnée.
+  } catch (err) {
+    // Un échec de mémorisation ne doit jamais remonter à l'utilisateur : sa
+    // commande a déjà été exécutée et sa réponse déjà donnée. Mais il ne doit
+    // plus disparaître pour autant — il part dans le registre des erreurs.
+    console.log(`mémoire : échec — ${err}`)
+    await signalerPanneMemoire(
+      supabase,
+      "La mémoire n'a rien pu retenir de cet échange",
+      err,
+      transcript,
+    )
   }
 }
 
@@ -406,7 +449,10 @@ async function ranger(
     }
 
     if (decision.type === "fusion") {
-      const modification: Record<string, unknown> = { updated_at: maintenant }
+      // `fusionne_at` est la trace que la MÉMOIRE a travaillé — `updated_at`
+      // bouge aussi quand Raphaël corrige un souvenir à la main, et ne peut
+      // donc pas servir de témoin (sante_memoire, migration 0020).
+      const modification: Record<string, unknown> = { updated_at: maintenant, fusionne_at: maintenant }
       if (decision.garderNouvelleFormulation) {
         modification.contenu = contenu
         modification.categorie = categorie
@@ -450,6 +496,18 @@ async function ranger(
     if (error) journal.push(`insertion impossible (${error.message})`)
   }
   if (journal.length) console.log(`mémoire : ${journal.join(" | ")}`)
+
+  // Une écriture refusée ne lève pas ici (le client Supabase rend l'erreur au
+  // lieu de la jeter) : sans ce relevé, elle ne serait ni vue ni signalée.
+  const rates = journal.filter((l) => l.includes("impossible"))
+  if (rates.length) {
+    await signalerPanneMemoire(
+      supabase,
+      "La mémoire n'a pas pu écrire en base",
+      rates.join(" | "),
+      transcript,
+    )
+  }
 }
 
 /**
