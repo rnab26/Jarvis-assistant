@@ -418,6 +418,9 @@ export function MicButton({
   const [modeLive, setModeLive] = useState(lireModeLive)
   useRelireApresRestauration(() => setModeLive(lireModeLive()))
   const liveRef = useRef<SessionLive | null>(null)
+  // Lu depuis la boucle de veille, qui vit dans un effet : une ref, pas l'état.
+  const modeLiveRef = useRef(modeLive)
+  modeLiveRef.current = modeLive
 
   function basculerModeLive() {
     const suivant = !modeLive
@@ -457,12 +460,13 @@ export function MicButton({
     ].join("\n\n")
   }
 
-  async function demarrerLive() {
+  async function demarrerLive(premierMessage?: string) {
     priseRef.current++
-    setLastUserText(null)
+    setLastUserText(premierMessage ?? null)
     setLastReply(null)
     liveRef.current = await maintenirSessionLive({
       contexte: contexteLive(),
+      premierMessage,
       onEntendu: (texte) => setLastUserText(texte),
       onReponse: (texte) => setLastReply(texte),
       onCommande: async (demande) => {
@@ -627,7 +631,9 @@ export function MicButton({
     }
   }, [])
 
-  const veilleActive = wakeWordEnabled && visible && !modeLive
+  // En mode Live aussi : dire « Jarvis » ouvre la conversation. Pendant la
+  // conversation, l'état n'est jamais au repos, donc la veille attend.
+  const veilleActive = wakeWordEnabled && visible
   useEffect(() => {
     if (!veilleActive) return
     let cancelled = false
@@ -675,7 +681,11 @@ export function MicButton({
           await new Promise((r) => setTimeout(r, 400))
           continue
         }
-        if (suite === "conversation") {
+        if (modeLiveRef.current && (suite === "conversation" || suite === "oui")) {
+          // Mode Live : le mot-clé ouvre la conversation, et ce qui a été
+          // dit après lui part comme premier message.
+          await demarrerLive(suite === "conversation" ? demande : undefined)
+        } else if (suite === "conversation") {
           // « Jarvis, ajoute une tâche » : la demande est déjà là.
           priseRef.current++
           setStatus("idle")
@@ -780,7 +790,7 @@ export function MicButton({
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
             <span className="relative inline-flex size-2 rounded-full bg-primary" />
           </span>
-          Dis « Jarvis » quand tu veux
+          {modeLive ? "Dis « Jarvis » pour lancer la conversation" : "Dis « Jarvis » quand tu veux"}
         </p>
       )}
       {(lastUserText || lastReply) && (
