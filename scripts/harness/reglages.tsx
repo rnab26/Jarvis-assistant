@@ -83,6 +83,7 @@ function majFactice(possible: boolean): MajWebApi {
           raison:
             "Cette mise à jour touche le cœur de l'application (un plugin, une permission, le widget) : elle demande d'installer l'APK.",
         },
+    pret: true,
     etape: null,
     progression: null,
     erreur: null,

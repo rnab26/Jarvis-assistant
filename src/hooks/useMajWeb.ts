@@ -49,6 +49,11 @@ function noterAnnonce(build: number | null) {
 
 export interface MajWebApi {
   etat: EtatMajWeb
+  /** Faux tant qu'on n'a pas lu l'identité de l'APK installée. Rien ne doit
+   * être décidé avant : sans elle, le verdict est « je ne peux pas comparer »,
+   * ce qui ferait annoncer une réinstallation nécessaire à chaque démarrage un
+   * peu lent. */
+  pret: boolean
   /** Ce que la mise à jour publiée permet, ou pourquoi elle ne permet rien. */
   verdict: VerdictMajWeb | null
   /** Étape en cours, null quand rien ne tourne. */
@@ -85,12 +90,14 @@ export function useMajWeb(
   const [progression, setProgression] = useState<ProgressionTelechargement | null>(null)
   const [erreur, setErreur] = useState<string | null>(null)
   const [auto, setAutoState] = useState(lireMajAuto)
+  const [pret, setPret] = useState(false)
 
   useRelireApresRestauration(() => setAutoState(lireMajAuto()))
 
   const rafraichir = useCallback(async () => {
     await demarrageMajWeb()
     setEtat(await lireEtatMajWeb())
+    setPret(true)
   }, [])
 
   useEffect(() => {
@@ -135,8 +142,16 @@ export function useMajWeb(
 
   // Ce qu'on fait quand une nouvelle version existe : l'appliquer tout seul
   // si elle le permet, sinon le dire — et le dire UNE fois par version.
-  const traiteRef = useRef<number | null>(null)
+  // undefined, et pas null : un build sans numéro (release publiée par une
+  // ancienne version du workflow) vaut null, et « déjà traité » se confondrait
+  // avec « jamais traité ».
+  const traiteRef = useRef<number | null | undefined>(undefined)
   useEffect(() => {
+    // Tant que l'identité de l'APK n'est pas lue, le verdict dirait « je ne
+    // peux pas comparer » : on annoncerait une réinstallation nécessaire pour
+    // une mise à jour qui s'applique très bien. Course réelle — la lecture du
+    // stockage natif et l'appel à GitHub partent en même temps.
+    if (!pret) return
     if (status !== "update-available" || !published || !verdict) return
     if (traiteRef.current === published.buildNumber) return
     traiteRef.current = published.buildNumber
@@ -157,7 +172,7 @@ export function useMajWeb(
       canal: "app",
       route: "/settings",
     })
-  }, [status, published, verdict, auto, notifierApk])
+  }, [pret, status, published, verdict, auto, notifierApk])
 
   const setAuto = useCallback((actif: boolean) => {
     setAutoState(actif)
@@ -169,5 +184,17 @@ export function useMajWeb(
     setEtat(await lireEtatMajWeb())
   }, [])
 
-  return { etat, verdict, etape, progression, erreur, auto, setAuto, appliquer, revenir, rafraichir }
+  return {
+    etat,
+    pret,
+    verdict,
+    etape,
+    progression,
+    erreur,
+    auto,
+    setAuto,
+    appliquer,
+    revenir,
+    rafraichir,
+  }
 }
