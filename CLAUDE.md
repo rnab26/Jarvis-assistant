@@ -190,7 +190,28 @@ poses et ce que tu sais déjà, proposer des **options cliquables** avec
 
 Déclare la capacité `db` : ses réponses sont alors enregistrées côté serveur et
 tu les relis avec `read_db` (`action: "read_db"` sur l'URL de l'artefact) sans
-qu'il ait à les recopier. Sépare bien les **décisions** (il choisit) des
+qu'il ait à les recopier.
+
+**CHAQUE question porte son champ de commentaire, sans exception.** Il l'a
+demandé trois fois avant que ce soit fait (3 et 4 sept. 2026), ses mots :
+« je n'ai que des choix de propositions, aucun commentaire ni fichier à
+t'envoyer pour affiner mes réponses ». Des options cliquables seules ne
+suffisent pas : c'est dans ses commentaires que se trouve ce qui change
+réellement le travail. Un champ libre unique en bas de page ne compte pas —
+il faut un champ **par proposition**, sinon il ne sait plus à quoi il répond.
+
+**Et un bouton pour joindre une photo, sur chaque question aussi.** La
+capacité `assets` n'est PAS disponible sur son compte (vérifié le 4 sept.,
+le contrôle est `Skill: artifact-capabilities`, qui liste le jeu réel) : on
+passe donc par `db`, qui accepte 256 Ko par document. Le motif qui marche,
+mesuré : compresser dans un canvas (côté max 1400 px, qualité JPEG dégressive
+jusqu'à passer sous 180 Ko), stocker **chaque photo dans son propre document**
+`photos/<uuid>` — jamais dans le document des réponses, qu'un seul cliché
+ferait dépasser —, et l'enregistrer dès qu'il la choisit plutôt qu'au bouton
+final. Tu les relis avec `read_db` sur la collection `photos` (`out_dir` pour
+les écrire en fichiers). Une image de 3000×2000 tombe à ~130 Ko et reste
+lisible. Si elle ne passe toujours pas, la page le lui dit et l'invite à
+l'envoyer dans la conversation. Sépare bien les **décisions** (il choisit) des
 **actions** (il fait quelque chose : créer un compte, déposer une clé) — pour
 les secondes, une liste numérotée qu'il coche au fur et à mesure te dit quand
 tu peux démarrer.
