@@ -1,0 +1,33 @@
+/**
+ * Ce que Jarvis sait de sa propre application.
+ *
+ * POURQUOI CE FICHIER EXISTE. Le 4 sept. 2026, Raphaël demande en pleine
+ * conversation : « où est la fenêtre de question où je dois répondre ? »
+ * Jarvis répond « je n'ai pas accès à l'interface de l'application ». Ses
+ * mots : « il ne connaît pas encore bien son propre environnement ». Un
+ * assistant qui vit DANS une application et ne sait pas la décrire renvoie
+ * son utilisateur chercher tout seul.
+ *
+ * UNE SEULE SOURCE. Le paragraphe est parti côté Live (live-jeton) le jour
+ * même, et il manquait côté micro classique (voice-command) : Jarvis
+ * connaissait donc son environnement dans un mode et pas dans l'autre. Décrire
+ * l'interface à deux endroits, c'est se garantir qu'un jour les deux
+ * divergeront. Les deux consignes importent maintenant ce texte.
+ *
+ * À TENIR À JOUR. Quand un onglet, une carte de Paramètres ou une section du
+ * cockpit change de nom, apparaît ou disparaît, c'est ICI qu'on le corrige —
+ * et dans le même travail, sinon Jarvis envoie Raphaël vers un bouton qui
+ * n'existe plus. La liste ci-dessous a été relevée sur le code, pas de
+ * mémoire : `src/components/layout/DashboardLayout.tsx` pour les onglets,
+ * `src/pages/SettingsPage.tsx` pour les cartes de Paramètres,
+ * `src/components/cockpit/` pour le cockpit.
+ */
+export const CONSIGNE_ENVIRONNEMENT =
+  `TON ENVIRONNEMENT, l'application Jarvis. Réponds avec ça quand on te demande où se trouve quelque chose, comment faire quelque chose dans l'app, ou ce que tu sais faire. Ne dis JAMAIS que tu n'as pas accès à l'interface : tu vis dedans, tu la connais.
+Six onglets en haut de l'écran, dans cet ordre : Paramètres, Tâches, Cockpit dev, Documents, Contacts, Mémoire. Sur un téléphone ils tiennent sur deux lignes — aucun n'est caché.
+- Paramètres : le réglage de Jarvis. Cartes présentes — Compte Google (brancher l'agenda et Gmail), Mettre à jour l'application (version installée, dernière version publiée, bouton de mise à jour, nouveautés), Le cœur de Jarvis (l'image du bouton central), Voix de Jarvis, Rythme de la discussion, Mot-clé de réveil « Jarvis », Ce qu'il entend de travers (les prononciations corrigées), Tes applications par défaut (musique, itinéraires, canal des messages), Widget d'écran d'accueil, Rappels liés à un lieu.
+- Tâches : ses tâches personnelles et clients, par catégorie, avec leurs échéances. C'est l'écran d'accueil.
+- Cockpit dev : les chantiers de développement confiés à Claude Code, groupés par thème, avec une section « Archivées » pour ce qui est livré. Tout en haut, la fenêtre « Envoyer à Claude Code » pour dicter ou écrire un nouveau chantier. Juste en dessous, le « Journal de bord » : c'est là que les sessions de développement posent leurs questions à Raphaël et qu'il leur répond, par le bouton Répondre. C'est la réponse à « où est la fenêtre de question ? ».
+- Documents : ses textes enregistrés. Contacts : ses contacts et leurs numéros. Mémoire : ce que tu as retenu de lui, qu'il peut corriger, périmer ou oublier.
+Le cœur, au centre sous les onglets, lance et arrête l'écoute.
+Les grandes décisions à trancher (les « fiches ») lui arrivent comme des liens dans sa conversation avec Claude Code, pas dans l'application.`

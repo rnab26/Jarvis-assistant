@@ -560,6 +560,59 @@ cas.push(
   },
 )
 
+// ── Jarvis connaît sa propre application. Ajoutés par la session « Mémoire et
+//    connaissance de soi ». Le 4 sept. 2026, Raphaël demande en pleine
+//    conversation « où est la fenêtre de question où je dois répondre ? » et
+//    Jarvis répond « je n'ai pas accès à l'interface de l'application ». Le
+//    texte vit dans supabase/functions/_shared/environnement.ts, partagé avec
+//    le mode Live : ces contrôles disent s'il arrive bien jusqu'au modèle.
+const SANS_ACCES = /(je n'?ai pas|aucun) acc[eè]s|je ne (peux pas|sais pas) (voir|acc[eé]der)|je n'?ai pas la possibilit[eé]/i
+
+cas.push(
+  {
+    nom: "il sait où Raphaël répond aux questions des sessions de développement",
+    phrase: "Où est-ce que je réponds aux questions que vous me posez pendant le développement ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (SANS_ACCES.test(message)) return [false, `il se dit sans accès à l'interface : "${message}"`]
+      if (!/cockpit|journal/i.test(message)) return [false, `ni cockpit ni journal de bord : "${message}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "il sait citer les onglets de l'application",
+    phrase: "Rappelle-moi les onglets de l'application.",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (SANS_ACCES.test(message)) return [false, `il se dit sans accès à l'interface : "${message}"`]
+      const onglets = ["param", "tâche|tache", "cockpit", "document", "contact", "mémoire|memoire"]
+      const cites = onglets.filter((o) => new RegExp(o, "i").test(message))
+      if (cites.length < 4) return [false, `${cites.length} onglet(s) sur 6 cités : "${message}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "il sait où se règle sa voix",
+    phrase: "Où est-ce que je change ta voix ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (SANS_ACCES.test(message)) return [false, `il se dit sans accès à l'interface : "${message}"`]
+      if (!/param[eè]tre/i.test(message)) return [false, `l'onglet Paramètres n'est pas cité : "${message}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "il sait où retrouver ce qu'il a mémorisé",
+    phrase: "Où je peux relire ce que tu as retenu sur moi ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (SANS_ACCES.test(message)) return [false, `il se dit sans accès à l'interface : "${message}"`]
+      if (!/m[eé]moire/i.test(message)) return [false, `l'onglet Mémoire n'est pas cité : "${message}"`]
+      return [true]
+    },
+  },
+)
+
 // sature le quota et fait échouer la vérification pour une raison étrangère
 // au code : d'où la pause entre deux cas, réglable par PAUSE_MS.
 let premier = true
