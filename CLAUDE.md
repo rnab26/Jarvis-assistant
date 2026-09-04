@@ -318,6 +318,57 @@ chaque appel. Les archivés du cockpit sont plafonnés à 15 côté client
 partaient en entier à chaque phrase, et ça grossissait à chaque chantier
 livré.
 
+### Un modèle Gemini meurt sans prévenir — vérifie-le par un vrai appel
+
+Le 4 sept. 2026, les **trois** modèles sur lesquels Jarvis tournait sont
+tombés le même jour : `gemini-3.5-flash-lite` (le principal) en 503 « This
+model is currently experiencing high demand », `gemini-2.5-flash` (le secours)
+et `gemini-2.5-flash-lite` (la mémoire) en 404 « no longer available to new
+users ». Raphaël n'avait plus de Jarvis, et la mémorisation échouait en
+silence — c'est sa nature, elle ne dérange jamais l'utilisateur, donc personne
+ne l'aurait vu.
+
+**`ListModels` n'est PAS une autorisation.** Les deux clés du projet
+annoncent toujours `gemini-2.5-flash`, et `generateContent` le refuse. Un
+secours écrit d'après cette liste — ou de mémoire, ou d'après la
+documentation — ne se voit qu'en panne, chez Raphaël. Avant d'écrire un nom de
+modèle dans le code, **fais un vrai appel `generateContent` avec la clé
+concernée** ; une fonction jetable de dix lignes déployée puis supprimée suffit
+(et garde la clé côté Supabase, là où le classificateur de permissions ne
+bloque pas — il refuse toute commande shell qui porte un secret en clair).
+
+Les quatre seaux en place, chacun essayé pour de vrai avant d'être écrit :
+principal `gemini-3.1-flash-lite`, secours `gemini-3.5-flash` puis
+`gemini-3.6-flash`, mémoire `gemini-3.7-flash`.
+
+Et dans `_shared/gemini.ts`, `STATUTS_CHANGER_DE_MODELE` vaut **404, 429, 503**
+— trois façons de dire « ce modèle-là ne répond pas », toutes les trois
+réglées en passant au suivant, jamais en insistant. Le 503 y a été ajouté ce
+jour-là : on rejouait trois fois le modèle saturé puis on abandonnait sans
+jamais essayer les secours, qui eux répondaient.
+
+### Les vérifications ne puisent plus dans le quota de Raphaël
+
+`scripts/verifier-commande-vocale.mjs` pose l'en-tête `x-jarvis-essai: 1`, et
+`voice-command` lit alors le secret `GEMINI_API_KEY_TEST` — la clé d'un SECOND
+projet Google AI Studio, parce que le plafond gratuit se compte PAR PROJET.
+C'est ce qui a laissé Raphaël sans Jarvis le 3 sept. à 21h28 : quatre sessions
+avaient vidé le quota du jour avec leurs contrôles. Ne retire pas cet
+en-tête ; la ligne `clé` des journaux dit lequel des deux seaux a servi.
+
+Le mode Live (`live-jeton`) n'a pas encore ce branchement : ses vérifications
+puisent toujours chez lui. C'est le chantier `9ad79fbf`.
+
+**Une variable d'environnement de l'environnement Claude Code n'arrive
+jamais dans une session déjà ouverte** : elles sont figées au démarrage du
+conteneur. Et le chemin `pousser-secret.sh` n'a jamais fonctionné chez
+Raphaël — ses clés n'apparaissent dans aucun de ses quatre environnements.
+Le chemin qui marche, vérifié : il pose lui-même le secret dans le tableau de
+bord Supabase (*Project Settings* → *Edge Functions* → *Edge Function
+Secrets*). Ne lui demande pas de coller une clé dans la conversation : le
+classificateur de permissions refusera ensuite toute commande qui la porte,
+et elle aura été exposée pour rien.
+
 ### Une clé d'API se pousse par `scripts/pousser-secret.sh`, jamais autrement
 
 ```bash
