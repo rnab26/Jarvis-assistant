@@ -26,7 +26,7 @@ import { BUILD_NUMBER, NATIVE_EMPREINTE } from "@/lib/version"
  * totalité des chantiers ne touche QUE l'interface web. Capacitor sait servir
  * cette interface depuis un dossier du téléphone plutôt que depuis l'APK
  * (WebView.setServerBasePath) : on télécharge donc le paquet web publié par
- * la CI (~700 Ko compressés, contre ~10 Mo d'APK), on l'écrit sur le
+ * la CI (~1,2 Mo, contre ~9,5 Mo d'APK), on l'écrit sur le
  * téléphone, et l'app redémarre dessus. Aucune réinstallation, aucune
  * autorisation « sources inconnues », rien à confirmer dans un installateur.
  *

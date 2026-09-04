@@ -797,8 +797,8 @@ Livré avec le chantier b5d210f9. Une app Capacitor, c'est une coquille
 Android (plugins, permissions, widget) autour d'une interface web. La quasi-
 totalité des chantiers ne touche QUE l'interface. Capacitor sait la servir
 depuis un dossier du téléphone (`WebView.setServerBasePath`) : la CI publie
-donc `web-bundle.zip` à côté de l'APK, l'app le télécharge (~700 Ko contre
-~10 Mo), l'installe et redémarre dessus. Aucune réinstallation, aucune
+donc `web-bundle.zip` à côté de l'APK, l'app le télécharge (1,2 Mo mesuré sur la
+release du 4 sept., contre 9,5 Mo d'APK), l'installe et redémarre dessus. Aucune réinstallation, aucune
 autorisation « sources inconnues », aucun installateur à confirmer.
 
 **Le « sauf si » de sa demande est décidé sur une mesure, pas sur le poids.**

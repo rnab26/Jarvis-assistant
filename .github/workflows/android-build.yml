@@ -72,7 +72,7 @@ jobs:
 
       # Le paquet web, tel qu'il sera embarqué dans l'APK : c'est le MÊME
       # dossier dist, donc la mise à jour rapide installe exactement ce que
-      # contient l'APK de ce build, ni plus ni moins. ~700 Ko contre ~10 Mo.
+      # contient l'APK de ce build, ni plus ni moins. 1,2 Mo contre 9,5 Mo.
       - name: Empaqueter l'interface web
         working-directory: dist
         run: zip -qr ../web-bundle.zip .
