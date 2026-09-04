@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { LecteurAudio, capturerMicro, type CaptureMicro } from "@/lib/live/audio"
+import { demandeFinDeConversation } from "@/lib/live/finConversation"
 
 /**
  * Une conversation Live avec Gemini : l'audio part en continu, Google décide
@@ -27,7 +28,10 @@ export interface EvenementsLive {
   onReponse: (texte: string, fini: boolean) => void
   /** Une demande à exécuter par l'app ; rend la phrase à dire. */
   onCommande: (demande: string) => Promise<string>
-  onEtat: (etat: "connexion" | "ecoute" | "parle" | "fermee", detail?: string) => void
+  /** `parRaphael` n'accompagne que "fermee" : vrai quand c'est lui qui a
+   * clos (appui, ou « terminé » à la voix), faux quand c'est Google ou une
+   * panne — la reprise automatique ne s'applique qu'aux secondes. */
+  onEtat: (etat: "connexion" | "ecoute" | "parle" | "fermee", detail?: string, parRaphael?: boolean) => void
   /**
    * Ce que Jarvis sait de Raphaël à l'ouverture : ses tâches, ses chantiers,
    * ses contacts, la date. Test du 4 sept. : sans ça, le modèle répondait
@@ -68,6 +72,8 @@ const NOM_OUTIL = "commande_jarvis"
 
 /** Temps laissé à la fonction serveur pour rendre un jeton. */
 const JETON_MAX_MS = 15000
+/** Après « terminé », on laisse Jarvis dire au revoir — mais pas plus que ça. */
+const ADIEU_MAX_MS = 8000
 
 /**
  * Ouvre une session. Rend de quoi l'arrêter ; les événements arrivent au fil
@@ -96,6 +102,9 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   let parRaphael = false
   let reponseEnCours = ""
   let entenduEnCours = ""
+  // Raphaël a dit « terminé » : le micro ne part plus, on laisse Jarvis
+  // finir sa phrase d'adieu, puis on ferme — comme s'il avait appuyé.
+  let finDemandee = false
   let resoudreFin: (v: { raison?: string; parRaphael: boolean }) => void = () => {}
   const finie = new Promise<{ raison?: string; parRaphael: boolean }>((resolve) => {
     resoudreFin = resolve
@@ -111,9 +120,24 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     } catch {
       // déjà fermée
     }
-    noterEcoute("live_fin", { duree_ms: Date.now() - debut, raison: raison ?? null, par_raphael: parRaphael })
-    ev.onEtat("fermee", raison)
+    noterEcoute("live_fin", { duree_ms: Date.now() - debut, raison: raison ?? null, par_raphael: parRaphael, a_la_voix: finDemandee })
+    // Une clôture voulue n'est pas une panne : rien à afficher.
+    ev.onEtat("fermee", parRaphael ? undefined : raison, parRaphael)
     resoudreFin({ raison, parRaphael })
+  }
+
+  /** Clôture à la voix : Jarvis finit de parler, puis la session se ferme. */
+  const clore = async () => {
+    const limite = Date.now() + ADIEU_MAX_MS
+    while (!fermee && lecteur.enCours && Date.now() < limite) await new Promise((r) => setTimeout(r, 100))
+    parRaphael = true
+    fermer("clôture à la voix")
+  }
+  const surFinDemandee = () => {
+    if (finDemandee) return
+    finDemandee = true
+    // Si Google ne rend jamais la fin du tour, on ferme quand même.
+    setTimeout(() => void clore(), ADIEU_MAX_MS)
   }
 
   const surMessage = (m: LiveServerMessage) => {
@@ -127,6 +151,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     if (contenu?.inputTranscription?.text) {
       entenduEnCours += contenu.inputTranscription.text
       ev.onEntendu(entenduEnCours, contenu.inputTranscription.finished === true)
+      if (demandeFinDeConversation(entenduEnCours)) surFinDemandee()
       if (contenu.inputTranscription.finished) entenduEnCours = ""
     }
     if (contenu?.outputTranscription?.text) {
@@ -142,7 +167,13 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     if (contenu?.turnComplete) {
       if (reponseEnCours) ev.onReponse(reponseEnCours, true)
       reponseEnCours = ""
-      ev.onEtat("ecoute")
+      // Ce tour est clos : ce qui a été entendu ne s'additionne pas au
+      // suivant. Et si la transcription n'a jamais été marquée finie, c'est
+      // ici qu'un « terminé » est reconnu.
+      if (demandeFinDeConversation(entenduEnCours)) surFinDemandee()
+      entenduEnCours = ""
+      if (finDemandee) void clore()
+      else ev.onEtat("ecoute")
     }
     if (m.toolCall?.functionCalls?.length) {
       void (async () => {
@@ -180,9 +211,11 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
 
     // 3. Le micro, en continu. Google décide du reste.
     capture = await capturerMicro((paquet) => {
-      if (!fermee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
+      if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
     })
-    noterEcoute("live_debut", { modele: data.modele, delai_ms: Date.now() - debut, premier: ev.premierMessage ? 1 : 0 })
+    // `contexte` : la taille de ce que Jarvis sait à l'ouverture. Zéro ou
+    // presque = une conversation aveugle (bug du 4 sept.), à voir d'ici.
+    noterEcoute("live_debut", { modele: data.modele, delai_ms: Date.now() - debut, premier: ev.premierMessage ? 1 : 0, contexte: ev.contexte.length })
     ev.onEtat("ecoute")
     if (ev.premierMessage) {
       ev.onEntendu(ev.premierMessage, true)
@@ -220,14 +253,15 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
       courante = await demarrerSessionLive({
         ...ev,
         premierMessage: reconnexions === 0 ? ev.premierMessage : undefined,
-        onEtat: (etat, detail) => {
+        onEtat: (etat, detail, parRaphael) => {
           // La fermeture par Google est absorbée ici : le cœur reste sur
-          // « conversation en cours » pendant qu'on rouvre.
-          if (etat === "fermee" && !arretDemande && !detail && Date.now() - debut >= DUREE_MIN_POUR_RECONNECTER_MS && reconnexions < RECONNEXIONS_MAX) {
+          // « conversation en cours » pendant qu'on rouvre. Pas celle de
+          // Raphaël (appui ou « terminé ») : elle est définitive.
+          if (etat === "fermee" && !parRaphael && !arretDemande && !detail && Date.now() - debut >= DUREE_MIN_POUR_RECONNECTER_MS && reconnexions < RECONNEXIONS_MAX) {
             ev.onEtat("connexion")
             return
           }
-          ev.onEtat(etat, detail)
+          ev.onEtat(etat, detail, parRaphael)
         },
       })
       const fin = await courante.finie
