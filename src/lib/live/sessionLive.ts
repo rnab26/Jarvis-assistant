@@ -37,6 +37,10 @@ export interface EvenementsLive {
    * mes tâches ? ».
    */
   contexte: string
+  /** Une demande déjà entendue avant l'ouverture (« Jarvis, ajoute une
+   * tâche ») : envoyée en texte dès la connexion, Jarvis y répond sans
+   * qu'on la redise. */
+  premierMessage?: string
 }
 
 export interface SessionLive {
@@ -191,8 +195,12 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     capture = await capturerMicro((paquet) => {
       if (!fermee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
     })
-    noterEcoute("live_debut", { modele: data.modele, delai_ms: Date.now() - debut })
+    noterEcoute("live_debut", { modele: data.modele, delai_ms: Date.now() - debut, premier: ev.premierMessage ? 1 : 0 })
     ev.onEtat("ecoute")
+    if (ev.premierMessage) {
+      ev.onEntendu(ev.premierMessage, true)
+      session.sendClientContent({ turns: ev.premierMessage, turnComplete: true })
+    }
   } catch (e) {
     const raison = e instanceof Error ? e.message : String(e)
     noterEcoute("live_echec", { etape: "connexion", detail: raison.slice(0, 120) })
@@ -224,6 +232,7 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
       const debut = Date.now()
       courante = await demarrerSessionLive({
         ...ev,
+        premierMessage: reconnexions === 0 ? ev.premierMessage : undefined,
         onEtat: (etat, detail) => {
           // La fermeture par Google est absorbée ici : le cœur reste sur
           // « conversation en cours » pendant qu'on rouvre.
