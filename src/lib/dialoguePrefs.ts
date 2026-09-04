@@ -28,6 +28,11 @@ export const DEFAULT_SUITE_MS = 8000
 export const SUITE_MIN_MS = 0
 export const SUITE_MAX_MS = 15000
 
+/** Silence suffisant quand le moteur a lui-même détecté la fin de parole ET
+ * que la phrase a l'air finie (voir OptionsTour.silenceCourtMs). Plus court
+ * que la pause réglée, jamais plus long. */
+export const SILENCE_COURT_MS = 1500
+
 /** Temps laissé pour commencer à parler après avoir touché le micro. */
 export const PREMIER_MOT_MS = 12000
 /** Garde-fou absolu sur la durée d'un tour de parole. */
