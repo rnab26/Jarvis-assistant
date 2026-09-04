@@ -65,6 +65,14 @@ export interface ResultatModele {
   args?: Record<string, unknown>
   consommation?: Consommation
   echec?: Echec
+  /**
+   * Le modèle qui a effectivement répondu — pas celui qu'on a demandé.
+   *
+   * Sans ça, un basculement sur un secours est invisible : Jarvis répond,
+   * tout va bien en apparence, et on ne découvre que le seau principal est
+   * vide qu'au moment où le dernier secours lâche à son tour.
+   */
+  modele?: string
 }
 
 export interface Echec {
@@ -72,6 +80,30 @@ export interface Echec {
   texte: string
   /** Vrai si un nouvel essai a une chance d'aboutir (surcharge, quota par minute). */
   passager: boolean
+  /**
+   * Ce que le 429 disait vraiment : quel seau est vide, et de quelle taille.
+   *
+   * Un 429 « par minute » se lève tout seul en une minute ; un 429 « par jour »
+   * laisse Jarvis muet jusqu'au lendemain. Les deux se ressemblent dans les
+   * journaux, et c'est ce qui a fait perdre du temps le 3 sept. : on croyait à
+   * une saturation passagère alors que le seau du JOUR était vide. Google le
+   * dit dans le corps de la réponse ; on ne le jetait pas, on ne le lisait pas.
+   */
+  quota?: { id?: string; limite?: string }
+}
+
+/** Extrait le quotaId et la limite du corps d'un 429. Silencieux : un format
+ * inattendu ne doit pas faire échouer davantage un appel déjà en échec. */
+function lireQuota(texte: string): Echec["quota"] {
+  try {
+    const violation = JSON.parse(texte)?.error?.details
+      ?.find((d: { violations?: unknown[] }) => Array.isArray(d.violations))
+      ?.violations?.[0]
+    if (!violation) return undefined
+    return { id: violation.quotaId, limite: violation.quotaValue }
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -125,7 +157,7 @@ export async function appelerGemini(appel: AppelModele): Promise<ResultatModele>
 
   for (const modele of candidats) {
     dernierResultat = await tenterUnModele(appel, modele)
-    if (!dernierResultat.echec) return dernierResultat
+    if (!dernierResultat.echec) return { ...dernierResultat, modele }
     // Quota de la minute atteint sur CE modèle : le suivant a le sien. Toute
     // autre erreur se reproduirait à l'identique, on s'arrête là.
     if (dernierResultat.echec.statut !== 429) break
@@ -195,7 +227,18 @@ async function tenterUnModele(appel: AppelModele, modele: string): Promise<Resul
       // dont le quota est distinct. Les autres pannes passagères, elles,
       // valent la peine d'être rejouées sur le même modèle.
       const passager = reponse.status !== 429 && STATUTS_A_REESSAYER.has(reponse.status)
-      dernier = { statut: reponse.status, texte, passager }
+      const quota = reponse.status === 429 ? lireQuota(texte) : undefined
+      dernier = { statut: reponse.status, texte, passager, quota }
+
+      // Un 429 « par jour » et un 429 « par minute » se ressemblent dans les
+      // journaux, et n'ont rien à voir : le premier laisse Jarvis muet
+      // jusqu'au lendemain. On écrit donc le seau concerné, pas juste l'échec.
+      if (reponse.status === 429) {
+        console.log(
+          "quota",
+          JSON.stringify({ modele, id: quota?.id, limite: quota?.limite }),
+        )
+      }
       if (!passager) break
 
       const entete = Number(reponse.headers.get("retry-after"))

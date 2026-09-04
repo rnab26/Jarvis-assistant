@@ -459,7 +459,17 @@ const MODELE_PAR_DEFAUT = "gemini-3.5-flash-lite"
 /** Essayés dans l'ordre si la minute du premier est saturée : le quota gratuit
  * est compté PAR MODÈLE, donc basculer rend la main tout de suite là où
  * attendre coûte plusieurs secondes. */
-const SECOURS = ["gemini-flash-lite-latest", "gemini-3.1-flash-lite"]
+// Des seaux RÉELLEMENT distincts, ce qui n'était pas le cas avant :
+// « gemini-flash-lite-latest » est un ALIAS de gemini-3.5-flash-lite, donc le
+// même compteur — le premier secours ne servait à rien. Et
+// gemini-3.1-flash-lite était en même temps le modèle de la mémoire, qui
+// vidait le seau de son côté. Le 3 sept. les 500 requêtes du jour sont
+// parties, et Jarvis est resté muet.
+//
+// On descend maintenant vers des modèles d'une autre génération et d'un autre
+// gabarit : trois compteurs séparés. Plus lents que le Lite, mais un Jarvis
+// qui répond en trois secondes vaut mieux qu'un Jarvis qui se tait.
+const SECOURS = ["gemini-2.5-flash", "gemini-3.5-flash"]
 
 const CONSIGNES = `Tu es l'assistant vocal de Jarvis, qui gère huit domaines pour l'utilisateur :
 1. Ses tâches personnelles/clients, organisées par catégorie.
@@ -580,7 +590,12 @@ Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
 Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?? [])}.
 Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouvenirs(supabase, transcript)}`
 
-    const { args, consommation, echec } = await appelerGemini({
+    const {
+      args,
+      consommation,
+      echec,
+      modele: modeleUtilise,
+    } = await appelerGemini({
       // Réglable par le secret GEMINI_MODELE, sans redéployer : les quotas de
       // l'offre gratuite ne sont publiés nulle part (visibles seulement dans
       // AI Studio) et diffèrent par modèle.
@@ -634,7 +649,10 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouv
     // fonction. Sur l'offre gratuite ce n'est pas une facture mais une jauge :
     // la limite est en jetons par minute, et c'est ici qu'on voit le contexte
     // grossir avant qu'il ne fasse buter dessus.
-    console.log("coût", JSON.stringify(consommation ?? {}))
+    // On journalise aussi QUEL modèle a répondu : un basculement sur un
+    // secours est sinon invisible, et on ne découvre que le seau principal est
+    // vide qu'au moment où le dernier secours lâche à son tour.
+    console.log("coût", JSON.stringify({ ...(consommation ?? {}), modele: modeleUtilise }))
 
     // Le modèle renvoie une liste. On tolère l'ancienne forme (une action à
     // plat) pour ne rien casser si le schéma n'est pas suivi.

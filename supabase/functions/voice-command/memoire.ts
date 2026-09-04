@@ -18,11 +18,25 @@ import { appelerGemini } from "../_shared/gemini.ts"
  * la mémoire consommerait la moitié du quota de Jarvis. Trier des faits
  * n'en demande pas plus. Réglable par le secret GEMINI_MODELE_MEMOIRE.
  */
-const MODELE_EXTRACTION = Deno.env.get("GEMINI_MODELE_MEMOIRE") || "gemini-3.1-flash-lite"
+const MODELE_EXTRACTION = Deno.env.get("GEMINI_MODELE_MEMOIRE") || "gemini-2.5-flash-lite"
 
-/** Et si sa minute est saturée, on bascule plutôt que d'attendre : là encore,
- * chaque modèle a son propre compteur. */
-const SECOURS_EXTRACTION = ["gemini-3.5-flash-lite", "gemini-flash-lite-latest"]
+/**
+ * AUCUN secours, et c'est délibéré.
+ *
+ * La mémoire partageait exactement les modèles de la commande vocale, à
+ * l'envers : elle démarrait sur gemini-3.1-flash-lite, qui est le DERNIER
+ * secours de la commande, et basculait ensuite sur les deux autres. Deux
+ * consommateurs sur les mêmes seaux de 500 requêtes par jour.
+ *
+ * Le 3 sept. à 21h28 le seau du JOUR était vide et Jarvis est resté muet —
+ * alors que la mémoire, elle, n'est qu'un confort : elle retient des faits
+ * pour plus tard, et son échec ne se voit pas dans l'instant.
+ *
+ * Donc : un modèle à elle, hors de la chaîne de la commande, et elle SAUTE
+ * plutôt que d'aller puiser ailleurs. Perdre un souvenir coûte infiniment
+ * moins cher que rendre Jarvis muet.
+ */
+const SECOURS_EXTRACTION: string[] = []
 
 /** Modèle embarqué dans les Edge Functions Supabase : gratuit, sur place. */
 const MODELE_EMBEDDING = "gte-small"
