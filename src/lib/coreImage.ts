@@ -6,6 +6,7 @@
  * repérer le disque, le recadrer, et rendre transparent tout ce qui l'entoure.
  */
 
+import { pousserCoeurVersWidget } from "@/lib/jarvisWidgetPlugin"
 import { ecrireReglage } from "@/lib/reglages"
 
 const STORAGE_KEY = "jarvis_core_image"
@@ -32,6 +33,9 @@ export function ecrireCoreImage(dataUrl: string | null) {
   // Sans ça, le réacteur importé à la main disparaissait à la première
   // réinstallation de l'app, sans possibilité de le retrouver.
   ecrireReglage(STORAGE_KEY, dataUrl)
+  // Et les widgets, qui tournent hors du WebView et ne voient pas
+  // localStorage : sans cet appel, ils resteraient sur l'ancien cœur.
+  void pousserCoeurVersWidget(dataUrl)
 }
 
 function chargerImage(file: File): Promise<HTMLImageElement> {

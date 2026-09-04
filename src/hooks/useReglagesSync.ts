@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { CORE_IMAGE_CHANGEE } from "@/components/JarvisCore"
+import { lireCoreImage } from "@/lib/coreImage"
+import { pousserCoeurVersWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appliquerReglages,
   lireReglagesLocaux,
@@ -46,6 +48,10 @@ export function useReglagesSync(userId: string | undefined) {
           window.dispatchEvent(new Event(REGLAGES_RESTAURES))
           // Le réacteur a son propre signal, déjà écouté ailleurs.
           window.dispatchEvent(new Event(CORE_IMAGE_CHANGEE))
+          // Et les widgets, qui ne voient pas localStorage : sans ça, après
+          // une réinstallation ils resteraient sur le réacteur par défaut
+          // alors que son image est bien revenue de la base.
+          void pousserCoeurVersWidget(lireCoreImage())
         }
       }
       // Même en cas d'échec de lecture on autorise la poussée : ne pas

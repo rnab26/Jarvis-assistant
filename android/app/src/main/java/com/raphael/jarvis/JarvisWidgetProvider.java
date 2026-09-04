@@ -1,10 +1,8 @@
 package com.raphael.jarvis;
 
-import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
 import android.content.Context;
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.widget.RemoteViews;
 
@@ -44,27 +42,24 @@ public class JarvisWidgetProvider extends AppWidgetProvider {
 
         for (int appWidgetId : appWidgetIds) {
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.jarvis_widget);
-            views.setTextViewText(R.id.widget_count, count + " tâche(s) à faire");
+            CoeurJarvis.poser(context, views, R.id.widget_core);
+            views.setTextViewText(R.id.widget_count, count + " à faire");
             views.setTextViewText(R.id.widget_task_list, taskList);
             views.setTextViewText(R.id.widget_category_label, categoryLabel);
             if (urgentCount > 0) {
-                views.setTextViewText(R.id.widget_urgent, urgentCount + " urgente(s)");
+                views.setTextViewText(R.id.widget_urgent, urgentCount + " urgent" + (urgentCount > 1 ? "es" : "e"));
             } else {
                 views.setTextViewText(R.id.widget_urgent, "");
             }
 
-            Intent intent = new Intent(context, MainActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             // Un appui doit ouvrir l'app ET lancer l'écoute directement — pas
             // juste ouvrir, en laissant Raphaël retoucher le micro derrière.
-            intent.putExtra("demarrer_ecoute", true);
-            PendingIntent pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            // L'intent est construit au même endroit que celui du widget cœur,
+            // sinon les deux dérivent.
+            views.setOnClickPendingIntent(
+                R.id.widget_root,
+                JarvisCoreWidgetProvider.ouvrirEtEcouter(context)
             );
-            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent);
 
             appWidgetManager.updateAppWidget(appWidgetId, views);
         }
