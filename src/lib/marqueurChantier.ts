@@ -100,6 +100,36 @@ export function marqueurDe(item: DevItem): Marqueur | null {
   return null
 }
 
+/**
+ * Les notes débarrassées du marqueur qui les ouvre.
+ *
+ * Sans ça, l'aperçu d'une note sur la carte répète en toutes lettres ce que
+ * l'étiquette dit déjà — « [À CADRER AVEC RAPHAËL AVANT DE COMMENCER]… » — et
+ * les deux lignes visibles ne montrent rien du contenu réel. Vu à l'écran, sur
+ * une capture : la moitié des chantiers gaspillaient leur aperçu.
+ */
+export function notesSansMarqueur(notes: string | null): string | null {
+  if (!notes) return null
+  let reste = notes.trimStart()
+  for (let i = 0; i < 2; i++) {
+    const m = reste.match(/^\[([^\]]{0,400})\]/)
+    if (!m) break
+    const cle = normaliserRecherche(m[1]).slice(0, 60)
+    // Seuls les crochets qui PORTENT le marqueur sont retirés : « [Questionnaire] »
+    // ou « [CADRE — Raphael a tranché] » disent quelque chose, eux.
+    const estMarqueur =
+      cle.includes("doublon") ||
+      cle.includes("a faire par raphael") ||
+      cle.includes("cadrer") ||
+      cle.includes("reporte") ||
+      cle.includes("bloque") ||
+      cle.includes("libre")
+    if (!estMarqueur) break
+    reste = reste.slice(m[0].length).trimStart()
+  }
+  return reste || null
+}
+
 /** Combien de chantiers portent chaque marqueur, dans l'ordre d'affichage. */
 export function compterMarqueurs(items: DevItem[]): { marqueur: Marqueur; nb: number }[] {
   const compte = new Map<Marqueur, number>()

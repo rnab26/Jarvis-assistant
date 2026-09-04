@@ -85,11 +85,11 @@ export function DevLogFeed({
           <Badge variant="default" className="shrink-0">
             {enAttente} question{enAttente > 1 ? "s" : ""} en attente
           </Badge>
-        ) : (
+        ) : entries.length > 0 ? (
           <Badge variant="outline" className="shrink-0">
             {entries.length}
           </Badge>
-        )
+        ) : undefined
       }
     >
       <CardContent className="flex flex-col gap-4">

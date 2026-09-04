@@ -19,7 +19,7 @@ import {
   grouperParSection,
   themesSansSection,
 } from "../src/lib/sections.ts"
-import { compterMarqueurs, marqueurDe } from "../src/lib/marqueurChantier.ts"
+import { compterMarqueurs, marqueurDe, notesSansMarqueur } from "../src/lib/marqueurChantier.ts"
 import type { DevItem, DevPriority, DevSection, DevStatus } from "../src/types/database.ts"
 
 let echecs = 0
@@ -250,6 +250,29 @@ verifier(
   "et ce filtre est bien signalé comme actif",
   filtreActif({ ...FILTRE_VIDE, marqueur: "a_cadrer" }),
 )
+
+// L'aperçu d'une note ne doit pas répéter en toutes lettres ce que
+// l'étiquette dit déjà : vu sur une capture d'écran, la moitié des chantiers
+// gaspillaient leurs deux lignes visibles à réafficher « [À CADRER…] ».
+const APERCUS: [string | null, string | null][] = [
+  ["[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]\nIl faut trancher le coût.", "Il faut trancher le coût."],
+  ["[LIBRE] Répondu par Raphaël le 3 sept.", "Répondu par Raphaël le 3 sept."],
+  ["[BLOQUÉ PAR : \"Mémoire longue durée\"] Oui.", "Oui."],
+  // Un crochet qui n'est PAS un marqueur reste : il dit quelque chose.
+  ["[Questionnaire] Oui aux deux lignes.", "[Questionnaire] Oui aux deux lignes."],
+  ["[CADRE — Raphael a tranché] Ne rouvre pas.", "[CADRE — Raphael a tranché] Ne rouvre pas."],
+  ["Une note ordinaire.", "Une note ordinaire."],
+  ["[LIBRE]", null],
+  [null, null],
+]
+for (const [notes, attendu] of APERCUS) {
+  const obtenu = notesSansMarqueur(notes)
+  verifier(
+    `aperçu de ${JSON.stringify((notes ?? "(vide)").slice(0, 34))}`,
+    obtenu === attendu,
+    `obtenu ${JSON.stringify(obtenu)}, attendu ${JSON.stringify(attendu)}`,
+  )
+}
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

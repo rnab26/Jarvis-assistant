@@ -12,6 +12,7 @@ import {
   LIBELLE_MARQUEUR,
   VARIANTE_MARQUEUR,
   marqueurDe,
+  notesSansMarqueur,
 } from "@/lib/marqueurChantier"
 import type { DevItem, DevItemInput, DevLogEntry, DevPriority, DevStatus } from "@/types/database"
 
@@ -229,7 +230,7 @@ export function DevItemCard({
             Prise par {reservePar(item)}
           </p>
         )}
-        {item.notes && (
+        {notesSansMarqueur(item.notes) && (
           // Trois lignes ici, contre deux pour une tâche : les notes d'un
           // chantier portent le cadrage, et c'est ce qu'on vient y lire.
           <p
@@ -237,7 +238,7 @@ export function DevItemCard({
               deplie ? "" : "line-clamp-2"
             }`}
           >
-            {renderNotes(item.notes)}
+            {renderNotes(notesSansMarqueur(item.notes)!)}
           </p>
         )}
       </button>
