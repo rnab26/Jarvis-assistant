@@ -164,6 +164,18 @@ export function DevItemCard({
             </Badge>
           )}
         </div>
+        {/* Archivé le… : la liste des archivées se lit comme un historique,
+            et un historique sans dates ne dit pas ce qui a avancé cette
+            semaine. La note porte le commit, elle ne porte pas la date. */}
+        {item.archived_at && (
+          <p className="text-xs text-muted-foreground">
+            Archivé le{" "}
+            {new Date(item.archived_at).toLocaleDateString("fr-FR", {
+              day: "numeric",
+              month: "long",
+            })}
+          </p>
+        )}
         {reservePar(item) && (
           <p className="truncate text-xs text-muted-foreground">
             Prise par {reservePar(item)}
