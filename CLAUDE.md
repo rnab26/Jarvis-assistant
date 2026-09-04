@@ -501,6 +501,7 @@ node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
 node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
+node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
@@ -642,10 +643,21 @@ réacteur qu'il a importée comprise.
 
 Depuis le 3 sept. 2026, ils sont recopiés dans la table `reglages`
 (migration 0014) et restaurés à la connexion. **Si tu ajoutes une préférence
-stockée en local, ajoute sa clé à `CLES_REGLAGES` dans `src/lib/reglages.ts`
-et écris-la avec `ecrireReglage()`** — sinon elle ne remontera jamais en base
-et sera perdue à la prochaine réinstallation, en silence. C'est le seul
-endroit à tenir à jour.
+stockée en local, déclare-la dans `REGLAGES` (`src/lib/reglages.ts`) et
+écris-la avec `ecrireReglage()`** — sinon elle ne remontera jamais en base et
+sera perdue à la prochaine réinstallation, en silence.
+
+Depuis le 4 sept., cette déclaration porte aussi **où le réglage se règle**
+(`ou`) et **le fichier qui porte ce contrôle** (`fichier`) : les deux moitiés
+de la règle sont donc écrites au même endroit. Une clé qui doit rester locale
+va dans `STOCKAGE_LOCAL_ASSUME`, avec la raison.
+
+Et ce n'est plus une règle de bonne volonté :
+`scripts/verifier-reglages.ts` lit le code et refuse toute clé de stockage
+local `jarvis_…` qui ne serait ni déclarée ni assumée comme locale. C'est ce
+contrôle qui a trouvé `jarvis_app_ia` (l'application à qui poser une
+question), fixée une seule fois à l'oral, invisible dans Paramètres et perdue
+à chaque réinstallation — malgré la règle écrite partout depuis la veille.
 
 Règle de résolution : à la connexion, la base gagne ; ensuite toute
 modification locale y est poussée dans la seconde.
@@ -740,6 +752,10 @@ scripts : voir `README.md`.
 - `.github/workflows/android-build.yml` — build de l'APK debug, publié en
   artifact ET sur une GitHub Release à URL fixe (tag `latest-debug`,
   téléchargement direct depuis l'onglet Paramètres de l'app).
+- `.github/workflows/verifications.yml` — les contrôles hors ligne (typecheck
+  des projets référencés + les scripts `verifier-*.ts` sans réseau + la
+  validité des XML Android). **Sur toutes les branches**, pas seulement le
+  tronc : c'est le seul retour qu'une session obtient avant de fusionner.
 
 Toujours vérifier que les deux workflows passent au vert après un push
 (`mcp__github__actions_list` / `get_job_logs`), et se corriger soi-même en

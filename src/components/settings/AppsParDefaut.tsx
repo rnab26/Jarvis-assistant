@@ -10,10 +10,10 @@ import {
 import { REGLAGES_RESTAURES, ecrireReglage } from "@/lib/reglages"
 
 /**
- * Les applications que Jarvis utilise pour la musique, les itinéraires et les
- * messages.
+ * Les applications que Jarvis utilise pour la musique, les itinéraires, les
+ * questions posées à une autre IA, et les messages.
  *
- * Ces trois préférences existaient déjà : Jarvis les demande une fois à
+ * Ces préférences existaient déjà : Jarvis les demande une fois à
  * l'oral (« Quelle application utilises-tu pour la musique ? »), les
  * enregistre, et ne les redemande plus jamais. Le problème est qu'elles
  * n'apparaissaient nulle part — impossible de savoir ce qui avait été retenu,
@@ -34,11 +34,13 @@ const CANAUX = [
 export function AppsParDefaut() {
   const [musique, setMusique] = useState<string | null>(null)
   const [navigation, setNavigation] = useState<string | null>(null)
+  const [ia, setIa] = useState<string | null>(null)
   const [canal, setCanal] = useState<"whatsapp" | "sms" | null>(null)
 
   function relire() {
     setMusique(appPreferee("musique"))
     setNavigation(appPreferee("navigation"))
+    setIa(appPreferee("ia"))
     setCanal(canalMessagesPrefere())
   }
 
@@ -79,6 +81,14 @@ export function AppsParDefaut() {
           titre="Itinéraires"
           valeur={navigation}
           onOublier={() => oublier(CLES_APP.navigation)}
+        />
+        {/* Manquait à l'appel : cette préférence existait, se fixait à l'oral,
+            et n'apparaissait nulle part — exactement le défaut que cette carte
+            répare pour les deux autres. Trouvée par verifier-reglages.ts. */}
+        <Ligne
+          titre="Question à une IA"
+          valeur={ia}
+          onOublier={() => oublier(CLES_APP.ia)}
         />
 
         <div className="flex flex-col gap-2 rounded-lg border p-3">
