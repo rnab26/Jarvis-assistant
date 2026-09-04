@@ -91,6 +91,15 @@ try {
   for (const [table, ligne] of [
     ["tasks", { title: "essai temps réel", status: "todo" }],
     ["dev_items", { title: "essai temps réel", status: "todo", priority: "normal" }],
+    // Les deux tables du cockpit ajoutées le 4 sept. (migrations 0018 et
+    // 0019) : sans diffusion, une section créée depuis le web n'apparaîtrait
+    // jamais dans l'app restée ouverte, et une erreur signalée pendant qu'il
+    // regarde le cockpit n'arriverait qu'au prochain retour au premier plan.
+    ["dev_sections", { nom: "essai temps réel", position: 1 }],
+    [
+      "jarvis_erreurs",
+      { categorie: "autre", titre: "essai temps réel", empreinte: "autre:essai temps reel" },
+    ],
   ]) {
     const recus = await ecouter(a.client, a.jeton, table, a.id)
     const { error } = await admin.from(table).insert({ user_id: a.id, ...ligne })
