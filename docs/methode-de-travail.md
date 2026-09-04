@@ -101,7 +101,7 @@ mais inutilisables en l'état : pas de suppression, pas de réglage, pas de
 message d'erreur, pas d'état vide. Il doit réclamer cinquante fois ce qui aurait
 dû venir d'emblée.
 
-**Avant d'écrire une ligne de code**, lui donner en cinq lignes maximum ce qui
+**Avant d'écrire une ligne de code**, annoncer en cinq lignes maximum ce qui
 sera livré côté usage :
 
 - ce qu'il pourra faire concrètement (créer / voir / modifier / supprimer) ;
@@ -109,27 +109,33 @@ sera livré côté usage :
 - ce qu'il verra quand c'est vide, quand ça charge, quand ça échoue ;
 - ce qui n'est volontairement pas couvert.
 
-Il corrige à ce moment-là, pas après. Ces cinq lignes remplacent cinquante
-allers-retours par une seule correction, au moment où elle ne coûte rien.
+**C'est une annonce, pas une demande d'autorisation : enchaîner sans attendre sa
+réponse.** Elle lui permet d'interrompre s'il voit passer quelque chose dont il
+ne veut pas — mais on ne reste jamais bloqué dessus.
 
-**Ce qu'on construit existe déjà ailleurs. Partir de là, pas de zéro.**
+**Ce qu'on construit existe déjà ailleurs : en livrer le jeu complet, sans le
+lui demander.**
 
-Une galerie de photos, un panier, une messagerie, un calendrier, un éditeur :
-ce sont des objets connus, dont on attend un jeu de fonctions précis. Quand
-Raphaël demande une galerie, il n'attend pas trois cases et une case à cocher —
-il attend ce qu'une galerie sait faire partout ailleurs : importer plusieurs
-fichiers d'un coup, des miniatures, réordonner, renommer et légender,
-prévisualiser en grand, sélectionner plusieurs éléments et agir dessus en lot,
-remplacer, supprimer avec confirmation, voir la progression d'un envoi, et un
-message clair quand un fichier est trop lourd ou d'un format refusé.
+Presque tout ce qu'il demande appartient à une catégorie connue — une galerie,
+un panier, une messagerie, un calendrier, un éditeur, un tableau de bord, un
+formulaire, un import de fichiers, une liste, une recherche. Chacune a un
+ensemble de commandes que tout le monde attend, et sans lesquelles l'objet ne
+sert à rien. Ce n'est pas à lui de les énumérer : elles sont publiques et
+évidentes, il suffit d'aller les regarder.
 
-Alors avant de coder : **nommer la catégorie de ce qu'on construit, lister ce
-que cette catégorie sait faire partout ailleurs, et lui proposer ce jeu-là.** Il
-retire ce dont il ne veut pas. C'est infiniment plus rapide que de partir d'un
-minimum et d'ajouter pièce par pièce sur cinquante allers-retours.
+Donc : identifier la catégorie de ce qu'on construit, aller chercher ce qu'elle
+sait faire partout ailleurs, et **l'implémenter d'emblée**. Ne pas lui demander
+s'il veut pouvoir supprimer, modifier, réordonner, renommer, chercher, filtrer,
+annuler, agir sur plusieurs éléments à la fois, ou voir où en est un traitement
+en cours : la réponse est oui. S'il n'en voulait pas, il l'aurait dit.
 
-S'inspirer de ce qui existe — y compris de ce que le projet fait déjà ailleurs,
-pour rester cohérent avec lui — et l'adapter. Ne pas réinventer une version
+**Son rôle, c'est la finition, l'ajustement et la personnalisation — pas de
+réclamer les bases.** Une fonctionnalité livrée doit permettre d'atteindre son
+objectif de bout en bout dès la première version : si pour s'en servir vraiment
+il faut encore demander cinq choses, elle n'est pas livrée.
+
+S'inspirer de ce qui existe, y compris de ce que le projet fait déjà ailleurs
+pour rester cohérent avec lui, et l'adapter. Ne pas réinventer une version
 appauvrie de quelque chose de connu.
 
 **Une fonctionnalité n'est pas finie tant que :**
