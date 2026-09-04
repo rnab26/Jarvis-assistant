@@ -95,6 +95,15 @@
          au téléphone. Demandée à la première utilisation ; refusée, Jarvis
          se contente de composer, il n'échoue pas. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Mode conversation Live (4 sept. 2026) : le micro du navigateur intégré
+         (getUserMedia), pas celui du plugin de reconnaissance. Capacitor
+         (BridgeWebChromeClient.onPermissionRequest) exige RECORD_AUDIO ET
+         MODIFY_AUDIO_SETTINGS, et refuse la capture si l'une des deux n'est pas
+         déclarée ici — c'était le « Permission denied » vu par Raphaël dans
+         l'app. RECORD_AUDIO vient déjà du plugin par fusion de manifestes ;
+         on la déclare quand même, pour ne pas dépendre de lui. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Depuis Android 11, une app ne voit les autres que si elle les
          déclare ici. On ne demande PAS QUERY_ALL_PACKAGES (visibilité totale
