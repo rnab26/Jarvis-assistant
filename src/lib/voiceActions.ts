@@ -331,8 +331,11 @@ export async function executeVoiceAction(
         theme: action.theme ?? null,
       })
       // Le thème est dit à voix haute : c'est le seul moment où Raphaël peut
-      // corriger un classement qui part de travers.
-      return `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}.`
+      // corriger un classement qui part de travers. Et sans la deuxième
+      // phrase, il pouvait croire qu'une session allait s'en saisir tout de
+      // suite — c'est le même malentendu que corrige le bandeau permanent
+      // de la fenêtre d'envoi du cockpit.
+      return `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
     }
 
     case "update_dev_item": {
