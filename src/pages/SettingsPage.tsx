@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { Notifications } from "@/components/settings/Notifications"
 import { Nouveautes } from "@/components/settings/Nouveautes"
 import { Section } from "@/components/settings/Section"
 import { Interrupteur } from "@/components/settings/Interrupteur"
@@ -646,7 +647,7 @@ export function SettingsPage() {
     .sort((a, b) => (b.archived_at! < a.archived_at! ? -1 : 1))
     .slice(0, 5)
 
-  // Six secteurs repliables, tous fermés sauf « L'application ».
+  // Sept secteurs repliables, tous fermés sauf « L'application ».
   //
   // Raphaël, 4 sept. 2026 : « il faut la sectoriser […] pas foutre tous les
   // paramètres à la chaîne, mélangés dans le désordre ». Un premier essai les
@@ -953,6 +954,14 @@ export function SettingsPage() {
         </Card>
 
         <RappelsGeolocalises />
+      </Section>
+
+      <Section
+        titre="Notifications"
+        resume="Ce que Jarvis a le droit de faire sonner"
+        cle="notifications"
+      >
+        <Notifications />
       </Section>
 
       <Section titre="Ce que Jarvis utilise" resume="Applications par défaut, canal des messages" cle="apps">

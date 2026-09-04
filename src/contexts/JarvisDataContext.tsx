@@ -6,6 +6,7 @@ import { useDialogueSetting } from "@/hooks/useDialogueSetting"
 import { useDocuments } from "@/hooks/useDocuments"
 import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
 import { useGoogleAccount } from "@/hooks/useGoogleAccount"
+import { useNotifications } from "@/hooks/useNotifications"
 import { usePlaceGeofences } from "@/hooks/usePlaceGeofences"
 import { usePlaceReminders } from "@/hooks/usePlaceReminders"
 import { usePronunciations } from "@/hooks/usePronunciations"
@@ -28,6 +29,7 @@ type WakeWordState = ReturnType<typeof useWakeWordSetting>
 type DialogueState = ReturnType<typeof useDialogueSetting>
 type VoiceState = ReturnType<typeof useVoiceSetting>
 type WidgetState = ReturnType<typeof useWidgetSetting>
+type NotificationsState = ReturnType<typeof useNotifications>
 
 interface JarvisDataValue {
   tasksState: TasksState
@@ -42,6 +44,7 @@ interface JarvisDataValue {
   dialogueState: DialogueState
   voiceState: VoiceState
   widgetState: WidgetState
+  notificationsState: NotificationsState
 }
 
 const JarvisDataContext = createContext<JarvisDataValue | null>(null)
@@ -71,6 +74,12 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const widgetState = useWidgetSetting()
 
   usePlaceGeofences(placeRemindersState.placeReminders, geofenceState.enabled)
+
+  // Les rappels d'Android : montés ici, et pas dans Paramètres, parce qu'ils
+  // doivent être reprogrammés dès qu'une tâche change — y compris quand le
+  // changement vient de la voix ou d'un autre appareil. Un écran de réglages
+  // qu'on n'ouvre pas ne reprogrammerait plus rien.
+  const notificationsState = useNotifications(tasksState.tasks, devItemsState.devItems, userId)
 
   // Les réglages personnels (voix, rythme, widget, mot-clé, géolocalisation,
   // image du réacteur) ne vivaient que sur l'appareil : une réinstallation de
@@ -102,6 +111,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         dialogueState,
         voiceState,
         widgetState,
+        notificationsState,
       }}
     >
       {children}

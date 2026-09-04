@@ -499,6 +499,7 @@ node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « termi
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
+node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
@@ -675,6 +676,55 @@ défaut » (`src/components/settings/AppsParDefaut.tsx`).
 Une préférence qu'un seul chemin permet de poser — une question orale, une
 détection automatique, une valeur par défaut — se règle **aussi** depuis
 Paramètres. Au minimum : la voir, et pouvoir l'effacer.
+
+## Les notifications : Jarvis ne notifie QUE ce qui vit chez lui
+
+Livré le 4 sept. 2026 (chantier 5d03a192). `@capacitor/local-notifications`,
+aucun serveur : les rappels sont des alarmes posées sur le téléphone, donc ils
+sonnent même app fermée, et le plugin les repose tout seul après un
+redémarrage.
+
+**La règle d'aiguillage, formulée par Raphaël, commande tout le reste** : ce
+qui décide, ce n'est pas qui a initié la demande, c'est **où la chose
+atterrit**. Une tâche, un chantier → base de Jarvis → Jarvis notifie. Un
+rendez-vous d'agenda, un mail → chez Google → **Google notifie, on se tait**,
+même quand c'est Jarvis qui les a créés. C'est pour ça qu'il n'y a aucun
+interrupteur « agenda » ni « mail » dans Paramètres : leur absence est la
+décision, pas un oubli. La raison est écrite en bas de la carte pour qu'on ne
+se repose pas la question.
+
+Ce qu'il a accepté (fiche 7d87dcb4, doc `fiche/notifications`) : échéance
+d'une tâche, point du matin (09:15 par défaut, **activable et réglable**,
+c'est sa consigne écrite), nouvelle version d'APK, chantier livré, session
+bloquée. Refusés : message programmé, agenda, mail.
+
+Trois fichiers, et la frontière entre eux compte :
+
+- `src/lib/notifications/plan.ts` — **pur**, aucun appel à Android, à la base
+  ni à React. C'est la seule partie vérifiable sans téléphone, et c'est là que
+  vivent les décisions qui peuvent être fausses en silence (un rappel dans le
+  passé qu'Android ferait sonner en rafale, une tâche faite qui sonne quand
+  même, deux tâches sur le même identifiant). Vérifié par
+  `scripts/verifier-notifications.ts`.
+- `src/lib/notifications/service.ts` — le pont Android : permissions, canaux,
+  alarmes. Ne se vérifie que sur l'appareil, d'où le bouton « Tester » de
+  Paramètres.
+- `src/hooks/useNotifications.ts` — monté **une seule fois, dans
+  `JarvisDataProvider`**, jamais dans Paramètres : les rappels doivent être
+  reprogrammés dès qu'une tâche change, y compris par la voix ou depuis un
+  autre appareil. Monté dans l'écran de réglages, il ne reprogrammerait plus
+  rien dès qu'on quitte l'écran.
+
+Les identifiants sont répartis en plages (`PLAGE_ECHEANCE`, `PLAGE_MATIN`, …)
+et `estNotreNotif()` garde l'annulation : on n'annule jamais une notification
+qui ne vient pas de nous.
+
+**Limite connue, à ne pas présenter comme livrée** : « chantier livré » et
+« session bloquée » ne se déclenchent que pendant que l'app tourne — ils
+viennent du temps réel Supabase, pas d'un push. App fermée, rien n'arrive.
+Le vrai push (Firebase + Edge Function) est le chantier ouvert
+« Notifications quand l'app est fermée ». Les trois autres (échéance, matin,
+APK) fonctionnent app fermée.
 
 ## Stack
 

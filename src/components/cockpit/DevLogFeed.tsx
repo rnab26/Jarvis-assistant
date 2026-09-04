@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { questionPourRaphael } from "@/lib/journalDestinataire"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { DevItem, DevLogEntry, DevLogKind } from "@/types/database"
 
@@ -35,18 +36,6 @@ function ago(iso: string) {
 /** Une branche de session est longue : on n'en garde que la partie qui distingue. */
 function courtAuteur(auteur: string) {
   return auteur.replace(/^claude\//, "")
-}
-
-/**
- * Le journal sert deux conversations différentes : les sessions entre elles,
- * et les sessions avec Raphaël — rien ne les distingue dans le schéma. La
- * convention déjà suivie par toutes les sessions ce soir (vérifiable dans le
- * journal réel) est d'ouvrir un message adressé à une autre session par
- * "Pour la session ...". On s'appuie dessus plutôt que d'ajouter une colonne
- * qu'il faudrait faire adopter par toutes les sessions en parallèle.
- */
-function questionPourRaphael(entry: DevLogEntry) {
-  return entry.kind === "question" && !entry.answered_at && !/^pour la session\b/i.test(entry.body.trim())
 }
 
 interface DevLogFeedProps {
