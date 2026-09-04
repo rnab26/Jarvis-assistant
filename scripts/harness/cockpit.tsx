@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client"
 import "@/index.css"
 import { Toaster } from "@/components/ui/sonner"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
+import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
 import type {
@@ -159,6 +160,12 @@ function BancDuCockpit() {
           « Annuler » après une action groupée. Sans lui, le banc verrait
           l'action réussir et manquerait la moitié qui compte. */}
       <Toaster />
+      <EnvoyerAClaudeCode
+        devItems={devItems}
+        sections={sections}
+        themes={sections.map((s) => s.nom)}
+        onSend={async () => {}}
+      />
       <SessionsAuTravail
         devItems={devItems}
         onLiberer={async (id) => {
