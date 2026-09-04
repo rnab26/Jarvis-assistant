@@ -334,6 +334,38 @@ avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 
 ## Les dix vérifications du dépôt
+## Le prototype « Mode conversation Live » (4 sept. 2026)
+
+Décision de Raphaël : deux pistes en parallèle. (1) Le micro fait main
+(`useSpeechRecognition` + `dialogueTour` + `veille`), qui passe par le service
+de reconnaissance du téléphone — patché pour préférer le service Google, qui
+ne bipe pas (`patches/@capacitor-community+speech-recognition+7.0.1.patch`,
+appliqué par `postinstall` via patch-package, y compris en CI). (2) Gemini
+Live : l'app envoie l'audio en continu par WebSocket, Google gère la détection
+de voix, la fin de tour, l'interruption et la transcription. Derrière la case
+« Mode conversation Live (essai) » sous le cœur ; désactivé par défaut.
+
+- La clé ne quitte jamais le serveur : `supabase/functions/live-jeton` rend un
+  jeton éphémère à usage unique (SDK `npm:@google/genai`, API `v1alpha`),
+  verrouillé sur le modèle `GEMINI_MODELE_LIVE` (défaut
+  `gemini-2.5-flash-native-audio-preview-12-2025`, gratuit). `verify_jwt` reste
+  à true : il faut être connecté.
+- Côté app : `src/lib/live/` (audio, session). Le modèle Live ne connaît qu'un
+  outil, `commande_jarvis`, qui repasse par `resolveTranscript` +
+  `executerActions` de `MicButton` — une seule source de vérité pour les
+  actions.
+- Vérification : `ANON_KEY=... node scripts/verifier-live-jeton.mjs` (fonction
+  déployée, utilisateur de test éphémère). Le comportement audio réel ne se
+  vérifie que sur un appareil ; `journal_ecoute` trace `live_debut`,
+  `live_commande`, `live_echec`, `live_fin`.
+
+**Piège du build local** : sans `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`,
+`src/lib/supabase.ts` lève au chargement et le bundler jette TOUTE l'app comme
+code mort — le bundle fait 258 ko et ne contient rien. Pour un vrai build
+local : `VITE_SUPABASE_URL=https://x.supabase.co VITE_SUPABASE_ANON_KEY=x npx vite build`.
+La CI a les vraies valeurs.
+
+## Les sept vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
@@ -351,6 +383,7 @@ ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
 ANON_KEY=... node scripts/verifier-messages-programmes.mjs  # messages programmés : cycle + cloisonnement RLS
+ANON_KEY=... node scripts/verifier-live-jeton.mjs        # le jeton du mode conversation Live
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
