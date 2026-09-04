@@ -94,6 +94,44 @@ Tout le reste : le faire. Et ne pas rouvrir une décision déjà tranchée.
 - Expliquer les décisions techniques importantes en une ou deux phrases — il est
   débutant et apprend en même temps.
 
+## Livrer une fonctionnalité utilisable, pas du code qui marche
+
+C'est son reproche le plus fréquent. Les fonctionnalités livrées sont justes
+mais inutilisables en l'état : pas de suppression, pas de réglage, pas de
+message d'erreur, pas d'état vide. Il doit réclamer cinquante fois ce qui aurait
+dû venir d'emblée.
+
+**Avant d'écrire une ligne de code**, lui donner en cinq lignes maximum ce qui
+sera livré côté usage :
+
+- ce qu'il pourra faire concrètement (créer / voir / modifier / supprimer) ;
+- ce qui sera réglable, et où ;
+- ce qu'il verra quand c'est vide, quand ça charge, quand ça échoue ;
+- ce qui n'est volontairement pas couvert.
+
+Il corrige à ce moment-là, pas après. Ces cinq lignes remplacent cinquante
+allers-retours par une seule correction, au moment où elle ne coûte rien.
+
+**Une fonctionnalité n'est pas finie tant que :**
+
+- on ne peut pas défaire ce qu'on a fait — modifier et supprimer, avec une
+  confirmation avant toute suppression ;
+- une valeur arbitraire (délai, seuil, activé/désactivé, texte affiché) reste
+  codée en dur au lieu d'être dans les réglages ;
+- une action peut échouer sans qu'il le voie — chaque action doit dire
+  visiblement qu'elle a réussi ou échoué ;
+- les états vide, en chargement et en erreur ne sont pas traités ;
+- elle n'a pas été parcourue comme lui le fera, depuis l'écran et sur un écran
+  de téléphone — pas seulement testée par une fonction qui renvoie la bonne
+  valeur.
+
+**À la livraison**, lui dire en trois lignes : ce qu'il peut faire maintenant, ce
+qu'il ne peut pas encore faire, et ce qu'il lui reste à faire de son côté
+(installer l'APK, accorder une permission, configurer une clé).
+
+Si une de ces exigences double le travail, le dire et proposer de la découper en
+deux étapes — mais ne jamais la sauter en silence.
+
 ## Vérifier avant d'affirmer
 
 - **Ne jamais annoncer un succès sans preuve réelle** : test exécuté, log,
