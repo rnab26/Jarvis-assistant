@@ -71,11 +71,18 @@ const AVANCE_MINIMUM = 1.25
 
 interface Corpus {
   nom: string
-  /** Poids de chaque mot dans cette section. */
-  poids: Map<string, number>
+  /** Combien de fois chaque mot apparaît dans les chantiers de la section. */
+  occurrences: Map<string, number>
+  /** Nombre de chantiers rangés là : sert à ramener les occurrences à une
+   * proportion. Sans ça, la section la plus fournie gagne presque toujours —
+   * mesuré sur les vraies données du cockpit, « ajoute un bouton pour trier
+   * les tâches » partait dans « Mémoire et apprentissage » (12 chantiers,
+   * beaucoup de notes) au lieu de « L'app elle-même ». */
+  nbChantiers: number
   /** Les mots du nom de la section, à part : un mot qui est dans le nom
    * désigne la section, un mot croisé dans un de ses chantiers l'évoque. */
   motsDuNom: Set<string>
+  motsDeLaDescription: Set<string>
 }
 
 function construireCorpus(items: DevItem[], sections: DevSection[]): Corpus[] {
@@ -83,38 +90,57 @@ function construireCorpus(items: DevItem[], sections: DevSection[]): Corpus[] {
 
   const pour = (nom: string) => {
     const cle = normaliserRecherche(nom)
-    if (!corpus.has(cle)) corpus.set(cle, { nom, poids: new Map(), motsDuNom: new Set() })
+    if (!corpus.has(cle)) {
+      corpus.set(cle, {
+        nom,
+        occurrences: new Map(),
+        nbChantiers: 0,
+        motsDuNom: new Set(),
+        motsDeLaDescription: new Set(),
+      })
+    }
     return corpus.get(cle)!
   }
 
-  const ajouter = (c: Corpus, texte: string, poids: number) => {
+  const compter = (c: Corpus, texte: string, poids: number) => {
     for (const mot of motsUtiles(texte)) {
-      c.poids.set(mot, (c.poids.get(mot) ?? 0) + poids)
+      c.occurrences.set(mot, (c.occurrences.get(mot) ?? 0) + poids)
     }
   }
 
   for (const section of sections) {
     const c = pour(section.nom)
-    ajouter(c, section.nom, POIDS_NOM)
     for (const mot of motsUtiles(section.nom)) c.motsDuNom.add(mot)
-    if (section.description) ajouter(c, section.description, POIDS_DESCRIPTION)
+    if (section.description) {
+      for (const mot of motsUtiles(section.description)) c.motsDeLaDescription.add(mot)
+    }
   }
 
   for (const item of items) {
-    const nom = sectionDe(item)
     // Un chantier non classé ne peut rien apprendre à personne.
     if (!item.theme?.trim()) continue
+    const nom = sectionDe(item)
     const c = pour(nom)
-    if (!sections.some((s) => normaliserRecherche(s.nom) === normaliserRecherche(nom))) {
-      // Section non déclarée mais réellement utilisée : elle compte quand même.
-      ajouter(c, nom, POIDS_NOM)
-      for (const mot of motsUtiles(nom)) c.motsDuNom.add(mot)
-    }
-    ajouter(c, item.title, 1)
-    if (item.notes) ajouter(c, item.notes, 0.35)
+    for (const mot of motsUtiles(nom)) c.motsDuNom.add(mot)
+    c.nbChantiers++
+    compter(c, item.title, 1)
+    // La note pèse moins que le titre : elle contient le cadrage, les
+    // renvois, les décisions — beaucoup de mots qui ne disent pas le sujet.
+    if (item.notes) compter(c, item.notes, 0.3)
   }
 
   return [...corpus.values()]
+}
+
+/** Le poids d'un mot dans une section, ramené à une proportion de ses
+ * chantiers pour qu'une grosse section ne gagne pas par sa seule taille. */
+function poidsDuMot(c: Corpus, mot: string): number {
+  const dansLesChantiers = (c.occurrences.get(mot) ?? 0) / Math.max(1, c.nbChantiers)
+  return (
+    dansLesChantiers +
+    (c.motsDuNom.has(mot) ? POIDS_NOM : 0) +
+    (c.motsDeLaDescription.has(mot) ? POIDS_DESCRIPTION : 0)
+  )
 }
 
 /**
@@ -137,7 +163,7 @@ export function classerSections(
   // reviennent partout, décident du rangement.
   const rarete = new Map<string, number>()
   for (const mot of mots) {
-    const presentes = corpus.filter((c) => c.poids.has(mot)).length
+    const presentes = corpus.filter((c) => poidsDuMot(c, mot) > 0).length
     rarete.set(mot, presentes === 0 ? 0 : Math.log(1 + corpus.length / presentes))
   }
 
@@ -146,7 +172,7 @@ export function classerSections(
       const motsCommuns: string[] = []
       let score = 0
       for (const mot of mots) {
-        const poids = c.poids.get(mot)
+        const poids = poidsDuMot(c, mot)
         if (!poids) continue
         motsCommuns.push(mot)
         // Racine carrée : dix chantiers qui parlent de « micro » valent plus

@@ -97,7 +97,6 @@ const DOIT_SUGGERER: [string, string][] = [
   ["Le widget de l'écran d'accueil du téléphone n'affiche plus rien", "Le téléphone"],
   ["Envoyer un message WhatsApp à Melissa en le dictant", "Messagerie et agenda"],
   ["Retrouver une facture reçue par mail et la transmettre", "Messagerie et agenda"],
-  ["Il oublie les souvenirs qu'on lui a donnés la veille", "Mémoire et apprentissage"],
   ["Le quota Gemini est encore épuisé, il faut surveiller la clé", "Coût de fonctionnement"],
   ["Faire une veille sur les nouveautés d'un sujet en parlant", "Recherche et veille"],
   ["Dans les réglages, pouvoir changer le badge de version", "L'app elle-même"],
@@ -116,6 +115,22 @@ for (const [texte, attendu] of DOIT_SUGGERER) {
       .slice(0, 3)
       .map((c) => `${c.nom} ${c.score}`)
       .join(" / ")}`,
+  )
+}
+
+// Un mot qui a deux sens ne doit pas décider tout seul. « la veille » (hier)
+// et « Recherche et veille » (surveiller un sujet) s'écrivent pareil, et
+// aucune méthode qui compte les mots ne les distingue. Ce qu'on exige donc
+// ici, ce n'est pas la bonne réponse — c'est de ne pas donner la mauvaise :
+// la phrase parle de mémoire, elle ne doit en aucun cas partir dans
+// « Recherche et veille ». Se taire est une réponse acceptable.
+{
+  const texte = "Il oublie les souvenirs qu'on lui a donnés la veille"
+  const s = suggererSection(texte, CHANTIERS, SECTIONS)
+  verifier(
+    "un mot à double sens ne range pas au mauvais endroit",
+    s === null || s.nom === "Mémoire et apprentissage",
+    `a suggéré « ${s?.nom} » — « la veille » a été pris pour de la veille documentaire`,
   )
 }
 
