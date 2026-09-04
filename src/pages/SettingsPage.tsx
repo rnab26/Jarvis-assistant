@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { MettreAJour } from "@/components/settings/MettreAJour"
+import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
 import { Nouveautes } from "@/components/settings/Nouveautes"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
@@ -46,7 +47,7 @@ const SECTIONS = {
     titre: "Voix et écoute",
     resume: "Sa voix, le rythme, le mot-clé de réveil",
     motsCles:
-      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue",
+      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue mode live conversation continue essai",
   },
   taches: {
     cle: "taches",
@@ -665,6 +666,8 @@ export function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+
+        <ModeLive />
 
         <Card>
           <CardHeader>

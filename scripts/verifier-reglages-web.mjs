@@ -257,6 +257,31 @@ try {
       !(await recherche.getByText("Voix et écoute").isVisible()),
   )
 
+  // ── Le mode Live, réglable depuis Paramètres ──
+  const live = page.locator("#live")
+  verifier(
+    "le mode Live se règle depuis Paramètres",
+    await live.getByLabel("Mode conversation Live").isVisible(),
+  )
+  verifier("aucun signal de relecture avant qu'on y touche", await live.getByText("signaux : 0").isVisible())
+  await live.getByLabel("Mode conversation Live").click()
+  await pause(250)
+  verifier(
+    "l'activer l'enregistre là où le micro le lit",
+    (await page.evaluate(() => localStorage.getItem("jarvis_mode_live"))) === "1",
+  )
+  verifier(
+    "et prévient le micro, qui garde son propre état",
+    await live.getByText("signaux : 1").isVisible(),
+    "sans ce signal, l'interrupteur n'aurait d'effet qu'au prochain lancement de l'app",
+  )
+  await live.getByLabel("Mode conversation Live").click()
+  await pause(250)
+  verifier(
+    "et le couper revient au micro classique",
+    (await page.evaluate(() => localStorage.getItem("jarvis_mode_live"))) === "0",
+  )
+
   // ── Le thème : la palette sombre existait, rien ne pouvait l'allumer ──
   const theme = page.locator("#theme")
   verifier(

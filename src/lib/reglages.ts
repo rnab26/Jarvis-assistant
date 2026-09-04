@@ -82,8 +82,8 @@ export const REGLAGES: ReglageDeclare[] = [
   },
   {
     cle: "jarvis_mode_live",
-    ou: "Case « Mode conversation Live (essai) », sous le cœur",
-    fichier: "src/components/voice/MicButton.tsx",
+    ou: "Paramètres › Voix et écoute › Mode conversation Live (essai), et la case sous le cœur",
+    fichier: "src/components/settings/ModeLive.tsx",
   },
   {
     cle: "jarvis_theme",
