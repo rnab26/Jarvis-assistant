@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, Type, type FunctionDeclaration, type LiveServerMessage, type Session } from "@google/genai"
+import { GoogleGenAI, type LiveServerMessage, type Session } from "@google/genai"
 import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
@@ -56,25 +56,15 @@ const RECONNEXIONS_MAX = 12
 /** En dessous, une fermeture par Google est une panne, pas une limite. */
 const DUREE_MIN_POUR_RECONNECTER_MS = 30000
 
-const OUTIL_COMMANDE: FunctionDeclaration = {
-  name: "commande_jarvis",
-  description:
-    "Fait agir Jarvis : créer, modifier, supprimer ou consulter ses tâches, chantiers, contacts, documents, rappels, son agenda Google, ses mails ; mettre de la musique, appeler, préparer un message, poser une alarme, lancer un itinéraire, régler la voix. Passe la demande telle qu'elle a été dite, sans la reformuler. Ne l'appelle pas pour une simple conversation ni pour ce qui est déjà dans le contexte fourni.",
-  parameters: {
-    type: Type.OBJECT,
-    properties: {
-      demande: { type: Type.STRING, description: "La demande, mot pour mot." },
-    },
-    required: ["demande"],
-  },
-}
-
-const CONSIGNE_LIVE = `Tu es Jarvis, l'assistant vocal personnel de Raphaël — une application qu'il a fait développer, pas un produit Google. Si on te demande qui tu es ou où tu vis : tu es Jarvis, tu vis dans son application, et tu as accès à ses données ci-dessous.
-Tu parles français, de façon courte et naturelle : c'est une conversation à voix haute, pas un texte. Une ou deux phrases suffisent presque toujours.
-TU AS ACCÈS à ses tâches, ses chantiers, ses contacts, sa date du jour : ils sont dans le contexte ci-dessous, réponds directement avec. Ne dis JAMAIS « je n'ai pas accès » : si l'information n'est pas dans le contexte (agenda, mails, documents), appelle l'outil commande_jarvis avec la question telle quelle.
-Quand Raphaël te demande de FAIRE quelque chose (ajouter, modifier, terminer une tâche ou un chantier, noter un rendez-vous, un rappel, appeler, envoyer un message, mettre de la musique, régler ta voix…), appelle l'outil commande_jarvis avec sa demande telle quelle, puis dis-lui simplement ce que l'outil a rendu — c'est l'outil qui fait foi, pas toi.
-Pour le reste (questions générales, discussion, conseil), réponds directement.
-Si tu n'as pas compris, dis-le en un mot et laisse-le reformuler.`
+/**
+ * La consigne, le contexte et l'outil sont verrouillés DANS LE JETON par la
+ * fonction live-jeton — pas ici. Vérifié le 4 sept. : avec un jeton
+ * éphémère, une configuration envoyée à la connexion est ignorée par
+ * Google ; Jarvis disait « je n'ai pas accès à tes tâches » alors que
+ * l'app les lui donnait. L'app envoie donc son contexte à la fonction, qui
+ * le scelle. Le nom de l'outil doit rester identique des deux côtés.
+ */
+const NOM_OUTIL = "commande_jarvis"
 
 /** Temps laissé à la fonction serveur pour rendre un jeton. */
 const JETON_MAX_MS = 15000
@@ -88,7 +78,10 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   const debut = Date.now()
 
   // 1. Un jeton éphémère, jamais la clé.
-  const { data, error } = await withTimeout(supabase.functions.invoke<{ jeton: string; modele: string }>("live-jeton"), JETON_MAX_MS)
+  const { data, error } = await withTimeout(
+    supabase.functions.invoke<{ jeton: string; modele: string }>("live-jeton", { body: { contexte: ev.contexte } }),
+    JETON_MAX_MS,
+  )
   if (error || !data?.jeton) {
     const raison = error ? String((error as { message?: string }).message ?? error) : "pas de jeton"
     noterEcoute("live_echec", { etape: "jeton", detail: raison.slice(0, 120) })
@@ -163,7 +156,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
             resultat = `Ça n'a pas marché : ${e instanceof Error ? e.message : String(e)}`
           }
           noterEcoute("live_commande", { demande: demande.slice(0, 80), resultat: resultat.slice(0, 80) })
-          reponses.push({ id: appel.id, name: appel.name, response: { resultat } })
+          reponses.push({ id: appel.id, name: appel.name ?? NOM_OUTIL, response: { resultat } })
         }
         if (!fermee) session?.sendToolResponse({ functionResponses: reponses })
       })()
@@ -181,14 +174,8 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
         onerror: (e) => fermer(`Erreur de connexion : ${e.message || "inconnue"}`),
         onclose: (e) => fermer(e.reason ? `Session fermée : ${e.reason}` : undefined),
       },
-      config: {
-        responseModalities: [Modality.AUDIO],
-        systemInstruction: `${CONSIGNE_LIVE}\n\n${ev.contexte}`,
-        tools: [{ functionDeclarations: [OUTIL_COMMANDE] }],
-        inputAudioTranscription: {},
-        outputAudioTranscription: {},
-        speechConfig: { languageCode: "fr-FR" },
-      },
+      // Rien ici : tout est dans le jeton (voir NOM_OUTIL).
+      config: {},
     })
 
     // 3. Le micro, en continu. Google décide du reste.
