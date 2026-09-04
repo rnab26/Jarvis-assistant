@@ -27,7 +27,7 @@ import {
 } from "@/lib/actionsTelephoneVocales"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
-import { demarrerSessionLive, type SessionLive } from "@/lib/live/sessionLive"
+import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
 import { ecrireModeLive, lireModeLive } from "@/lib/livePrefs"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import type { DevItem } from "@/types/database"
@@ -461,7 +461,7 @@ export function MicButton({
     priseRef.current++
     setLastUserText(null)
     setLastReply(null)
-    liveRef.current = await demarrerSessionLive({
+    liveRef.current = await maintenirSessionLive({
       contexte: contexteLive(),
       onEntendu: (texte) => setLastUserText(texte),
       onReponse: (texte) => setLastReply(texte),
