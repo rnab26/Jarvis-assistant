@@ -166,6 +166,32 @@ Deux règles à ne pas défaire :
 Les corrections écrites dans le registre remontent dans le bloc injecté au
 démarrage de chaque session : c'est par là qu'elles servent à corriger.
 
+### Un chantier porte sa conversation
+
+Les messages du journal rattachés à un chantier (`dev_log.item_id`) existaient
+depuis le début, mais ne se lisaient que dans le flux général, mélangés aux
+autres : une question posée par une session sur un chantier ne se voyait pas
+sur le chantier. Elle s'affiche maintenant dans la carte dépliée, avec la
+session qui l'a posée, et Raphaël répond depuis là (`kind: "reponse"`, même
+`addEntry` que le journal — pas un second chemin d'écriture). Une question
+restée sans réponse se signale sur la ligne repliée : c'est la seule chose qui
+bloque une session, donc la seule qui doive se voir sans déplier.
+
+Les libellés, couleurs, l'âge en clair et le nom court d'une session sont dans
+`src/lib/journalBord.ts`, partagés par le flux et les cartes — deux copies
+finiraient par dire deux choses du même message.
+
+### « Ça existe déjà » à la saisie (`src/lib/doublonChantier.ts`)
+
+Pendant qu'il écrit, la fenêtre d'envoi montre les chantiers proches — les
+ouverts ET **les archivés**, ces derniers en premier : redemander une chose
+déjà livrée fait tout refaire à une session, et parfois défaire ce qui
+marchait. Comparaison de mots, locale, jamais un appel au modèle. Elle ne
+bloque rien et se tait dès qu'il n'y a qu'un mot courant en commun — un
+avertissement qui se déclenche à tort n'est plus lu du tout. Elle n'attrape
+que la redite littérale : deux demandes qui disent la même chose avec un autre
+vocabulaire ne se ressemblent pas pour elle, et c'est écrit dans son en-tête.
+
 ### Les actions groupées et le « Annuler »
 
 Le bouton « Choisir » du cockpit passe le tableau en mode sélection : tout se
@@ -691,6 +717,7 @@ node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jo
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
+node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
@@ -882,6 +909,20 @@ Une préférence qu'un seul chemin permet de poser — une question orale, une
 détection automatique, une valeur par défaut — se règle **aussi** depuis
 Paramètres. Au minimum : la voir, et pouvoir l'effacer.
 
+## Le thème sombre existait déjà, et rien ne l'allumait
+
+Trouvé le 4 sept. : le bloc `.dark` de `src/index.css` définit une
+quarantaine de couleurs depuis le début du projet, et **aucun composant n'a
+jamais posé la classe `dark`**. Réparé — `ThemeProvider` (next-themes) dans
+`App.tsx`, carte dans Paramètres › Apparence.
+
+Deux points à ne pas défaire : la clé de stockage est **la nôtre**
+(`jarvis_theme`, pas celle par défaut de la bibliothèque), sans quoi le choix
+n'entrerait pas dans les réglages recopiés en base ; et on passe par
+next-themes plutôt qu'un bricolage maison parce que `components/ui/sonner.tsx`
+lit déjà son état — sinon un toast clair s'afficherait au-dessus d'un écran
+sombre.
+
 ## Les notifications : Jarvis ne notifie QUE ce qui vit chez lui
 
 Livré le 4 sept. 2026 (chantier 5d03a192). `@capacitor/local-notifications`,
@@ -923,6 +964,13 @@ Trois fichiers, et la frontière entre eux compte :
 Les identifiants sont répartis en plages (`PLAGE_ECHEANCE`, `PLAGE_MATIN`, …)
 et `estNotreNotif()` garde l'annulation : on n'annule jamais une notification
 qui ne vient pas de nous.
+
+**Les heures de silence** (4 sept., initiative) ne suppriment ni ne décalent
+rien : le rappel part sur un canal Android muet (`jarvis_nuit`, importance 2)
+au lieu du canal sonore. Il est là au réveil, il n'a réveillé personne.
+`dansLaPlageSilencieuse()` gère la plage qui passe minuit — une comparaison
+naïve `début <= t < fin` serait toujours fausse sur 22:30 → 07:30, et la nuit
+sonnerait comme le jour sans que rien ne le signale.
 
 **Limite connue, à ne pas présenter comme livrée** : « chantier livré » et
 « session bloquée » ne se déclenchent que pendant que l'app tourne — ils

@@ -86,6 +86,39 @@ try {
   const tableau = page.getByRole("region", { name: "Chantiers" })
   const dansLeTableau = (texte) => tableau.getByText(texte).first().isVisible()
 
+  // ── La fenêtre d'envoi : ce qui existe déjà, et la section suggérée ──
+  const quoiFaire = page.getByLabel("Ce qu'il faut faire")
+  await quoiFaire.fill("Le micro se coupe en pleine phrase quand je dicte longtemps")
+  await pause(400)
+  verifier(
+    "écrire une demande déjà en cours le signale avant d'envoyer",
+    await visible("Ça ressemble à ce qui existe déjà"),
+    "on ouvrirait un doublon sans jamais le savoir",
+  )
+  verifier(
+    "et dit dans quel état est ce qui existe",
+    await visible("en cours"),
+  )
+  verifier(
+    "la section est suggérée d'après ce qui est déjà rangé",
+    await visible("Section suggérée"),
+  )
+  verifier(
+    "et elle dit sur quels mots elle s'appuie",
+    await visible("d'après"),
+    "une suggestion qu'on ne peut pas juger est acceptée sans être relue",
+  )
+
+  await quoiFaire.fill("Acheter du pain demain matin")
+  await pause(400)
+  verifier(
+    "une demande sans rapport ne déclenche aucun avertissement",
+    !(await page.getByText("Ça ressemble à ce qui existe déjà").isVisible()),
+    "un avertissement qui se déclenche à tort finit par ne plus être lu",
+  )
+  await quoiFaire.fill("")
+  await pause(250)
+
   // ── Qui travaille en ce moment ──
   verifier(
     "la carte dit quelle session travaille, et sur quoi",
@@ -133,6 +166,38 @@ try {
     "appuyer sur la section la déplie",
     await dansLeTableau("Le micro se coupe en pleine phrase"),
   )
+  verifier(
+    "une question de session restée sans réponse se voit sur la ligne, sans déplier",
+    await tableau.getByRole("button", { name: /Réveil vocal en arrière-plan/ }).first().isVisible(),
+  )
+
+  // ── Le chantier porte sa conversation ──
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(250)
+  verifier(
+    "déplier un chantier montre les messages du journal qui le concernent",
+    await visible("Tu veux que je coupe le micro après 30 s"),
+    "il fallait chercher la question dans le flux général du journal",
+  )
+  verifier("avec la session qui l'a posée", await visible("voix-et-ecoute"))
+
+  await page.getByLabel("Répondre sur Réveil vocal en arrière-plan").fill("Qu'il attende, oui.")
+  await pause(200)
+  await page.getByRole("button", { name: "Répondre" }).first().click()
+  await pause(400)
+  verifier(
+    "répondre se fait depuis le chantier, sans passer par le journal",
+    await visible("Qu'il attende, oui."),
+  )
+  await page.getByRole("button", { name: "Marquer traité" }).first().click()
+  await pause(400)
+  verifier(
+    "et marquer traité fait tomber le compteur de questions en attente",
+    (await tableau.getByRole("button", { name: /Marquer traité/ }).count()) === 0,
+  )
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(200)
+
   await enTete("Voix et écoute").click()
   await pause(150)
   verifier(

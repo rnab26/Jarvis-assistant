@@ -117,8 +117,8 @@ try {
     verifier(`« ${ligne} » est réglable`, await ok.getByText(ligne, { exact: true }).first().isVisible())
   }
   verifier(
-    "cinq interrupteurs, pas six : ni agenda ni mail",
-    (await ok.getByRole("switch").count()) === 5,
+    "cinq notifications réglables (plus les heures de silence), ni agenda ni mail",
+    (await ok.getByRole("switch").count()) === 6,
     "Google prévient déjà pour l'agenda et les mails ; deux notifications pour la même chose, c'est une de trop",
   )
   verifier(
@@ -183,6 +183,30 @@ try {
     await ok.getByRole("button", { name: "Tester" }).isVisible(),
   )
 
+  // ── Les heures de silence ──
+  verifier(
+    "on peut faire taire la nuit sans perdre les rappels",
+    await ok.getByText("Ne rien faire sonner la nuit", { exact: true }).isVisible(),
+  )
+  verifier(
+    "et il est dit que le rappel s'affiche quand même",
+    await ok.getByText(/sans bruit/).isVisible(),
+    "sans cette phrase, on croirait supprimer le rappel",
+  )
+  verifier(
+    "les deux bornes de la nuit se règlent",
+    (await ok.getByText("À partir de", { exact: true }).isVisible()) &&
+      (await ok.getByText("Jusqu'à", { exact: true }).isVisible()),
+  )
+  await ok.getByLabel("Ne rien faire sonner la nuit").click()
+  await pause(200)
+  verifier(
+    "couper les heures de silence range leurs réglages",
+    !(await ok.getByText("À partir de", { exact: true }).isVisible()),
+  )
+  await ok.getByLabel("Ne rien faire sonner la nuit").click()
+  await pause(200)
+
   // ── La mise à jour : rapide quand c'est possible, franche quand ça ne l'est pas ──
   verifier(
     "quand la mise à jour rapide est possible, c'est elle qu'on propose",
@@ -218,6 +242,72 @@ try {
   verifier(
     "et ce retour demande confirmation",
     await parApk.getByRole("button", { name: "Confirmer le retour" }).isVisible(),
+  )
+
+  // ── La recherche : ce qui répond s'affiche déplié, le reste disparaît ──
+  const recherche = page.locator("#recherche")
+  verifier(
+    "la section cherchée s'affiche DÉPLIÉE",
+    await recherche.getByText("Contenu notifications").isVisible(),
+    "trouver une section pour devoir la déplier ensuite ne fait pas gagner un geste",
+  )
+  verifier(
+    "et les autres disparaissent",
+    !(await recherche.getByText("Contenu voix").isVisible()) &&
+      !(await recherche.getByText("Voix et écoute").isVisible()),
+  )
+
+  // ── Le thème : la palette sombre existait, rien ne pouvait l'allumer ──
+  const theme = page.locator("#theme")
+  verifier(
+    "les trois choix de thème sont proposés",
+    (await theme.getByRole("button", { name: "Clair" }).isVisible()) &&
+      (await theme.getByRole("button", { name: "Sombre" }).isVisible()) &&
+      (await theme.getByRole("button", { name: "Comme le téléphone" }).isVisible()),
+  )
+  await theme.getByRole("button", { name: "Sombre" }).click()
+  await pause(300)
+  verifier(
+    "choisir « Sombre » allume vraiment la palette sombre",
+    await page.evaluate(() => document.documentElement.classList.contains("dark")),
+    "la classe « dark » n'est pas posée : les quarante couleurs du bloc .dark restent lettre morte",
+  )
+  verifier(
+    "et le choix est enregistré là où la synchro le lira",
+    (await page.evaluate(() => localStorage.getItem("jarvis_theme"))) === "dark",
+    "sans ça il serait perdu à la prochaine réinstallation",
+  )
+  await theme.getByRole("button", { name: "Clair" }).click()
+  await pause(300)
+  verifier(
+    "et on peut revenir en clair",
+    !(await page.evaluate(() => document.documentElement.classList.contains("dark"))),
+  )
+
+  // ── Remettre les réglages par défaut ──
+  await page.evaluate(() => localStorage.setItem("jarvis_voice_rate", "1.75"))
+  const reinit = page.locator("#reinit")
+  await reinit.getByRole("button", { name: "Remettre les réglages par défaut" }).click()
+  await pause(200)
+  verifier(
+    "la remise à zéro demande confirmation",
+    await reinit.getByText("Ce qui repart à zéro :").isVisible(),
+    "effacer tous les réglages d'un appui de travers serait irrattrapable",
+  )
+  verifier(
+    "et dit ce qu'elle NE touche pas",
+    await reinit.getByText(/tes tâches, tes chantiers/).isVisible(),
+    "sans ça on croirait effacer ses données",
+  )
+  verifier(
+    "rien n'est effacé tant qu'on n'a pas confirmé",
+    (await page.evaluate(() => localStorage.getItem("jarvis_voice_rate"))) === "1.75",
+  )
+  await reinit.getByRole("button", { name: "Confirmer la remise à zéro" }).click()
+  await pause(300)
+  verifier(
+    "confirmer efface pour de bon",
+    (await page.evaluate(() => localStorage.getItem("jarvis_voice_rate"))) === null,
   )
 
   // ── Rien ne déborde en largeur ──

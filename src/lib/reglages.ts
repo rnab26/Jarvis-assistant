@@ -86,6 +86,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/voice/MicButton.tsx",
   },
   {
+    cle: "jarvis_theme",
+    ou: "Paramètres › Apparence › Thème",
+    fichier: "src/components/settings/Theme.tsx",
+  },
+  {
     cle: "jarvis_core_image",
     ou: "Paramètres › Apparence › Le cœur de Jarvis",
     fichier: "src/pages/SettingsPage.tsx",

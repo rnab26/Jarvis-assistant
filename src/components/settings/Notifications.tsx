@@ -254,6 +254,30 @@ export function Notifications({ api }: { api: NotificationsApi }) {
               onChange={(actif) => setPrefs({ bloque: actif })}
             />
 
+            <Interrupteur
+              titre="Ne rien faire sonner la nuit"
+              description="Les rappels s'affichent quand même, sans bruit : ils sont là au réveil, ils n'ont réveillé personne."
+              actif={prefs.silenceNuit}
+              onChange={(actif) => setPrefs({ silenceNuit: actif })}
+            >
+              {prefs.silenceNuit && (
+                <div className="flex flex-col gap-3 border-t pt-3">
+                  <ChoixHeure
+                    id="silence-debut"
+                    label="À partir de"
+                    valeur={prefs.silenceDebut}
+                    onChange={(v) => setPrefs({ silenceDebut: v })}
+                  />
+                  <ChoixHeure
+                    id="silence-fin"
+                    label="Jusqu'à"
+                    valeur={prefs.silenceFin}
+                    onChange={(v) => setPrefs({ silenceFin: v })}
+                  />
+                </div>
+              )}
+            </Interrupteur>
+
             <div className="flex flex-col gap-2 rounded-lg border p-3">
               <p className="text-sm">
                 {programmees.total === 0

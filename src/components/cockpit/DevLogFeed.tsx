@@ -5,38 +5,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
 import { questionPourRaphael } from "@/lib/journalDestinataire"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { DevItem, DevLogEntry, DevLogKind } from "@/types/database"
-
-const KIND_LABEL: Record<DevLogKind, string> = {
-  question: "Question",
-  reponse: "Réponse",
-  info: "Info",
-  blocage: "Blocage",
-}
-
-const KIND_VARIANT: Record<DevLogKind, "default" | "secondary" | "destructive" | "outline"> = {
-  question: "default",
-  reponse: "secondary",
-  info: "outline",
-  blocage: "destructive",
-}
-
-/** "il y a 3 h" plutôt qu'une date brute : on lit un fil, pas un registre. */
-function ago(iso: string) {
-  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
-  if (minutes < 1) return "à l'instant"
-  if (minutes < 60) return `il y a ${minutes} min`
-  const heures = Math.round(minutes / 60)
-  if (heures < 24) return `il y a ${heures} h`
-  return `il y a ${Math.round(heures / 24)} j`
-}
-
-/** Une branche de session est longue : on n'en garde que la partie qui distingue. */
-function courtAuteur(auteur: string) {
-  return auteur.replace(/^claude\//, "")
-}
 
 interface DevLogFeedProps {
   entries: DevLogEntry[]

@@ -1,11 +1,13 @@
-import { Archive, ArchiveRestore, Check, Pencil, Trash2 } from "lucide-react"
+import { Archive, ArchiveRestore, Check, MessageSquare, Pencil, Send, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
-import type { DevItem, DevItemInput, DevPriority, DevStatus } from "@/types/database"
+import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
+import type { DevItem, DevItemInput, DevLogEntry, DevPriority, DevStatus } from "@/types/database"
 
 /** « Normale » reste implicite : c'est la priorité de presque tous les
  * chantiers, l'afficher sur chacun ne distingue rien et mange la place du
@@ -85,6 +87,11 @@ interface DevItemCardProps {
   onDelete: (id: string) => Promise<void>
   onArchive?: (id: string) => Promise<void>
   onUnarchive?: (id: string) => Promise<void>
+  /** Les messages du journal rattachés à CE chantier, plus récents d'abord. */
+  messages?: DevLogEntry[]
+  /** Répondre depuis le chantier, sans passer par le journal général. */
+  onRepondre?: (itemId: string, body: string) => Promise<void>
+  onMarquerTraite?: (id: string) => Promise<void>
   /** Mode sélection : la ligne se coche au lieu de se déplier. */
   selectionnable?: boolean
   selectionne?: boolean
@@ -98,11 +105,20 @@ export function DevItemCard({
   onDelete,
   onArchive,
   onUnarchive,
+  messages = [],
+  onRepondre,
+  onMarquerTraite,
   selectionnable = false,
   selectionne = false,
   onSelectionner,
 }: DevItemCardProps) {
   const [deplie, setDeplie] = useState(false)
+  const [reponse, setReponse] = useState("")
+  const [envoiReponse, setEnvoiReponse] = useState(false)
+
+  // Une question posée par une session et restée sans réponse est la seule
+  // chose qui doive se voir SANS déplier : c'est elle qui bloque le travail.
+  const questionsEnAttente = messages.filter((m) => m.kind === "question" && !m.answered_at).length
 
   // Même densité que les tâches (option « compact » choisie par Raphaël le
   // 3 sept. 2026) : plus de cadre par chantier, un filet entre deux, les
@@ -161,6 +177,12 @@ export function DevItemCard({
               className="shrink-0 px-1.5 text-xs font-normal"
             >
               {PRIORITY_LABEL[item.priority]}
+            </Badge>
+          )}
+          {questionsEnAttente > 0 && (
+            <Badge variant="default" className="shrink-0 px-1.5 text-xs font-normal">
+              <MessageSquare className="size-3" />
+              {questionsEnAttente}
             </Badge>
           )}
         </div>
@@ -252,6 +274,73 @@ export function DevItemCard({
           visant un menu et en enregistrant. Partout ailleurs (Linear, Trello,
           GitHub Projects) elles se changent depuis la ligne. Le formulaire
           reste pour le reste : le titre, la note. */}
+      {/* Le chantier porte sa conversation. Les messages des sessions
+          existaient déjà (dev_log.item_id), mais seulement dans le flux du
+          journal, mélangés à tous les autres : une question posée sur un
+          chantier ne se lisait pas sur le chantier, et une réponse écrite
+          ailleurs ne s'y voyait pas non plus. */}
+      {deplie && !selectionnable && messages.length > 0 && (
+        <div className="flex flex-col gap-1.5 rounded-lg border border-dashed p-2">
+          {messages.map((m) => (
+            <div key={m.id} className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5">
+                <Badge variant={KIND_VARIANT[m.kind]} className="shrink-0 px-1.5 text-xs font-normal">
+                  {KIND_LABEL[m.kind]}
+                </Badge>
+                <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                  {courtAuteur(m.author)}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">{ago(m.created_at)}</span>
+                {m.kind === "question" && !m.answered_at && onMarquerTraite && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Marquer traité"
+                    onClick={() => onMarquerTraite(m.id).catch(alreadyNotified)}
+                  >
+                    <Check className="size-3.5" />
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs whitespace-pre-line text-muted-foreground">{m.body}</p>
+            </div>
+          ))}
+
+          {onRepondre && (
+            <div className="flex flex-col gap-1.5">
+              <Textarea
+                value={reponse}
+                rows={2}
+                placeholder="Répondre à la session, ici même"
+                aria-label={`Répondre sur ${item.title}`}
+                onChange={(e) => setReponse(e.target.value)}
+              />
+              {reponse.trim() && (
+                <Button
+                  size="sm"
+                  className="self-end"
+                  disabled={envoiReponse}
+                  onClick={async () => {
+                    setEnvoiReponse(true)
+                    try {
+                      await onRepondre(item.id, reponse.trim())
+                      setReponse("")
+                    } catch {
+                      // Toast déjà affiché : la saisie reste.
+                    } finally {
+                      setEnvoiReponse(false)
+                    }
+                  }}
+                >
+                  <Send className="size-3.5" />
+                  Répondre
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {deplie && !selectionnable && !item.archived_at && (
         <div className="flex flex-col gap-1.5 pl-0.5">
           <div className="flex flex-wrap gap-1">

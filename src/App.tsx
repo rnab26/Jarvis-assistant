@@ -1,3 +1,4 @@
+import { ThemeProvider } from "next-themes"
 import { useEffect } from "react"
 import { Navigate, Route, HashRouter, Routes, useNavigate } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
@@ -13,6 +14,7 @@ import { DocumentsPage } from "@/pages/DocumentsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { MemoirePage } from "@/pages/MemoirePage"
 import { SettingsPage } from "@/pages/SettingsPage"
+import { THEME_KEY } from "@/lib/theme"
 
 /**
  * La fenêtre de l'appui long est une DEUXIÈME BridgeActivity Android, avec
@@ -56,12 +58,24 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <HashRouter>
-        <AppRoutes />
-      </HashRouter>
-      <Toaster />
-    </AuthProvider>
+    // La palette sombre existait dans index.css depuis le début, et rien ne
+    // pouvait l'activer : personne ne posait la classe « dark ». La clé de
+    // stockage est la nôtre pour que le choix entre dans les réglages
+    // recopiés en base (voir src/lib/theme.ts).
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      storageKey={THEME_KEY}
+      enableSystem
+      disableTransitionOnChange
+    >
+      <AuthProvider>
+        <HashRouter>
+          <AppRoutes />
+        </HashRouter>
+        <Toaster />
+      </AuthProvider>
+    </ThemeProvider>
   )
 }
 

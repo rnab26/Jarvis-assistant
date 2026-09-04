@@ -16,7 +16,7 @@ import type { Task } from "@/types/database"
  * se vérifie que sur l'appareil.
  */
 
-export type CanalNotif = "taches" | "matin" | "app" | "livraisons" | "blocages"
+export type CanalNotif = "taches" | "matin" | "nuit" | "app" | "livraisons" | "blocages"
 
 export interface NotifPlanifiee {
   id: number
@@ -143,6 +143,30 @@ function corpsEcheance(task: Task, prefs: PrefsNotifications, moment: Date): str
   return "C'est pour aujourd'hui."
 }
 
+/** Minutes depuis minuit, pour comparer deux heures sans se soucier du jour. */
+function minutesDuJour(heure: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(heure.trim())
+  if (!m) return null
+  return Number(m[1]) * 60 + Number(m[2])
+}
+
+/**
+ * Ce moment tombe-t-il dans la plage silencieuse ?
+ *
+ * La plage passe minuit dans le cas normal (22:30 → 07:30) : la comparaison
+ * naïve « début <= t < fin » serait alors toujours fausse et la nuit
+ * sonnerait comme le jour. On teste donc les deux formes, selon que la plage
+ * franchit minuit ou non.
+ */
+export function dansLaPlageSilencieuse(moment: Date, prefs: PrefsNotifications): boolean {
+  if (!prefs.silenceNuit) return false
+  const debut = minutesDuJour(prefs.silenceDebut)
+  const fin = minutesDuJour(prefs.silenceFin)
+  if (debut === null || fin === null || debut === fin) return false
+  const t = moment.getHours() * 60 + moment.getMinutes()
+  return debut < fin ? t >= debut && t < fin : t >= debut || t < fin
+}
+
 /**
  * Les rappels d'échéance à venir, les plus proches d'abord.
  *
@@ -176,7 +200,9 @@ export function planifierEcheances(
       titre: task.title,
       corps: corpsEcheance(task, prefs, quand),
       quand,
-      canal: "taches",
+      // La nuit, le même rappel part sur un canal muet plutôt que d'être
+      // supprimé ou décalé : il est là au réveil, il n'a réveillé personne.
+      canal: dansLaPlageSilencieuse(quand, prefs) ? "nuit" : "taches",
       route: "/",
     })
   }
@@ -245,7 +271,7 @@ export function planifierMatins(
       titre: "Ton point du matin",
       corps: corpsDuMatin(tasks, jour),
       quand,
-      canal: "matin",
+      canal: dansLaPlageSilencieuse(quand, prefs) ? "nuit" : "matin",
       route: "/",
     })
   }
