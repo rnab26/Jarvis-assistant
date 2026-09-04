@@ -1,5 +1,6 @@
 import { toast } from "sonner"
 import { errorMessage } from "@/lib/errorMessage"
+import { signalerErreur } from "@/lib/erreurs"
 
 /**
  * Signale à l'utilisateur qu'une écriture a échoué, et laisse l'erreur
@@ -17,6 +18,11 @@ export async function withErrorToast<T>(action: string, run: () => Promise<T>): 
     return await run()
   } catch (e) {
     toast.error(action, { description: errorMessage(e) })
+    // Le toast disparaît en cinq secondes ; l'échec, lui, doit rester
+    // quelque part. C'est le seul endroit par lequel passent TOUTES les
+    // écritures de l'app — donc le seul endroit où les brancher une fois
+    // pour toutes, plutôt qu'un appel oublié dans chaque hook.
+    signalerErreur("systeme", action, { detail: errorMessage(e) })
     throw e
   }
 }

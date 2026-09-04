@@ -1,0 +1,69 @@
+name: Vérifications hors ligne
+
+# Sur TOUTES les branches, volontairement : les deux autres workflows ne se
+# déclenchent que sur le tronc, donc une session qui travaille sur sa branche
+# n'a aucun retour avant d'avoir fusionné. Ces contrôles-ci ne demandent ni
+# réseau, ni téléphone, ni secret — ils peuvent donc tourner partout, et
+# c'est le seul filet qui existe avant la fusion.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # 22 et pas 20 : --experimental-strip-types (exécuter du TypeScript
+          # sans étape de compilation) n'existe pas avant.
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Le typecheck qui compte est celui des projets référencés — un
+      # `tsc --noEmit` à la racine ne vérifie PAS l'app et dit « OK » à tort.
+      - run: npx tsc -b
+
+      - name: Les réglages sont déclarés et réglables
+        run: node --experimental-strip-types scripts/verifier-reglages.ts
+
+      - name: Ce que Jarvis fera sonner, et quand
+        run: node --experimental-strip-types scripts/verifier-notifications.ts
+
+      - name: La mise à jour rapide de l'app
+        run: node --experimental-strip-types scripts/verifier-maj-web.ts
+
+      - name: Les tours de parole
+        run: node --experimental-strip-types scripts/verifier-dialogue.ts
+
+      - name: Le réveil « Jarvis »
+        run: node --experimental-strip-types scripts/verifier-mot-cle.ts
+
+      - name: Les commandes comprises sans modèle
+        run: node --experimental-strip-types scripts/verifier-commande-locale.ts
+
+      - name: La clôture de la conversation à la voix
+        run: node --experimental-strip-types scripts/verifier-fin-conversation.ts
+
+      - name: L'envoi d'un chantier à Claude Code
+        run: node --experimental-strip-types scripts/verifier-envoi-chantier.ts
+
+      - name: L'étiquette d'échéance d'une tâche
+        run: node --experimental-strip-types scripts/verifier-echeance.ts
+
+      - name: Pas deux thèmes pour le même sujet
+        run: node --experimental-strip-types scripts/verifier-theme.ts
+
+      - name: Les sections du cockpit
+        run: node --experimental-strip-types scripts/verifier-sections.ts
+
+      - name: La section suggérée à la saisie
+        run: node --experimental-strip-types scripts/verifier-suggestion-theme.ts
+
+      # Un `--` dans un commentaire XML casse le build Android entier, avec un
+      # message qui ne parle jamais du commentaire. Le contrôle coûte une
+      # seconde ici, contre un build Android complet pour le découvrir.
+      - name: Les XML Android sont valides
+        run: python3 -c "import xml.dom.minidom,glob;[xml.dom.minidom.parse(f) for f in glob.glob('android/app/src/main/res/**/*.xml',recursive=True)]"

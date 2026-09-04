@@ -42,7 +42,12 @@ fi
 
 # Groupés par thème, pas à plat : un sujet se traite en entier, pas chantier
 # par chantier. Les thèmes qui contiennent de la priorité haute passent devant.
-chantiers=$(interroger "select coalesce(string_agg(bloc, chr(10) || chr(10) order by urgence, taille desc, th), '(aucun)') as t from (select coalesce(nullif(trim(theme), ''), 'À classer') as th, min(case when priority = 'high' then 1 else 2 end) as urgence, count(*) as taille, '### ' || coalesce(nullif(trim(theme), ''), 'À classer') || ' (' || count(*) || ')' || chr(10) || string_agg(format('- %s | %s | %s | %s%s%s', id, title, status, priority, case when claimed_by is not null and claim_expires_at > now() then ' | PRIS PAR ' || claimed_by else '' end, case when coalesce(notes, '') <> '' then chr(10) || '    ' || left(replace(notes, chr(10), ' '), 160) else '' end), chr(10) order by priority desc, created_at) as bloc from dev_items where archived_at is null group by 1) g")
+chantiers=$(interroger "select coalesce(string_agg(bloc, chr(10) || chr(10) order by rang, urgence, taille desc, th), '(aucun)') as t from (select coalesce(nullif(trim(i.theme), ''), 'À classer') as th, min(coalesce(s.position, 900)) as rang, min(case when i.priority = 'high' then 1 else 2 end) as urgence, count(*) as taille, '### ' || coalesce(nullif(trim(i.theme), ''), 'À classer') || ' (' || count(*) || ')' || chr(10) || string_agg(format('- %s | %s | %s | %s%s%s', i.id, i.title, i.status, i.priority, case when i.claimed_by is not null and i.claim_expires_at > now() then ' | PRIS PAR ' || i.claimed_by else '' end, case when coalesce(i.notes, '') <> '' then chr(10) || '    ' || left(replace(i.notes, chr(10), ' '), 160) else '' end), chr(10) order by i.priority desc, i.created_at) as bloc from dev_items i left join dev_sections s on cle_section(s.nom) = cle_section(coalesce(nullif(trim(i.theme), ''), '~')) where i.archived_at is null group by 1) g")
+
+# Ce que Jarvis rate, et ce que Raphaël a écrit qu'il aurait fallu faire. Les
+# corrections vivent en base pour être lues ici : une note de correction qui ne
+# remonte jusqu'à personne ne corrige rien (chantier f2f6667f).
+erreurs=$(interroger "select coalesce(string_agg(format('- [%s] %s (vue %s fois, %s)%s%s', categorie, titre, occurrences, to_char(last_seen, 'DD/MM HH24:MI'), case when coalesce(correction, '') <> '' then chr(10) || '    correction attendue : ' || left(replace(correction, chr(10), ' '), 200) else '' end, case when reapparue_at is not null then chr(10) || '    REVENUE APRES CORRECTION' else '' end), chr(10) order by occurrences desc, last_seen desc), '(aucune)') as t from (select * from jarvis_erreurs where statut in ('nouveau', 'en_cours') order by occurrences desc, last_seen desc limit 8) e")
 
 journal=$(interroger "select coalesce(string_agg(format('- %s | %s | %s%s%s', to_char(created_at, 'DD/MM HH24:MI'), author, kind, case when answered_at is not null then ' (repondu)' else '' end, chr(10) || '    ' || left(replace(body, chr(10), ' '), 300)), chr(10) order by created_at desc), '(vide)') as t from (select * from dev_log order by created_at desc limit 12) d")
 
@@ -70,6 +75,13 @@ qui en a assez des correctifs ponctuels posés en pansement. Les chantiers d'un
 même thème partagent presque toujours la même cause racine.
 
 ${chantiers:-(non chargé)}
+
+## Erreurs de Jarvis encore ouvertes (les 8 plus fréquentes)
+Le registre du cockpit (table \`jarvis_erreurs\`) : ce qu'il a raté, regroupé par
+empreinte. Une correction écrite ici est ce que Raphaël attend — traite-la comme
+une consigne, et ouvre un chantier si elle demande du code.
+
+${erreurs:-(non chargé)}
 
 ## Journal de bord (12 dernières entrées, plus récente en premier)
 Consignes de Raphaël et messages des autres sessions.

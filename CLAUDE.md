@@ -103,6 +103,99 @@ discuter d'abord avec Raphaël — même s'il est dans le cockpit en statut
 "todo" (conforme à la règle de son CLAUDE.md global sur les actions à fort
 enjeu).
 
+## Les sections de chantiers (migration 0018) et le registre des erreurs (0019)
+
+Livrés ensemble le 4 sept. 2026 (chantiers 3e880467, dce4415e, 033a41da,
+f2f6667f, 41816bdc) : le cockpit se range, se filtre, et garde ce que Jarvis
+rate.
+
+### Le rattachement reste `dev_items.theme`. Ne change pas ça.
+
+`theme` est du texte libre, et c'est ce que TOUT le projet lit : le hook de
+démarrage, la commande vocale, les scripts SQL, les autres sessions. La table
+`dev_sections` ne porte que ce que le texte libre ne sait pas porter — exister
+sans chantier (« Entraînement » créée avant d'avoir quoi que ce soit à y
+mettre), avoir un ordre, une description. En faire une clé étrangère casserait
+tout le reste pour rien.
+
+Les deux sont tenus alignés par des fonctions SQL, **jamais par deux écritures
+côté app** : `renommer_section(id, nom)` renomme la section ET le thème de tous
+ses chantiers, `fusionner_sections(source, cible)` déplace puis supprime,
+`supprimer_section(id, vers)` déplace vers une autre section ou rend les
+chantiers à « À classer » — **jamais de suppression en cascade**, une section
+est un rangement, pas un contenant. `reordonner_sections(ids[])` pose l'ordre
+d'un coup. Si l'une des deux moitiés passait sans l'autre, le cockpit
+afficherait une section vide à côté de chantiers orphelins, et personne ne le
+verrait sur le moment.
+
+`cle_section(nom)` en SQL reprend mot pour mot `cleTheme()` de
+`src/lib/themeChantier.ts` : accents, apostrophes, tirets et majuscules ne
+distinguent pas deux sections. Changer l'une, c'est changer l'autre.
+
+L'ordre choisi par Raphaël est aussi celui du bloc injecté au démarrage de
+session (le hook joint `dev_sections` sur cette clé) : ce qu'il voit dans l'app
+et ce que tu lis en ouvrant une session sont rangés pareil.
+
+### Le registre des erreurs : ce qui y arrive tout seul, et ce qui n'y arrive pas
+
+`jarvis_erreurs` + la fonction `signaler_erreur(categorie, titre, detail,
+contexte, source)`, appelée depuis `src/lib/erreurs.ts` — jamais en direct.
+Trois branchements sont déjà posés, et ils suffisent à couvrir les échecs
+techniques :
+
+- `withErrorToast` (`src/lib/notifyError.ts`) : **toutes** les écritures de
+  l'app y passent. C'est le seul endroit à brancher, pas chaque hook.
+- `noterEcoute` (`src/lib/journalEcoute.ts`) : les échecs Live, les refus du
+  serveur vocal et les rafales de micro qui finissent sans rien avoir entendu.
+  La table de correspondance est `erreurDepuisEcoute()`, vérifiable sans réseau.
+- La saisie manuelle, depuis le cockpit : c'est elle qui compte le plus, parce
+  qu'une erreur de COMPRÉHENSION ne lève aucune exception et que seul Raphaël
+  peut la voir.
+
+Deux règles à ne pas défaire :
+
+1. **`signalerErreur` ne doit jamais faire échouer ce qu'elle observe.** Pas
+   d'`await` chez l'appelant, client Supabase chargé paresseusement (le banc
+   d'essai du micro monte le moteur d'écoute sans configuration Supabase),
+   erreurs avalées.
+2. **L'empreinte n'est pas recalculée quand Raphaël retouche un titre.** Elle
+   reste celle du signalement automatique, pour que la prochaine occurrence
+   vienne se ranger sur la même ligne au lieu d'en ouvrir une seconde. Une
+   erreur corrigée qui revient rouvre toute seule (`reapparue_at`).
+
+Les corrections écrites dans le registre remontent dans le bloc injecté au
+démarrage de chaque session : c'est par là qu'elles servent à corriger.
+
+### Les actions groupées et le « Annuler »
+
+Le bouton « Choisir » du cockpit passe le tableau en mode sélection : tout se
+déplie (on ne coche pas ce qu'on ne voit pas), chaque ligne porte une case, et
+une barre collée en bas agit sur le lot — statut, section, archivage,
+suppression.
+
+Deux règles :
+
+- **Une requête par lot, jamais une par chantier** (`updateManyDevItems`,
+  `archiveManyDevItems`, `deleteManyDevItems`, qui passent tous par `.in("id",
+  ids)`). Vingt allers-retours pour reclasser un thème laisseraient le travail
+  à moitié fait si la connexion lâche au milieu.
+- **Chaque action groupée mémorise l'état d'avant et propose « Annuler »**
+  (`src/lib/annulation.ts`, huit secondes). `restoreDevItems` regroupe les
+  chantiers par état d'origine et envoie une requête par groupe : un lot
+  mélange des chantiers qui n'avaient ni le même statut ni la même section, et
+  leur rendre une valeur commune serait pire que ne rien annuler. Un `upsert`
+  serait plus court et faux — PostgreSQL construit d'abord la ligne à insérer
+  et la refuserait faute de titre.
+
+### La section suggérée à la saisie (`src/lib/suggestionTheme.ts`)
+
+Calcul **local**, jamais un appel au modèle : ranger un chantier n'a pas à
+consommer le quota gratuit qui a déjà laissé Raphaël sans Jarvis le 3 sept. La
+suggestion s'appuie sur le vocabulaire des chantiers déjà rangés, elle affiche
+les mots sur lesquels elle s'appuie, et **elle se tait quand rien ne se
+détache** — une suggestion fausse est acceptée sans être relue, donc elle coûte
+plus cher qu'une absence de suggestion.
+
 ## Les prompts des sessions parallèles
 
 Quand Raphaël ouvre plusieurs sessions d'un coup, une par thème, les prompts
@@ -558,7 +651,7 @@ redéploie les deux fonctions — sinon Jarvis envoie Raphaël vers un bouton qu
 n'existe plus. Quatre contrôles de `verifier-commande-vocale.mjs` (« il sait
 où… ») disent si le texte arrive bien jusqu'au modèle.
 
-## Les dix vérifications du dépôt
+## Les vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 
@@ -575,6 +668,14 @@ node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
+node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
+node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
+node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
+node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
+node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
+node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
+node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
+ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
@@ -716,10 +817,21 @@ réacteur qu'il a importée comprise.
 
 Depuis le 3 sept. 2026, ils sont recopiés dans la table `reglages`
 (migration 0014) et restaurés à la connexion. **Si tu ajoutes une préférence
-stockée en local, ajoute sa clé à `CLES_REGLAGES` dans `src/lib/reglages.ts`
-et écris-la avec `ecrireReglage()`** — sinon elle ne remontera jamais en base
-et sera perdue à la prochaine réinstallation, en silence. C'est le seul
-endroit à tenir à jour.
+stockée en local, déclare-la dans `REGLAGES` (`src/lib/reglages.ts`) et
+écris-la avec `ecrireReglage()`** — sinon elle ne remontera jamais en base et
+sera perdue à la prochaine réinstallation, en silence.
+
+Depuis le 4 sept., cette déclaration porte aussi **où le réglage se règle**
+(`ou`) et **le fichier qui porte ce contrôle** (`fichier`) : les deux moitiés
+de la règle sont donc écrites au même endroit. Une clé qui doit rester locale
+va dans `STOCKAGE_LOCAL_ASSUME`, avec la raison.
+
+Et ce n'est plus une règle de bonne volonté :
+`scripts/verifier-reglages.ts` lit le code et refuse toute clé de stockage
+local `jarvis_…` qui ne serait ni déclarée ni assumée comme locale. C'est ce
+contrôle qui a trouvé `jarvis_app_ia` (l'application à qui poser une
+question), fixée une seule fois à l'oral, invisible dans Paramètres et perdue
+à chaque réinstallation — malgré la règle écrite partout depuis la veille.
 
 Règle de résolution : à la connexion, la base gagne ; ensuite toute
 modification locale y est poussée dans la seconde.
@@ -752,6 +864,55 @@ Une préférence qu'un seul chemin permet de poser — une question orale, une
 détection automatique, une valeur par défaut — se règle **aussi** depuis
 Paramètres. Au minimum : la voir, et pouvoir l'effacer.
 
+## Les notifications : Jarvis ne notifie QUE ce qui vit chez lui
+
+Livré le 4 sept. 2026 (chantier 5d03a192). `@capacitor/local-notifications`,
+aucun serveur : les rappels sont des alarmes posées sur le téléphone, donc ils
+sonnent même app fermée, et le plugin les repose tout seul après un
+redémarrage.
+
+**La règle d'aiguillage, formulée par Raphaël, commande tout le reste** : ce
+qui décide, ce n'est pas qui a initié la demande, c'est **où la chose
+atterrit**. Une tâche, un chantier → base de Jarvis → Jarvis notifie. Un
+rendez-vous d'agenda, un mail → chez Google → **Google notifie, on se tait**,
+même quand c'est Jarvis qui les a créés. C'est pour ça qu'il n'y a aucun
+interrupteur « agenda » ni « mail » dans Paramètres : leur absence est la
+décision, pas un oubli. La raison est écrite en bas de la carte pour qu'on ne
+se repose pas la question.
+
+Ce qu'il a accepté (fiche 7d87dcb4, doc `fiche/notifications`) : échéance
+d'une tâche, point du matin (09:15 par défaut, **activable et réglable**,
+c'est sa consigne écrite), nouvelle version d'APK, chantier livré, session
+bloquée. Refusés : message programmé, agenda, mail.
+
+Trois fichiers, et la frontière entre eux compte :
+
+- `src/lib/notifications/plan.ts` — **pur**, aucun appel à Android, à la base
+  ni à React. C'est la seule partie vérifiable sans téléphone, et c'est là que
+  vivent les décisions qui peuvent être fausses en silence (un rappel dans le
+  passé qu'Android ferait sonner en rafale, une tâche faite qui sonne quand
+  même, deux tâches sur le même identifiant). Vérifié par
+  `scripts/verifier-notifications.ts`.
+- `src/lib/notifications/service.ts` — le pont Android : permissions, canaux,
+  alarmes. Ne se vérifie que sur l'appareil, d'où le bouton « Tester » de
+  Paramètres.
+- `src/hooks/useNotifications.ts` — monté **une seule fois, dans
+  `JarvisDataProvider`**, jamais dans Paramètres : les rappels doivent être
+  reprogrammés dès qu'une tâche change, y compris par la voix ou depuis un
+  autre appareil. Monté dans l'écran de réglages, il ne reprogrammerait plus
+  rien dès qu'on quitte l'écran.
+
+Les identifiants sont répartis en plages (`PLAGE_ECHEANCE`, `PLAGE_MATIN`, …)
+et `estNotreNotif()` garde l'annulation : on n'annule jamais une notification
+qui ne vient pas de nous.
+
+**Limite connue, à ne pas présenter comme livrée** : « chantier livré » et
+« session bloquée » ne se déclenchent que pendant que l'app tourne — ils
+viennent du temps réel Supabase, pas d'un push. App fermée, rien n'arrive.
+Le vrai push (Firebase + Edge Function) est le chantier ouvert
+« Notifications quand l'app est fermée ». Les trois autres (échéance, matin,
+APK) fonctionnent app fermée.
+
 ## Stack
 
 React + Vite + TypeScript + Tailwind + shadcn/ui, Supabase (Auth + Postgres
@@ -765,6 +926,10 @@ scripts : voir `README.md`.
 - `.github/workflows/android-build.yml` — build de l'APK debug, publié en
   artifact ET sur une GitHub Release à URL fixe (tag `latest-debug`,
   téléchargement direct depuis l'onglet Paramètres de l'app).
+- `.github/workflows/verifications.yml` — les contrôles hors ligne (typecheck
+  des projets référencés + les scripts `verifier-*.ts` sans réseau + la
+  validité des XML Android). **Sur toutes les branches**, pas seulement le
+  tronc : c'est le seul retour qu'une session obtient avant de fusionner.
 
 Toujours vérifier que les deux workflows passent au vert après un push
 (`mcp__github__actions_list` / `get_job_logs`), et se corriger soi-même en
@@ -800,6 +965,51 @@ contrôle avant de pousser :
 python3 -c "import xml.dom.minidom,glob;[xml.dom.minidom.parse(f) for f in glob.glob('android/app/src/main/res/**/*.xml',recursive=True)]"
 ```
 
+## Mettre à jour sans réinstaller : le paquet web (4 sept. 2026)
+
+Livré avec le chantier b5d210f9. Une app Capacitor, c'est une coquille
+Android (plugins, permissions, widget) autour d'une interface web. La quasi-
+totalité des chantiers ne touche QUE l'interface. Capacitor sait la servir
+depuis un dossier du téléphone (`WebView.setServerBasePath`) : la CI publie
+donc `web-bundle.zip` à côté de l'APK, l'app le télécharge (1,2 Mo mesuré sur la
+release du 4 sept., contre 9,5 Mo d'APK), l'installe et redémarre dessus. Aucune réinstallation, aucune
+autorisation « sources inconnues », aucun installateur à confirmer.
+
+**Le « sauf si » de sa demande est décidé sur une mesure, pas sur le poids.**
+La CI calcule une EMPREINTE du natif (`android/`, `capacitor.config.ts`,
+`patches/`, et la version exacte de chaque plugin Capacitor lue dans le
+lockfile) et l'écrit dans la release (`native: <hash>`) ET dans le bundle
+(`VITE_NATIVE_EMPREINTE`). Si l'empreinte publiée diffère de celle de l'APK
+installée, la mise à jour rapide est refusée et l'app dit qu'il faut
+installer l'APK — sans quoi la nouvelle interface appellerait un plugin
+absent de la coquille installée.
+
+**Pourquoi on ne peut pas se retrouver avec une app morte** : le chemin n'est
+rendu permanent (`persistServerBasePath`) qu'APRÈS que le nouveau paquet a
+démarré et exécuté `demarrageMajWeb()` depuis `main.tsx`. Un paquet cassé ne
+démarre pas, donc ne confirme jamais : fermer et rouvrir l'app suffit à
+retomber sur la version précédente, et Paramètres affiche l'échec. Et
+Capacitor efface lui-même le chemin enregistré quand l'APK change
+(`Bridge.isNewBinary`, vérifié dans les sources) : installer une APK reprend
+toujours la main sur un paquet téléchargé.
+
+L'empreinte de l'APK installée ne se relève QUE pendant que l'interface
+embarquée tourne (`getServerBasePath()` vide ou `"public"`) : une fois un
+paquet appliqué, `BUILD_NUMBER` et `NATIVE_EMPREINTE` décrivent le paquet, pas
+l'APK. Ne déplace pas cette lecture.
+
+Répartition des fichiers, et la frontière compte :
+`src/lib/majPaquet.ts` est **pur** (verdict, garde anti-« ../ », encodage
+base64 par tranches) et se vérifie sans téléphone
+(`scripts/verifier-maj-web.ts`, 19 contrôles) ; `src/lib/majWeb.ts` parle à
+Capacitor ; `src/hooks/useMajWeb.ts` est monté dans `JarvisDataProvider`,
+avec `useUpdateCheck` — pas dans Paramètres, sinon rien ne se vérifie ni ne
+s'applique tant qu'on n'ouvre pas cet onglet.
+
+**Non vérifié sur appareil** (aucun SDK Android ici) : le redémarrage réel de
+la WebView sur le dossier téléchargé. La CI prouve que ça compile, pas que ça
+tourne.
+
 ## Le web se met à jour tout seul, l'app Android jamais
 
 Piège découvert le 3 sept. 2026 : Raphaël pensait suivre les nouveautés en
@@ -816,6 +1026,13 @@ l'installation lui-même. Un chantier « fini et CI verte » sur du code qui
 touche `android/`, `capacitor.config.ts` ou du `src/**` utilisé par l'app
 native n'est donc fini pour lui **que web**, pas encore en pratique côté
 téléphone.
+
+**Depuis le 4 sept., une nuance importante** : un chantier qui ne touche que
+`src/**` s'applique par la mise à jour rapide (section précédente), donc SANS
+réinstaller — et tout seul au démarrage si le réglage est laissé actif. Reste
+vrai pour tout ce qui touche `android/`, `capacitor.config.ts`, `patches/` ou
+un plugin Capacitor : l'empreinte du natif change, la mise à jour rapide est
+refusée, et il faut vraiment installer l'APK.
 
 **En terminant un chantier qui touche l'app Android**, le dire explicitement
 dans la réponse à Raphaël (pas juste « CI verte ») : que ça nécessite une

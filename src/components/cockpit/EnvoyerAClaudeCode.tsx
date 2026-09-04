@@ -1,13 +1,14 @@
-import { Send } from "lucide-react"
-import { useState } from "react"
+import { Send, Sparkles } from "lucide-react"
+import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { decouperDemande } from "@/lib/demandeChantier"
+import { suggererSection } from "@/lib/suggestionTheme"
 import { resoudreTheme } from "@/lib/themeChantier"
-import type { DevItem, DevItemInput, DevPriority } from "@/types/database"
+import type { DevItem, DevItemInput, DevPriority, DevSection } from "@/types/database"
 
 /** Les trois crans, du plus calme au plus pressé. */
 const PRIORITES: { valeur: DevPriority; libelle: string }[] = [
@@ -53,20 +54,44 @@ function sessionsActives(devItems: DevItem[]): string[] {
 
 interface EnvoyerAClaudeCodeProps {
   devItems: DevItem[]
+  sections: DevSection[]
   themes: string[]
-  onSend: (input: DevItemInput) => Promise<void>
+  onSend: (input: DevItemInput) => Promise<unknown>
 }
 
-export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeCodeProps) {
+export function EnvoyerAClaudeCode({
+  devItems,
+  sections,
+  themes,
+  onSend,
+}: EnvoyerAClaudeCodeProps) {
   const [texte, setTexte] = useState("")
   const [theme, setTheme] = useState("")
   const [nouveauTheme, setNouveauTheme] = useState(false)
   const [priorite, setPriorite] = useState<DevPriority>("normal")
   const [envoi, setEnvoi] = useState(false)
   const [envoye, setEnvoye] = useState<string | null>(null)
+  // Tant qu'il n'a pas touché aux puces lui-même, la suggestion mène. Dès
+  // qu'il en choisit une, elle ne bouge plus sous ses doigts.
+  const [choisiAlaMain, setChoisiAlaMain] = useState(false)
 
   const actives = sessionsActives(devItems)
   const apercu = decouperDemande(texte)
+
+  // « Des fois on ne sait pas quel est le thème le plus approprié à
+  // sélectionner » (chantier 41816bdc) : la section la plus probable est
+  // pré-sélectionnée d'après ce que les sections contiennent déjà. Calcul
+  // local — aucun appel au modèle, donc aucun quota consommé pour ranger.
+  const suggestion = useMemo(
+    () => (texte.trim().length < 8 ? null : suggererSection(texte, devItems, sections)),
+    [texte, devItems, sections],
+  )
+
+  // Le thème retenu est DÉRIVÉ, pas recopié dans un état : tant que Raphaël
+  // n'a rien choisi, c'est la suggestion qui vaut, et elle suit ce qu'il tape
+  // sans qu'un effet ait à la recopier (un état recopié d'un autre finit
+  // toujours par diverger d'un rendu sur l'autre).
+  const themeRetenu = choisiAlaMain ? theme : (suggestion?.nom ?? "")
 
   async function envoyer() {
     if (!apercu.titre) return
@@ -81,7 +106,7 @@ export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeC
         // LUI qui est enregistré, à l'orthographe près. Sans ça, « L app
         // elle-meme » vient doubler « L'app elle-même » et coupe le sujet en
         // deux dans le cockpit — arrivé pour de vrai, nettoyé le 3 sept.
-        theme: resoudreTheme(theme, themes),
+        theme: resoudreTheme(themeRetenu, themes),
       })
       setEnvoye(apercu.titre)
       setTexte("")
@@ -130,17 +155,19 @@ export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeC
               <button
                 key={t}
                 type="button"
-                aria-pressed={theme === t && !nouveauTheme}
+                aria-pressed={themeRetenu === t && !nouveauTheme}
                 onClick={() => {
                   setNouveauTheme(false)
-                  setTheme(theme === t ? "" : t)
+                  setChoisiAlaMain(true)
+                  setTheme(themeRetenu === t ? "" : t)
                 }}
-                className={`rounded-full border px-2.5 py-1 text-xs ${
-                  theme === t && !nouveauTheme
+                className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
+                  themeRetenu === t && !nouveauTheme
                     ? "border-primary bg-primary text-primary-foreground"
                     : "text-muted-foreground"
                 }`}
               >
+                {!choisiAlaMain && suggestion?.nom === t && <Sparkles className="size-3" />}
                 {t}
               </button>
             ))}
@@ -149,6 +176,7 @@ export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeC
               aria-pressed={nouveauTheme}
               onClick={() => {
                 setNouveauTheme(!nouveauTheme)
+                setChoisiAlaMain(true)
                 setTheme("")
               }}
               className={`rounded-full border border-dashed px-2.5 py-1 text-xs ${
@@ -166,6 +194,30 @@ export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeC
               aria-label="Nom du nouveau thème"
               onChange={(e) => setTheme(e.target.value)}
             />
+          )}
+
+          {/* La suggestion se dit, et dit sur quoi elle s'appuie : une
+              proposition qu'on ne peut pas juger est acceptée sans être lue,
+              et range le chantier au mauvais endroit sans que personne le
+              voie. */}
+          {!choisiAlaMain && suggestion && (
+            <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+              <Sparkles className="size-3" />
+              Section suggérée : <span className="font-medium">{suggestion.nom}</span>
+              {suggestion.motsCommuns.length > 0 && (
+                <>— d'après « {suggestion.motsCommuns.slice(0, 4).join(", ")} »</>
+              )}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => {
+                  setChoisiAlaMain(true)
+                  setTheme("")
+                }}
+              >
+                choisir moi-même
+              </button>
+            </p>
           )}
         </div>
 
@@ -213,10 +265,11 @@ export function EnvoyerAClaudeCode({ devItems, themes, onSend }: EnvoyerAClaudeC
           </p>
         )}
 
+        {/* Ce bandeau ne dit plus QUI travaille — la carte « Qui travaille en
+            ce moment », juste en dessous, le dit mieux et en entier. Il garde
+            la seule chose que cette fenêtre-ci doit promettre : ce qu'on
+            envoie ne part pas vers une session en cours. */}
         <p className="text-xs text-muted-foreground">
-          {actives.length === 0
-            ? "Aucune session Claude Code ne travaille en ce moment."
-            : `${actives.length} session${actives.length > 1 ? "s" : ""} au travail : ${actives.join(", ")}.`}{" "}
           Un chantier envoyé d'ici n'est pas poussé vers une session : chaque session lit
           la base à son démarrage. L'effet est donc différé jusqu'à la prochaine.
         </p>

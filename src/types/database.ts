@@ -188,3 +188,72 @@ export interface EvenementAgenda {
   journee_entiere: boolean
   lien: string | null
 }
+
+/**
+ * Une section de chantiers (migration 0018). Le rattachement d'un chantier
+ * reste porté par `DevItem.theme`, du texte libre : tout le projet le lit
+ * comme ça (hook de démarrage, commande vocale, scripts SQL). La section ne
+ * porte que ce que le texte libre ne sait pas porter — exister sans chantier,
+ * avoir un ordre, une description.
+ */
+export interface DevSection {
+  id: string
+  user_id: string
+  nom: string
+  description: string | null
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+export interface DevSectionInput {
+  nom: string
+  description: string | null
+}
+
+/** Les familles d'erreurs, telles que Raphaël les a énumérées (chantier
+ * f2f6667f). Liste fermée, contrairement aux thèmes de chantiers : on classe
+ * une erreur par ce qui a lâché, et ces familles-là ne se découvrent pas. */
+export type ErreurCategorie =
+  | "comprehension"
+  | "action"
+  | "ecoute"
+  | "serveur"
+  | "systeme"
+  | "utilisation"
+  | "autre"
+
+export type ErreurStatut = "nouveau" | "en_cours" | "corrige" | "ignore"
+
+/** Une erreur de Jarvis, regroupée par empreinte (migration 0019). */
+export interface JarvisErreur {
+  id: string
+  user_id: string
+  categorie: ErreurCategorie
+  titre: string
+  detail: string | null
+  contexte: string | null
+  source: string
+  statut: ErreurStatut
+  /** Ce qu'il aurait fallu faire : la note qui sert à l'entraînement. */
+  correction: string | null
+  /** Le chantier ouvert depuis cette erreur, s'il existe. */
+  dev_item_id: string | null
+  empreinte: string
+  occurrences: number
+  first_seen: string
+  last_seen: string
+  /** Renseignée quand une erreur corrigée ou ignorée ressurgit. */
+  reapparue_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface JarvisErreurInput {
+  categorie: ErreurCategorie
+  titre: string
+  detail: string | null
+  contexte: string | null
+  correction?: string | null
+  statut?: ErreurStatut
+}

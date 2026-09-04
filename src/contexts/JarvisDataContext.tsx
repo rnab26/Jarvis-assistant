@@ -2,15 +2,20 @@ import { createContext, useContext, useEffect, type ReactNode } from "react"
 import { useAuth } from "@/hooks/useAuth"
 import { useContacts } from "@/hooks/useContacts"
 import { useDevItems } from "@/hooks/useDevItems"
+import { useDevSections } from "@/hooks/useDevSections"
 import { useDialogueSetting } from "@/hooks/useDialogueSetting"
 import { useDocuments } from "@/hooks/useDocuments"
 import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
 import { useGoogleAccount } from "@/hooks/useGoogleAccount"
+import { useJarvisErreurs } from "@/hooks/useJarvisErreurs"
+import { useMajWeb } from "@/hooks/useMajWeb"
+import { useNotifications } from "@/hooks/useNotifications"
 import { usePlaceGeofences } from "@/hooks/usePlaceGeofences"
 import { usePlaceReminders } from "@/hooks/usePlaceReminders"
 import { usePronunciations } from "@/hooks/usePronunciations"
 import { useReglagesSync } from "@/hooks/useReglagesSync"
 import { useTasks } from "@/hooks/useTasks"
+import { useUpdateCheck } from "@/hooks/useUpdateCheck"
 import { useVoiceSetting } from "@/hooks/useVoiceSetting"
 import { useWakeWordSetting } from "@/hooks/useWakeWordSetting"
 import { useWidgetSetting } from "@/hooks/useWidgetSetting"
@@ -18,6 +23,8 @@ import { updateWidgetSnapshot } from "@/lib/widgetSnapshot"
 
 type TasksState = ReturnType<typeof useTasks>
 type DevItemsState = ReturnType<typeof useDevItems>
+type DevSectionsState = ReturnType<typeof useDevSections>
+type ErreursState = ReturnType<typeof useJarvisErreurs>
 type DocumentsState = ReturnType<typeof useDocuments>
 type ContactsState = ReturnType<typeof useContacts>
 type PlaceRemindersState = ReturnType<typeof usePlaceReminders>
@@ -28,10 +35,15 @@ type WakeWordState = ReturnType<typeof useWakeWordSetting>
 type DialogueState = ReturnType<typeof useDialogueSetting>
 type VoiceState = ReturnType<typeof useVoiceSetting>
 type WidgetState = ReturnType<typeof useWidgetSetting>
+type NotificationsState = ReturnType<typeof useNotifications>
+type UpdateState = ReturnType<typeof useUpdateCheck>
+type MajWebState = ReturnType<typeof useMajWeb>
 
 interface JarvisDataValue {
   tasksState: TasksState
   devItemsState: DevItemsState
+  devSectionsState: DevSectionsState
+  erreursState: ErreursState
   documentsState: DocumentsState
   contactsState: ContactsState
   placeRemindersState: PlaceRemindersState
@@ -42,6 +54,9 @@ interface JarvisDataValue {
   dialogueState: DialogueState
   voiceState: VoiceState
   widgetState: WidgetState
+  notificationsState: NotificationsState
+  updateState: UpdateState
+  majWebState: MajWebState
 }
 
 const JarvisDataContext = createContext<JarvisDataValue | null>(null)
@@ -59,6 +74,11 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
 
   const tasksState = useTasks(userId)
   const devItemsState = useDevItems(userId)
+  // Les sections déplacent des chantiers (renommer, fusionner, supprimer) :
+  // elles doivent pouvoir faire recharger la liste des chantiers, sinon
+  // l'affichage garde l'ancien nom de section jusqu'au prochain passage.
+  const devSectionsState = useDevSections(userId, devItemsState.refresh)
+  const erreursState = useJarvisErreurs(userId)
   const documentsState = useDocuments(userId)
   const contactsState = useContacts(userId)
   const placeRemindersState = usePlaceReminders(userId)
@@ -71,6 +91,23 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const widgetState = useWidgetSetting()
 
   usePlaceGeofences(placeRemindersState.placeReminders, geofenceState.enabled)
+
+  // Les rappels d'Android : montés ici, et pas dans Paramètres, parce qu'ils
+  // doivent être reprogrammés dès qu'une tâche change — y compris quand le
+  // changement vient de la voix ou d'un autre appareil. Un écran de réglages
+  // qu'on n'ouvre pas ne reprogrammerait plus rien.
+  const notificationsState = useNotifications(tasksState.tasks, devItemsState.devItems, userId)
+
+  // La vérification de version et la mise à jour rapide vivent ici, et pas
+  // dans Paramètres : sans ça, rien ne se vérifie ni ne s'applique tant que
+  // Raphaël n'ouvre pas cet onglet — c'est exactement ce qui l'a laissé une
+  // vingtaine de builds en retard sans le savoir.
+  const updateState = useUpdateCheck()
+  const majWebState = useMajWeb(
+    updateState.published,
+    updateState.status,
+    notificationsState.prefs.apk,
+  )
 
   // Les réglages personnels (voix, rythme, widget, mot-clé, géolocalisation,
   // image du réacteur) ne vivaient que sur l'appareil : une réinstallation de
@@ -92,6 +129,8 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
       value={{
         tasksState,
         devItemsState,
+        devSectionsState,
+        erreursState,
         documentsState,
         contactsState,
         placeRemindersState,
@@ -102,6 +141,9 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         dialogueState,
         voiceState,
         widgetState,
+        notificationsState,
+        updateState,
+        majWebState,
       }}
     >
       {children}

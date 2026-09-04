@@ -18,7 +18,15 @@ export type PublishedBuild = {
   version: string | null
   buildNumber: number | null
   date: string | null
+  /** Empreinte du code natif de ce build. Décide si la mise à jour peut
+   * s'appliquer sans réinstaller l'APK — voir src/lib/majWeb.ts. */
+  empreinteNative: string | null
+  /** Le paquet web téléchargeable, quand la CI l'a publié. */
+  bundleUrl: string | null
 }
+
+/** Nom du paquet web dans la release, écrit par android-build.yml. */
+const NOM_BUNDLE = "web-bundle.zip"
 
 const REPO = "rnab26/Jarvis-assistant"
 const RELEASE_TAG = "latest-debug"
@@ -76,7 +84,10 @@ export function useUpdateCheck() {
         `https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}`,
       )
       if (!res.ok) throw new Error("GitHub API error")
-      const data: { body?: string; assets?: { updated_at?: string }[] } = await res.json()
+      const data: {
+        body?: string
+        assets?: { name?: string; updated_at?: string; browser_download_url?: string }[]
+      } = await res.json()
       const body = data.body ?? ""
 
       const commit = lireChamp(body, "commit")
@@ -89,6 +100,12 @@ export function useUpdateCheck() {
         // La date d'upload de l'APK reste juste même si le corps de la
         // release n'a pas encore le nouveau format.
         date: lireChamp(body, "date") ?? data.assets?.[0]?.updated_at ?? null,
+        empreinteNative: lireChamp(body, "native"),
+        // Absent des releases publiées avant la mise à jour rapide : dans ce
+        // cas seule l'installation de l'APK peut appliquer cette version, et
+        // c'est ce que dira Paramètres.
+        bundleUrl:
+          data.assets?.find((a) => a.name === NOM_BUNDLE)?.browser_download_url ?? null,
       }
       setPublished(infos)
 

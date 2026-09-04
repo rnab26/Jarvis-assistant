@@ -1,5 +1,6 @@
-import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react"
+import { Archive, ArchiveRestore, Check, Pencil, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -64,14 +65,30 @@ function reservePar(item: DevItem) {
   return item.claimed_by.replace(/^claude\//, "")
 }
 
+const STATUTS: { valeur: DevStatus; libelle: string }[] = [
+  { valeur: "todo", libelle: "À faire" },
+  { valeur: "in_progress", libelle: "En cours" },
+  { valeur: "done", libelle: "Terminé" },
+]
+
+const PRIORITES: { valeur: DevPriority; libelle: string }[] = [
+  { valeur: "low", libelle: "Basse" },
+  { valeur: "normal", libelle: "Normale" },
+  { valeur: "high", libelle: "Haute" },
+]
+
 interface DevItemCardProps {
   item: DevItem
   /** Thèmes déjà utilisés, proposés à la saisie lors d'une modification. */
   themes?: string[]
-  onUpdate: (id: string, input: DevItemInput) => Promise<void>
+  onUpdate: (id: string, input: Partial<DevItemInput>) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onArchive?: (id: string) => Promise<void>
   onUnarchive?: (id: string) => Promise<void>
+  /** Mode sélection : la ligne se coche au lieu de se déplier. */
+  selectionnable?: boolean
+  selectionne?: boolean
+  onSelectionner?: (id: string) => void
 }
 
 export function DevItemCard({
@@ -81,6 +98,9 @@ export function DevItemCard({
   onDelete,
   onArchive,
   onUnarchive,
+  selectionnable = false,
+  selectionne = false,
+  onSelectionner,
 }: DevItemCardProps) {
   const [deplie, setDeplie] = useState(false)
 
@@ -89,7 +109,25 @@ export function DevItemCard({
   // étiquettes dans la ligne du titre. Deux listes qui se ressemblent doivent
   // se lire pareil — sinon le cockpit paraît inachevé à côté des tâches.
   return (
-    <div className="flex items-start gap-2 py-1.5">
+    <div className="flex flex-col gap-1.5 py-1.5">
+      <div className="flex items-start gap-2">
+      {/* En mode sélection, la case prend toute la hauteur de la ligne : sur
+          un téléphone, viser un carré de trois millimètres à côté d'un titre
+          qu'on peut aussi toucher ne marche pas. */}
+      {selectionnable && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selectionne}
+          aria-label={`Sélectionner ${item.title}`}
+          className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border ${
+            selectionne ? "border-primary bg-primary text-primary-foreground" : "border-input"
+          }`}
+          onClick={() => onSelectionner?.(item.id)}
+        >
+          {selectionne && <Check className="size-3.5" />}
+        </button>
+      )}
       {/* Appuyer sur la ligne déplie le chantier. Avant, le seul moyen de lire
           une note entière était le crayon — qui annonce « modifier » et ouvre
           un formulaire : on ouvrait une fenêtre d'édition pour lire, avec le
@@ -101,7 +139,7 @@ export function DevItemCard({
         type="button"
         className="min-w-0 flex-1 text-left"
         aria-expanded={deplie}
-        onClick={() => setDeplie(!deplie)}
+        onClick={() => (selectionnable ? onSelectionner?.(item.id) : setDeplie(!deplie))}
       >
         {/* Une seule ligne, donc au plus deux étiquettes courtes à droite du
             titre : à trois, elles écrasaient le titre jusqu'à le faire
@@ -126,6 +164,18 @@ export function DevItemCard({
             </Badge>
           )}
         </div>
+        {/* Archivé le… : la liste des archivées se lit comme un historique,
+            et un historique sans dates ne dit pas ce qui a avancé cette
+            semaine. La note porte le commit, elle ne porte pas la date. */}
+        {item.archived_at && (
+          <p className="text-xs text-muted-foreground">
+            Archivé le{" "}
+            {new Date(item.archived_at).toLocaleDateString("fr-FR", {
+              day: "numeric",
+              month: "long",
+            })}
+          </p>
+        )}
         {reservePar(item) && (
           <p className="truncate text-xs text-muted-foreground">
             Prise par {reservePar(item)}
@@ -175,15 +225,101 @@ export function DevItemCard({
           </Button>
         }
       />
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="shrink-0"
-        aria-label="Supprimer"
-        onClick={() => onDelete(item.id).catch(alreadyNotified)}
-      >
-        <Trash2 className="size-3.5" />
-      </Button>
+      {/* Un chantier supprimé ne se retrouve nulle part — contrairement à un
+          chantier archivé, qui reste consultable. Sur un téléphone, la
+          corbeille est à trois millimètres du crayon : elle demande donc
+          confirmation, et rappelle ce qu'on est en train de supprimer. */}
+      <ConfirmerAction
+        titre="Supprimer ce chantier ?"
+        description={
+          <>
+            « {item.title} » sera supprimé définitivement. Pour le garder sans
+            l'avoir dans la liste, archive-le plutôt.
+          </>
+        }
+        libelleConfirmation="Supprimer"
+        onConfirmer={() => onDelete(item.id)}
+        trigger={
+          <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Supprimer">
+            <Trash2 className="size-3.5" />
+          </Button>
+        }
+      />
+      </div>
+
+      {/* Les trois choses qu'on change tout le temps — le statut, la priorité,
+          la section — se changeaient jusqu'ici en ouvrant le formulaire, en
+          visant un menu et en enregistrant. Partout ailleurs (Linear, Trello,
+          GitHub Projects) elles se changent depuis la ligne. Le formulaire
+          reste pour le reste : le titre, la note. */}
+      {deplie && !selectionnable && !item.archived_at && (
+        <div className="flex flex-col gap-1.5 pl-0.5">
+          <div className="flex flex-wrap gap-1">
+            {STATUTS.map(({ valeur, libelle }) => (
+              <Puce
+                key={valeur}
+                active={item.status === valeur}
+                onClick={() => onUpdate(item.id, { status: valeur }).catch(alreadyNotified)}
+              >
+                {libelle}
+              </Puce>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {PRIORITES.map(({ valeur, libelle }) => (
+              <Puce
+                key={valeur}
+                active={item.priority === valeur}
+                onClick={() => onUpdate(item.id, { priority: valeur }).catch(alreadyNotified)}
+              >
+                {libelle}
+              </Puce>
+            ))}
+          </div>
+          {themes && themes.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {themes.map((t) => (
+                <Puce
+                  key={t}
+                  active={(item.theme ?? "") === t}
+                  onClick={() =>
+                    onUpdate(item.id, { theme: (item.theme ?? "") === t ? null : t }).catch(
+                      alreadyNotified,
+                    )
+                  }
+                >
+                  {t}
+                </Puce>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
+  )
+}
+
+/** Un choix qui s'applique tout de suite, sans bouton « enregistrer » : ce
+ * qu'on change ici est réversible d'un second appui. */
+function Puce({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`rounded-full border px-2 py-0.5 text-xs ${
+        active ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground"
+      }`}
+    >
+      {children}
+    </button>
   )
 }

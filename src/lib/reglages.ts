@@ -13,25 +13,137 @@
  * réacteur importée à la main. Et ils n'existaient pas du tout côté web.
  */
 
-/** Les clés recopiées en base. Toute nouvelle préférence stockée en local
- * doit être ajoutée ici, sinon elle sera perdue à la prochaine
- * réinstallation — c'est le seul endroit à tenir à jour. */
-export const CLES_REGLAGES = [
-  "jarvis_wake_word_enabled",
-  "jarvis_geofence_enabled",
-  "jarvis_widget_config",
-  "jarvis_voice_index",
-  "jarvis_voice_rate",
-  "jarvis_voice_pitch",
-  "jarvis_voice_muted",
-  "jarvis_dialogue_pause_ms",
-  "jarvis_dialogue_suite_ms",
-  "jarvis_mode_live",
-  "jarvis_core_image",
-  "jarvis_app_musique",
-  "jarvis_app_navigation",
-  "jarvis_canal_messages",
-] as const
+/**
+ * Une préférence de Raphaël : sa clé de stockage, et OÙ il la règle.
+ *
+ * Les deux vont ensemble, et c'est le sujet du chantier permanent 776235be.
+ * Une clé déclarée sans contrôle est conservée à la réinstallation mais
+ * invisible et figée sur sa valeur de départ ; un contrôle sans clé déclarée
+ * se perd silencieusement à la prochaine réinstallation. Il faut les deux, et
+ * `scripts/verifier-reglages.ts` refuse maintenant qu'on n'en livre qu'une
+ * moitié.
+ */
+export interface ReglageDeclare {
+  cle: string
+  /** Où il se règle, tel qu'on le dirait à Raphaël. */
+  ou: string
+  /** Le fichier qui porte ce contrôle. Vérifié : il doit exister. */
+  fichier: string
+}
+
+/** Les préférences recopiées en base. Toute nouvelle préférence stockée en
+ * local s'ajoute ici AVEC son contrôle, sinon elle sera perdue à la
+ * prochaine réinstallation — et invisible d'ici là. */
+export const REGLAGES: ReglageDeclare[] = [
+  {
+    cle: "jarvis_wake_word_enabled",
+    ou: "Paramètres › Voix et écoute › Mot-clé de réveil",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_geofence_enabled",
+    ou: "Paramètres › Tâches et organisation › Rappels de lieu",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_widget_config",
+    ou: "Paramètres › Tâches et organisation › Widget d'écran d'accueil",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_voice_index",
+    ou: "Paramètres › Voix et écoute › Voix de Jarvis",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_voice_rate",
+    ou: "Paramètres › Voix et écoute › Voix de Jarvis",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_voice_pitch",
+    ou: "Paramètres › Voix et écoute › Voix de Jarvis",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_voice_muted",
+    ou: "Paramètres › Voix et écoute › Jarvis répond à voix haute",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_dialogue_pause_ms",
+    ou: "Paramètres › Voix et écoute › Rythme de la discussion",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_dialogue_suite_ms",
+    ou: "Paramètres › Voix et écoute › Rythme de la discussion",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_mode_live",
+    ou: "Case « Mode conversation Live (essai) », sous le cœur",
+    fichier: "src/components/voice/MicButton.tsx",
+  },
+  {
+    cle: "jarvis_core_image",
+    ou: "Paramètres › Apparence › Le cœur de Jarvis",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_app_musique",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
+    fichier: "src/components/settings/AppsParDefaut.tsx",
+  },
+  {
+    cle: "jarvis_app_navigation",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
+    fichier: "src/components/settings/AppsParDefaut.tsx",
+  },
+  {
+    cle: "jarvis_app_ia",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
+    fichier: "src/components/settings/AppsParDefaut.tsx",
+  },
+  {
+    cle: "jarvis_canal_messages",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
+    fichier: "src/components/settings/AppsParDefaut.tsx",
+  },
+  {
+    cle: "jarvis_notifications",
+    ou: "Paramètres › Notifications › Quand Jarvis te dérange",
+    fichier: "src/components/settings/Notifications.tsx",
+  },
+  {
+    cle: "jarvis_maj_auto",
+    ou: "Paramètres › L'application › Mettre à jour l'application",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+]
+
+/** Les clés recopiées en base, telles que la synchro les lit. */
+export const CLES_REGLAGES: readonly string[] = REGLAGES.map((r) => r.cle)
+
+/**
+ * Ce qui reste volontairement sur l'appareil, et pourquoi.
+ *
+ * Une clé de stockage local qui n'est ni ici ni dans REGLAGES est une
+ * préférence oubliée : `scripts/verifier-reglages.ts` la signale. Le préfixe
+ * suffit quand la clé est construite (une par section, par exemple).
+ */
+export const STOCKAGE_LOCAL_ASSUME: { prefixe: string; pourquoi: string }[] = [
+  {
+    prefixe: "jarvis_section_",
+    pourquoi:
+      "Section de Paramètres ouverte ou fermée : un confort de lecture propre à l'écran du moment, pas une préférence à retrouver sur un autre appareil.",
+  },
+  {
+    prefixe: "jarvis_maj_annoncee",
+    pourquoi:
+      "Dernière version déjà annoncée sur CE téléphone : un aide-mémoire pour ne pas notifier deux fois, pas un choix de Raphaël.",
+  },
+]
 
 /** Émis après une écriture locale : la synchro sait qu'elle a à pousser. */
 export const REGLAGE_MODIFIE = "jarvis:reglage-modifie"

@@ -1,18 +1,17 @@
 import { Capacitor } from "@capacitor/core"
-import { Download, RefreshCw, Trash2 } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { MettreAJour } from "@/components/settings/MettreAJour"
+import { Notifications } from "@/components/settings/Notifications"
 import { Nouveautes } from "@/components/settings/Nouveautes"
 import { Section } from "@/components/settings/Section"
 import { Interrupteur } from "@/components/settings/Interrupteur"
-import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { JarvisCore, CORE_IMAGE_CHANGEE, type CoreEtat } from "@/components/JarvisCore"
-import { ApkDownloader, type ProgressionTelechargement } from "@/lib/apkDownloader"
 import { detourerCore, ecrireCoreImage, lireCoreImage } from "@/lib/coreImage"
 import { Geofence } from "@/lib/geofencePlugin"
 import {
@@ -31,13 +30,6 @@ import {
   SUITE_MIN_MS,
 } from "@/lib/dialoguePrefs"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
-import {
-  useUpdateCheck,
-  type PublishedBuild,
-  type UpdateStatus,
-  type Verdict,
-} from "@/hooks/useUpdateCheck"
-import { formatBuildDate, versionInstallee } from "@/lib/version"
 
 const isNative = Capacitor.isNativePlatform()
 
@@ -215,238 +207,6 @@ function CompteGoogle() {
   )
 }
 
-const APK_DOWNLOAD_URL =
-  "https://github.com/rnab26/Jarvis-assistant/releases/download/latest-debug/app-debug.apk"
-
-/** Les notes archivées finissent par "Commit <hash>." — même logique que
- * DevItemCard, pour rendre le hash cliquable vers GitHub. */
-const UPDATE_STATUS_LABEL = {
-  checking: "Vérification...",
-  "up-to-date": "À jour",
-  "update-available": "Nouvelle version disponible",
-  unknown: "Impossible de vérifier",
-} as const
-
-/** Une ligne "libellé : valeur" du bloc de version. */
-function LigneVersion({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums">{value}</span>
-    </div>
-  )
-}
-
-/** Ce que la CI a publié, en clair : "build 33 (2026.09.03-b33-c42dcc9) · 3 sept. 2026 à 07:15". */
-function libellePubliee(published: PublishedBuild | null): string {
-  if (!published) return "inconnue"
-  const morceaux: string[] = []
-  if (published.buildNumber !== null) morceaux.push(`build ${published.buildNumber}`)
-  if (published.version) morceaux.push(published.version)
-  else if (published.commit) morceaux.push(published.commit.slice(0, 7))
-  const date = formatBuildDate(published.date)
-  const base = morceaux.join(" · ") || "inconnue"
-  return date ? `${base} · ${date}` : base
-}
-
-/**
- * Un <a href> vers l'APK ouvert depuis l'app est intercepté par Capacitor
- * et lancé dans un nouveau contexte Chrome — où le téléchargement d'un
- * gros fichier binaire ne se finalise jamais de façon fiable (bug observé
- * sur device). Sur natif, on passe donc par ApkDownloader (DownloadManager
- * Android), un seul tap.
- *
- * La carte affiche aussi les DEUX versions, installée et publiée : sans
- * ça, une installation sans effet est invisible — c'est exactement ce qui
- * a fait perdre à Raphaël une vingtaine de builds sans qu'il puisse le
- * constater.
- */
-/** Poids en Mo si on connaît la taille totale, sinon juste les Mo reçus —
- * mieux vaut une progression sans total qu'aucune information du tout. */
-function libelleProgression(p: ProgressionTelechargement): string {
-  const recusMo = (p.recus / 1_000_000).toFixed(1)
-  if (p.total > 0) {
-    const pct = Math.min(100, Math.round((p.recus / p.total) * 100))
-    return `${pct}% · ${recusMo} / ${(p.total / 1_000_000).toFixed(1)} Mo`
-  }
-  return `${recusMo} Mo reçus…`
-}
-
-function BarreProgression({ progression }: { progression: ProgressionTelechargement }) {
-  const pct = progression.total > 0
-    ? Math.min(100, Math.round((progression.recus / progression.total) * 100))
-    : null
-  return (
-    <div className="flex w-full flex-col gap-1">
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn(
-            "h-full rounded-full bg-primary transition-[width]",
-            // Taille totale pas encore connue : on ne fige pas la barre à
-            // 0 %, un mouvement continu dit "ça avance" sans mentir sur le
-            // pourcentage.
-            pct === null && "w-1/3 animate-pulse",
-          )}
-          style={pct !== null ? { width: `${pct}%` } : undefined}
-        />
-      </div>
-      <p className="text-xs text-muted-foreground">{libelleProgression(progression)}</p>
-    </div>
-  )
-}
-
-function MettreAJour({
-  status,
-  published,
-  verifieA,
-  recheck,
-}: {
-  status: UpdateStatus
-  published: PublishedBuild | null
-  verifieA: Date | null
-  recheck: () => Promise<Verdict>
-}) {
-  const [etat, setEtat] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
-  const [erreur, setErreur] = useState<string | null>(null)
-  const [progression, setProgression] = useState<ProgressionTelechargement | null>(null)
-
-  useEffect(() => {
-    if (!isNative) return
-    // Écouté en permanence plutôt que seulement pendant le téléchargement :
-    // s'abonner APRÈS avoir lancé downloadAndInstall risquerait de rater les
-    // tout premiers événements natifs, envoyés dès l'enregistrement de la
-    // requête.
-    const poignee = ApkDownloader.addListener("progression", (p) => setProgression(p))
-    return () => {
-      poignee.then((h) => h.remove())
-    }
-  }, [])
-
-  /* Une vérification qui aboutit sans rien changer à l'écran passe pour un
-     bouton mort — c'est le retour de Raphaël, deux fois. Le résultat est donc
-     annoncé explicitement, avec le numéro de build : on ne lui demande plus
-     de deviner que quelque chose s'est produit. */
-  async function revérifier() {
-    const { status: verdict, published: infos } = await recheck()
-    const build = infos?.buildNumber !== null && infos?.buildNumber !== undefined
-      ? ` (build ${infos.buildNumber})`
-      : ""
-    if (verdict === "up-to-date") {
-      toast.success(`Vérifié : tu es à jour${build}.`)
-    } else if (verdict === "update-available") {
-      toast.warning(`Vérifié : une nouvelle version existe${build}.`)
-    } else {
-      toast.error("Vérification impossible", {
-        description: "GitHub n'a pas répondu. Réessaie dans un moment.",
-      })
-    }
-  }
-
-  async function telecharger() {
-    setErreur(null)
-    const { granted } = await ApkDownloader.hasInstallPermission()
-    if (!granted) {
-      setEtat("besoin-permission")
-      return
-    }
-    setEtat("telechargement")
-    setProgression(null)
-    try {
-      await ApkDownloader.downloadAndInstall({ url: APK_DOWNLOAD_URL })
-      setEtat("idle")
-    } catch (e) {
-      setEtat("erreur")
-      setErreur(e instanceof Error ? e.message : "Échec du téléchargement.")
-    } finally {
-      setProgression(null)
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Mettre à jour l'application</CardTitle>
-        <CardDescription>
-          {isNative
-            ? "L'app installée ne se met jamais à jour toute seule : compare les deux versions ci-dessous, et si elles diffèrent, mets à jour."
-            : "Le site est republié à chaque changement, cette page est donc toujours à jour. Le bouton télécharge l'APK Android."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col items-start gap-3">
-        <div className="flex w-full flex-col gap-1 rounded-lg border p-3">
-          <LigneVersion
-            label={isNative ? "Version installée" : "Version de cette page"}
-            value={versionInstallee()}
-          />
-          <LigneVersion label="Dernière APK publiée" value={libellePubliee(published)} />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          {isNative ? (
-            <Button onClick={telecharger} disabled={etat === "telechargement"}>
-              <Download className="size-4" />
-              {etat === "telechargement" ? "Téléchargement..." : "Mettre à jour"}
-            </Button>
-          ) : (
-            <Button asChild>
-              <a href={APK_DOWNLOAD_URL} download>
-                <Download className="size-4" />
-                Télécharger la dernière version
-              </a>
-            </Button>
-          )}
-          {isNative && (
-            <Badge variant={status === "update-available" ? "destructive" : "outline"}>
-              {UPDATE_STATUS_LABEL[status]}
-            </Badge>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={revérifier}
-            disabled={status === "checking"}
-            aria-label="Revérifier"
-          >
-            <RefreshCw className={cn("size-4", status === "checking" && "animate-spin")} />
-            Revérifier
-          </Button>
-        </div>
-
-        {etat === "telechargement" && progression && (
-          <BarreProgression progression={progression} />
-        )}
-
-        {/* Sans cette ligne, revérifier alors qu'on est déjà à jour ne
-            change rien à l'écran : le bouton paraît cassé. L'heure qui
-            avance est la preuve que la vérification a bien eu lieu. */}
-        {verifieA && (
-          <p className="text-xs text-muted-foreground">
-            Dernière vérification à {verifieA.toLocaleTimeString("fr-FR")}
-          </p>
-        )}
-
-        {etat === "besoin-permission" && (
-          <div className="flex flex-col gap-2 text-sm">
-            <p className="text-muted-foreground">
-              Android bloque l'installation d'une app venant d'ailleurs que le Play Store par
-              défaut — autorise Jarvis une fois, puis appuie à nouveau sur "Mettre à jour".
-            </p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-fit"
-              onClick={() => ApkDownloader.openInstallPermissionSettings()}
-            >
-              Autoriser cette source
-            </Button>
-          </div>
-        )}
-        {etat === "erreur" && erreur && <p className="text-sm text-destructive">{erreur}</p>}
-      </CardContent>
-    </Card>
-  )
-}
-
 /** Curseur avec sa valeur lisible : régler une voix ou un rythme se fait à
  * l'oreille, il faut voir où on en est et pouvoir revenir en arrière. */
 function ReglageVoix({
@@ -594,8 +354,10 @@ export function SettingsPage() {
     widgetState,
     placeRemindersState,
     pronunciationsState,
+    updateState,
+    majWebState,
+    notificationsState,
   } = useJarvisData()
-  const { status, published, verifieA, recheck } = useUpdateCheck()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
@@ -646,7 +408,7 @@ export function SettingsPage() {
     .sort((a, b) => (b.archived_at! < a.archived_at! ? -1 : 1))
     .slice(0, 5)
 
-  // Six secteurs repliables, tous fermés sauf « L'application ».
+  // Sept secteurs repliables, tous fermés sauf « L'application ».
   //
   // Raphaël, 4 sept. 2026 : « il faut la sectoriser […] pas foutre tous les
   // paramètres à la chaîne, mélangés dans le désordre ». Un premier essai les
@@ -955,6 +717,14 @@ export function SettingsPage() {
         <RappelsGeolocalises />
       </Section>
 
+      <Section
+        titre="Notifications"
+        resume="Ce que Jarvis a le droit de faire sonner"
+        cle="notifications"
+      >
+        <Notifications api={notificationsState} />
+      </Section>
+
       <Section titre="Ce que Jarvis utilise" resume="Applications par défaut, canal des messages" cle="apps">
         <AppsParDefaut />
       </Section>
@@ -968,12 +738,7 @@ export function SettingsPage() {
       </Section>
 
       <Section titre="L'application" resume="Version, mise à jour, nouveautés" cle="app" ouverteParDefaut>
-        <MettreAJour
-          status={status}
-          published={published}
-          verifieA={verifieA}
-          recheck={recheck}
-        />
+        <MettreAJour update={updateState} majWeb={majWebState} />
 
         <Nouveautes items={recentChanges} />
       </Section>
