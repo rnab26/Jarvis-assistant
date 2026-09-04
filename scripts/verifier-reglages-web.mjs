@@ -85,6 +85,7 @@ try {
   const refuse = page.locator("#notifs-refuse")
   const ok = page.locator("#notifs-ok")
   const alarmes = page.locator("#notifs-alarmes")
+  const coupees = page.locator("#notifs-coupees")
   const rapide = page.locator("#maj-rapide")
   const parApk = page.locator("#maj-apk")
 
@@ -97,6 +98,17 @@ try {
     "et n'affiche aucun interrupteur qui ne commanderait rien",
     !(await refuse.getByText("Le point du matin", { exact: true }).isVisible()),
     "des réglages sans effet, c'est pire que pas de réglages : on croirait avoir coupé quelque chose",
+  )
+
+  // ── Coupées côté système : ne pas laisser dans une impasse ──
+  verifier(
+    "des notifications coupées par Android sont signalées",
+    await coupees.getByText(/coupées dans les réglages du téléphone/).isVisible(),
+  )
+  verifier(
+    "et l'écran d'Android s'ouvre depuis là",
+    await coupees.getByRole("button", { name: "Ouvrir les réglages d'Android" }).isVisible(),
+    "sans ce bouton, il faudrait aller chercher l'écran soi-même dans le téléphone",
   )
 
   // ── Ce qu'Android peut retarder, il faut le dire ──
@@ -257,6 +269,31 @@ try {
       !(await recherche.getByText("Voix et écoute").isVisible()),
   )
 
+  // ── Le mode Live, réglable depuis Paramètres ──
+  const live = page.locator("#live")
+  verifier(
+    "le mode Live se règle depuis Paramètres",
+    await live.getByLabel("Mode conversation Live").isVisible(),
+  )
+  verifier("aucun signal de relecture avant qu'on y touche", await live.getByText("signaux : 0").isVisible())
+  await live.getByLabel("Mode conversation Live").click()
+  await pause(250)
+  verifier(
+    "l'activer l'enregistre là où le micro le lit",
+    (await page.evaluate(() => localStorage.getItem("jarvis_mode_live"))) === "1",
+  )
+  verifier(
+    "et prévient le micro, qui garde son propre état",
+    await live.getByText("signaux : 1").isVisible(),
+    "sans ce signal, l'interrupteur n'aurait d'effet qu'au prochain lancement de l'app",
+  )
+  await live.getByLabel("Mode conversation Live").click()
+  await pause(250)
+  verifier(
+    "et le couper revient au micro classique",
+    (await page.evaluate(() => localStorage.getItem("jarvis_mode_live"))) === "0",
+  )
+
   // ── Le thème : la palette sombre existait, rien ne pouvait l'allumer ──
   const theme = page.locator("#theme")
   verifier(
@@ -308,6 +345,17 @@ try {
   verifier(
     "confirmer efface pour de bon",
     (await page.evaluate(() => localStorage.getItem("jarvis_voice_rate"))) === null,
+  )
+
+  // ── La page de confidentialité, atteignable depuis l'app ──
+  const confid = page.locator("#confidentialite")
+  const lien = confid.getByRole("link", { name: /Lire la page de confidentialité/ })
+  verifier("la page de confidentialité est atteignable depuis Paramètres", await lien.isVisible())
+  verifier(
+    "et elle s'ouvre à côté, pas à la place de Jarvis",
+    (await lien.getAttribute("target")) === "_blank" &&
+      (await lien.getAttribute("href"))?.startsWith("https://"),
+    "un fichier local ouvert dans la fenêtre de l'app remplacerait l'application, qui perdrait son état",
   )
 
   // ── Rien ne déborde en largeur ──

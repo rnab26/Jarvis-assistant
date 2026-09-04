@@ -240,6 +240,53 @@ try {
     await visible("Voix et écoute —"),
   )
 
+  // ── Ce qui attend une décision de Raphaël ──
+  verifier(
+    "le cockpit dit combien de chantiers attendent une décision de lui",
+    await visible("à cadrer"),
+    "douze chantiers l'attendaient sans que rien ne le dise",
+  )
+  await page.getByRole("button", { name: /^à cadrer/ }).first().click()
+  await pause(300)
+  verifier(
+    "et le filtre ne garde que ceux-là",
+    (await dansLeTableau("Un chantier dicté trop vite")) &&
+      !(await dansLeTableau("Widget d'écran d'accueil")),
+  )
+  verifier(
+    "le marqueur se lit sur la ligne, sans déplier la note",
+    (await tableau.getByText("à cadrer").count()) > 0,
+  )
+  // Un chantier « à cadrer » n'a le plus souvent AUCUN message : c'est
+  // justement celui sur lequel Raphaël doit pouvoir écrire sa décision.
+  await tableau.getByText("Un chantier dicté trop vite").first().click()
+  await pause(250)
+  verifier(
+    "un chantier qui attend sa décision offre où l'écrire, même sans message",
+    await page
+      .getByLabel("Répondre sur Un chantier dicté trop vite")
+      .isVisible(),
+    "il fallait repasser par le journal général et retrouver le bon chantier",
+  )
+  verifier(
+    "et l'étiquette dit pourquoi il est en attente",
+    await visible("il attend une décision de toi"),
+  )
+  await page
+    .getByLabel("Répondre sur Un chantier dicté trop vite")
+    .fill("Vas-y, budget accepté.")
+  await pause(200)
+  await tableau.getByRole("button", { name: "Envoyer à la session" }).first().click()
+  await pause(400)
+  verifier(
+    "sa décision est écrite sur le chantier",
+    await visible("Vas-y, budget accepté."),
+  )
+  await tableau.getByText("Un chantier dicté trop vite").first().click()
+  await pause(200)
+  await page.getByRole("button", { name: /^à cadrer/ }).first().click()
+  await pause(300)
+
   // ── La suppression demande avant ──
   await enTete("Voix et écoute").click()
   await pause(150)

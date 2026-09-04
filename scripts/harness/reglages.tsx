@@ -1,10 +1,12 @@
 import { Capacitor } from "@capacitor/core"
 import { ThemeProvider } from "next-themes"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
+import { Confidentialite } from "@/components/settings/Confidentialite"
+import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
 import { Section } from "@/components/settings/Section"
@@ -13,6 +15,7 @@ import type { NotificationsApi } from "@/hooks/useNotifications"
 import type { MajWebApi } from "@/hooks/useMajWeb"
 import type { PublishedBuild, UpdateStatus, Verdict } from "@/hooks/useUpdateCheck"
 import { PREFS_NOTIFS_DEFAUT, type PrefsNotifications } from "@/lib/notifications/prefs"
+import { REGLAGES_RESTAURES } from "@/lib/reglages"
 import { THEME_KEY } from "@/lib/theme"
 import type { EtatNotifications } from "@/lib/notifications/service"
 
@@ -119,6 +122,14 @@ function updateFactice(status: UpdateStatus) {
 
 function BancDesReglages() {
   const [prefs, setPrefs] = useState<PrefsNotifications>(PREFS_NOTIFS_DEFAUT)
+  // Ce que le micro écoute pour se relire : sans ce signal, l'interrupteur du
+  // mode Live n'aurait d'effet qu'au prochain lancement de l'app.
+  const [signaux, setSignaux] = useState(0)
+  useEffect(() => {
+    const run = () => setSignaux((n) => n + 1)
+    window.addEventListener(REGLAGES_RESTAURES, run)
+    return () => window.removeEventListener(REGLAGES_RESTAURES, run)
+  }, [])
 
   return (
     <div className="flex flex-col gap-4 p-3">
@@ -140,6 +151,22 @@ function BancDesReglages() {
         <Section titre="Notifications" cle="banc-ok" ouverteParDefaut>
           <Notifications
             api={notifsFactices(ETAT_AUTORISE, PREFS_NOTIFS_DEFAUT, 12, setPrefs, prefs)}
+          />
+        </Section>
+      </div>
+
+      {/* Notifications coupées côté système : le seul recours est l'écran
+          d'Android, et il faut pouvoir l'ouvrir d'ici. */}
+      <div id="notifs-coupees">
+        <Section titre="Notifications (coupées côté système)" cle="banc-coupees" ouverteParDefaut>
+          <Notifications
+            api={notifsFactices(
+              { ...ETAT_AUTORISE, actives: false },
+              PREFS_NOTIFS_DEFAUT,
+              0,
+              () => {},
+              PREFS_NOTIFS_DEFAUT,
+            )}
           />
         </Section>
       </div>
@@ -188,12 +215,23 @@ function BancDesReglages() {
         </Section>
       </div>
 
+      {/* Le mode Live : ce qui compte est que le micro, qui garde son propre
+          état, soit prévenu. Le compteur affiche le signal reçu. */}
+      <div id="live">
+        <ModeLive />
+        <p>signaux : {signaux}</p>
+      </div>
+
       <div id="theme">
         <Theme />
       </div>
 
       <div id="reinit">
         <Reinitialiser />
+      </div>
+
+      <div id="confidentialite">
+        <Confidentialite />
       </div>
 
       <div id="maj-apk">

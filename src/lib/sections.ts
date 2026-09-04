@@ -2,6 +2,7 @@
 // `node --experimental-strip-types` pour sa vérification, qui ne connaît pas
 // l'alias « @/ » de Vite. Les imports de TYPES, eux, sont effacés à la
 // compilation et peuvent garder l'alias.
+import { marqueurDe, type Marqueur } from "./marqueurChantier.ts"
 import { cleTheme } from "./themeChantier.ts"
 import type { DevItem, DevPriority, DevSection, DevStatus } from "@/types/database"
 
@@ -142,12 +143,24 @@ export interface FiltreCockpit {
   section: string | null
   statut: FiltreStatut
   recherche: string
+  /** Marqueur en tête des notes (« à cadrer », « libre »…), ou null. */
+  marqueur: Marqueur | null
 }
 
-export const FILTRE_VIDE: FiltreCockpit = { section: null, statut: "tous", recherche: "" }
+export const FILTRE_VIDE: FiltreCockpit = {
+  section: null,
+  statut: "tous",
+  recherche: "",
+  marqueur: null,
+}
 
 export function filtreActif(filtre: FiltreCockpit): boolean {
-  return filtre.section !== null || filtre.statut !== "tous" || filtre.recherche.trim() !== ""
+  return (
+    filtre.section !== null ||
+    filtre.statut !== "tous" ||
+    filtre.marqueur !== null ||
+    filtre.recherche.trim() !== ""
+  )
 }
 
 /** La recherche porte sur le titre, la note ET le nom de section : on cherche
@@ -159,6 +172,7 @@ export function filtrerChantiers(items: DevItem[], filtre: FiltreCockpit): DevIt
   return items.filter((item) => {
     if (cleSection !== null && cleTheme(sectionDe(item)) !== cleSection) return false
     if (filtre.statut !== "tous" && item.status !== filtre.statut) return false
+    if (filtre.marqueur !== null && marqueurDe(item) !== filtre.marqueur) return false
     if (mots.length === 0) return true
     const foin = normaliserRecherche(`${item.title} ${item.notes ?? ""} ${sectionDe(item)}`)
     // Tous les mots doivent être là : deux mots tapés servent à réduire, pas

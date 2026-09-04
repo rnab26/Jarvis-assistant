@@ -3,7 +3,9 @@ import { Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { Confidentialite } from "@/components/settings/Confidentialite"
 import { MettreAJour } from "@/components/settings/MettreAJour"
+import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
 import { Nouveautes } from "@/components/settings/Nouveautes"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
@@ -46,7 +48,7 @@ const SECTIONS = {
     titre: "Voix et écoute",
     resume: "Sa voix, le rythme, le mot-clé de réveil",
     motsCles:
-      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue",
+      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue mode live conversation continue essai",
   },
   taches: {
     cle: "taches",
@@ -86,7 +88,7 @@ const SECTIONS = {
     titre: "L'application",
     resume: "Version, mise à jour, nouveautés",
     motsCles:
-      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut",
+      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
   },
 } as const
 
@@ -666,6 +668,8 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
+        <ModeLive />
+
         <Card>
           <CardHeader>
             <CardTitle>Mot-clé de réveil "Jarvis"</CardTitle>
@@ -845,6 +849,8 @@ export function SettingsPage() {
         <Nouveautes items={recentChanges} />
 
         <Reinitialiser />
+
+        <Confidentialite />
       </Section>
     </div>
   )
