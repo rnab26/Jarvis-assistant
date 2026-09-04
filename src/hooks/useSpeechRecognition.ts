@@ -1,7 +1,7 @@
 import { SpeechRecognition as NativeSpeechRecognition } from "@capacitor-community/speech-recognition"
 import { Capacitor } from "@capacitor/core"
 import { useCallback, useRef, useState } from "react"
-import { MAX_TOUR_MS, PREMIER_MOT_MS, readDialoguePrefs } from "@/lib/dialoguePrefs"
+import { MAX_TOUR_MS, PREMIER_MOT_MS, SILENCE_COURT_MS, readDialoguePrefs } from "@/lib/dialoguePrefs"
 import {
   cloturerSegment,
   creerTour,
@@ -198,8 +198,10 @@ export function useSpeechRecognition() {
 
   function optionsTour(o: OptionsEcoute): OptionsTour {
     const prefs = readDialoguePrefs()
+    const silenceMs = o.silenceMs ?? prefs.pauseMs
     return {
-      silenceMs: o.silenceMs ?? prefs.pauseMs,
+      silenceMs,
+      silenceCourtMs: Math.min(SILENCE_COURT_MS, silenceMs),
       premierMotMs: o.premierMotMs ?? PREMIER_MOT_MS,
       maxMs: MAX_TOUR_MS,
     }
@@ -694,15 +696,23 @@ export function useSpeechRecognition() {
         // un tour de parole finit TOUJOURS par rendre la main, même si une
         // brique en dessous ne répond jamais. Un micro figé sans un mot est
         // le pire des cas — mieux vaut une erreur affichée.
-        return await Promise.race([
-          ecoute,
-          new Promise<never>((_, rejeter) =>
-            setTimeout(
-              () => rejeter(new Error("Le micro ne répond plus. Touche le cœur pour réessayer.")),
-              MAX_TOUR_MS + PLAFOND_MARGE_MS,
-            ),
-          ),
-        ])
+        // Le minuteur est nettoyé à la sortie : avant, chaque rafale de
+        // veille en laissait un vivant plus de trois minutes, et il y en
+        // avait des dizaines en attente en permanence.
+        let plafond: ReturnType<typeof setTimeout> | null = null
+        try {
+          return await Promise.race([
+            ecoute,
+            new Promise<never>((_, rejeter) => {
+              plafond = setTimeout(
+                () => rejeter(new Error("Le micro ne répond plus. Touche le cœur pour réessayer.")),
+                MAX_TOUR_MS + PLAFOND_MARGE_MS,
+              )
+            }),
+          ])
+        } finally {
+          if (plafond) clearTimeout(plafond)
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Erreur de reconnaissance vocale."
         setError(message)

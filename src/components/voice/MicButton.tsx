@@ -17,6 +17,7 @@ import {
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
 import { withTimeout } from "@/lib/withTimeout"
+import { noterEcoute } from "@/lib/journalEcoute"
 import type { DevItem } from "@/types/database"
 import {
   executeVoiceAction,
@@ -170,7 +171,11 @@ export function MicButton({
       })),
       contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
     })
-    if (local) return local
+    if (local) {
+      noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: local.length })
+      return local
+    }
+    const t0 = Date.now()
 
     // Borné dans le temps, comme tout le reste des appels du projet :
     // supabase-js ne rejette JAMAIS sur coupure réseau, il retente et laisse
@@ -215,6 +220,13 @@ export function MicButton({
       }),
       REPONSE_MAX_MS,
     )
+    // Ce que la phrase a coûté en attente, pour que « c'est lent » se lise
+    // dans le journal au lieu de se discuter.
+    noterEcoute("reponse", {
+      delai_ms: Date.now() - t0,
+      source: "modele",
+      erreur: error ? String((error as { message?: string }).message ?? error).slice(0, 80) : null,
+    })
 
     if (error || !data) {
       // Pas error.message : supabase-js y met toujours la même phrase

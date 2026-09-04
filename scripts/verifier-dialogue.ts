@@ -13,6 +13,7 @@ import {
   creerTour,
   decider,
   noterTexte,
+  phraseSembleFinie,
   texteDuTour,
   type OptionsTour,
 } from "../src/lib/dialogueTour.ts"
@@ -171,6 +172,57 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
   verifier("écho en majuscule, sans ponctuation", sansAccuse("Oui ajoute une tâche"), "ajoute une tâche")
   verifier("un « oui » seul est une réponse, pas un écho", sansAccuse("oui"), "oui")
   verifier("une phrase qui commence autrement est intacte", sansAccuse("ouvre l'agenda"), "ouvre l'agenda")
+}
+
+// 13. Fin de tour adaptative (test en direct du 3 sept. : pause réglée à 4 s,
+//     et Jarvis qui attend 4 s après chaque phrase, même finie).
+{
+  const ADAPT: OptionsTour = { ...OPTS, silenceMs: 4000, silenceCourtMs: 1500 }
+
+  // La phrase tient debout, le moteur a détecté la fin de parole : on clôt
+  // à 1,5 s au lieu de 4.
+  let etat = creerTour(0)
+  etat = noterTexte(etat, "ajoute une tâche pour le plombier", 1000)
+  etat = cloturerSegment(etat)
+  verifier("phrase finie + moteur arrêté : à 1,6 s on termine", decider(etat, 2600, ADAPT, false), "terminer")
+  verifier("phrase finie + moteur arrêté : à 1,2 s on attend encore", decider(etat, 2200, ADAPT, false), "attendre")
+
+  // Phrase suspendue : la pause complète s'applique, comme avant.
+  etat = creerTour(0)
+  etat = noterTexte(etat, "ajoute une tâche pour le plombier et", 1000)
+  etat = cloturerSegment(etat)
+  verifier("phrase suspendue sur « et » : on attend la pause complète", decider(etat, 3000, ADAPT, false), "attendre")
+  verifier("phrase suspendue : la pause complète clôt quand même", decider(etat, 5100, ADAPT, false), "terminer")
+
+  // Le moteur n'a PAS détecté de fin de parole : rien ne change.
+  etat = creerTour(0)
+  etat = noterTexte(etat, "ajoute une tâche pour le plombier", 1000)
+  verifier("moteur toujours actif : pas de raccourci", decider(etat, 3000, ADAPT, false), "attendre")
+
+  // Des mots arrivent après l'arrêt du moteur : l'indice tombe.
+  etat = creerTour(0)
+  etat = noterTexte(etat, "ajoute une tâche", 1000)
+  etat = cloturerSegment(etat)
+  etat = noterTexte(etat, "pour le plombier", 2000)
+  verifier("nouveaux mots après l'arrêt : l'indice est remis à zéro", etat.moteurArreteDepuisDernierMot, false)
+
+  // Sans l'option, comportement d'origine strictement conservé.
+  etat = creerTour(0)
+  etat = noterTexte(etat, "ajoute une tâche pour le plombier", 1000)
+  etat = cloturerSegment(etat)
+  verifier("sans silenceCourtMs : rien ne change", decider(etat, 2600, OPTS, false), "attendre")
+}
+
+// 14. Ce qui a l'air fini, et ce qui ne l'est pas.
+{
+  verifier("« ajoute une tâche pour le plombier » a l'air finie", phraseSembleFinie("ajoute une tâche pour le plombier"), true)
+  verifier("« rappelle-moi d'appeler » se termine sur un verbe : finie", phraseSembleFinie("rappelle-moi d'appeler"), true)
+  verifier("« … pour » est suspendue", phraseSembleFinie("ajoute une tâche pour"), false)
+  verifier("« … de la » est suspendue", phraseSembleFinie("mets-moi de la"), false)
+  verifier("« … qu' » (apostrophe) est suspendue", phraseSembleFinie("dis-lui qu'"), false)
+  verifier("« … euh » est suspendue", phraseSembleFinie("il faut que je passe euh"), false)
+  verifier("« … à 14h » est finie", phraseSembleFinie("rendez-vous avec Yoni à 14h"), true)
+  verifier("vide : pas finie", phraseSembleFinie(""), false)
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
