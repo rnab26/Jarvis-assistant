@@ -7,6 +7,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
 import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
+import {
+  EXPLICATION_MARQUEUR,
+  LIBELLE_MARQUEUR,
+  VARIANTE_MARQUEUR,
+  marqueurDe,
+} from "@/lib/marqueurChantier"
 import type { DevItem, DevItemInput, DevLogEntry, DevPriority, DevStatus } from "@/types/database"
 
 /** « Normale » reste implicite : c'est la priorité de presque tous les
@@ -120,6 +126,10 @@ export function DevItemCard({
   // chose qui doive se voir SANS déplier : c'est elle qui bloque le travail.
   const questionsEnAttente = messages.filter((m) => m.kind === "question" && !m.answered_at).length
 
+  // Le marqueur en tête des notes commande le travail des sessions ; il était
+  // pourtant invisible tant qu'on n'avait pas déplié la note.
+  const marqueur = marqueurDe(item)
+
   // Même densité que les tâches (option « compact » choisie par Raphaël le
   // 3 sept. 2026) : plus de cadre par chantier, un filet entre deux, les
   // étiquettes dans la ligne du titre. Deux listes qui se ressemblent doivent
@@ -171,13 +181,26 @@ export function DevItemCard({
               {STATUS_LABEL[item.status]}
             </Badge>
           )}
-          {PRIORITY_LABEL[item.priority] && (
+          {/* Deux étiquettes au plus à droite du titre : à trois, elles
+              l'écrasent sur un écran de téléphone. Le marqueur passe donc
+              devant la priorité — « à cadrer » dit qu'une session ne le
+              prendra pas, ce qui compte davantage que « haute ». */}
+          {marqueur ? (
             <Badge
-              variant={PRIORITY_VARIANT[item.priority]}
+              variant={VARIANTE_MARQUEUR[marqueur]}
               className="shrink-0 px-1.5 text-xs font-normal"
             >
-              {PRIORITY_LABEL[item.priority]}
+              {LIBELLE_MARQUEUR[marqueur]}
             </Badge>
+          ) : (
+            PRIORITY_LABEL[item.priority] && (
+              <Badge
+                variant={PRIORITY_VARIANT[item.priority]}
+                className="shrink-0 px-1.5 text-xs font-normal"
+              >
+                {PRIORITY_LABEL[item.priority]}
+              </Badge>
+            )
           )}
           {questionsEnAttente > 0 && (
             <Badge variant="default" className="shrink-0 px-1.5 text-xs font-normal">
@@ -197,6 +220,9 @@ export function DevItemCard({
               month: "long",
             })}
           </p>
+        )}
+        {deplie && marqueur && (
+          <p className="text-xs text-muted-foreground">{EXPLICATION_MARQUEUR[marqueur]}</p>
         )}
         {reservePar(item) && (
           <p className="truncate text-xs text-muted-foreground">

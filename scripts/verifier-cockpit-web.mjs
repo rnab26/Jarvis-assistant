@@ -240,6 +240,26 @@ try {
     await visible("Voix et écoute —"),
   )
 
+  // ── Ce qui attend une décision de Raphaël ──
+  verifier(
+    "le cockpit dit combien de chantiers attendent une décision de lui",
+    await visible("à cadrer"),
+    "douze chantiers l'attendaient sans que rien ne le dise",
+  )
+  await page.getByRole("button", { name: /^à cadrer/ }).first().click()
+  await pause(300)
+  verifier(
+    "et le filtre ne garde que ceux-là",
+    (await dansLeTableau("Un chantier dicté trop vite")) &&
+      !(await dansLeTableau("Widget d'écran d'accueil")),
+  )
+  verifier(
+    "le marqueur se lit sur la ligne, sans déplier la note",
+    (await tableau.getByText("à cadrer").count()) > 0,
+  )
+  await page.getByRole("button", { name: /^à cadrer/ }).first().click()
+  await pause(300)
+
   // ── La suppression demande avant ──
   await enTete("Voix et écoute").click()
   await pause(150)

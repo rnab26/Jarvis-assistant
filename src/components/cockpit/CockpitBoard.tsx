@@ -30,6 +30,7 @@ import {
 import { etatDe, type EtatChantier } from "@/hooks/useDevItems"
 import { proposerAnnulation } from "@/lib/annulation"
 import { alreadyNotified } from "@/lib/notifyError"
+import { LIBELLE_MARQUEUR, compterMarqueurs } from "@/lib/marqueurChantier"
 import { cleTheme } from "@/lib/themeChantier"
 import type { DevItem, DevItemInput, DevLogEntry, DevStatus } from "@/types/database"
 
@@ -155,6 +156,10 @@ export function CockpitBoard({
     for (const [, liste] of parItem) liste.sort((a, b) => a.created_at.localeCompare(b.created_at))
     return parItem
   }, [messages])
+
+  // « Qu'est-ce qui attend une décision de moi ? » : douze chantiers portaient
+  // le marqueur « à cadrer » le 4 sept., et rien dans l'app ne le disait.
+  const marqueurs = useMemo(() => compterMarqueurs(actifs), [actifs])
 
   const cherche = filtreActif(filtre)
   const totalRestants = groupesComplets.reduce((n, g) => n + g.restants, 0)
@@ -334,6 +339,25 @@ export function CockpitBoard({
               </Puce>
             ))}
           </div>
+
+          {marqueurs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {marqueurs.map(({ marqueur, nb }) => (
+                <Puce
+                  key={marqueur}
+                  active={filtre.marqueur === marqueur}
+                  onClick={() =>
+                    setFiltre({
+                      ...filtre,
+                      marqueur: filtre.marqueur === marqueur ? null : marqueur,
+                    })
+                  }
+                >
+                  {LIBELLE_MARQUEUR[marqueur]} <span className="opacity-70">{nb}</span>
+                </Puce>
+              ))}
+            </div>
+          )}
 
           <div className="flex gap-1.5">
             {STATUTS.map(({ valeur, libelle }) => (
