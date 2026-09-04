@@ -27,6 +27,9 @@ import {
 } from "@/lib/actionsTelephoneVocales"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
+import { demarrerSessionLive, type SessionLive } from "@/lib/live/sessionLive"
+import { ecrireModeLive, lireModeLive } from "@/lib/livePrefs"
+import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import type { DevItem } from "@/types/database"
 import {
   executeVoiceAction,
@@ -345,6 +348,24 @@ export function MicButton({
       return await runTurn(originalTranscript, originalTranscript, round + 1)
     }
 
+    const reply = await executerActions(actions, originalTranscript)
+
+    setLastReply(reply)
+    setStatus("speaking")
+    bargeInRef.current = false
+    await speak(reply, voiceIndex ?? undefined)
+    if (bargeInRef.current) return false
+    if (suiteMs > 0) return true
+    setStatus("idle")
+    return false
+  }
+
+  /**
+   * Exécute les actions d'une phrase et rend ce que Jarvis doit dire. Partagé
+   * entre le micro classique (runTurn) et le mode Live (outil commande_jarvis) :
+   * une seule source de vérité pour ce que Jarvis sait faire.
+   */
+  async function executerActions(actions: VoiceAction[], originalTranscript: string): Promise<string> {
     // Plusieurs demandes dans une phrase : on les exécute dans l'ordre dicté
     // et on n'annonce qu'une fois le tout, plutôt que de n'en traiter qu'une
     // en laissant croire que le reste a été fait.
@@ -387,15 +408,86 @@ export function MicButton({
     if (triggered.length > 0) {
       reply += ` Au fait, ${triggered.map((p) => p.reminder).join(" ")}`
     }
+    return reply
+  }
 
-    setLastReply(reply)
-    setStatus("speaking")
-    bargeInRef.current = false
-    await speak(reply, voiceIndex ?? undefined)
-    if (bargeInRef.current) return false
-    if (suiteMs > 0) return true
-    setStatus("idle")
-    return false
+  // --- Mode conversation Live (prototype, décision de Raphaël du 4 sept.) ---
+  // Le cœur ouvre une conversation Gemini Live au lieu du micro fait main :
+  // audio en continu, fin de tour et interruption gérées par Google. Les
+  // actions passent par le même chemin que la dictée (executerActions).
+  const [modeLive, setModeLive] = useState(lireModeLive)
+  useRelireApresRestauration(() => setModeLive(lireModeLive()))
+  const liveRef = useRef<SessionLive | null>(null)
+
+  function basculerModeLive() {
+    const suivant = !modeLive
+    setModeLive(suivant)
+    ecrireModeLive(suivant)
+    if (!suivant) arreterLive()
+  }
+
+  function arreterLive() {
+    liveRef.current?.arreter()
+    liveRef.current = null
+  }
+
+  /** Ce que le modèle Live sait de Raphaël à l'ouverture. Compact : c'est
+   * lu à chaque tour de la conversation. */
+  function contexteLive(): string {
+    const aujourdhui = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    const categories = new Map(tasksApi.categories.map((c) => [c.id, c.name]))
+    const taches = tasksApi.tasks
+      .filter((t) => t.status !== "done")
+      .slice(0, 40)
+      .map((t) => {
+        const cat = t.category_id ? categories.get(t.category_id) : null
+        const quand = t.due_date ? ` (pour le ${t.due_date}${t.due_time ? ` à ${t.due_time}` : ""})` : ""
+        return `- ${t.title}${cat ? ` [${cat}]` : ""}${quand}`
+      })
+    const chantiers = devItemsApi.devItems
+      .filter((i) => !i.archived_at)
+      .slice(0, 30)
+      .map((i) => `- ${i.title}${i.theme ? ` [${i.theme}]` : ""} (${i.status}, priorité ${i.priority})`)
+    const contacts = contactsApi.contacts.slice(0, 40).map((c) => `- ${c.name}${c.notes ? ` : ${extrait(c.notes)}` : ""}`)
+    return [
+      `Date du jour : ${aujourdhui}.`,
+      `Tâches à faire de Raphaël (${taches.length}) :\n${taches.join("\n") || "- aucune"}`,
+      `Chantiers du cockpit Jarvis en cours (${chantiers.length}) :\n${chantiers.join("\n") || "- aucun"}`,
+      `Contacts (${contacts.length}) :\n${contacts.join("\n") || "- aucun"}`,
+    ].join("\n\n")
+  }
+
+  async function demarrerLive() {
+    priseRef.current++
+    setLastUserText(null)
+    setLastReply(null)
+    liveRef.current = await demarrerSessionLive({
+      contexte: contexteLive(),
+      onEntendu: (texte) => setLastUserText(texte),
+      onReponse: (texte) => setLastReply(texte),
+      onCommande: async (demande) => {
+        setLastUserText(demande)
+        const actions = await resolveTranscript(demande)
+        // Une question de précision ne peut pas ouvrir un second micro : on
+        // la rend au modèle, qui la posera de vive voix.
+        if (actions[0]?.action === "clarify") return actions[0].message ?? "Peux-tu préciser ?"
+        return await executerActions(actions, demande)
+      },
+      onEtat: (etat, detail) => {
+        if (etat === "connexion") setStatus("processing")
+        else if (etat === "ecoute") setStatus("listening")
+        else if (etat === "parle") setStatus("speaking")
+        else {
+          liveRef.current = null
+          if (detail) {
+            setLastReply(detail)
+            setStatus("error")
+          } else {
+            setStatus("idle")
+          }
+        }
+      },
+    })
   }
 
   /**
@@ -466,6 +558,17 @@ export function MicButton({
   }, [])
 
   async function handleClick() {
+    if (modeLive) {
+      if (liveRef.current) {
+        arreterLive()
+        setStatus("idle")
+      } else if (status === "idle" || status === "error" || status === "wake-listening") {
+        if (status === "wake-listening") stopListening()
+        await demarrerLive()
+      }
+      return
+    }
+
     // Interruption ("barge-in") : si Jarvis est en train de parler, un tap
     // coupe la voix et relance directement l'écoute, sans devoir attendre
     // la fin de la phrase.
@@ -524,7 +627,7 @@ export function MicButton({
     }
   }, [])
 
-  const veilleActive = wakeWordEnabled && visible
+  const veilleActive = wakeWordEnabled && visible && !modeLive
   useEffect(() => {
     if (!veilleActive) return
     let cancelled = false
@@ -648,11 +751,25 @@ export function MicButton({
       >
         <JarvisCore etat={status} taille={76} />
       </button>
-      {status === "listening" && (
+      {status === "listening" && !liveRef.current && (
         <p className="text-sm text-muted-foreground">
           {micReady ? "Je t'écoute — touche le cœur quand tu as fini." : "Préparation du micro..."}
         </p>
       )}
+      {liveRef.current && (status === "listening" || status === "speaking") && (
+        <p className="text-sm text-muted-foreground">
+          Conversation en cours — parle, coupe-moi si tu veux, touche le cœur pour arrêter.
+        </p>
+      )}
+      {modeLive && status === "processing" && !liveRef.current && (
+        <p className="text-sm text-muted-foreground">Connexion à la conversation…</p>
+      )}
+      {/* Prototype Live, à côté du micro classique : les deux pistes avancent
+          en parallèle (décision de Raphaël, 4 sept.), on mesure, on tranche. */}
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+        <input type="checkbox" checked={modeLive} onChange={basculerModeLive} className="size-3.5 accent-primary" />
+        Mode conversation Live (essai)
+      </label>
       {/* Tant que le mot-clé est activé, on le dit — même entre deux rafales
           d'écoute. Raphaël signalait le 3 sept. qu'il ne savait jamais ce qui
           était réellement actif : un indicateur qui n'apparaît qu'une fraction
