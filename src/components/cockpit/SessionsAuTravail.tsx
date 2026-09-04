@@ -1,7 +1,8 @@
 import { Unlock, Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import type { DevItem } from "@/types/database"
 
@@ -58,17 +59,27 @@ export function SessionsAuTravail({ devItems, onLiberer }: SessionsAuTravailProp
   const sessions = [...parSession.entries()].sort(([a], [b]) => a.localeCompare(b, "fr"))
 
   return (
-    <Card>
-      <CardHeader className="grid-cols-[1fr_auto] items-center gap-2">
-        <CardTitle className="min-w-0 flex-1 text-base">
+    <CarteRepliable
+      // Ouverte d'emblée seulement s'il y a quelque chose à récupérer : une
+      // réservation qu'une session arrêtée n'a pas libérée.
+      ouverteParDefaut={perimes.length > 0}
+      titre={
+        <>
           <Users className="mr-1.5 inline size-4 align-[-2px] text-muted-foreground" />
           Qui travaille en ce moment
-        </CardTitle>
-        <Badge variant={sessions.length > 0 ? "default" : "outline"} className="shrink-0">
-          {sessions.length} session{sessions.length > 1 ? "s" : ""}
+        </>
+      }
+      badge={
+        <Badge
+          variant={perimes.length > 0 ? "destructive" : sessions.length > 0 ? "default" : "outline"}
+          className="shrink-0"
+        >
+          {perimes.length > 0
+            ? `${perimes.length} à libérer`
+            : `${sessions.length} session${sessions.length > 1 ? "s" : ""}`}
         </Badge>
-      </CardHeader>
-
+      }
+    >
       <CardContent className="flex flex-col gap-3">
         {sessions.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -129,6 +140,6 @@ export function SessionsAuTravail({ devItems, onLiberer }: SessionsAuTravailProp
           </div>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

@@ -6,6 +6,7 @@ import "@/index.css"
 import { Toaster } from "@/components/ui/sonner"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
+import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
 import type {
@@ -154,11 +155,70 @@ const ERREURS = [
   erreur("Le serveur vocal a refusé de répondre", "serveur"),
 ]
 
+/**
+ * Le cockpit à sa VRAIE taille (`?volume=1`) : quatre-vingts chantiers
+ * répartis sur neuf sections, comme la base de Raphaël au 4 sept. 2026.
+ *
+ * Pourquoi c'est un cas à part : tout ce qui rend une liste lisible se
+ * vérifie sur quatre chantiers et se casse sur quatre-vingts. Une barre de
+ * filtres qui prend la moitié de l'écran, une rangée de puces qui déborde,
+ * une barre d'actions groupées qu'on ne peut plus atteindre — rien de tout ça
+ * ne se voit sur un banc à quatre lignes.
+ */
+const SECTIONS_REELLES = [
+  "Voix et écoute",
+  "Le téléphone",
+  "Mémoire et apprentissage",
+  "L'app elle-même",
+  "Messagerie et agenda",
+  "Ce qu'il me signale",
+  "Recherche et veille",
+  "Coût de fonctionnement",
+  "A faire par Raphael",
+]
+
+const MARQUEURS_REELS = [
+  "[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]\nIl faut trancher le coût.",
+  "[LIBRE] Spécifié de bout en bout.",
+  '[BLOQUÉ PAR : "Mémoire longue durée"]',
+  null,
+  null,
+]
+
+function volumeReel(): { chantiers: DevItem[]; sections: DevSection[] } {
+  // En mode calme, aucune réservation expirée : la carte « Qui travaille »
+  // reste repliée, comme un jour ordinaire.
+  const sections = SECTIONS_REELLES.map((nom, i) => section(nom, i + 1))
+  const chantiers: DevItem[] = []
+  for (let i = 0; i < 83; i++) {
+    const theme = SECTIONS_REELLES[i % SECTIONS_REELLES.length]
+    const c = chantier(
+      `Chantier numéro ${i + 1} sur ${theme.toLowerCase()}, avec un titre assez long pour déborder`,
+      theme,
+      i % 7 === 0 ? "in_progress" : "todo",
+    )
+    chantiers.push({
+      ...c,
+      notes: MARQUEURS_REELS[i % MARQUEURS_REELS.length],
+      // Un quart d'archives, comme en vrai.
+      archived_at: i % 4 === 3 ? new Date(Date.now() - i * 3600_000).toISOString() : null,
+    })
+  }
+  return { chantiers, sections }
+}
+
+const VOLUME = new URLSearchParams(location.search).has("volume")
+/** Le cockpit un jour ordinaire : rien qui appelle une action — pas de
+ * question en attente, pas de réservation abandonnée. C'est l'état dans lequel
+ * Raphaël l'ouvre le plus souvent, donc celui qui doit tenir dans un écran. */
+const CALME = new URLSearchParams(location.search).has("calme")
+const REEL = VOLUME ? volumeReel() : null
+
 function BancDuCockpit() {
-  const [devItems, setDevItems] = useState<DevItem[]>(CHANTIERS)
-  const [sections] = useState<DevSection[]>(SECTIONS)
+  const [devItems, setDevItems] = useState<DevItem[]>(REEL?.chantiers ?? CHANTIERS)
+  const [sections] = useState<DevSection[]>(REEL?.sections ?? SECTIONS)
   const [erreurs, setErreurs] = useState<JarvisErreur[]>(ERREURS)
-  const [messages, setMessages] = useState<DevLogEntry[]>(MESSAGES)
+  const [messages, setMessages] = useState<DevLogEntry[]>(CALME ? [] : MESSAGES)
 
   const sectionsState = {
     sections,
@@ -207,6 +267,17 @@ function BancDuCockpit() {
             ),
           )
         }}
+      />
+      {/* Le journal, à sa place réelle dans la page : sans lui, la mesure de
+          ce qu'on voit en arrivant serait fausse de deux cents points. */}
+      <DevLogFeed
+        entries={messages}
+        devItems={devItems}
+        loading={false}
+        error={null}
+        onRefresh={() => {}}
+        onAdd={async () => {}}
+        onMarkAnswered={async () => {}}
       />
       <ErreursJarvis
         erreursState={erreursState}

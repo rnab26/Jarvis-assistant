@@ -79,6 +79,7 @@ export function EnvoyerAClaudeCode({
 
   const actives = sessionsActives(devItems)
   const apercu = decouperDemande(texte)
+  const aEcrit = texte.trim().length > 0
 
   // « Des fois on ne sait pas quel est le thème le plus approprié à
   // sélectionner » (chantier 41816bdc) : la section la plus probable est
@@ -189,6 +190,14 @@ export function EnvoyerAClaudeCode({
           </div>
         )}
 
+        {/* Sa règle, écrite dans sa méthode de travail : « une étape à la
+            fois, ne montre pas un contrôle qui appartient à une étape avant
+            qu'elle soit atteinte ». Tant que rien n'est écrit, le thème et la
+            priorité ne veulent rien dire — et ils coûtaient 250 points de
+            hauteur sur un écran de téléphone, qui repoussaient d'autant le
+            tableau des chantiers. */}
+        {aEcrit && (
+        <>
         {/* Des puces plutôt qu'un champ libre : sur un téléphone, retaper
             « L'app elle-même » à la main finit par produire « L app
             elle-meme », un second thème pour le même sujet. On choisit ce qui
@@ -300,6 +309,8 @@ export function EnvoyerAClaudeCode({
           <Send className="size-4" />
           Envoyer
         </Button>
+        </>
+        )}
 
         {envoye && (
           <p className="rounded-lg border border-primary/40 bg-primary/5 p-3 text-sm">

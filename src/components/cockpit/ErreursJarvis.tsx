@@ -1,7 +1,5 @@
 import {
   Check,
-  ChevronDown,
-  ChevronRight,
   EyeOff,
   Pencil,
   Plus,
@@ -14,7 +12,8 @@ import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Textarea } from "@/components/ui/textarea"
 import { ErreurFormDialog } from "@/components/cockpit/ErreurFormDialog"
 import {
@@ -68,7 +67,6 @@ export function ErreursJarvis({
   onCreerChantier,
 }: ErreursJarvisProps) {
   const { erreurs, loading, error, refresh } = erreursState
-  const [deplie, setDeplie] = useState(false)
   const [voirReglees, setVoirReglees] = useState(false)
   const [categorie, setCategorie] = useState<ErreurCategorie | null>(null)
 
@@ -102,35 +100,24 @@ export function ErreursJarvis({
   )
 
   return (
-    <Card>
-      <CardHeader className="grid-cols-[1fr_auto] items-center gap-2">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-          aria-expanded={deplie}
-          onClick={() => setDeplie(!deplie)}
-        >
-          {deplie ? (
-            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-          )}
-          <CardTitle className="min-w-0 flex-1 text-base">
-            Erreurs de Jarvis{" "}
-            <span className="font-normal text-muted-foreground">
-              — {ouvertes.length} ouverte{ouvertes.length > 1 ? "s" : ""}
-            </span>
-          </CardTitle>
-        </button>
-        {ouvertes.some((e) => e.reapparue_at) && (
+    <CarteRepliable
+      titre={
+        <>
+          Erreurs de Jarvis{" "}
+          <span className="font-normal text-muted-foreground">
+            — {ouvertes.length} ouverte{ouvertes.length > 1 ? "s" : ""}
+          </span>
+        </>
+      }
+      badge={
+        ouvertes.some((e) => e.reapparue_at) ? (
           <Badge variant="destructive" className="shrink-0">
             revenue
           </Badge>
-        )}
-      </CardHeader>
-
-      {deplie && (
-        <CardContent className="flex flex-col gap-3">
+        ) : undefined
+      }
+    >
+      <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {boutonAjout}
             <Button
@@ -201,9 +188,8 @@ export function ErreursJarvis({
               ))}
             </div>
           )}
-        </CardContent>
-      )}
-    </Card>
+      </CardContent>
+    </CarteRepliable>
   )
 }
 
