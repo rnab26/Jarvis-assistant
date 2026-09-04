@@ -19,6 +19,7 @@ import {
   grouperParSection,
   themesSansSection,
 } from "../src/lib/sections.ts"
+import { compterMarqueurs, marqueurDe } from "../src/lib/marqueurChantier.ts"
 import type { DevItem, DevPriority, DevSection, DevStatus } from "../src/types/database.ts"
 
 let echecs = 0
@@ -34,13 +35,14 @@ function chantier(
   statut: DevStatus = "todo",
   priorite: DevPriority = "normal",
   archive = false,
+  notes: string | null = null,
 ): DevItem {
   n++
   return {
     id: `c${n}`,
     user_id: "u",
     title: titre,
-    notes: null,
+    notes,
     status: statut,
     priority: priorite,
     theme,
@@ -196,6 +198,58 @@ verifier(
     1,
 )
 verifier("un filtre posé est signalé", filtreActif({ ...FILTRE_VIDE, recherche: "micro" }))
+
+// ── Les marqueurs en tête des notes ──
+// Ils commandent le travail des sessions (CLAUDE.md), et l'app ne les montrait
+// pas : « qu'est-ce qui attend une décision de moi ? » demandait de déplier
+// une cinquantaine de chantiers.
+const AVEC_MARQUEURS: [string, string | null, string | null][] = [
+  ["À cadrer", "[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]\nReporté à plus tard.", "a_cadrer"],
+  ["À cadrer sans accents", "[A CADRER AVEC RAPHAEL AVANT DE COMMENCER]", "a_cadrer"],
+  ["Libre", "[LIBRE] Répondu par Raphaël le 3 sept.", "libre"],
+  ["Libre en partie", "[LIBRE pour la phase 1] DEMANDE DE RAPHAEL", "libre"],
+  ["Bloqué", '[BLOQUÉ PAR : "Mémoire longue durée"] Oui.', "bloque"],
+  ["Doublon", "[DOUBLON — traité par le chantier X]", "doublon"],
+  ["Sans marqueur", "Une note ordinaire, sans crochets.", null],
+  ["Note vide", null, null],
+  [
+    "Crochet cité plus bas",
+    "Une longue note qui parle du sujet, du contexte, de ce qui a été vérifié, de ce qui reste en suspens, et qui cite bien plus loin un autre chantier écrit [LIBRE] au passage — sans que celui-ci soit libre pour autant, puisque ce n'est pas son en-tête.",
+    null,
+  ],
+]
+for (const [titre, notes, attendu] of AVEC_MARQUEURS) {
+  const item = chantier(titre, null, "todo", "normal", false, notes)
+  const obtenu = marqueurDe(item)
+  verifier(
+    `« ${titre} » → ${attendu ?? "aucun marqueur"}`,
+    obtenu === attendu,
+    `obtenu : ${obtenu}`,
+  )
+}
+
+const comptes = compterMarqueurs(
+  AVEC_MARQUEURS.map(([t, n]) => chantier(t, null, "todo", "normal", false, n)),
+)
+verifier(
+  "« à cadrer » passe devant : c'est ce qui attend une décision de Raphaël",
+  comptes[0]?.marqueur === "a_cadrer" && comptes[0]?.nb === 2,
+  JSON.stringify(comptes),
+)
+
+const aCadrer = filtrerChantiers(
+  AVEC_MARQUEURS.map(([t, n]) => chantier(t, null, "todo", "normal", false, n)),
+  { ...FILTRE_VIDE, marqueur: "a_cadrer" },
+)
+verifier(
+  "filtrer sur « à cadrer » ne garde que ceux-là",
+  aCadrer.length === 2,
+  `${aCadrer.length} chantiers : ${aCadrer.map((c) => c.title).join(", ")}`,
+)
+verifier(
+  "et ce filtre est bien signalé comme actif",
+  filtreActif({ ...FILTRE_VIDE, marqueur: "a_cadrer" }),
+)
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

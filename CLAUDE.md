@@ -166,6 +166,22 @@ Deux règles à ne pas défaire :
 Les corrections écrites dans le registre remontent dans le bloc injecté au
 démarrage de chaque session : c'est par là qu'elles servent à corriger.
 
+### Les marqueurs des notes sont visibles dans l'app (`src/lib/marqueurChantier.ts`)
+
+`[À CADRER AVEC RAPHAËL]`, `[LIBRE]`, `[BLOQUÉ PAR : …]`, `[DOUBLON — …]`,
+`[REPORTÉ]`, `[A FAIRE PAR RAPHAEL]` : ces marqueurs commandent le
+comportement des sessions depuis le début, et l'app n'en disait rien — il
+fallait déplier une cinquantaine de notes pour répondre à la seule question
+que Raphaël se pose en ouvrant le cockpit : « qu'est-ce qui attend une
+décision de moi ? » (onze chantiers, au 4 sept.). Ils s'affichent maintenant
+en étiquette sur la ligne, et le filtre les compte.
+
+**Lecture seule, et seulement en TÊTE de la note** : le marqueur se lit dans
+le ou les crochets qui ouvrent les notes, jamais ailleurs. Une note longue
+cite souvent un autre chantier en écrivant « [LIBRE] » au passage — le prendre
+pour le marqueur du chantier ferait démarrer une session sur un sujet qu'il
+voulait cadrer d'abord. Le contrôle hors réseau garde exactement ce cas.
+
 ### Un chantier porte sa conversation
 
 Les messages du journal rattachés à un chantier (`dev_log.item_id`) existaient

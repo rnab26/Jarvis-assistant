@@ -116,7 +116,12 @@ const CHANTIERS = [
     ...chantier("Le badge de version, livré", "Le téléphone", "done"),
     archived_at: new Date(Date.now() - 2 * 24 * 3600_000).toISOString(),
   },
-  chantier("Un chantier dicté trop vite", null),
+  {
+    // Un marqueur en tête des notes, comme les sessions en écrivent : il doit
+    // se voir sur la ligne, sans déplier.
+    ...chantier("Un chantier dicté trop vite", null),
+    notes: "[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]\nIl faut trancher le coût d'abord.",
+  },
 ]
 
 /** Deux messages du journal rattachés au premier chantier : une question
