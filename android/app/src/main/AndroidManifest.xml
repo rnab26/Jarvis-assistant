@@ -51,6 +51,17 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/jarvis_widget_info" />
         </receiver>
 
+        <!-- Second widget : le cœur seul, on appuie, Jarvis écoute. Un
+             fournisseur distinct parce que la taille minimale et l'aperçu se
+             déclarent dans le XML, pas à l'exécution : un widget unique à deux
+             modes garderait le plancher du mode « tâches ». -->
+        <receiver android:name=".JarvisCoreWidgetProvider" android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/jarvis_widget_core_info" />
+        </receiver>
+
         <!-- Rappels de lieu par géolocalisation (option, désactivée par
              défaut) : reçoit les transitions ENTER des zones enregistrées
              via GeofencingClient et affiche une notification. -->
