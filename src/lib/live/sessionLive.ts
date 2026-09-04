@@ -41,7 +41,16 @@ export interface EvenementsLive {
 
 export interface SessionLive {
   arreter: () => void
+  /** Se résout quand la session est close, avec la raison et qui l'a close. */
+  finie: Promise<{ raison?: string; parRaphael: boolean }>
 }
+
+/** Google ferme une session audio au bout de 15 minutes (doc Live). On en
+ * rouvre une sans que ça se voie, tant que c'est lui qui a coupé, pas
+ * Raphaël — et jamais en boucle sur une vraie panne. */
+const RECONNEXIONS_MAX = 12
+/** En dessous, une fermeture par Google est une panne, pas une limite. */
+const DUREE_MIN_POUR_RECONNECTER_MS = 30000
 
 const OUTIL_COMMANDE: FunctionDeclaration = {
   name: "commande_jarvis",
@@ -80,15 +89,20 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     const raison = error ? String((error as { message?: string }).message ?? error) : "pas de jeton"
     noterEcoute("live_echec", { etape: "jeton", detail: raison.slice(0, 120) })
     ev.onEtat("fermee", `Impossible d'ouvrir la conversation : ${raison}`)
-    return { arreter: () => {} }
+    return { arreter: () => {}, finie: Promise.resolve({ raison, parRaphael: false }) }
   }
 
   const lecteur = new LecteurAudio()
   let capture: CaptureMicro | null = null
   let session: Session | null = null
   let fermee = false
+  let parRaphael = false
   let reponseEnCours = ""
   let entenduEnCours = ""
+  let resoudreFin: (v: { raison?: string; parRaphael: boolean }) => void = () => {}
+  const finie = new Promise<{ raison?: string; parRaphael: boolean }>((resolve) => {
+    resoudreFin = resolve
+  })
 
   const fermer = (raison?: string) => {
     if (fermee) return
@@ -100,8 +114,9 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     } catch {
       // déjà fermée
     }
-    noterEcoute("live_fin", { duree_ms: Date.now() - debut, raison: raison ?? null })
+    noterEcoute("live_fin", { duree_ms: Date.now() - debut, raison: raison ?? null, par_raphael: parRaphael })
     ev.onEtat("fermee", raison)
+    resoudreFin({ raison, parRaphael })
   }
 
   const surMessage = (m: LiveServerMessage) => {
@@ -184,5 +199,56 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     fermer(`Impossible d'ouvrir la conversation : ${raison}`)
   }
 
-  return { arreter: () => fermer() }
+  return {
+    arreter: () => {
+      parRaphael = true
+      fermer()
+    },
+    finie,
+  }
+}
+
+/**
+ * Une conversation qui dure : la session est rouverte quand Google la ferme
+ * (limite des 15 minutes), sans que Raphaël ait à retoucher le cœur. Il ne
+ * voit qu'une conversation. Une fermeture rapide (moins de 30 s) ou répétée
+ * est une panne : on s'arrête et on le dit.
+ */
+export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionLive> {
+  let courante: SessionLive | null = null
+  let arretDemande = false
+  let reconnexions = 0
+
+  const boucle = async () => {
+    while (!arretDemande) {
+      const debut = Date.now()
+      courante = await demarrerSessionLive({
+        ...ev,
+        onEtat: (etat, detail) => {
+          // La fermeture par Google est absorbée ici : le cœur reste sur
+          // « conversation en cours » pendant qu'on rouvre.
+          if (etat === "fermee" && !arretDemande && !detail && Date.now() - debut >= DUREE_MIN_POUR_RECONNECTER_MS && reconnexions < RECONNEXIONS_MAX) {
+            ev.onEtat("connexion")
+            return
+          }
+          ev.onEtat(etat, detail)
+        },
+      })
+      const fin = await courante.finie
+      if (arretDemande || fin.parRaphael) return
+      const duree = Date.now() - debut
+      if (fin.raison || duree < DUREE_MIN_POUR_RECONNECTER_MS || reconnexions >= RECONNEXIONS_MAX) return
+      reconnexions++
+      noterEcoute("live_reconnexion", { numero: reconnexions, apres_ms: duree })
+    }
+  }
+  void boucle()
+
+  return {
+    arreter: () => {
+      arretDemande = true
+      courante?.arreter()
+    },
+    finie: Promise.resolve({ parRaphael: true }),
+  }
 }
