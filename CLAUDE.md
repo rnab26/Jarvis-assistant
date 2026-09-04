@@ -333,7 +333,6 @@ utilisateur de test éphémère créé puis supprimé. La clé publique se récu
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 
-## Les dix vérifications du dépôt
 ## Le prototype « Mode conversation Live » (4 sept. 2026)
 
 Décision de Raphaël : deux pistes en parallèle. (1) Le micro fait main
@@ -363,9 +362,12 @@ de voix, la fin de tour, l'interruption et la transcription. Derrière la case
 `src/lib/supabase.ts` lève au chargement et le bundler jette TOUTE l'app comme
 code mort — le bundle fait 258 ko et ne contient rien. Pour un vrai build
 local : `VITE_SUPABASE_URL=https://x.supabase.co VITE_SUPABASE_ANON_KEY=x npx vite build`.
-La CI a les vraies valeurs.
+La CI a les vraies valeurs. Et le typecheck qui compte est celui de la CI,
+`npx tsc -b` (les projets référencés, dont `tsconfig.app.json`) — un
+`npx tsc --noEmit` à la racine ne vérifie PAS l'app et dit « OK » à tort
+(constaté le 4 sept. : CI rouge sur une erreur qu'il n'avait pas vue).
 
-## Les sept vérifications du dépôt
+## Les dix vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
 

@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, type FunctionDeclaration, type LiveServerMessage, type Session } from "@google/genai"
+import { GoogleGenAI, Modality, Type, type FunctionDeclaration, type LiveServerMessage, type Session } from "@google/genai"
 import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
@@ -39,12 +39,12 @@ const OUTIL_COMMANDE: FunctionDeclaration = {
   description:
     "Exécute une demande concrète de l'utilisateur dans Jarvis ou sur son téléphone : tâches, chantiers, contacts, documents, agenda, rappels, musique, appels, messages, alarmes, itinéraires, réglages de la voix. Passe la demande telle qu'elle a été dite, sans la reformuler. Ne l'appelle pas pour une simple conversation.",
   parameters: {
-    type: "object",
+    type: Type.OBJECT,
     properties: {
-      demande: { type: "string", description: "La demande, mot pour mot." },
+      demande: { type: Type.STRING, description: "La demande, mot pour mot." },
     },
     required: ["demande"],
-  } as FunctionDeclaration["parameters"],
+  },
 }
 
 const CONSIGNE_LIVE = `Tu es Jarvis, l'assistant vocal personnel de Raphaël. Tu parles français, de façon courte et naturelle : c'est une conversation à voix haute, pas un texte. Une ou deux phrases suffisent presque toujours.
