@@ -470,6 +470,20 @@ commande — principal `gemini-3.1-flash-lite`, secours `gemini-3.5-flash` puis
 `gemini-3.7-flash`. La mémoire ne touche JAMAIS aux modèles de la commande :
 c'est ce qui a rendu Jarvis muet le 3 sept.
 
+### Un contrôle rouge n'est pas forcément un bug
+
+Vérifié le 4 sept. au soir : `verifier-commande-vocale.mjs` est tombé à 39/41
+alors que le code était bon. Le quota du jour de la clé de TEST était épuisé —
+un cas mort en `IDLE_TIMEOUT` à 150 s, l'autre avec « J'ai atteint la limite de
+l'offre gratuite ». Les deux mêmes cas, rejoués en les espaçant, repassent au
+vert, et la passe complète est ressortie à **41/41 avec `PAUSE_MS=9000`**.
+
+Le script le dit maintenant lui-même : un échec dont la réponse porte une
+signature de quota est marqué comme tel et repris dans un bilan en fin de
+sortie, avec la marche à suivre. Le rouge reste rouge — on ne fait jamais
+passer un échec pour un succès — mais on ne relit plus son diff pendant une
+heure pour rien. **Avant de chercher un bug, regarde ce bilan.**
+
 ### Un modèle peut aussi être plafonné à vingt requêtes par jour
 
 Découvert le 4 sept. 2026 en essayant de vérifier le dédoublonnage : la

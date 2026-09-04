@@ -615,6 +615,15 @@ cas.push(
 
 // sature le quota et fait échouer la vérification pour une raison étrangère
 // au code : d'où la pause entre deux cas, réglable par PAUSE_MS.
+// Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
+// au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
+// répond « J'ai atteint la limite de l'offre gratuite », ou meurt en
+// IDLE_TIMEOUT à 150 s en attendant un modèle saturé. Le contrôle tombe, mais
+// le code est bon — les mêmes cas rejoués lentement repassent au vert. Sans ce
+// relevé, on relit son diff pendant une heure pour rien.
+const SIGNATURE_QUOTA = /IDLE_TIMEOUT|limite de l'offre gratuite|quota|RESOURCE_EXHAUSTED|429/i
+const suspectsQuota = []
+
 let premier = true
 for (const c of cas) {
   // Rien à attendre avant le tout premier appel : la pause ne sert qu'à
@@ -626,9 +635,30 @@ for (const c of cas) {
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }
   const [ok, detail] = c.controle(r)
   verifier(c.nom, ok, detail)
-  if (!ok) console.log("      réponse :", JSON.stringify(r.actions ?? r).slice(0, 400))
+  if (!ok) {
+    console.log("      réponse :", JSON.stringify(r.actions ?? r).slice(0, 400))
+    if (SIGNATURE_QUOTA.test(JSON.stringify(r))) {
+      suspectsQuota.push(c.nom)
+      console.log("      ↑ signature d'un quota épuisé, PAS d'un bug — voir le bilan en bas")
+    }
+  }
 }
 
 await admin(`/auth/v1/admin/users/${userId}`, { method: "DELETE" })
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
+
+// Le rouge reste rouge — on ne fait jamais passer un échec pour un succès. Mais
+// on dit ce qu'on a vu, pour que personne ne relise son diff pendant une heure.
+if (suspectsQuota.length) {
+  console.log(
+    `\n${suspectsQuota.length} de ces échecs portent une signature de quota épuisé :\n` +
+      suspectsQuota.map((n) => `  - ${n}`).join("\n") +
+      "\n\nCe n'est PROBABLEMENT pas ton code. Avant de chercher un bug :\n" +
+      "  1. rejoue-les lentement — PAUSE_MS=15000 node scripts/verifier-commande-vocale.mjs ;\n" +
+      "  2. lis la ligne « quota » des journaux de la fonction : elle nomme le modèle ET son plafond ;\n" +
+      "  3. le plafond du jour se compte PAR PROJET et PAR MODÈLE, et se remet à zéro à minuit heure du Pacifique.\n" +
+      "S'ils repassent au vert en les espaçant, c'était le quota : note-le et passe à la suite.",
+  )
+}
+
 process.exit(echecs === 0 ? 0 : 1)
