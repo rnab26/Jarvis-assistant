@@ -573,6 +573,26 @@ Toujours vérifier que les deux workflows passent au vert après un push
 (`mcp__github__actions_list` / `get_job_logs`), et se corriger soi-même en
 cas d'échec avant de considérer un chantier terminé.
 
+### Trois pièges vérifiés le 4 sept. 2026, qui coûtent cher
+
+**« Deploy to GitHub Pages » vert ne veut pas dire que le dépôt va bien.**
+Le workflow web passait pendant que « Build Android APK » échouait depuis
+plusieurs commits — donc plus aucune mise à jour possible sur le téléphone,
+sans que personne le voie. Regarde les **deux** workflows.
+
+**Cet environnement n'a pas de SDK Android** (`SDK location not found`) : on
+ne peut PAS compiler l'app ici. Pour tout ce qui touche `android/**`, la CI
+est la seule preuve — pousse, puis lis le workflow. Ne dis jamais « ça
+compile » sans elle.
+
+**`npm run build 2>&1 | tail -2 && git push` pousse même si le build
+échoue** : le code de sortie est celui de `tail`. Utilise `${PIPESTATUS[0]}`,
+ou pas de pipe avant un `&&`.
+
+Et avant de conclure qu'un fichier écrit par une autre session est cassé :
+**`npm install`**. Un `node_modules` antérieur à son commit produit des
+« Cannot find module » et des `any` implicites sur du code parfaitement sain.
+
 ## Le web se met à jour tout seul, l'app Android jamais
 
 Piège découvert le 3 sept. 2026 : Raphaël pensait suivre les nouveautés en
