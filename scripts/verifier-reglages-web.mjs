@@ -335,6 +335,17 @@ try {
     (await page.evaluate(() => localStorage.getItem("jarvis_voice_rate"))) === null,
   )
 
+  // ── La page de confidentialité, atteignable depuis l'app ──
+  const confid = page.locator("#confidentialite")
+  const lien = confid.getByRole("link", { name: /Lire la page de confidentialité/ })
+  verifier("la page de confidentialité est atteignable depuis Paramètres", await lien.isVisible())
+  verifier(
+    "et elle s'ouvre à côté, pas à la place de Jarvis",
+    (await lien.getAttribute("target")) === "_blank" &&
+      (await lien.getAttribute("href"))?.startsWith("https://"),
+    "un fichier local ouvert dans la fenêtre de l'app remplacerait l'application, qui perdrait son état",
+  )
+
   // ── Rien ne déborde en largeur ──
   const debordement = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

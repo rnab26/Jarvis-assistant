@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
+import { Confidentialite } from "@/components/settings/Confidentialite"
 import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
@@ -211,6 +212,10 @@ function BancDesReglages() {
 
       <div id="reinit">
         <Reinitialiser />
+      </div>
+
+      <div id="confidentialite">
+        <Confidentialite />
       </div>
 
       <div id="maj-apk">
