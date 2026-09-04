@@ -294,6 +294,24 @@ try {
     await page.getByRole("button", { name: "Haute", exact: true }).first().getAttribute("aria-pressed") === "true",
   )
 
+  // ── Ce qui a avancé, et l'historique daté ──
+  verifier(
+    "le résumé dit aussi ce qui a été livré cette semaine",
+    await visible("1 livré"),
+    "le cockpit ne compte que ce qui reste, jamais ce qui a avancé",
+  )
+  await page.getByRole("button", { name: /Archivées/ }).first().click()
+  await pause(300)
+  verifier(
+    "les archivées s'ouvrent, rangées par section",
+    await dansLeTableau("Le badge de version, livré"),
+  )
+  verifier(
+    "et chaque archive dit quand elle a été livrée",
+    await visible("Archivé le"),
+    "un historique sans dates ne dit pas ce qui a bougé cette semaine",
+  )
+
   // ── Rien ne déborde en largeur ──
   const debordement = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

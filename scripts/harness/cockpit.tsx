@@ -108,6 +108,12 @@ const CHANTIERS = [
   ),
   chantier("Réveil vocal en arrière-plan", "Voix et écoute"),
   reserve(chantier("Widget d'écran d'accueil", "Le téléphone"), "claude/telephone-arretee", -120),
+  // Une archive récente : la liste des archivées et le compte « livrés cette
+  // semaine » n'étaient couverts par rien.
+  {
+    ...chantier("Le badge de version, livré", "Le téléphone", "done"),
+    archived_at: new Date(Date.now() - 2 * 24 * 3600_000).toISOString(),
+  },
   chantier("Un chantier dicté trop vite", null),
 ]
 

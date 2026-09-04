@@ -127,6 +127,13 @@ export function CockpitBoard({
     [archives, sections, filtre],
   )
 
+  // Ce qui a avancé, pas seulement ce qui reste : sept jours glissants, la
+  // fenêtre dans laquelle Raphaël se demande « qu'est-ce qui a bougé ? ».
+  const livresRecemment = useMemo(() => {
+    const depuis = Date.now() - 7 * 24 * 3600_000
+    return archives.filter((i) => new Date(i.archived_at!).getTime() >= depuis).length
+  }, [archives])
+
   const cherche = filtreActif(filtre)
   const totalRestants = groupesComplets.reduce((n, g) => n + g.restants, 0)
   const totalEnCours = groupesComplets.reduce((n, g) => n + g.enCours, 0)
@@ -218,6 +225,13 @@ export function CockpitBoard({
               <span className="font-medium text-foreground">{totalRestants}</span> à traiter
               {totalEnCours > 0 && <> · {totalEnCours} en cours</>} · {groupesComplets.length}{" "}
               section{groupesComplets.length > 1 ? "s" : ""}
+              {livresRecemment > 0 && (
+                <>
+                  {" · "}
+                  <span className="text-foreground">{livresRecemment} livré{livresRecemment > 1 ? "s" : ""}</span>{" "}
+                  cette semaine
+                </>
+              )}
             </p>
             <Button
               variant={enSelection ? "default" : "outline"}
