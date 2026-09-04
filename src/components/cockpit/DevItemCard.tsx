@@ -305,7 +305,7 @@ export function DevItemCard({
           journal, mélangés à tous les autres : une question posée sur un
           chantier ne se lisait pas sur le chantier, et une réponse écrite
           ailleurs ne s'y voyait pas non plus. */}
-      {deplie && !selectionnable && messages.length > 0 && (
+      {deplie && !selectionnable && (messages.length > 0 || onRepondre) && (
         <div className="flex flex-col gap-1.5 rounded-lg border border-dashed p-2">
           {messages.map((m) => (
             <div key={m.id} className="flex flex-col gap-0.5">
@@ -334,10 +334,22 @@ export function DevItemCard({
 
           {onRepondre && (
             <div className="flex flex-col gap-1.5">
+              {/* Toujours là, même quand aucune session n'a encore écrit : les
+                  chantiers « à cadrer » attendent justement une décision de
+                  Raphaël, et ce sont ceux qui n'ont aucun message. Sans ce
+                  champ, il n'avait aucun moyen de les débloquer depuis son
+                  téléphone — il fallait passer par le journal général et
+                  choisir le bon chantier dans une liste. */}
               <Textarea
                 value={reponse}
                 rows={2}
-                placeholder="Répondre à la session, ici même"
+                placeholder={
+                  marqueur === "a_cadrer"
+                    ? "Ta décision ici : la prochaine session la lira à son démarrage"
+                    : messages.length > 0
+                      ? "Répondre à la session, ici même"
+                      : "Écrire à la prochaine session qui prendra ce chantier"
+                }
                 aria-label={`Répondre sur ${item.title}`}
                 onChange={(e) => setReponse(e.target.value)}
               />
@@ -359,7 +371,10 @@ export function DevItemCard({
                   }}
                 >
                   <Send className="size-3.5" />
-                  Répondre
+                  {/* Pas « Envoyer » tout court : la fenêtre du haut porte
+                      déjà ce mot pour créer un chantier, et deux boutons de
+                      même nom sur le même écran font hésiter. */}
+                  {messages.length > 0 ? "Répondre" : "Envoyer à la session"}
                 </Button>
               )}
             </div>
