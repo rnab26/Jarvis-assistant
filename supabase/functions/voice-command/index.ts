@@ -5,7 +5,7 @@ import { appelerGemini, phrasePourEchec } from "../_shared/gemini.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-jarvis-essai",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 }
 
@@ -569,13 +569,37 @@ Deno.serve(async (req: Request) => {
       timeStyle: "short",
     }).format(new Date())
 
-    const cleGemini = Deno.env.get("GEMINI_API_KEY")
+    // Une clé pour Raphaël, une autre pour nos vérifications.
+    //
+    // POURQUOI : le plafond de l'offre gratuite Gemini se compte PAR PROJET
+    // Google. Le 3 sept. 2026 à 21h28, les contrôles lancés dans la journée
+    // par quatre sessions Claude Code avaient vidé le quota du jour, et
+    // Raphaël s'est retrouvé devant « J'ai atteint la limite de l'offre
+    // gratuite » en pleine conversation. Il a demandé de ne PAS réduire les
+    // vérifications — ce sont elles qui font avancer le moteur — donc c'est
+    // le seau qu'on sépare, pas le nombre de tests.
+    //
+    // scripts/verifier-commande-vocale.mjs pose l'en-tête ci-dessous ; la clé
+    // de test vit sur un second projet Google AI Studio. Si le secret manque,
+    // on retombe sur la clé normale : mieux vaut un contrôle qui puise dans
+    // son quota qu'un contrôle qui ne tourne pas.
+    //
+    // L'en-tête est fourni par l'appelant, donc à ne jamais considérer comme
+    // une preuve d'identité : il ne fait que choisir entre deux clés
+    // également gratuites, sur une fonction qui exige déjà d'être connecté.
+    // Il n'ouvre aucun accès et ne change rien à la réponse rendue.
+    const essai = req.headers.get("x-jarvis-essai") === "1"
+    const cleEssai = Deno.env.get("GEMINI_API_KEY_TEST")
+    const cleGemini = (essai && cleEssai) || Deno.env.get("GEMINI_API_KEY")
     if (!cleGemini) {
       return new Response(
         JSON.stringify({ error: "GEMINI_API_KEY non configurée côté serveur." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       )
     }
+    // Sans cette trace, une clé de test absente est invisible : les contrôles
+    // passent au vert en vidant quand même le quota de Raphaël.
+    if (essai) console.log("clé", cleEssai ? "test" : "normale (GEMINI_API_KEY_TEST absente)")
 
     // Ce qui change à chaque appel, et seulement ça : placé APRÈS les
     // consignes pour ne pas invalider leur cache.

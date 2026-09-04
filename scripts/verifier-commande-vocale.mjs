@@ -77,10 +77,20 @@ const CONTACTS = [
 
 let PRONONCIATIONS = []
 
+// Cet en-tete dit a voice-command d utiliser GEMINI_API_KEY_TEST, la cle d un
+// SECOND projet Google AI Studio. Le plafond de l offre gratuite Gemini se
+// compte par projet : sans lui, les dix controles ci-dessous puisent dans le
+// quota du jour de Raphael, et c est ce qui l a laisse sans Jarvis le 3 sept.
+// 2026 a 21h28. Ne l enleve pas.
 async function demander(phrase) {
   const r = await fetch(`${URL_PROJET}/functions/v1/${FONCTION}`, {
     method: "POST",
-    headers: { apikey: ANON, Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" },
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${jeton}`,
+      "Content-Type": "application/json",
+      "x-jarvis-essai": "1",
+    },
     body: JSON.stringify({
       transcript: phrase,
       categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, documents: [], contacts: CONTACTS,
