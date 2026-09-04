@@ -1,0 +1,126 @@
+diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
+index a99ea69..c224389 100644
+--- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
++++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
+@@ -2,10 +2,15 @@ package com.getcapacitor.community.speechrecognition;
+ 
+ import android.Manifest;
+ import android.app.Activity;
++import android.content.ComponentName;
+ import android.content.Intent;
++import android.content.pm.PackageManager;
++import android.content.pm.ResolveInfo;
++import android.media.AudioManager;
+ import android.os.Build;
+ import android.os.Bundle;
+ import android.speech.RecognitionListener;
++import android.speech.RecognitionService;
+ import android.speech.RecognizerIntent;
+ import android.speech.SpeechRecognizer;
+ import androidx.activity.result.ActivityResult;
+@@ -37,6 +42,17 @@ public class SpeechRecognition extends Plugin implements Constants {
+     private Receiver languageReceiver;
+     private SpeechRecognizer speechRecognizer;
+ 
++    // Sur un telephone Samsung (constate chez Raphael, 3 sept. 2026), le
++    // service de reconnaissance par defaut coupe l'ecoute a chaque
++    // respiration (onEndOfSpeech) et joue une tonalite a chaque coupure --
++    // Jarvis semblait "bouger" et repeter au milieu d'une phrase. Le service
++    // de Google, lui, ne fait ni l'un ni l'autre : on le vise explicitement
++    // quand il est installe.
++    private String serviceChoisi = "defaut";
++    // Deuxieme piste, seulement si Google est absent : couper le flux
++    // audio le temps du "beep" plutot que de le laisser sonner.
++    private boolean streamCoupe = false;
++
+     private final ReentrantLock lock = new ReentrantLock();
+     private boolean listening = false;
+ 
+@@ -48,7 +64,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+         bridge
+             .getWebView()
+             .post(() -> {
+-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(bridge.getActivity());
++                speechRecognizer = creerRecognizer();
+                 SpeechRecognitionListener listener = new SpeechRecognitionListener();
+                 speechRecognizer.setRecognitionListener(listener);
+                 Logger.info(getLogTag(), "Instantiated SpeechRecognizer in load()");
+@@ -118,6 +134,13 @@ public class SpeechRecognition extends Plugin implements Constants {
+         call.resolve(new JSObject().put("listening", SpeechRecognition.this.listening));
+     }
+ 
++    /** Quel service tourne reellement -- pour le journal d'ecoute cote JS,
++     * qui ne peut pas le savoir autrement. */
++    @PluginMethod
++    public void serviceUtilise(PluginCall call) {
++        call.resolve(new JSObject().put("nom", serviceChoisi));
++    }
++
+     @ActivityCallback
+     private void listeningResult(PluginCall call, ActivityResult result) {
+         if (call == null) {
+@@ -151,6 +174,32 @@ public class SpeechRecognition extends Plugin implements Constants {
+         this.listening = value;
+     }
+ 
++    /** Le composant du service de reconnaissance de Google, si l'app est
++     * installee -- null sinon (elle est absente sur un telephone sans
++     * Play Services). */
++    private ComponentName trouverServiceGoogle() {
++        PackageManager pm = bridge.getContext().getPackageManager();
++        List<ResolveInfo> services = pm.queryIntentServices(new Intent(RecognitionService.SERVICE_INTERFACE), 0);
++        for (ResolveInfo info : services) {
++            if (info.serviceInfo != null && "com.google.android.googlequicksearchbox".equals(info.serviceInfo.packageName)) {
++                return new ComponentName(info.serviceInfo.packageName, info.serviceInfo.name);
++            }
++        }
++        return null;
++    }
++
++    /** Cree le recognizer en visant Google quand il est present, pour
++     * eviter la tonalite et les coupures du service par defaut. */
++    private SpeechRecognizer creerRecognizer() {
++        ComponentName google = trouverServiceGoogle();
++        if (google != null) {
++            serviceChoisi = google.flattenToShortString();
++            return SpeechRecognizer.createSpeechRecognizer(bridge.getActivity(), google);
++        }
++        serviceChoisi = "defaut";
++        return SpeechRecognizer.createSpeechRecognizer(bridge.getActivity());
++    }
++
+     private void beginListening(
+         String language,
+         int maxResults,
+@@ -188,11 +237,18 @@ public class SpeechRecognition extends Plugin implements Constants {
+                             speechRecognizer = null;
+                         }
+ 
+-                        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(bridge.getActivity());
++                        speechRecognizer = creerRecognizer();
+                         SpeechRecognitionListener listener = new SpeechRecognitionListener();
+                         listener.setCall(call);
+                         listener.setPartialResults(partialResults);
+                         speechRecognizer.setRecognitionListener(listener);
++                        if (!serviceChoisi.startsWith("com.google")) {
++                            AudioManager audio = (AudioManager) bridge.getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
++                            if (audio != null) {
++                                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
++                                streamCoupe = true;
++                            }
++                        }
+                         speechRecognizer.startListening(intent);
+                         SpeechRecognition.this.listening(true);
+                         if (partialResults) {
+@@ -245,6 +301,11 @@ public class SpeechRecognition extends Plugin implements Constants {
+         public void onBeginningOfSpeech() {
+             try {
+                 SpeechRecognition.this.lock.lock();
++                if (streamCoupe) {
++                    AudioManager audio = (AudioManager) bridge.getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
++                    if (audio != null) audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
++                    streamCoupe = false;
++                }
+                 // Notify listeners that recording has started
+                 JSObject ret = new JSObject();
+                 ret.put("status", "started");

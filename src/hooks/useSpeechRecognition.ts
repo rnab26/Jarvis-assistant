@@ -209,6 +209,16 @@ export function useSpeechRecognition() {
 
   // --- Android natif -------------------------------------------------------
 
+  // Ajouté par notre patch (patches/@capacitor-community+speech-recognition),
+  // absent des types du paquet d'origine : le plugin vise maintenant le
+  // service de reconnaissance de Google quand il est installé, pour éviter
+  // la tonalité et les coupures à chaque respiration du service par défaut
+  // d'un Samsung. On lit une fois quel service a été retenu, pour le
+  // journal d'écoute — rien ne dépend de cette valeur côté comportement.
+  const serviceUtilise = NativeSpeechRecognition as unknown as {
+    serviceUtilise?: () => Promise<{ nom: string }>
+  }
+
   const preparerNatif = useCallback(async () => {
     // Une fois la permission accordée, ces deux allers-retours avec Android
     // ne changent plus rien — mais ils coûtent des centaines de millisecondes
@@ -226,6 +236,9 @@ export function useSpeechRecognition() {
       throw new Error("Micro refusé. Autorise l'accès au micro dans les paramètres de l'app.")
     }
     microPretRef.current = true
+
+    const service = await borner(serviceUtilise.serviceUtilise?.() ?? Promise.resolve(null), 400)
+    if (service) noterEcoute("service_reconnaissance", { nom: service.nom })
   }, [])
 
   /**
