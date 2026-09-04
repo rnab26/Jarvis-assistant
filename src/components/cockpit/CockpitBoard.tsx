@@ -1,5 +1,15 @@
-import { ChevronDown, ChevronRight, FolderCog, Search, X } from "lucide-react"
+import {
+  Archive,
+  CheckSquare,
+  ChevronDown,
+  ChevronRight,
+  FolderCog,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react"
 import { useMemo, useState } from "react"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,8 +27,11 @@ import {
   type FiltreStatut,
   type GroupeSection,
 } from "@/lib/sections"
+import { etatDe, type EtatChantier } from "@/hooks/useDevItems"
+import { proposerAnnulation } from "@/lib/annulation"
+import { alreadyNotified } from "@/lib/notifyError"
 import { cleTheme } from "@/lib/themeChantier"
-import type { DevItem, DevItemInput } from "@/types/database"
+import type { DevItem, DevItemInput, DevStatus } from "@/types/database"
 
 /** Conservé pour les appelants existants (MicButton, CockpitPage) : la liste
  * des thèmes réellement portés par des chantiers, telle qu'elle part au
@@ -42,10 +55,16 @@ const STATUTS: { valeur: FiltreStatut; libelle: string }[] = [
 interface CockpitBoardProps {
   devItems: DevItem[]
   sectionsState: ReturnType<typeof useDevSections>
-  onUpdate: (id: string, input: DevItemInput) => Promise<void>
+  onUpdate: (id: string, input: Partial<DevItemInput>) => Promise<void>
   onDelete: (id: string) => Promise<void>
   onArchive: (id: string) => Promise<void>
   onUnarchive: (id: string) => Promise<void>
+  /** Les actions groupées : une seule requête pour tout le lot. */
+  onUpdateMany: (ids: string[], patch: Partial<DevItemInput>) => Promise<void>
+  onArchiveMany: (ids: string[]) => Promise<void>
+  onDeleteMany: (ids: string[]) => Promise<void>
+  /** Le retour en arrière proposé après chaque action groupée. */
+  onRestore: (etats: EtatChantier[]) => Promise<void>
 }
 
 /**
@@ -71,10 +90,17 @@ export function CockpitBoard({
   onDelete,
   onArchive,
   onUnarchive,
+  onUpdateMany,
+  onArchiveMany,
+  onDeleteMany,
+  onRestore,
 }: CockpitBoardProps) {
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set())
   const [archivesOuvertes, setArchivesOuvertes] = useState(false)
+  // null = pas en mode sélection. Un Set vide veut dire « en mode sélection,
+  // rien de coché » : les deux états sont différents à l'écran.
+  const [selection, setSelection] = useState<Set<string> | null>(null)
 
   const { sections } = sectionsState
   const themes = themesDe(devItems)
@@ -106,7 +132,9 @@ export function CockpitBoard({
   const totalEnCours = groupesComplets.reduce((n, g) => n + g.enCours, 0)
   const nbArchivesAffiches = groupesArchives.reduce((n, g) => n + g.chantiers.length, 0)
 
-  const estOuverte = (nom: string) => cherche || ouvertes.has(cleTheme(nom))
+  // En mode sélection, tout est déplié : on ne peut pas cocher ce qu'on ne
+  // voit pas, et « tout ce qui est affiché » doit vouloir dire ce qu'il dit.
+  const estOuverte = (nom: string) => cherche || selection !== null || ouvertes.has(cleTheme(nom))
   const basculer = (nom: string) =>
     setOuvertes((set) => {
       const suivant = new Set(set)
@@ -115,6 +143,42 @@ export function CockpitBoard({
       else suivant.add(cle)
       return suivant
     })
+
+  // ── La sélection multiple ──
+  // Avec quatre-vingts chantiers, reclasser un thème ou archiver les terminés
+  // un par un ne se fait tout simplement pas. C'est la fonction que tous les
+  // outils de suivi ont, et la seule qui rende une liste de cette taille
+  // manipulable.
+  const enSelection = selection !== null
+  const choisis = useMemo(
+    () => (selection ? devItems.filter((i) => selection.has(i.id)) : []),
+    [selection, devItems],
+  )
+
+  const basculerSelection = (id: string) =>
+    setSelection((set) => {
+      const suivant = new Set(set ?? [])
+      if (suivant.has(id)) suivant.delete(id)
+      else suivant.add(id)
+      return suivant
+    })
+
+  /** Tout ce que le filtre laisse voir en ce moment — pas les 83 chantiers de
+   * la base : on ne coche que ce qu'on a sous les yeux. */
+  const toutSelectionner = () => setSelection(new Set(filtres.map((i) => i.id)))
+
+  /** Chaque action groupée mémorise l'état d'avant et propose de l'annuler. */
+  async function agirSurLeLot(
+    message: (n: number) => string,
+    action: (ids: string[]) => Promise<void>,
+  ) {
+    const etats = choisis.map(etatDe)
+    const ids = etats.map((e) => e.id)
+    if (ids.length === 0) return
+    await action(ids)
+    setSelection(new Set())
+    proposerAnnulation(message(ids.length), etats, onRestore)
+  }
 
   const boutonSections = (
     <SectionsDialog
@@ -151,8 +215,35 @@ export function CockpitBoard({
               {totalEnCours > 0 && <> · {totalEnCours} en cours</>} · {groupesComplets.length}{" "}
               section{groupesComplets.length > 1 ? "s" : ""}
             </p>
+            <Button
+              variant={enSelection ? "default" : "outline"}
+              size="sm"
+              aria-pressed={enSelection}
+              onClick={() => setSelection(enSelection ? null : new Set())}
+            >
+              <CheckSquare className="size-4" />
+              {enSelection ? "Terminer" : "Choisir"}
+            </Button>
             {boutonSections}
           </div>
+
+          {enSelection && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed p-2">
+              <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                {choisis.length === 0
+                  ? "Touche les chantiers à traiter ensemble."
+                  : `${choisis.length} chantier${choisis.length > 1 ? "s" : ""} choisi${choisis.length > 1 ? "s" : ""}.`}
+              </p>
+              <Button variant="ghost" size="sm" onClick={toutSelectionner}>
+                Tout ce qui est affiché
+              </Button>
+              {choisis.length > 0 && (
+                <Button variant="ghost" size="sm" onClick={() => setSelection(new Set())}>
+                  Aucun
+                </Button>
+              )}
+            </div>
+          )}
 
           <div className="relative">
             <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -264,6 +355,9 @@ export function CockpitBoard({
                 onUpdate={onUpdate}
                 onDelete={onDelete}
                 onArchive={onArchive}
+                selectionnable={enSelection}
+                selectionne={selection?.has(item.id) ?? false}
+                onSelectionner={basculerSelection}
               />
             ))}
           </SectionPliante>
@@ -318,6 +412,9 @@ export function CockpitBoard({
                             onUpdate={onUpdate}
                             onDelete={onDelete}
                             onUnarchive={onUnarchive}
+                            selectionnable={enSelection}
+                            selectionne={selection?.has(item.id) ?? false}
+                            onSelectionner={basculerSelection}
                           />
                         ))}
                     </div>
@@ -328,8 +425,108 @@ export function CockpitBoard({
           )}
         </Card>
       )}
+
+      {/* Collée en bas de l'écran : c'est là que se trouve le pouce, et la
+          liste continue de défiler derrière. La barre ne dit pas seulement ce
+          qu'on peut faire, elle dit sur combien de chantiers — sinon on
+          applique une action à une sélection qu'on ne voit plus. */}
+      {enSelection && choisis.length > 0 && (
+        <div className="sticky bottom-2 z-10 flex flex-col gap-2 rounded-lg border bg-background/95 p-2 shadow-lg backdrop-blur">
+          <p className="text-xs font-medium">
+            {choisis.length} chantier{choisis.length > 1 ? "s" : ""} — les traiter ensemble
+          </p>
+
+          <div className="flex flex-wrap gap-1.5">
+            {(["todo", "in_progress", "done"] as DevStatus[]).map((statut) => (
+              <Button
+                key={statut}
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  agirSurLeLot(
+                    (n) => `${n} chantier${n > 1 ? "s" : ""} passé${n > 1 ? "s" : ""} en « ${LIBELLE_STATUT[statut]} »`,
+                    (ids) => onUpdateMany(ids, { status: statut }),
+                  ).catch(alreadyNotified)
+                }
+              >
+                {LIBELLE_STATUT[statut]}
+              </Button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                agirSurLeLot(
+                  (n) => `${n} chantier${n > 1 ? "s" : ""} archivé${n > 1 ? "s" : ""}`,
+                  onArchiveMany,
+                ).catch(alreadyNotified)
+              }
+            >
+              <Archive className="size-3.5" />
+              Archiver
+            </Button>
+
+            <ConfirmerAction
+              titre={`Supprimer ${choisis.length} chantier${choisis.length > 1 ? "s" : ""} ?`}
+              description={
+                <>
+                  Ils seront supprimés définitivement, sans retour possible. Pour les garder
+                  sans les avoir dans la liste, archive-les plutôt.
+                </>
+              }
+              libelleConfirmation="Supprimer"
+              onConfirmer={async () => {
+                const ids = choisis.map((i) => i.id)
+                await onDeleteMany(ids)
+                setSelection(new Set())
+              }}
+              trigger={
+                <Button variant="ghost" size="sm">
+                  <Trash2 className="size-3.5" />
+                  Supprimer
+                </Button>
+              }
+            />
+
+            <Button variant="ghost" size="sm" onClick={() => setSelection(null)}>
+              <X className="size-3.5" />
+              Fermer
+            </Button>
+          </div>
+
+          {/* Déplacer un lot vers une section : le geste qui rend les 83
+              chantiers rangeables. « À classer » sort de la section sans rien
+              supprimer. */}
+          <div className="flex flex-wrap gap-1">
+            {[...groupesComplets.map((g) => g.nom)].map((nom) => (
+              <button
+                key={nom}
+                type="button"
+                className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+                onClick={() =>
+                  agirSurLeLot(
+                    (n) => `${n} chantier${n > 1 ? "s" : ""} rangé${n > 1 ? "s" : ""} dans « ${nom} »`,
+                    (ids) => onUpdateMany(ids, { theme: nom === SANS_SECTION ? null : nom }),
+                  ).catch(alreadyNotified)
+                }
+              >
+                → {nom}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+const LIBELLE_STATUT: Record<DevStatus, string> = {
+  todo: "À faire",
+  in_progress: "En cours",
+  done: "Terminé",
 }
 
 function Puce({
