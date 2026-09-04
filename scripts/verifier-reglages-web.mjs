@@ -117,8 +117,8 @@ try {
     verifier(`« ${ligne} » est réglable`, await ok.getByText(ligne, { exact: true }).first().isVisible())
   }
   verifier(
-    "cinq interrupteurs, pas six : ni agenda ni mail",
-    (await ok.getByRole("switch").count()) === 5,
+    "cinq notifications réglables (plus les heures de silence), ni agenda ni mail",
+    (await ok.getByRole("switch").count()) === 6,
     "Google prévient déjà pour l'agenda et les mails ; deux notifications pour la même chose, c'est une de trop",
   )
   verifier(
@@ -182,6 +182,30 @@ try {
     "un bouton permet de prouver que ça marche sur CE téléphone",
     await ok.getByRole("button", { name: "Tester" }).isVisible(),
   )
+
+  // ── Les heures de silence ──
+  verifier(
+    "on peut faire taire la nuit sans perdre les rappels",
+    await ok.getByText("Ne rien faire sonner la nuit", { exact: true }).isVisible(),
+  )
+  verifier(
+    "et il est dit que le rappel s'affiche quand même",
+    await ok.getByText(/sans bruit/).isVisible(),
+    "sans cette phrase, on croirait supprimer le rappel",
+  )
+  verifier(
+    "les deux bornes de la nuit se règlent",
+    (await ok.getByText("À partir de", { exact: true }).isVisible()) &&
+      (await ok.getByText("Jusqu'à", { exact: true }).isVisible()),
+  )
+  await ok.getByLabel("Ne rien faire sonner la nuit").click()
+  await pause(200)
+  verifier(
+    "couper les heures de silence range leurs réglages",
+    !(await ok.getByText("À partir de", { exact: true }).isVisible()),
+  )
+  await ok.getByLabel("Ne rien faire sonner la nuit").click()
+  await pause(200)
 
   // ── La mise à jour : rapide quand c'est possible, franche quand ça ne l'est pas ──
   verifier(

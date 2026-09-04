@@ -47,6 +47,12 @@ const CANAUX: Record<CanalNotif, { id: string; nom: string; description: string;
     description: "Le résumé de la journée, une fois par jour.",
     importance: 3,
   },
+  nuit: {
+    id: "jarvis_nuit",
+    nom: "Rappels de nuit",
+    description: "Les mêmes rappels, pendant tes heures de silence : affichés, jamais sonnés.",
+    importance: 2,
+  },
   app: {
     id: "jarvis_app",
     nom: "Mises à jour de l'application",

@@ -865,6 +865,20 @@ Une préférence qu'un seul chemin permet de poser — une question orale, une
 détection automatique, une valeur par défaut — se règle **aussi** depuis
 Paramètres. Au minimum : la voir, et pouvoir l'effacer.
 
+## Le thème sombre existait déjà, et rien ne l'allumait
+
+Trouvé le 4 sept. : le bloc `.dark` de `src/index.css` définit une
+quarantaine de couleurs depuis le début du projet, et **aucun composant n'a
+jamais posé la classe `dark`**. Réparé — `ThemeProvider` (next-themes) dans
+`App.tsx`, carte dans Paramètres › Apparence.
+
+Deux points à ne pas défaire : la clé de stockage est **la nôtre**
+(`jarvis_theme`, pas celle par défaut de la bibliothèque), sans quoi le choix
+n'entrerait pas dans les réglages recopiés en base ; et on passe par
+next-themes plutôt qu'un bricolage maison parce que `components/ui/sonner.tsx`
+lit déjà son état — sinon un toast clair s'afficherait au-dessus d'un écran
+sombre.
+
 ## Les notifications : Jarvis ne notifie QUE ce qui vit chez lui
 
 Livré le 4 sept. 2026 (chantier 5d03a192). `@capacitor/local-notifications`,
@@ -906,6 +920,13 @@ Trois fichiers, et la frontière entre eux compte :
 Les identifiants sont répartis en plages (`PLAGE_ECHEANCE`, `PLAGE_MATIN`, …)
 et `estNotreNotif()` garde l'annulation : on n'annule jamais une notification
 qui ne vient pas de nous.
+
+**Les heures de silence** (4 sept., initiative) ne suppriment ni ne décalent
+rien : le rappel part sur un canal Android muet (`jarvis_nuit`, importance 2)
+au lieu du canal sonore. Il est là au réveil, il n'a réveillé personne.
+`dansLaPlageSilencieuse()` gère la plage qui passe minuit — une comparaison
+naïve `début <= t < fin` serait toujours fausse sur 22:30 → 07:30, et la nuit
+sonnerait comme le jour sans que rien ne le signale.
 
 **Limite connue, à ne pas présenter comme livrée** : « chantier livré » et
 « session bloquée » ne se déclenchent que pendant que l'app tourne — ils

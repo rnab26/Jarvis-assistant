@@ -18,6 +18,7 @@
  */
 import {
   construirePlan,
+  dansLaPlageSilencieuse,
   corpsChantiersLivres,
   corpsDuMatin,
   estNotreNotif,
@@ -147,6 +148,71 @@ function tache(partiel: Partial<Task>): Task {
     "les identifiants sont stables d'un calcul à l'autre",
     rejoue.map((n) => n.id).join() === plan.map((n) => n.id).join(),
     "sinon chaque rechargement empilerait des doublons au lieu de remplacer",
+  )
+}
+
+// ---------------------------------------------------------- heures de silence
+
+{
+  // La plage par défaut passe minuit : 22:30 -> 07:30. C'est le cas où une
+  // comparaison naïve « début <= t < fin » est toujours fausse, et où la
+  // nuit sonnerait comme le jour sans que rien ne le signale.
+  const cas: [string, number, number, boolean][] = [
+    ["23 h 00, en pleine nuit", 23, 0, true],
+    ["02 h 00, après minuit", 2, 0, true],
+    ["07 h 29, juste avant la fin", 7, 29, true],
+    ["07 h 30, à la fin pile", 7, 30, false],
+    ["22 h 30, au début pile", 22, 30, true],
+    ["22 h 29, juste avant", 22, 29, false],
+    ["14 h 00, en plein jour", 14, 0, false],
+  ]
+  for (const [nom, h, min, attendu] of cas) {
+    const moment = new Date(2026, 8, 3, h, min)
+    verifier(
+      `plage silencieuse : ${nom}`,
+      dansLaPlageSilencieuse(moment, PREFS_NOTIFS_DEFAUT) === attendu,
+    )
+  }
+
+  verifier(
+    "l'interrupteur des heures de silence coupe vraiment",
+    !dansLaPlageSilencieuse(new Date(2026, 8, 3, 23, 0), {
+      ...PREFS_NOTIFS_DEFAUT,
+      silenceNuit: false,
+    }),
+  )
+
+  // Une plage qui NE passe PAS minuit (sieste) doit marcher aussi.
+  const sieste = { ...PREFS_NOTIFS_DEFAUT, silenceDebut: "13:00", silenceFin: "15:00" }
+  verifier(
+    "une plage dans la même journée fonctionne aussi",
+    dansLaPlageSilencieuse(new Date(2026, 8, 3, 14, 0), sieste) &&
+      !dansLaPlageSilencieuse(new Date(2026, 8, 3, 23, 0), sieste),
+  )
+
+  verifier(
+    "une plage vide (début = fin) ne fait taire personne",
+    !dansLaPlageSilencieuse(new Date(2026, 8, 3, 23, 0), {
+      ...PREFS_NOTIFS_DEFAUT,
+      silenceDebut: "22:00",
+      silenceFin: "22:00",
+    }),
+    "sinon on ne saurait pas si « de 22 h à 22 h » veut dire rien ou toute la journée",
+  )
+}
+
+{
+  // Ce qui compte vraiment : le rappel EXISTE toujours, il change juste de
+  // canal. Le supprimer ou le décaler ferait manquer une échéance.
+  const nuit = tache({ due_date: "2026-09-03", due_time: "23:30" })
+  const jour = tache({ due_date: "2026-09-03", due_time: "18:00" })
+  const plan = planifierEcheances([nuit, jour], PREFS_NOTIFS_DEFAUT, MAINTENANT)
+  verifier(
+    "un rappel de nuit est programmé quand même, sur le canal muet",
+    plan.length === 2 &&
+      plan.find((n) => n.quand.getHours() === 23)?.canal === "nuit" &&
+      plan.find((n) => n.quand.getHours() === 18)?.canal === "taches",
+    `obtenu ${JSON.stringify(plan.map((n) => [n.quand.getHours(), n.canal]))}`,
   )
 }
 
