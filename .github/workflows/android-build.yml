@@ -40,6 +40,26 @@ jobs:
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      # Empreinte du code NATIF : le dossier android/, la config Capacitor,
+      # les correctifs appliqués aux plugins, et la version EXACTE de chaque
+      # plugin Capacitor (lue dans le lockfile, pas dans les plages de
+      # package.json — une montée de version dans la plage change le code
+      # natif sans changer package.json).
+      #
+      # Elle sert à une seule décision, prise sur le téléphone : le paquet web
+      # publié peut-il tourner dans l'APK déjà installée ? Si l'empreinte a
+      # bougé, la nouvelle interface s'attend à un plugin ou une permission que
+      # la coquille installée n'a pas, et l'app refuse la mise à jour rapide au
+      # lieu de se casser. Voir src/lib/majWeb.ts.
+      - name: Calculer l'empreinte du natif
+        id: natif
+        run: |
+          EMPREINTE=$( {
+            git ls-files -s android capacitor.config.ts patches
+            node -e "const l=require('./package-lock.json');console.log(JSON.stringify(Object.entries(l.packages||{}).filter(([k])=>k.includes('capacitor')).map(([k,v])=>[k,v.version]).sort()))"
+          } | sha256sum | cut -c1-16 )
+          echo "empreinte=${EMPREINTE}" >> "$GITHUB_OUTPUT"
+
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
@@ -48,6 +68,14 @@ jobs:
           VITE_BUILD_NUMBER: ${{ steps.version.outputs.code }}
           VITE_BUILD_VERSION: ${{ steps.version.outputs.name }}
           VITE_BUILD_DATE: ${{ steps.version.outputs.built_at }}
+          VITE_NATIVE_EMPREINTE: ${{ steps.natif.outputs.empreinte }}
+
+      # Le paquet web, tel qu'il sera embarqué dans l'APK : c'est le MÊME
+      # dossier dist, donc la mise à jour rapide installe exactement ce que
+      # contient l'APK de ce build, ni plus ni moins. ~700 Ko contre ~10 Mo.
+      - name: Empaqueter l'interface web
+        working-directory: dist
+        run: zip -qr ../web-bundle.zip .
 
       - run: npx cap sync android
 
@@ -94,5 +122,8 @@ jobs:
             build: ${{ steps.version.outputs.code }}
             commit: ${{ github.sha }}
             date: ${{ steps.version.outputs.built_at }}
+            native: ${{ steps.natif.outputs.empreinte }}
           prerelease: true
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            web-bundle.zip

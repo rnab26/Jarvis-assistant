@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core"
-import { Download, RefreshCw, Trash2 } from "lucide-react"
+import { Download, RefreshCw, Trash2, Undo2, Zap } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -32,12 +32,7 @@ import {
   SUITE_MIN_MS,
 } from "@/lib/dialoguePrefs"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
-import {
-  useUpdateCheck,
-  type PublishedBuild,
-  type UpdateStatus,
-  type Verdict,
-} from "@/hooks/useUpdateCheck"
+import type { PublishedBuild } from "@/hooks/useUpdateCheck"
 import { formatBuildDate, versionInstallee } from "@/lib/version"
 
 const isNative = Capacitor.isNativePlatform()
@@ -216,6 +211,15 @@ function CompteGoogle() {
   )
 }
 
+/** Ce que l'app est en train de faire pendant une mise à jour rapide. Une
+ * barre qui avance sans dire de quoi il s'agit laisse croire à un blocage
+ * pendant la décompression, qui ne montre aucune progression. */
+const ETAPE_LABEL = {
+  telechargement: "Téléchargement du paquet...",
+  installation: "Installation...",
+  redemarrage: "Redémarrage de l'interface...",
+} as const
+
 const APK_DOWNLOAD_URL =
   "https://github.com/rnab26/Jarvis-assistant/releases/download/latest-debug/app-debug.apk"
 
@@ -296,20 +300,16 @@ function BarreProgression({ progression }: { progression: ProgressionTelechargem
   )
 }
 
-function MettreAJour({
-  status,
-  published,
-  verifieA,
-  recheck,
-}: {
-  status: UpdateStatus
-  published: PublishedBuild | null
-  verifieA: Date | null
-  recheck: () => Promise<Verdict>
-}) {
-  const [etat, setEtat] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
+function MettreAJour() {
+  const { updateState, majWebState } = useJarvisData()
+  const { status, published, verifieA, recheck } = updateState
+  const { etat, verdict, etape, progression: progressionWeb, erreur: erreurWeb, auto, setAuto, appliquer, revenir } =
+    majWebState
+
+  const [etatApk, setEtatApk] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
   const [erreur, setErreur] = useState<string | null>(null)
   const [progression, setProgression] = useState<ProgressionTelechargement | null>(null)
+  const [confirmerRetour, setConfirmerRetour] = useState(false)
 
   useEffect(() => {
     if (!isNative) return
@@ -328,13 +328,13 @@ function MettreAJour({
      annoncé explicitement, avec le numéro de build : on ne lui demande plus
      de deviner que quelque chose s'est produit. */
   async function revérifier() {
-    const { status: verdict, published: infos } = await recheck()
+    const { status: verdictMaj, published: infos } = await recheck()
     const build = infos?.buildNumber !== null && infos?.buildNumber !== undefined
       ? ` (build ${infos.buildNumber})`
       : ""
-    if (verdict === "up-to-date") {
+    if (verdictMaj === "up-to-date") {
       toast.success(`Vérifié : tu es à jour${build}.`)
-    } else if (verdict === "update-available") {
+    } else if (verdictMaj === "update-available") {
       toast.warning(`Vérifié : une nouvelle version existe${build}.`)
     } else {
       toast.error("Vérification impossible", {
@@ -343,25 +343,42 @@ function MettreAJour({
     }
   }
 
+  async function mettreAJourVite() {
+    try {
+      await appliquer()
+    } catch {
+      // Message déjà porté par erreurWeb, affiché sous les boutons.
+    }
+  }
+
+  async function revenirEnArriere() {
+    setConfirmerRetour(false)
+    await revenir()
+    toast.success("Retour à la version installée avec l'application.")
+  }
+
   async function telecharger() {
     setErreur(null)
     const { granted } = await ApkDownloader.hasInstallPermission()
     if (!granted) {
-      setEtat("besoin-permission")
+      setEtatApk("besoin-permission")
       return
     }
-    setEtat("telechargement")
+    setEtatApk("telechargement")
     setProgression(null)
     try {
       await ApkDownloader.downloadAndInstall({ url: APK_DOWNLOAD_URL })
-      setEtat("idle")
+      setEtatApk("idle")
     } catch (e) {
-      setEtat("erreur")
+      setEtatApk("erreur")
       setErreur(e instanceof Error ? e.message : "Échec du téléchargement.")
     } finally {
       setProgression(null)
     }
   }
+
+  const majRapidePossible = verdict?.possible === true
+  const enCours = etape !== null
 
   return (
     <Card>
@@ -369,24 +386,38 @@ function MettreAJour({
         <CardTitle>Mettre à jour l'application</CardTitle>
         <CardDescription>
           {isNative
-            ? "L'app installée ne se met jamais à jour toute seule : compare les deux versions ci-dessous, et si elles diffèrent, mets à jour."
+            ? "La plupart des mises à jour s'appliquent en quelques secondes, sans réinstaller l'app. Seules celles qui touchent le cœur de l'application demandent d'installer une nouvelle APK."
             : "Le site est republié à chaque changement, cette page est donc toujours à jour. Le bouton télécharge l'APK Android."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col items-start gap-3">
         <div className="flex w-full flex-col gap-1 rounded-lg border p-3">
           <LigneVersion
-            label={isNative ? "Version installée" : "Version de cette page"}
-            value={versionInstallee()}
+            label={isNative ? "Interface en cours" : "Version de cette page"}
+            value={
+              versionInstallee() +
+              (isNative ? (etat.actif ? " · mise à jour rapide" : " · livrée avec l'app") : "")
+            }
           />
-          <LigneVersion label="Dernière APK publiée" value={libellePubliee(published)} />
+          {isNative && etat.identiteApk?.build !== null && etat.identiteApk?.build !== undefined && (
+            <LigneVersion
+              label="Application installée"
+              value={`build ${etat.identiteApk.build}`}
+            />
+          )}
+          <LigneVersion label="Dernière version publiée" value={libellePubliee(published)} />
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {isNative ? (
-            <Button onClick={telecharger} disabled={etat === "telechargement"}>
+          {isNative && majRapidePossible ? (
+            <Button onClick={mettreAJourVite} disabled={enCours}>
+              <Zap className="size-4" />
+              {enCours ? ETAPE_LABEL[etape] : "Mettre à jour maintenant"}
+            </Button>
+          ) : isNative ? (
+            <Button onClick={telecharger} disabled={etatApk === "telechargement"}>
               <Download className="size-4" />
-              {etat === "telechargement" ? "Téléchargement..." : "Mettre à jour"}
+              {etatApk === "telechargement" ? "Téléchargement..." : "Mettre à jour"}
             </Button>
           ) : (
             <Button asChild>
@@ -413,7 +444,22 @@ function MettreAJour({
           </Button>
         </div>
 
-        {etat === "telechargement" && progression && (
+        {/* Pourquoi le bouton propose une réinstallation plutôt que la mise à
+            jour rapide : sans cette phrase, la promesse « plus besoin de
+            réinstaller » passerait pour cassée. */}
+        {isNative && verdict && !verdict.possible && (
+          <p className="text-sm text-muted-foreground">{verdict.raison}</p>
+        )}
+
+        {enCours && (
+          <div className="flex w-full flex-col gap-1">
+            <p className="text-sm">{ETAPE_LABEL[etape]}</p>
+            {etape === "telechargement" && progressionWeb && (
+              <BarreProgression progression={progressionWeb} />
+            )}
+          </div>
+        )}
+        {etatApk === "telechargement" && progression && (
           <BarreProgression progression={progression} />
         )}
 
@@ -426,7 +472,58 @@ function MettreAJour({
           </p>
         )}
 
-        {etat === "besoin-permission" && (
+        {isNative && (
+          <Interrupteur
+            titre="Appliquer les mises à jour rapides toute seule"
+            description="Au démarrage de l'app, quand la mise à jour ne demande pas de réinstallation. Celles qui touchent le cœur de l'application resteront toujours à ta main."
+            actif={auto}
+            onChange={setAuto}
+          />
+        )}
+
+        {isNative && etat.actif && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground">
+              Tu tournes sur une mise à jour rapide (build {etat.actif.build ?? "?"}). Si quelque
+              chose se comporte mal, reviens à la version livrée avec l'application installée.
+            </p>
+            {confirmerRetour ? (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="destructive" onClick={revenirEnArriere}>
+                  Confirmer le retour
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmerRetour(false)}>
+                  Annuler
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-fit"
+                onClick={() => setConfirmerRetour(true)}
+              >
+                <Undo2 className="size-4" />
+                Revenir à la version installée
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* Un paquet qui n'a pas démarré ne laisse aucune trace visible : sans
+            ce message, l'app serait simplement revenue en arrière toute seule,
+            sans explication. */}
+        {isNative && etat.dernierEchec && (
+          <p className="text-sm text-amber-600 dark:text-amber-500">
+            La mise à jour rapide du build {etat.dernierEchec.build ?? "?"} n'a pas démarré :
+            l'application est repartie sur la version précédente. Installe l'APK pour passer à la
+            nouvelle version.
+          </p>
+        )}
+
+        {erreurWeb && <p className="text-sm text-destructive">{erreurWeb}</p>}
+
+        {etatApk === "besoin-permission" && (
           <div className="flex flex-col gap-2 text-sm">
             <p className="text-muted-foreground">
               Android bloque l'installation d'une app venant d'ailleurs que le Play Store par
@@ -442,7 +539,7 @@ function MettreAJour({
             </Button>
           </div>
         )}
-        {etat === "erreur" && erreur && <p className="text-sm text-destructive">{erreur}</p>}
+        {etatApk === "erreur" && erreur && <p className="text-sm text-destructive">{erreur}</p>}
       </CardContent>
     </Card>
   )
@@ -596,7 +693,6 @@ export function SettingsPage() {
     placeRemindersState,
     pronunciationsState,
   } = useJarvisData()
-  const { status, published, verifieA, recheck } = useUpdateCheck()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
@@ -977,12 +1073,7 @@ export function SettingsPage() {
       </Section>
 
       <Section titre="L'application" resume="Version, mise à jour, nouveautés" cle="app" ouverteParDefaut>
-        <MettreAJour
-          status={status}
-          published={published}
-          verifieA={verifieA}
-          recheck={recheck}
-        />
+        <MettreAJour />
 
         <Nouveautes items={recentChanges} />
       </Section>

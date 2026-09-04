@@ -500,6 +500,7 @@ node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
+node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
@@ -774,6 +775,51 @@ contrôle avant de pousser :
 python3 -c "import xml.dom.minidom,glob;[xml.dom.minidom.parse(f) for f in glob.glob('android/app/src/main/res/**/*.xml',recursive=True)]"
 ```
 
+## Mettre à jour sans réinstaller : le paquet web (4 sept. 2026)
+
+Livré avec le chantier b5d210f9. Une app Capacitor, c'est une coquille
+Android (plugins, permissions, widget) autour d'une interface web. La quasi-
+totalité des chantiers ne touche QUE l'interface. Capacitor sait la servir
+depuis un dossier du téléphone (`WebView.setServerBasePath`) : la CI publie
+donc `web-bundle.zip` à côté de l'APK, l'app le télécharge (~700 Ko contre
+~10 Mo), l'installe et redémarre dessus. Aucune réinstallation, aucune
+autorisation « sources inconnues », aucun installateur à confirmer.
+
+**Le « sauf si » de sa demande est décidé sur une mesure, pas sur le poids.**
+La CI calcule une EMPREINTE du natif (`android/`, `capacitor.config.ts`,
+`patches/`, et la version exacte de chaque plugin Capacitor lue dans le
+lockfile) et l'écrit dans la release (`native: <hash>`) ET dans le bundle
+(`VITE_NATIVE_EMPREINTE`). Si l'empreinte publiée diffère de celle de l'APK
+installée, la mise à jour rapide est refusée et l'app dit qu'il faut
+installer l'APK — sans quoi la nouvelle interface appellerait un plugin
+absent de la coquille installée.
+
+**Pourquoi on ne peut pas se retrouver avec une app morte** : le chemin n'est
+rendu permanent (`persistServerBasePath`) qu'APRÈS que le nouveau paquet a
+démarré et exécuté `demarrageMajWeb()` depuis `main.tsx`. Un paquet cassé ne
+démarre pas, donc ne confirme jamais : fermer et rouvrir l'app suffit à
+retomber sur la version précédente, et Paramètres affiche l'échec. Et
+Capacitor efface lui-même le chemin enregistré quand l'APK change
+(`Bridge.isNewBinary`, vérifié dans les sources) : installer une APK reprend
+toujours la main sur un paquet téléchargé.
+
+L'empreinte de l'APK installée ne se relève QUE pendant que l'interface
+embarquée tourne (`getServerBasePath()` vide ou `"public"`) : une fois un
+paquet appliqué, `BUILD_NUMBER` et `NATIVE_EMPREINTE` décrivent le paquet, pas
+l'APK. Ne déplace pas cette lecture.
+
+Répartition des fichiers, et la frontière compte :
+`src/lib/majPaquet.ts` est **pur** (verdict, garde anti-« ../ », encodage
+base64 par tranches) et se vérifie sans téléphone
+(`scripts/verifier-maj-web.ts`, 19 contrôles) ; `src/lib/majWeb.ts` parle à
+Capacitor ; `src/hooks/useMajWeb.ts` est monté dans `JarvisDataProvider`,
+avec `useUpdateCheck` — pas dans Paramètres, sinon rien ne se vérifie ni ne
+s'applique tant qu'on n'ouvre pas cet onglet.
+
+**Non vérifié sur appareil** (aucun SDK Android ici) : le redémarrage réel de
+la WebView sur le dossier téléchargé. La CI prouve que ça compile, pas que ça
+tourne.
+
 ## Le web se met à jour tout seul, l'app Android jamais
 
 Piège découvert le 3 sept. 2026 : Raphaël pensait suivre les nouveautés en
@@ -790,6 +836,13 @@ l'installation lui-même. Un chantier « fini et CI verte » sur du code qui
 touche `android/`, `capacitor.config.ts` ou du `src/**` utilisé par l'app
 native n'est donc fini pour lui **que web**, pas encore en pratique côté
 téléphone.
+
+**Depuis le 4 sept., une nuance importante** : un chantier qui ne touche que
+`src/**` s'applique par la mise à jour rapide (section précédente), donc SANS
+réinstaller — et tout seul au démarrage si le réglage est laissé actif. Reste
+vrai pour tout ce qui touche `android/`, `capacitor.config.ts`, `patches/` ou
+un plugin Capacitor : l'empreinte du natif change, la mise à jour rapide est
+refusée, et il faut vraiment installer l'APK.
 
 **En terminant un chantier qui touche l'app Android**, le dire explicitement
 dans la réponse à Raphaël (pas juste « CI verte ») : que ça nécessite une

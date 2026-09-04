@@ -32,6 +32,7 @@ export const CLES_REGLAGES = [
   "jarvis_app_navigation",
   "jarvis_canal_messages",
   "jarvis_notifications",
+  "jarvis_maj_auto",
 ] as const
 
 /** Émis après une écriture locale : la synchro sait qu'elle a à pousser. */

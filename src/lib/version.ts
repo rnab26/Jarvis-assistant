@@ -44,3 +44,16 @@ export function versionInstallee(): string {
   const date = formatBuildDate(BUILD_DATE)
   return date ? `${base} · ${date}` : base
 }
+
+/**
+ * Empreinte du code NATIF de ce build (dossier android/, capacitor.config.ts,
+ * correctifs de plugins, et la liste des plugins Capacitor eux-mêmes), calculée
+ * par la CI.
+ *
+ * Sert à une seule décision, mais elle est importante : est-ce que le paquet
+ * web publié peut tourner dans l'APK déjà installée ? Si l'empreinte a changé,
+ * la nouvelle interface s'attend à un plugin ou une permission que la coquille
+ * installée n'a pas — la mise à jour rapide est alors refusée, et l'app dit
+ * qu'il faut installer l'APK. Voir src/lib/majWeb.ts.
+ */
+export const NATIVE_EMPREINTE = import.meta.env.VITE_NATIVE_EMPREINTE ?? null

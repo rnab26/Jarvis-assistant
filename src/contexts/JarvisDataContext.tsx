@@ -6,12 +6,14 @@ import { useDialogueSetting } from "@/hooks/useDialogueSetting"
 import { useDocuments } from "@/hooks/useDocuments"
 import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
 import { useGoogleAccount } from "@/hooks/useGoogleAccount"
+import { useMajWeb } from "@/hooks/useMajWeb"
 import { useNotifications } from "@/hooks/useNotifications"
 import { usePlaceGeofences } from "@/hooks/usePlaceGeofences"
 import { usePlaceReminders } from "@/hooks/usePlaceReminders"
 import { usePronunciations } from "@/hooks/usePronunciations"
 import { useReglagesSync } from "@/hooks/useReglagesSync"
 import { useTasks } from "@/hooks/useTasks"
+import { useUpdateCheck } from "@/hooks/useUpdateCheck"
 import { useVoiceSetting } from "@/hooks/useVoiceSetting"
 import { useWakeWordSetting } from "@/hooks/useWakeWordSetting"
 import { useWidgetSetting } from "@/hooks/useWidgetSetting"
@@ -30,6 +32,8 @@ type DialogueState = ReturnType<typeof useDialogueSetting>
 type VoiceState = ReturnType<typeof useVoiceSetting>
 type WidgetState = ReturnType<typeof useWidgetSetting>
 type NotificationsState = ReturnType<typeof useNotifications>
+type UpdateState = ReturnType<typeof useUpdateCheck>
+type MajWebState = ReturnType<typeof useMajWeb>
 
 interface JarvisDataValue {
   tasksState: TasksState
@@ -45,6 +49,8 @@ interface JarvisDataValue {
   voiceState: VoiceState
   widgetState: WidgetState
   notificationsState: NotificationsState
+  updateState: UpdateState
+  majWebState: MajWebState
 }
 
 const JarvisDataContext = createContext<JarvisDataValue | null>(null)
@@ -81,6 +87,17 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   // qu'on n'ouvre pas ne reprogrammerait plus rien.
   const notificationsState = useNotifications(tasksState.tasks, devItemsState.devItems, userId)
 
+  // La vérification de version et la mise à jour rapide vivent ici, et pas
+  // dans Paramètres : sans ça, rien ne se vérifie ni ne s'applique tant que
+  // Raphaël n'ouvre pas cet onglet — c'est exactement ce qui l'a laissé une
+  // vingtaine de builds en retard sans le savoir.
+  const updateState = useUpdateCheck()
+  const majWebState = useMajWeb(
+    updateState.published,
+    updateState.status,
+    notificationsState.prefs.apk,
+  )
+
   // Les réglages personnels (voix, rythme, widget, mot-clé, géolocalisation,
   // image du réacteur) ne vivaient que sur l'appareil : une réinstallation de
   // l'app les effaçait, et ils n'existaient pas côté web. Ils sont maintenant
@@ -112,6 +129,8 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         voiceState,
         widgetState,
         notificationsState,
+        updateState,
+        majWebState,
       }}
     >
       {children}
