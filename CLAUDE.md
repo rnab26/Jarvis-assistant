@@ -190,7 +190,28 @@ poses et ce que tu sais déjà, proposer des **options cliquables** avec
 
 Déclare la capacité `db` : ses réponses sont alors enregistrées côté serveur et
 tu les relis avec `read_db` (`action: "read_db"` sur l'URL de l'artefact) sans
-qu'il ait à les recopier. Sépare bien les **décisions** (il choisit) des
+qu'il ait à les recopier.
+
+**CHAQUE question porte son champ de commentaire, sans exception.** Il l'a
+demandé trois fois avant que ce soit fait (3 et 4 sept. 2026), ses mots :
+« je n'ai que des choix de propositions, aucun commentaire ni fichier à
+t'envoyer pour affiner mes réponses ». Des options cliquables seules ne
+suffisent pas : c'est dans ses commentaires que se trouve ce qui change
+réellement le travail. Un champ libre unique en bas de page ne compte pas —
+il faut un champ **par proposition**, sinon il ne sait plus à quoi il répond.
+
+**Et un bouton pour joindre une photo, sur chaque question aussi.** La
+capacité `assets` n'est PAS disponible sur son compte (vérifié le 4 sept.,
+le contrôle est `Skill: artifact-capabilities`, qui liste le jeu réel) : on
+passe donc par `db`, qui accepte 256 Ko par document. Le motif qui marche,
+mesuré : compresser dans un canvas (côté max 1400 px, qualité JPEG dégressive
+jusqu'à passer sous 180 Ko), stocker **chaque photo dans son propre document**
+`photos/<uuid>` — jamais dans le document des réponses, qu'un seul cliché
+ferait dépasser —, et l'enregistrer dès qu'il la choisit plutôt qu'au bouton
+final. Tu les relis avec `read_db` sur la collection `photos` (`out_dir` pour
+les écrire en fichiers). Une image de 3000×2000 tombe à ~130 Ko et reste
+lisible. Si elle ne passe toujours pas, la page le lui dit et l'invite à
+l'envoyer dans la conversation. Sépare bien les **décisions** (il choisit) des
 **actions** (il fait quelque chose : créer un compte, déposer une clé) — pour
 les secondes, une liste numérotée qu'il coche au fur et à mesure te dit quand
 tu peux démarrer.
@@ -250,6 +271,15 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   `db_op: "get"`). **Ne code rien de ces deux chantiers avant de les avoir
   lues** — c'est un [À CADRER] pour le visuel, et un arbitrage de coût pour la
   recherche web.
+
+- **Quand Jarvis doit te déranger** — les neuf notifications proposées à
+  Raphaël, classées par ce qu'elles coûtent en attention (ça sonne / une fois
+  par jour / silencieux / déconseillé), avec mes recommandations déjà cochées.
+  https://claude.ai/code/artifact/7d87dcb4-4cfd-48fb-9e52-603d4143ab2d
+  Ses choix : document `fiche/notifications` (`action: "read_db"`,
+  `db_op: "get"`) — un booléen par notification, plus `heure_matin` et un
+  champ libre. **À lire avant de coder quoi que ce soit du chantier
+  « Systèmes de notifications » (5d03a192).**
 
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
@@ -349,10 +379,29 @@ de voix, la fin de tour, l'interruption et la transcription. Derrière la case
   verrouillé sur le modèle `GEMINI_MODELE_LIVE` (défaut
   `gemini-2.5-flash-native-audio-preview-12-2025`, gratuit). `verify_jwt` reste
   à true : il faut être connecté.
+- **La configuration de la session (consigne, outil, contexte, audio) vit
+  DANS le jeton**, côté serveur. Vérifié le 4 sept. avec
+  `verifier-live-contexte.mjs` : avec un jeton éphémère, Google IGNORE la
+  configuration envoyée par l'app à la connexion — Jarvis disait « je n'ai
+  pas accès à tes tâches » alors que l'app les lui donnait. L'app envoie son
+  contexte (tâches, chantiers, contacts, date) dans le corps de la requête à
+  `live-jeton`, et se connecte avec une configuration vide. Ne remets jamais
+  de `systemInstruction` côté app : elle serait perdue en silence.
 - Côté app : `src/lib/live/` (audio, session). Le modèle Live ne connaît qu'un
   outil, `commande_jarvis`, qui repasse par `resolveTranscript` +
   `executerActions` de `MicButton` — une seule source de vérité pour les
-  actions.
+  actions. Raphaël clôt à la voix (« terminé », « fin de transmission »,
+  « au revoir »… : `src/lib/live/finConversation.ts`) ; c'est l'app qui
+  reconnaît la formule, pas le modèle, et la phrase entière doit être un
+  adieu — « termine le chantier X » reste une commande.
+- **Dans `MicButton`, tout ce qu'un effet lance passe par `derniersRef`**,
+  jamais par un appel direct. La boucle de veille vit dans un effet monté
+  une fois : elle gardait `demarrerLive` du premier rendu, où les tâches
+  n'étaient pas encore chargées, et « Jarvis, quelles sont mes tâches ? »
+  répondait « Aucune tâche trouvée » avec dix-neuf tâches en base (4 sept.,
+  en Live comme en classique — un appui sur le cœur, lui, voyait tout). Le
+  banc du cœur de `verifier-ecoute-web.mjs` monte le vrai `MicButton` avec
+  des tâches chargées après le montage et rejoue exactement ce cas.
 - Vérification : `ANON_KEY=... node scripts/verifier-live-jeton.mjs` (fonction
   déployée, utilisateur de test éphémère). Le comportement audio réel ne se
   vérifie que sur un appareil ; `journal_ecoute` trace `live_debut`,
@@ -377,7 +426,8 @@ ANON_KEY=... node scripts/verifier-donnees.mjs           # temps réel + réglag
 node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole, sans réseau
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
-node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
+node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
+node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
@@ -386,6 +436,7 @@ node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, 
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
 ANON_KEY=... node scripts/verifier-messages-programmes.mjs  # messages programmés : cycle + cloisonnement RLS
 ANON_KEY=... node scripts/verifier-live-jeton.mjs        # le jeton du mode conversation Live
+ANON_KEY=... node scripts/verifier-live-contexte.mjs     # le modèle Live reçoit bien consigne et contexte (vraie session)
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
@@ -502,8 +553,10 @@ scripts/sql.sh "select id, status from dev_items where id = '...';"
 
 **Grouper reste bon pour les écritures**, dont on n'attend pas de lignes :
 plusieurs `update`/`insert` liés, ou une structure complète (table + index +
-policies RLS + trigger), dans un `begin; ... commit;` pour que tout passe ou
-rien. Fais juste la vérification dans un appel séparé.
+policies RLS + trigger). Fais juste la vérification dans un appel séparé.
+**Sans `begin; … commit;`** : `exec_sql` refuse les commandes de transaction
+(« EXECUTE of transaction commands is not implemented », constaté le
+4 sept.) — et de toute façon un appel est déjà exécuté d'un bloc.
 
 Et dans tous les cas, ne fais pas un appel par ligne à mettre à jour :
 `where id in (...)`, `update ... from (values ...)` ou des `case when`.
@@ -572,6 +625,36 @@ scripts : voir `README.md`.
 Toujours vérifier que les deux workflows passent au vert après un push
 (`mcp__github__actions_list` / `get_job_logs`), et se corriger soi-même en
 cas d'échec avant de considérer un chantier terminé.
+
+### Trois pièges vérifiés le 4 sept. 2026, qui coûtent cher
+
+**« Deploy to GitHub Pages » vert ne veut pas dire que le dépôt va bien.**
+Le workflow web passait pendant que « Build Android APK » échouait depuis
+plusieurs commits — donc plus aucune mise à jour possible sur le téléphone,
+sans que personne le voie. Regarde les **deux** workflows.
+
+**Cet environnement n'a pas de SDK Android** (`SDK location not found`) : on
+ne peut PAS compiler l'app ici. Pour tout ce qui touche `android/**`, la CI
+est la seule preuve — pousse, puis lis le workflow. Ne dis jamais « ça
+compile » sans elle.
+
+**`npm run build 2>&1 | tail -2 && git push` pousse même si le build
+échoue** : le code de sortie est celui de `tail`. Utilise `${PIPESTATUS[0]}`,
+ou pas de pipe avant un `&&`.
+
+Et avant de conclure qu'un fichier écrit par une autre session est cassé :
+**`npm install`**. Un `node_modules` antérieur à son commit produit des
+« Cannot find module » et des `any` implicites sur du code parfaitement sain.
+
+**Un `--` est interdit N'IMPORTE OÙ dans un commentaire XML**, pas seulement
+en bordure. Citer `--primary` ou `--foreground` (les variables CSS de l'app)
+dans un commentaire de `android/app/src/main/res/**` casse le build entier,
+avec un message qui ne parle pas du commentaire. Écris-les autrement, et
+contrôle avant de pousser :
+
+```bash
+python3 -c "import xml.dom.minidom,glob;[xml.dom.minidom.parse(f) for f in glob.glob('android/app/src/main/res/**/*.xml',recursive=True)]"
+```
 
 ## Le web se met à jour tout seul, l'app Android jamais
 

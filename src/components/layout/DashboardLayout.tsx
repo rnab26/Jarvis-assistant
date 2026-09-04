@@ -4,13 +4,16 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/hooks/useAuth"
 
+// Paramètres en tête, à la demande de Raphaël (4 sept. 2026) : « il faut que
+// ça apparaisse aussi en premier ». C'est l'onglet par lequel il règle Jarvis,
+// et il était le dernier des six — donc en seconde ligne sur un téléphone.
 const TABS = [
+  { to: "/settings", label: "Paramètres", end: false },
   { to: "/", label: "Tâches", end: true },
   { to: "/cockpit", label: "Cockpit dev", end: false },
   { to: "/documents", label: "Documents", end: false },
   { to: "/contacts", label: "Contacts", end: false },
   { to: "/memoire", label: "Mémoire", end: false },
-  { to: "/settings", label: "Paramètres", end: false },
 ]
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
