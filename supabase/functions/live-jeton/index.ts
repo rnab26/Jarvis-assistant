@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
-import { GoogleGenAI } from "npm:@google/genai"
+import { GoogleGenAI, Modality, Type } from "npm:@google/genai"
 
 /**
  * Jeton éphémère pour ouvrir une session Gemini Live depuis l'app.
@@ -15,7 +15,41 @@ import { GoogleGenAI } from "npm:@google/genai"
  *
  * verify_jwt reste à true (créée fermée par scripts/deployer-fonction.sh) :
  * il faut être connecté à Jarvis pour obtenir un jeton.
+ *
+ * LA CONFIGURATION DE LA SESSION VIT ICI, dans le jeton — pas dans l'app.
+ * Vérifié le 4 sept. (scripts/verifier-live-contexte.mjs) : avec un jeton
+ * éphémère, la consigne envoyée par l'app à la connexion est IGNORÉE par
+ * Google. Jarvis répondait « je n'ai pas accès à tes tâches » alors que
+ * l'app les lui donnait. Le jeton verrouille donc la consigne, le contexte
+ * (tâches, chantiers, contacts, envoyés par l'app dans le corps de la
+ * requête), l'outil et les réglages audio. Bonus : la consigne ne quitte
+ * pas le serveur.
  */
+
+/** L'unique outil du modèle Live : il rend la main à l'app, qui exécute avec
+ * ce qu'elle sait déjà faire (règles locales, puis voice-command). */
+export const OUTIL_COMMANDE = {
+  name: "commande_jarvis",
+  description:
+    "Fait agir Jarvis : créer, modifier, supprimer ou consulter ses tâches, chantiers, contacts, documents, rappels, son agenda Google, ses mails ; mettre de la musique, appeler, préparer un message, poser une alarme, lancer un itinéraire, régler la voix. Passe la demande telle qu'elle a été dite, sans la reformuler. Ne l'appelle pas pour une simple conversation ni pour ce qui est déjà dans le contexte fourni.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      demande: { type: Type.STRING, description: "La demande, mot pour mot." },
+    },
+    required: ["demande"],
+  },
+}
+
+const CONSIGNE_LIVE = `Tu es Jarvis, l'assistant vocal personnel de Raphaël — une application qu'il a fait développer, pas un produit Google. Si on te demande qui tu es ou où tu vis : tu es Jarvis, tu vis dans son application, et tu as accès à ses données ci-dessous.
+Tu parles français, de façon courte et naturelle : c'est une conversation à voix haute, pas un texte. Une ou deux phrases suffisent presque toujours.
+TU AS ACCÈS à ses tâches, ses chantiers, ses contacts, sa date du jour : ils sont dans le contexte ci-dessous, réponds directement avec. Ne dis JAMAIS « je n'ai pas accès » : si l'information n'est pas dans le contexte (agenda, mails, documents), appelle l'outil commande_jarvis avec la question telle quelle.
+Quand Raphaël te demande de FAIRE quelque chose (ajouter, modifier, terminer une tâche ou un chantier, noter un rendez-vous, un rappel, appeler, envoyer un message, mettre de la musique, régler ta voix…), appelle l'outil commande_jarvis avec sa demande telle quelle, puis dis-lui simplement ce que l'outil a rendu — c'est l'outil qui fait foi, pas toi.
+Pour le reste (questions générales, discussion, conseil), réponds directement.
+Si tu n'as pas compris, dis-le en un mot et laisse-le reformuler.`
+
+/** Le contexte envoyé par l'app est borné : c'est relu à chaque tour. */
+const CONTEXTE_MAX = 12000
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,6 +96,14 @@ Deno.serve(async (req) => {
     const modele = Deno.env.get("GEMINI_MODELE_LIVE") || MODELE_LIVE_PAR_DEFAUT
     const maintenant = Date.now()
 
+    let contexte = ""
+    try {
+      const corps = await req.json()
+      if (typeof corps?.contexte === "string") contexte = corps.contexte.slice(0, CONTEXTE_MAX)
+    } catch {
+      // Pas de corps : une session sans contexte, c'est permis.
+    }
+
     // Les jetons éphémères ne vivent que dans la version v1alpha de l'API.
     const ai = new GoogleGenAI({ apiKey: cle, httpOptions: { apiVersion: "v1alpha" } })
     const jeton = await ai.authTokens.create({
@@ -69,14 +111,25 @@ Deno.serve(async (req) => {
         uses: 1,
         newSessionExpireTime: new Date(maintenant + VALIDITE_OUVERTURE_S * 1000).toISOString(),
         expireTime: new Date(maintenant + VALIDITE_SESSION_S * 1000).toISOString(),
-        // Verrouillé sur le modèle : un jeton volé n'ouvre rien d'autre.
-        liveConnectConstraints: { model: modele },
+        // Verrouillé sur le modèle ET la configuration : un jeton volé
+        // n'ouvre rien d'autre, et la consigne ne quitte pas le serveur.
+        liveConnectConstraints: {
+          model: modele,
+          config: {
+            responseModalities: [Modality.AUDIO],
+            systemInstruction: contexte ? `${CONSIGNE_LIVE}\n\n${contexte}` : CONSIGNE_LIVE,
+            tools: [{ functionDeclarations: [OUTIL_COMMANDE] }],
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
+            speechConfig: { languageCode: "fr-FR" },
+          },
+        },
       },
     })
 
     if (!jeton.name) return json({ error: "Google n'a pas rendu de jeton." }, 502)
 
-    console.log("live-jeton", JSON.stringify({ utilisateur: user.id, modele }))
+    console.log("live-jeton", JSON.stringify({ utilisateur: user.id, modele, contexte: contexte.length }))
     return json({ jeton: jeton.name, modele, expire: jeton.expireTime ?? null })
   } catch (err) {
     console.error("live-jeton en échec", String(err))

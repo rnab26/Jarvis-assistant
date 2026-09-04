@@ -349,6 +349,14 @@ de voix, la fin de tour, l'interruption et la transcription. Derrière la case
   verrouillé sur le modèle `GEMINI_MODELE_LIVE` (défaut
   `gemini-2.5-flash-native-audio-preview-12-2025`, gratuit). `verify_jwt` reste
   à true : il faut être connecté.
+- **La configuration de la session (consigne, outil, contexte, audio) vit
+  DANS le jeton**, côté serveur. Vérifié le 4 sept. avec
+  `verifier-live-contexte.mjs` : avec un jeton éphémère, Google IGNORE la
+  configuration envoyée par l'app à la connexion — Jarvis disait « je n'ai
+  pas accès à tes tâches » alors que l'app les lui donnait. L'app envoie son
+  contexte (tâches, chantiers, contacts, date) dans le corps de la requête à
+  `live-jeton`, et se connecte avec une configuration vide. Ne remets jamais
+  de `systemInstruction` côté app : elle serait perdue en silence.
 - Côté app : `src/lib/live/` (audio, session). Le modèle Live ne connaît qu'un
   outil, `commande_jarvis`, qui repasse par `resolveTranscript` +
   `executerActions` de `MicButton` — une seule source de vérité pour les
@@ -386,6 +394,7 @@ node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, 
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
 ANON_KEY=... node scripts/verifier-messages-programmes.mjs  # messages programmés : cycle + cloisonnement RLS
 ANON_KEY=... node scripts/verifier-live-jeton.mjs        # le jeton du mode conversation Live
+ANON_KEY=... node scripts/verifier-live-contexte.mjs     # le modèle Live reçoit bien consigne et contexte (vraie session)
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
