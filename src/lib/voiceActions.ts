@@ -105,7 +105,9 @@ export interface TasksApi {
 
 export interface DevItemsApi {
   devItems: DevItem[]
-  addDevItem: (input: DevItemInput) => Promise<void>
+  // Le retour n'est pas utilisé ici (le cockpit, lui, s'en sert pour
+  // rattacher une erreur au chantier qu'elle vient d'ouvrir).
+  addDevItem: (input: DevItemInput) => Promise<unknown>
   updateDevItem: (id: string, input: Partial<DevItemInput>) => Promise<void>
   deleteDevItem: (id: string) => Promise<void>
   archiveDevItem: (id: string) => Promise<void>

@@ -103,6 +103,78 @@ discuter d'abord avec Raphaël — même s'il est dans le cockpit en statut
 "todo" (conforme à la règle de son CLAUDE.md global sur les actions à fort
 enjeu).
 
+## Les sections de chantiers (migration 0018) et le registre des erreurs (0019)
+
+Livrés ensemble le 4 sept. 2026 (chantiers 3e880467, dce4415e, 033a41da,
+f2f6667f, 41816bdc) : le cockpit se range, se filtre, et garde ce que Jarvis
+rate.
+
+### Le rattachement reste `dev_items.theme`. Ne change pas ça.
+
+`theme` est du texte libre, et c'est ce que TOUT le projet lit : le hook de
+démarrage, la commande vocale, les scripts SQL, les autres sessions. La table
+`dev_sections` ne porte que ce que le texte libre ne sait pas porter — exister
+sans chantier (« Entraînement » créée avant d'avoir quoi que ce soit à y
+mettre), avoir un ordre, une description. En faire une clé étrangère casserait
+tout le reste pour rien.
+
+Les deux sont tenus alignés par des fonctions SQL, **jamais par deux écritures
+côté app** : `renommer_section(id, nom)` renomme la section ET le thème de tous
+ses chantiers, `fusionner_sections(source, cible)` déplace puis supprime,
+`supprimer_section(id, vers)` déplace vers une autre section ou rend les
+chantiers à « À classer » — **jamais de suppression en cascade**, une section
+est un rangement, pas un contenant. `reordonner_sections(ids[])` pose l'ordre
+d'un coup. Si l'une des deux moitiés passait sans l'autre, le cockpit
+afficherait une section vide à côté de chantiers orphelins, et personne ne le
+verrait sur le moment.
+
+`cle_section(nom)` en SQL reprend mot pour mot `cleTheme()` de
+`src/lib/themeChantier.ts` : accents, apostrophes, tirets et majuscules ne
+distinguent pas deux sections. Changer l'une, c'est changer l'autre.
+
+L'ordre choisi par Raphaël est aussi celui du bloc injecté au démarrage de
+session (le hook joint `dev_sections` sur cette clé) : ce qu'il voit dans l'app
+et ce que tu lis en ouvrant une session sont rangés pareil.
+
+### Le registre des erreurs : ce qui y arrive tout seul, et ce qui n'y arrive pas
+
+`jarvis_erreurs` + la fonction `signaler_erreur(categorie, titre, detail,
+contexte, source)`, appelée depuis `src/lib/erreurs.ts` — jamais en direct.
+Trois branchements sont déjà posés, et ils suffisent à couvrir les échecs
+techniques :
+
+- `withErrorToast` (`src/lib/notifyError.ts`) : **toutes** les écritures de
+  l'app y passent. C'est le seul endroit à brancher, pas chaque hook.
+- `noterEcoute` (`src/lib/journalEcoute.ts`) : les échecs Live, les refus du
+  serveur vocal et les rafales de micro qui finissent sans rien avoir entendu.
+  La table de correspondance est `erreurDepuisEcoute()`, vérifiable sans réseau.
+- La saisie manuelle, depuis le cockpit : c'est elle qui compte le plus, parce
+  qu'une erreur de COMPRÉHENSION ne lève aucune exception et que seul Raphaël
+  peut la voir.
+
+Deux règles à ne pas défaire :
+
+1. **`signalerErreur` ne doit jamais faire échouer ce qu'elle observe.** Pas
+   d'`await` chez l'appelant, client Supabase chargé paresseusement (le banc
+   d'essai du micro monte le moteur d'écoute sans configuration Supabase),
+   erreurs avalées.
+2. **L'empreinte n'est pas recalculée quand Raphaël retouche un titre.** Elle
+   reste celle du signalement automatique, pour que la prochaine occurrence
+   vienne se ranger sur la même ligne au lieu d'en ouvrir une seconde. Une
+   erreur corrigée qui revient rouvre toute seule (`reapparue_at`).
+
+Les corrections écrites dans le registre remontent dans le bloc injecté au
+démarrage de chaque session : c'est par là qu'elles servent à corriger.
+
+### La section suggérée à la saisie (`src/lib/suggestionTheme.ts`)
+
+Calcul **local**, jamais un appel au modèle : ranger un chantier n'a pas à
+consommer le quota gratuit qui a déjà laissé Raphaël sans Jarvis le 3 sept. La
+suggestion s'appuie sur le vocabulaire des chantiers déjà rangés, elle affiche
+les mots sur lesquels elle s'appuie, et **elle se tait quand rien ne se
+détache** — une suggestion fausse est acceptée sans être relue, donc elle coûte
+plus cher qu'une absence de suggestion.
+
 ## Les prompts des sessions parallèles
 
 Quand Raphaël ouvre plusieurs sessions d'un coup, une par thème, les prompts
@@ -499,6 +571,10 @@ node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « termi
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
+node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
+node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
+node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
+ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
 node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
