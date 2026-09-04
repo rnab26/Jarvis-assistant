@@ -415,11 +415,38 @@ export function MicButton({
     liveRef.current = null
   }
 
+  /** Ce que le modèle Live sait de Raphaël à l'ouverture. Compact : c'est
+   * lu à chaque tour de la conversation. */
+  function contexteLive(): string {
+    const aujourdhui = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    const categories = new Map(tasksApi.categories.map((c) => [c.id, c.name]))
+    const taches = tasksApi.tasks
+      .filter((t) => t.status !== "done")
+      .slice(0, 40)
+      .map((t) => {
+        const cat = t.category_id ? categories.get(t.category_id) : null
+        const quand = t.due_date ? ` (pour le ${t.due_date}${t.due_time ? ` à ${t.due_time}` : ""})` : ""
+        return `- ${t.title}${cat ? ` [${cat}]` : ""}${quand}`
+      })
+    const chantiers = devItemsApi.devItems
+      .filter((i) => !i.archived_at)
+      .slice(0, 30)
+      .map((i) => `- ${i.title}${i.theme ? ` [${i.theme}]` : ""} (${i.status}, priorité ${i.priority})`)
+    const contacts = contactsApi.contacts.slice(0, 40).map((c) => `- ${c.name}${c.notes ? ` : ${extrait(c.notes)}` : ""}`)
+    return [
+      `Date du jour : ${aujourdhui}.`,
+      `Tâches à faire de Raphaël (${taches.length}) :\n${taches.join("\n") || "- aucune"}`,
+      `Chantiers du cockpit Jarvis en cours (${chantiers.length}) :\n${chantiers.join("\n") || "- aucun"}`,
+      `Contacts (${contacts.length}) :\n${contacts.join("\n") || "- aucun"}`,
+    ].join("\n\n")
+  }
+
   async function demarrerLive() {
     priseRef.current++
     setLastUserText(null)
     setLastReply(null)
     liveRef.current = await demarrerSessionLive({
+      contexte: contexteLive(),
       onEntendu: (texte) => setLastUserText(texte),
       onReponse: (texte) => setLastReply(texte),
       onCommande: async (demande) => {

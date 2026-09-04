@@ -28,6 +28,15 @@ export interface EvenementsLive {
   /** Une demande à exécuter par l'app ; rend la phrase à dire. */
   onCommande: (demande: string) => Promise<string>
   onEtat: (etat: "connexion" | "ecoute" | "parle" | "fermee", detail?: string) => void
+  /**
+   * Ce que Jarvis sait de Raphaël à l'ouverture : ses tâches, ses chantiers,
+   * ses contacts, la date. Test du 4 sept. : sans ça, le modèle répondait
+   * « je n'ai accès à rien » et se présentait comme un produit Google — il
+   * n'avait aucune raison de croire qu'il était Jarvis. Donné en clair dans
+   * la consigne, ça évite aussi un aller-retour serveur pour « quelles sont
+   * mes tâches ? ».
+   */
+  contexte: string
 }
 
 export interface SessionLive {
@@ -37,7 +46,7 @@ export interface SessionLive {
 const OUTIL_COMMANDE: FunctionDeclaration = {
   name: "commande_jarvis",
   description:
-    "Exécute une demande concrète de l'utilisateur dans Jarvis ou sur son téléphone : tâches, chantiers, contacts, documents, agenda, rappels, musique, appels, messages, alarmes, itinéraires, réglages de la voix. Passe la demande telle qu'elle a été dite, sans la reformuler. Ne l'appelle pas pour une simple conversation.",
+    "Fait agir Jarvis : créer, modifier, supprimer ou consulter ses tâches, chantiers, contacts, documents, rappels, son agenda Google, ses mails ; mettre de la musique, appeler, préparer un message, poser une alarme, lancer un itinéraire, régler la voix. Passe la demande telle qu'elle a été dite, sans la reformuler. Ne l'appelle pas pour une simple conversation ni pour ce qui est déjà dans le contexte fourni.",
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -47,8 +56,11 @@ const OUTIL_COMMANDE: FunctionDeclaration = {
   },
 }
 
-const CONSIGNE_LIVE = `Tu es Jarvis, l'assistant vocal personnel de Raphaël. Tu parles français, de façon courte et naturelle : c'est une conversation à voix haute, pas un texte. Une ou deux phrases suffisent presque toujours.
-Quand Raphaël te demande de FAIRE quelque chose (ajouter une tâche, noter un chantier, un rendez-vous, un rappel, appeler, envoyer un message, mettre de la musique, régler ta voix…), appelle l'outil commande_jarvis avec sa demande telle quelle, puis dis-lui simplement ce que l'outil a rendu. Pour tout le reste (questions, discussion, conseil), réponds directement.
+const CONSIGNE_LIVE = `Tu es Jarvis, l'assistant vocal personnel de Raphaël — une application qu'il a fait développer, pas un produit Google. Si on te demande qui tu es ou où tu vis : tu es Jarvis, tu vis dans son application, et tu as accès à ses données ci-dessous.
+Tu parles français, de façon courte et naturelle : c'est une conversation à voix haute, pas un texte. Une ou deux phrases suffisent presque toujours.
+TU AS ACCÈS à ses tâches, ses chantiers, ses contacts, sa date du jour : ils sont dans le contexte ci-dessous, réponds directement avec. Ne dis JAMAIS « je n'ai pas accès » : si l'information n'est pas dans le contexte (agenda, mails, documents), appelle l'outil commande_jarvis avec la question telle quelle.
+Quand Raphaël te demande de FAIRE quelque chose (ajouter, modifier, terminer une tâche ou un chantier, noter un rendez-vous, un rappel, appeler, envoyer un message, mettre de la musique, régler ta voix…), appelle l'outil commande_jarvis avec sa demande telle quelle, puis dis-lui simplement ce que l'outil a rendu — c'est l'outil qui fait foi, pas toi.
+Pour le reste (questions générales, discussion, conseil), réponds directement.
 Si tu n'as pas compris, dis-le en un mot et laisse-le reformuler.`
 
 /** Temps laissé à la fonction serveur pour rendre un jeton. */
@@ -152,7 +164,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       },
       config: {
         responseModalities: [Modality.AUDIO],
-        systemInstruction: CONSIGNE_LIVE,
+        systemInstruction: `${CONSIGNE_LIVE}\n\n${ev.contexte}`,
         tools: [{ functionDeclarations: [OUTIL_COMMANDE] }],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
