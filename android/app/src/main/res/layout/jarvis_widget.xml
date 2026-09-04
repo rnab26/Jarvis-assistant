@@ -1,69 +1,89 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Widget « Jarvis — tâches » : le cœur, puis ce qu'il reste à faire.
+
+     Le cœur était absent : sans lui, la vignette ne se distinguait d'aucune
+     autre liste de tâches, et rien ne disait que c'était Jarvis. Il est ici à
+     gauche, à taille fixe, pour que la liste garde toute la largeur restante.
+
+     Chaque texte a son android:id : le provider les remplit, et rien d'autre
+     ne doit dépendre de leur ordre dans ce fichier. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="12dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="14dp"
     android:background="@drawable/widget_background">
 
+    <ImageView
+        android:id="@+id/widget_core"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginEnd="12dp"
+        android:src="@drawable/jarvis_core"
+        android:contentDescription="Jarvis" />
+
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/widget_count"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="0 à faire"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:textColor="#FAFAFA" />
+
+            <TextView
+                android:id="@+id/widget_urgent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:text=""
+                android:textStyle="bold"
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:textColor="#FF7B72" />
+
+        </LinearLayout>
 
         <TextView
-            android:id="@+id/widget_app_name"
-            android:layout_width="0dp"
+            android:id="@+id/widget_task_list"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Jarvis"
-            android:textStyle="bold"
-            android:textSize="14sp"
-            android:textColor="#FFFFFF" />
+            android:layout_marginTop="3dp"
+            android:maxLines="4"
+            android:ellipsize="end"
+            android:text="Aucune tâche"
+            android:textSize="13sp"
+            android:lineSpacingExtra="2dp"
+            android:textColor="#C7C7CC" />
 
         <TextView
-            android:id="@+id/widget_urgent"
-            android:layout_width="wrap_content"
+            android:id="@+id/widget_category_label"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textStyle="bold"
-            android:textSize="12sp"
-            android:textColor="#FFD166" />
+            android:layout_marginTop="4dp"
+            android:text="Toutes catégories"
+            android:textSize="11sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="#8E8E93" />
 
     </LinearLayout>
-
-    <TextView
-        android:id="@+id/widget_count"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="0 tâche(s) à faire"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:textColor="#FFFFFF" />
-
-    <TextView
-        android:id="@+id/widget_task_list"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:maxLines="5"
-        android:ellipsize="end"
-        android:text="Aucune tâche"
-        android:textSize="13sp"
-        android:lineSpacingExtra="2dp"
-        android:textColor="#E5E5E5" />
-
-    <TextView
-        android:id="@+id/widget_category_label"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:text="Toutes catégories"
-        android:textSize="11sp"
-        android:alpha="0.75"
-        android:textColor="#FFFFFF" />
 
 </LinearLayout>

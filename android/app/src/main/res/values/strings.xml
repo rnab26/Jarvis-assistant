@@ -4,4 +4,6 @@
     <string name="title_activity_main">Jarvis</string>
     <string name="package_name">com.raphael.jarvis</string>
     <string name="custom_url_scheme">com.raphael.jarvis</string>
+    <string name="widget_taches_description">Ce qu\'il te reste à faire, avec le cœur de Jarvis. Appuie pour lui parler.</string>
+    <string name="widget_coeur_description">Le cœur de Jarvis seul. Appuie dessus, il écoute.</string>
 </resources>

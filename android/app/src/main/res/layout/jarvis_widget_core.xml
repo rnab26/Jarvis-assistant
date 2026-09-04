@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget « Jarvis — le cœur » : rien que le réacteur, on appuie, il écoute.
+
+     Pas de texte du tout, donc pas de fond : le cœur se pose directement sur
+     le fond d'écran. C'est ce qui permet de le réduire à une seule case sans
+     que quoi que ce soit devienne illisible.
+
+     adjustViewBounds + fitCenter : l'image garde ses proportions quelle que
+     soit la taille donnée par Raphaël en redimensionnant. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_core_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/widget_core_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:adjustViewBounds="true"
+        android:scaleType="fitCenter"
+        android:src="@drawable/jarvis_core"
+        android:contentDescription="Parler à Jarvis" />
+
+</FrameLayout>

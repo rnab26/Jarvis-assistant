@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget « Jarvis — le cœur » : une seule case, on appuie, il écoute.
+
+     Il descend jusqu'à une case (≈40dp) parce qu'il n'a rien à afficher que
+     l'image : c'est tout l'intérêt d'avoir séparé les deux widgets plutôt que
+     de faire un seul widget à deux modes. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="55dp"
+    android:minHeight="55dp"
+    android:minResizeWidth="40dp"
+    android:minResizeHeight="40dp"
+    android:maxResizeWidth="220dp"
+    android:maxResizeHeight="220dp"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
+    android:description="@string/widget_coeur_description"
+    android:previewLayout="@layout/jarvis_widget_core"
+    android:updatePeriodMillis="0"
+    android:initialLayout="@layout/jarvis_widget_core"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen">
+</appwidget-provider>

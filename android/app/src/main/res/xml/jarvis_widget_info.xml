@@ -1,9 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Widget « Jarvis — tâches ».
+
+     POURQUOI IL NE SE REDIMENSIONNAIT PAS. resizeMode était bien déclaré,
+     mais minWidth/minHeight valaient 180x110dp SANS minResizeWidth ni
+     minResizeHeight. Android prend alors minWidth comme plancher : les
+     poignées s'affichaient, et rien ne bougeait en dessous de trois cases sur
+     deux. Constaté par Raphaël le 4 sept. 2026.
+
+     minWidth/minHeight = la taille à la POSE. minResize* = jusqu'où on peut
+     réduire ensuite. Les deux sont nécessaires, et c'est la seconde qui
+     manquait. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="180dp"
     android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="55dp"
+    android:maxResizeWidth="440dp"
+    android:maxResizeHeight="220dp"
     android:targetCellWidth="3"
     android:targetCellHeight="2"
+    android:description="@string/widget_taches_description"
+    android:previewLayout="@layout/jarvis_widget"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/jarvis_widget"
     android:resizeMode="horizontal|vertical"
