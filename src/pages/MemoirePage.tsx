@@ -1,6 +1,8 @@
 import { Check, Pencil, Trash2, Undo2 } from "lucide-react"
 import { useState } from "react"
+import { ConfirmerSuppression } from "@/components/ConfirmerSuppression"
 import { LoadError } from "@/components/LoadError"
+import { ConversationsRecentes } from "@/components/memoire/ConversationsRecentes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,6 +35,7 @@ function LigneSouvenir({
 }) {
   const [edition, setEdition] = useState(false)
   const [texte, setTexte] = useState(souvenir.contenu)
+  const [confirmation, setConfirmation] = useState(false)
   const perime = souvenir.perime_at !== null
 
   async function enregistrer() {
@@ -95,10 +98,20 @@ function LigneSouvenir({
               variant="ghost"
               size="icon"
               aria-label="Oublier définitivement"
-              onClick={() => onOublier(souvenir.id).catch(alreadyNotified)}
+              onClick={() => setConfirmation(true)}
             >
               <Trash2 className="size-4" />
             </Button>
+            {/* Un souvenir oublié ne revient pas, et la corbeille se touche
+                par erreur en faisant défiler sur un téléphone. */}
+            <ConfirmerSuppression
+              ouvert={confirmation}
+              titre="Oublier ce souvenir ?"
+              detail={`« ${souvenir.contenu} » — Jarvis ne s'en servira plus. Pour le mettre de côté sans l'effacer, utilise plutôt « périmé ».`}
+              libelleAction="Oublier"
+              onFermer={() => setConfirmation(false)}
+              onConfirmer={() => onOublier(souvenir.id)}
+            />
           </div>
         </>
       )}
@@ -165,6 +178,10 @@ export function MemoirePage() {
           })}
         </>
       )}
+
+      {/* Les faits retenus ci-dessus, et le mot-à-mot ci-dessous : Jarvis se
+          sert des deux, Raphaël doit pouvoir contrôler les deux. */}
+      <ConversationsRecentes />
     </div>
   )
 }

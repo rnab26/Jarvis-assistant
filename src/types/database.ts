@@ -139,6 +139,20 @@ export interface DocumentFile {
  * des conversations. Voir la migration 0006. */
 export type SouvenirCategorie = "personne" | "dossier" | "engagement" | "preference" | "fait"
 
+/**
+ * Le mot-à-mot d'un échange, gardé sept jours puis purgé côté serveur.
+ * Cherchable par le sens depuis la migration 0018 : `embedding` vit en base
+ * mais ne descend jamais jusqu'à l'interface — 384 nombres par ligne qui ne
+ * servent qu'au serveur.
+ */
+export interface Echange {
+  id: string
+  user_id: string
+  transcript: string
+  reponse: string | null
+  created_at: string
+}
+
 export interface Souvenir {
   id: string
   user_id: string
