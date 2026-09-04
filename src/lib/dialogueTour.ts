@@ -20,6 +20,18 @@
 export interface OptionsTour {
   /** Silence toléré en pleine phrase avant de considérer le tour terminé. */
   silenceMs: number
+  /**
+   * Silence suffisant quand DEUX indices concordent : le moteur s'est arrêté
+   * de lui-même depuis le dernier mot (il a détecté une fin de parole), et la
+   * phrase a l'air finie (voir `phraseSembleFinie`). Absent = jamais.
+   *
+   * Pourquoi : Raphaël a monté sa pause à 4 s pour ne plus être coupé en
+   * pleine phrase — et depuis, Jarvis attend 4 s après CHAQUE phrase, même
+   * « ajoute une tâche pour le plombier ». Une phrase suspendue (« … et »,
+   * « … pour ») garde la pause complète ; une phrase qui tient debout n'a
+   * pas à attendre autant.
+   */
+  silenceCourtMs?: number
   /** Temps laissé pour commencer à parler avant d'abandonner le tour. */
   premierMotMs: number
   /** Garde-fou absolu, pour ne jamais rester en écoute indéfiniment. */
@@ -35,6 +47,9 @@ export interface EtatTour {
   dernierMotAt: number
   /** Début du tour. */
   debutAt: number
+  /** Le moteur s'est arrêté de lui-même depuis le dernier mot entendu : il a
+   * jugé la parole finie. Remis à faux dès qu'un mot nouveau arrive. */
+  moteurArreteDepuisDernierMot: boolean
 }
 
 /**
@@ -47,7 +62,13 @@ export interface EtatTour {
 export type DecisionTour = "attendre" | "relancer" | "terminer" | "abandonner"
 
 export function creerTour(maintenant: number): EtatTour {
-  return { segments: [], courant: "", dernierMotAt: maintenant, debutAt: maintenant }
+  return {
+    segments: [],
+    courant: "",
+    dernierMotAt: maintenant,
+    debutAt: maintenant,
+    moteurArreteDepuisDernierMot: false,
+  }
 }
 
 /**
@@ -59,7 +80,7 @@ export function creerTour(maintenant: number): EtatTour {
  */
 export function noterTexte(etat: EtatTour, texte: string, maintenant: number): EtatTour {
   if (texte === etat.courant) return etat
-  return { ...etat, courant: texte, dernierMotAt: maintenant }
+  return { ...etat, courant: texte, dernierMotAt: maintenant, moteurArreteDepuisDernierMot: false }
 }
 
 /**
@@ -68,8 +89,44 @@ export function noterTexte(etat: EtatTour, texte: string, maintenant: number): E
  * le début de la phrase serait perdu à chaque relance.
  */
 export function cloturerSegment(etat: EtatTour): EtatTour {
-  if (!etat.courant.trim()) return { ...etat, courant: "" }
-  return { ...etat, segments: [...etat.segments, etat.courant.trim()], courant: "" }
+  const arrete = texteDuTour(etat).length > 0
+  if (!etat.courant.trim()) return { ...etat, courant: "", moteurArreteDepuisDernierMot: arrete }
+  return {
+    ...etat,
+    segments: [...etat.segments, etat.courant.trim()],
+    courant: "",
+    moteurArreteDepuisDernierMot: true,
+  }
+}
+
+/**
+ * Mots sur lesquels une phrase parlée ne se termine pas : si le dernier mot
+ * entendu est l'un d'eux, la personne cherche la suite. Liste volontairement
+ * prudente — un oubli coûte une attente de 4 s, un excès coupe la parole.
+ */
+const MOTS_SUSPENDUS = new Set([
+  "et", "ou", "puis", "mais", "donc", "alors", "ensuite", "aussi", "comme", "si",
+  "de", "du", "des", "d", "a", "au", "aux", "pour", "avec", "sans", "sur", "dans",
+  "par", "vers", "chez", "en", "entre", "apres", "avant", "pendant",
+  "que", "qui", "qu", "le", "la", "les", "l", "un", "une",
+  "je", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles",
+  "ne", "n", "me", "te", "se", "y", "lui", "leur",
+  "mon", "ma", "mes", "ton", "ta", "tes", "son", "sa", "ses", "ce", "cet", "cette", "ces",
+  "plus", "moins", "tres", "trop", "euh", "hum", "ben", "bah", "enfin",
+])
+
+/** La phrase a-t-elle l'air finie ? Faux si vide ou si le dernier mot est suspendu. */
+export function phraseSembleFinie(texte: string): boolean {
+  const mots = texte
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9' ]+/g, " ")
+    .replace(/'/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+  if (mots.length === 0) return false
+  return !MOTS_SUSPENDUS.has(mots[mots.length - 1])
 }
 
 /** Tout ce qui a été entendu depuis le début du tour. */
@@ -102,6 +159,15 @@ export function decider(
     return moteurArrete ? "relancer" : "attendre"
   }
 
-  if (maintenant - etat.dernierMotAt >= opts.silenceMs) return "terminer"
+  const silence = maintenant - etat.dernierMotAt
+  if (silence >= opts.silenceMs) return "terminer"
+  if (
+    opts.silenceCourtMs !== undefined &&
+    etat.moteurArreteDepuisDernierMot &&
+    silence >= opts.silenceCourtMs &&
+    phraseSembleFinie(texte)
+  ) {
+    return "terminer"
+  }
   return moteurArrete ? "relancer" : "attendre"
 }
