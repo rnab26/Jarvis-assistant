@@ -102,6 +102,9 @@ export function CockpitPage() {
           onArchiveMany={archiveManyDevItems}
           onDeleteMany={deleteManyDevItems}
           onRestore={restoreDevItems}
+          messages={devLog.entries}
+          onRepondre={(itemId, body) => devLog.addEntry(body, "reponse", itemId)}
+          onMarquerTraite={devLog.markAnswered}
         />
       )}
     </div>

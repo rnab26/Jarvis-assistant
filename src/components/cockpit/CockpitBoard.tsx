@@ -31,7 +31,7 @@ import { etatDe, type EtatChantier } from "@/hooks/useDevItems"
 import { proposerAnnulation } from "@/lib/annulation"
 import { alreadyNotified } from "@/lib/notifyError"
 import { cleTheme } from "@/lib/themeChantier"
-import type { DevItem, DevItemInput, DevStatus } from "@/types/database"
+import type { DevItem, DevItemInput, DevLogEntry, DevStatus } from "@/types/database"
 
 /** Conservé pour les appelants existants (MicButton, CockpitPage) : la liste
  * des thèmes réellement portés par des chantiers, telle qu'elle part au
@@ -65,6 +65,10 @@ interface CockpitBoardProps {
   onDeleteMany: (ids: string[]) => Promise<void>
   /** Le retour en arrière proposé après chaque action groupée. */
   onRestore: (etats: EtatChantier[]) => Promise<void>
+  /** Le journal de bord, pour que chaque chantier porte ses messages. */
+  messages?: DevLogEntry[]
+  onRepondre?: (itemId: string, body: string) => Promise<void>
+  onMarquerTraite?: (id: string) => Promise<void>
 }
 
 /**
@@ -94,6 +98,9 @@ export function CockpitBoard({
   onArchiveMany,
   onDeleteMany,
   onRestore,
+  messages = [],
+  onRepondre,
+  onMarquerTraite,
 }: CockpitBoardProps) {
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set())
@@ -133,6 +140,21 @@ export function CockpitBoard({
     const depuis = Date.now() - 7 * 24 * 3600_000
     return archives.filter((i) => new Date(i.archived_at!).getTime() >= depuis).length
   }, [archives])
+
+  // Les messages rangés par chantier une fois pour toutes : les répartir dans
+  // chaque carte reviendrait à parcourir tout le journal autant de fois qu'il
+  // y a de chantiers.
+  const messagesParChantier = useMemo(() => {
+    const parItem = new Map<string, DevLogEntry[]>()
+    for (const m of messages) {
+      if (!m.item_id) continue
+      parItem.set(m.item_id, [...(parItem.get(m.item_id) ?? []), m])
+    }
+    // Le plus ancien en haut : on lit une conversation dans l'ordre où elle
+    // s'est tenue.
+    for (const [, liste] of parItem) liste.sort((a, b) => a.created_at.localeCompare(b.created_at))
+    return parItem
+  }, [messages])
 
   const cherche = filtreActif(filtre)
   const totalRestants = groupesComplets.reduce((n, g) => n + g.restants, 0)
@@ -373,6 +395,9 @@ export function CockpitBoard({
                 onUpdate={onUpdate}
                 onDelete={onDelete}
                 onArchive={onArchive}
+                messages={messagesParChantier.get(item.id)}
+                onRepondre={onRepondre}
+                onMarquerTraite={onMarquerTraite}
                 selectionnable={enSelection}
                 selectionne={selection?.has(item.id) ?? false}
                 onSelectionner={basculerSelection}
@@ -430,6 +455,9 @@ export function CockpitBoard({
                             onUpdate={onUpdate}
                             onDelete={onDelete}
                             onUnarchive={onUnarchive}
+                            messages={messagesParChantier.get(item.id)}
+                            onRepondre={onRepondre}
+                            onMarquerTraite={onMarquerTraite}
                             selectionnable={enSelection}
                             selectionne={selection?.has(item.id) ?? false}
                             onSelectionner={basculerSelection}

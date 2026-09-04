@@ -166,6 +166,21 @@ Deux règles à ne pas défaire :
 Les corrections écrites dans le registre remontent dans le bloc injecté au
 démarrage de chaque session : c'est par là qu'elles servent à corriger.
 
+### Un chantier porte sa conversation
+
+Les messages du journal rattachés à un chantier (`dev_log.item_id`) existaient
+depuis le début, mais ne se lisaient que dans le flux général, mélangés aux
+autres : une question posée par une session sur un chantier ne se voyait pas
+sur le chantier. Elle s'affiche maintenant dans la carte dépliée, avec la
+session qui l'a posée, et Raphaël répond depuis là (`kind: "reponse"`, même
+`addEntry` que le journal — pas un second chemin d'écriture). Une question
+restée sans réponse se signale sur la ligne repliée : c'est la seule chose qui
+bloque une session, donc la seule qui doive se voir sans déplier.
+
+Les libellés, couleurs, l'âge en clair et le nom court d'une session sont dans
+`src/lib/journalBord.ts`, partagés par le flux et les cartes — deux copies
+finiraient par dire deux choses du même message.
+
 ### « Ça existe déjà » à la saisie (`src/lib/doublonChantier.ts`)
 
 Pendant qu'il écrit, la fenêtre d'envoi montre les chantiers proches — les
