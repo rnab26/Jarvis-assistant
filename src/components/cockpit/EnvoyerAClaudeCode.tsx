@@ -265,10 +265,11 @@ export function EnvoyerAClaudeCode({
           </p>
         )}
 
+        {/* Ce bandeau ne dit plus QUI travaille — la carte « Qui travaille en
+            ce moment », juste en dessous, le dit mieux et en entier. Il garde
+            la seule chose que cette fenêtre-ci doit promettre : ce qu'on
+            envoie ne part pas vers une session en cours. */}
         <p className="text-xs text-muted-foreground">
-          {actives.length === 0
-            ? "Aucune session Claude Code ne travaille en ce moment."
-            : `${actives.length} session${actives.length > 1 ? "s" : ""} au travail : ${actives.join(", ")}.`}{" "}
           Un chantier envoyé d'ici n'est pas poussé vers une session : chaque session lit
           la base à son démarrage. L'effet est donc différé jusqu'à la prochaine.
         </p>
