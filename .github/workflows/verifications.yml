@@ -56,6 +56,12 @@ jobs:
       - name: Pas deux thèmes pour le même sujet
         run: node --experimental-strip-types scripts/verifier-theme.ts
 
+      - name: Les sections du cockpit
+        run: node --experimental-strip-types scripts/verifier-sections.ts
+
+      - name: La section suggérée à la saisie
+        run: node --experimental-strip-types scripts/verifier-suggestion-theme.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.

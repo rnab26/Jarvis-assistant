@@ -1,3 +1,4 @@
+import { erreurDepuisEcoute, signalerErreur } from "@/lib/erreurs"
 import { BUILD_VERSION } from "@/lib/version"
 
 /**
@@ -39,6 +40,19 @@ export function extraitEntendu(texte: string | null | undefined): string | null 
 export function noterEcoute(evenement: string, detail: Detail = {}) {
   TAMPON.push({ evenement, detail, at: new Date().toISOString(), version: versionApp })
   if (!minuteur) minuteur = setTimeout(vider, 1500)
+
+  // Ce journal est purgé à 7 jours et ne se lit qu'en SQL : un échec réel
+  // (Live qui ne se connecte pas, serveur vocal qui refuse, micro qui
+  // s'arrête sans rien entendre) y disparaissait sans que Raphaël puisse le
+  // retrouver. Ceux-là passent aussi dans le registre des erreurs, qui, lui,
+  // ne perd rien et se lit depuis le cockpit.
+  const erreur = erreurDepuisEcoute(evenement, detail)
+  if (erreur) {
+    signalerErreur(erreur.categorie, erreur.titre, {
+      detail: erreur.detail,
+      source: erreur.source,
+    })
+  }
 }
 
 async function vider() {

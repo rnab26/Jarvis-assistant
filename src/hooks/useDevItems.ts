@@ -54,14 +54,19 @@ export function useDevItems(userId: string | undefined) {
   useRefreshOnForeground(refresh)
   useRealtimeRefresh("dev_items", userId, refresh)
 
-  async function addDevItem(input: DevItemInput) {
+  /** Renvoie le chantier créé : le registre des erreurs en a besoin pour
+   * rattacher l'erreur au chantier qu'elle vient d'ouvrir. */
+  async function addDevItem(input: DevItemInput): Promise<DevItem | undefined> {
     if (!userId) return
-    await withErrorToast("Impossible d'ajouter le chantier", async () => {
-      const { error } = await supabase
+    return await withErrorToast("Impossible d'ajouter le chantier", async () => {
+      const { data, error } = await supabase
         .from("dev_items")
         .insert({ ...input, user_id: userId })
+        .select()
+        .single()
       if (error) throw error
       await refresh()
+      return data as DevItem
     })
   }
 
