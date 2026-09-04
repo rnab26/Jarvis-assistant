@@ -166,6 +166,38 @@ try {
     "appuyer sur la section la déplie",
     await dansLeTableau("Le micro se coupe en pleine phrase"),
   )
+  verifier(
+    "une question de session restée sans réponse se voit sur la ligne, sans déplier",
+    await tableau.getByRole("button", { name: /Réveil vocal en arrière-plan/ }).first().isVisible(),
+  )
+
+  // ── Le chantier porte sa conversation ──
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(250)
+  verifier(
+    "déplier un chantier montre les messages du journal qui le concernent",
+    await visible("Tu veux que je coupe le micro après 30 s"),
+    "il fallait chercher la question dans le flux général du journal",
+  )
+  verifier("avec la session qui l'a posée", await visible("voix-et-ecoute"))
+
+  await page.getByLabel("Répondre sur Réveil vocal en arrière-plan").fill("Qu'il attende, oui.")
+  await pause(200)
+  await page.getByRole("button", { name: "Répondre" }).first().click()
+  await pause(400)
+  verifier(
+    "répondre se fait depuis le chantier, sans passer par le journal",
+    await visible("Qu'il attende, oui."),
+  )
+  await page.getByRole("button", { name: "Marquer traité" }).first().click()
+  await pause(400)
+  verifier(
+    "et marquer traité fait tomber le compteur de questions en attente",
+    (await tableau.getByRole("button", { name: /Marquer traité/ }).count()) === 0,
+  )
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(200)
+
   await enTete("Voix et écoute").click()
   await pause(150)
   verifier(

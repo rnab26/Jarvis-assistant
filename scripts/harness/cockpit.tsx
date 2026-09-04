@@ -10,6 +10,7 @@ import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
 import type {
   DevItem,
+  DevLogEntry,
   DevSection,
   ErreurCategorie,
   JarvisErreur,
@@ -118,6 +119,31 @@ const CHANTIERS = [
   chantier("Un chantier dicté trop vite", null),
 ]
 
+/** Deux messages du journal rattachés au premier chantier : une question
+ * restée sans réponse, et une info. */
+const MESSAGES: DevLogEntry[] = [
+  {
+    id: "m1",
+    user_id: "banc",
+    item_id: "c2",
+    author: "claude/voix-et-ecoute",
+    kind: "question",
+    body: "Tu veux que je coupe le micro après 30 s de silence, ou qu'il attende ?",
+    answered_at: null,
+    created_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
+  },
+  {
+    id: "m2",
+    user_id: "banc",
+    item_id: "c2",
+    author: "claude/voix-et-ecoute",
+    kind: "info",
+    body: "En attendant je pars sur 30 s, c'est réversible.",
+    answered_at: null,
+    created_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  },
+]
+
 const ERREURS = [
   erreur("Il a créé une tâche au lieu d'un chantier", "comprehension", 3),
   erreur("Le serveur vocal a refusé de répondre", "serveur"),
@@ -127,6 +153,7 @@ function BancDuCockpit() {
   const [devItems, setDevItems] = useState<DevItem[]>(CHANTIERS)
   const [sections] = useState<DevSection[]>(SECTIONS)
   const [erreurs, setErreurs] = useState<JarvisErreur[]>(ERREURS)
+  const [messages, setMessages] = useState<DevLogEntry[]>(MESSAGES)
 
   const sectionsState = {
     sections,
@@ -209,6 +236,27 @@ function BancDuCockpit() {
         }}
         onDeleteMany={async (ids) => {
           setDevItems((items) => items.filter((i) => !ids.includes(i.id)))
+        }}
+        messages={messages}
+        onRepondre={async (itemId, body) => {
+          setMessages((m) => [
+            ...m,
+            {
+              id: `r${m.length}`,
+              user_id: "banc",
+              item_id: itemId,
+              author: "Raphaël",
+              kind: "reponse",
+              body,
+              answered_at: null,
+              created_at: new Date().toISOString(),
+            },
+          ])
+        }}
+        onMarquerTraite={async (id) => {
+          setMessages((m) =>
+            m.map((x) => (x.id === id ? { ...x, answered_at: new Date().toISOString() } : x)),
+          )
         }}
         onRestore={async (etats) => {
           setDevItems((items) =>
