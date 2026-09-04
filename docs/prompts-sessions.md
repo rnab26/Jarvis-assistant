@@ -487,3 +487,25 @@ Ne touche ni à voice-command ni à commandeLocale.ts. Après tout pull ou
 merge : grep -rn '^<<<<<<< ' --exclude-dir=node_modules .
 Écris ton état avant de t'arrêter et libère ta réservation.
 ```
+
+## Prompt F — Cadrage : les décisions qui attendent Raphaël (4 sept., après-midi)
+
+Demandé par Raphaël le 4 sept. : « rédige-moi un prompt que je vais
+copier-coller dans une autre session, comme ça je le fais à part ». Cette
+session ne code rien : elle rassemble tout ce qui est marqué
+`[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]` en UNE fiche, attend ses
+réponses, et réécrit les chantiers en `[LIBRE]`.
+
+```
+Tu prends le CADRAGE : les chantiers marqués [À CADRER AVEC RAPHAËL AVANT DE COMMENCER] dans le cockpit. Tu ne codes RIEN dans cette session. Ton livrable est UNE fiche (artefact) que je remplis au pouce depuis mon téléphone, puis les chantiers réécrits [LIBRE] à partir de mes réponses.
+
+1. Lis l'état du projet injecté au démarrage, puis le détail COMPLET de chaque chantier à cadrer : scripts/sql.sh "select id, title, theme, notes from dev_items where archived_at is null and notes like '[À CADRER%' order by theme". Lis aussi les fiches déjà publiées, listées dans CLAUDE.md (section « Les fiches déjà publiées »), avec l'outil Artifact (action read, puis read_db sur la même URL) : ne me repose AUCUNE question à laquelle j'ai déjà répondu.
+
+2. Regroupe par thème. Pour chaque chantier : ce que je veux (déjà su), ce qui reste réellement à trancher (coût, accès, périmètre, risque), les options avec TA recommandation, et ce que chaque option coûte (temps, argent, permissions sur le téléphone). Si un chantier ne demande en fait aucune décision, dis-le et passe-le [LIBRE] tout de suite, sans me le soumettre.
+
+3. Publie UNE seule fiche (outil Artifact, capacité db, sur le modèle des fiches précédentes) : une carte par décision, options cliquables avec la recommandation marquée, UN champ commentaire ET un bouton photo PAR question (règle non négociable, voir CLAUDE.md), les décisions séparées des actions que je dois faire moi-même. Réponses enregistrées dans le document fiche/cadrage. Ajoute l'URL de la fiche à la liste des fiches dans CLAUDE.md, dans le même commit, sur ta branche puis fusionnée dans claude/new-session-rn6puh comme le font les autres sessions. Donne-moi le lien, puis attends.
+
+4. Quand je te dis « c'est rempli » : relis fiche/cadrage avec read_db, réécris chaque chantier de façon autoportante (mes réponses mot pour mot, ce qui est écarté pour qu'on ne le repropose pas, les fichiers concernés, le marqueur [LIBRE] ou [REPORTÉ PAR RAPHAËL]), et écris dans dev_log ce que tu as fait. Ne commence PAS à coder : d'autres sessions prendront les chantiers, un thème chacune.
+
+Ne touche pas à : src/components/voice/MicButton.tsx, src/lib/live/**, src/hooks/useSpeechRecognition.ts, supabase/functions/live-jeton/**, scripts/harness/**, scripts/verifier-ecoute-web.mjs : la session Voix et écoute (claude/cockpit-chantiers-ikfpnq) y travaille.
+```
