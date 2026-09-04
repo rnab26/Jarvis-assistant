@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useJarvisData } from "@/contexts/JarvisDataContext"
+import type { NotificationsApi } from "@/hooks/useNotifications"
 import { CHOIX_AVANT_MIN } from "@/lib/notifications/prefs"
 
 /** "aujourd'hui à 14 h 30", "demain à 09 h 15", "ven. 6 sept. à 09 h 15" —
@@ -73,11 +73,14 @@ function ChoixHeure({
  * sont déjà annoncés par Google, et un interrupteur de plus laisserait croire
  * qu'il manque quelque chose. La raison est écrite en bas de la carte pour
  * qu'on ne se repose pas la question dans six mois.
+ *
+ * L'état arrive en props et n'est pas lu du contexte : c'est ce qui permet au
+ * banc d'essai de monter cette carte hors de Supabase et de la parcourir sur
+ * un écran de téléphone (scripts/harness/reglages.tsx).
  */
-export function Notifications() {
-  const { notificationsState } = useJarvisData()
+export function Notifications({ api }: { api: NotificationsApi }) {
   const { prefs, pret, setPrefs, etat, programmees, demander, ouvrirAlarmes, tester, effacerTout } =
-    notificationsState
+    api
   const [occupe, setOccupe] = useState(false)
   const [confirmerEffacement, setConfirmerEffacement] = useState(false)
 
