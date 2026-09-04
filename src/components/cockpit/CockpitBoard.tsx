@@ -205,7 +205,11 @@ export function CockpitBoard({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    // Une région nommée : le titre d'un chantier peut apparaître ailleurs dans
+    // la page (la carte « Qui travaille en ce moment » le montre aussi), et
+    // sans ce repère un contrôle qui cherche « le chantier X est-il visible »
+    // ne sait pas de quel X on parle.
+    <div className="flex flex-col gap-3" role="region" aria-label="Chantiers">
       {/* ── Le résumé et les filtres ── */}
       <Card>
         <CardContent className="flex flex-col gap-3">

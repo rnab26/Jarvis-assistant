@@ -3,6 +3,7 @@ import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
+import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDevLog } from "@/hooks/useDevLog"
@@ -43,6 +44,7 @@ export function CockpitPage() {
     archiveManyDevItems,
     deleteManyDevItems,
     restoreDevItems,
+    libererReservation,
   } = devItemsState
 
   // Les puces de la fenêtre d'envoi listent les sections déclarées ET les
@@ -64,6 +66,8 @@ export function CockpitPage() {
         themes={themes}
         onSend={addDevItem}
       />
+
+      <SessionsAuTravail devItems={devItems} onLiberer={libererReservation} />
 
       <DevLogFeed
         entries={devLog.entries}

@@ -81,11 +81,37 @@ try {
   await page.waitForSelector("text=Voix et écoute")
 
   const visible = (texte) => page.locator(`text=${texte}`).first().isVisible()
+  // Le tableau des chantiers, et rien d'autre : un titre de chantier apparaît
+  // aussi dans la carte « Qui travaille en ce moment ».
+  const tableau = page.getByRole("region", { name: "Chantiers" })
+  const dansLeTableau = (texte) => tableau.getByText(texte).first().isVisible()
+
+  // ── Qui travaille en ce moment ──
+  verifier(
+    "la carte dit quelle session travaille, et sur quoi",
+    (await visible("claude/voix-et-ecoute".replace("claude/", ""))) &&
+      (await visible("Le micro se coupe en pleine phrase")),
+    "il faudrait déplier chaque section et lire les « Prise par… » un par un",
+  )
+  verifier(
+    "une réservation expirée est signalée à part, pas comptée comme du travail",
+    (await visible("1 session")) && (await visible("sans le libérer")),
+    "un chantier que personne ne traite continuerait d'afficher « Prise par… »",
+  )
+  await page.getByRole("button", { name: "Libérer" }).first().click()
+  await pause(250)
+  verifier("libérer demande confirmation", await visible("Libérer ce chantier ?"))
+  await page.getByRole("button", { name: "Libérer", exact: true }).last().click()
+  await pause(400)
+  verifier(
+    "et le chantier redevient libre",
+    !(await page.getByText("sans le libérer").isVisible()),
+  )
 
   // ── Le résumé d'abord, le détail à la demande ──
   verifier(
     "les sections sont repliées à l'arrivée",
-    !(await page.getByText("Le micro se coupe en pleine phrase").isVisible()),
+    !(await dansLeTableau("Le micro se coupe en pleine phrase")),
     "toute la liste s'affiche d'un coup : c'est ce que Raphaël a demandé de changer",
   )
   verifier("le compteur de la section est visible", await visible("2 restants"))
@@ -105,13 +131,13 @@ try {
   await pause(150)
   verifier(
     "appuyer sur la section la déplie",
-    await page.getByText("Le micro se coupe en pleine phrase").isVisible(),
+    await dansLeTableau("Le micro se coupe en pleine phrase"),
   )
   await enTete("Voix et écoute").click()
   await pause(150)
   verifier(
     "et un second appui la replie",
-    !(await page.getByText("Le micro se coupe en pleine phrase").isVisible()),
+    !(await dansLeTableau("Le micro se coupe en pleine phrase")),
   )
 
   // ── La recherche ──
@@ -119,19 +145,19 @@ try {
   await pause(200)
   verifier(
     "la recherche déplie ce qu'elle trouve",
-    await page.getByText("Widget d'écran d'accueil").isVisible(),
+    await dansLeTableau("Widget d'écran d'accueil"),
     "il faudrait déplier soi-même le résultat d'une recherche",
   )
   verifier(
     "et écarte le reste",
-    !(await page.getByText("Réveil vocal en arrière-plan").isVisible()),
+    !(await dansLeTableau("Réveil vocal en arrière-plan")),
   )
   verifier("le décompte du filtre s'affiche", await visible("1 chantier affiché sur 4"))
   await page.getByRole("button", { name: "Tout afficher" }).first().click()
   await pause(200)
   verifier(
     "« tout afficher » rend la vue repliée",
-    !(await page.getByText("Widget d'écran d'accueil").isVisible()),
+    !(await dansLeTableau("Widget d'écran d'accueil")),
   )
 
   // ── Le filtre par section, d'un seul geste ──
@@ -139,8 +165,8 @@ try {
   await pause(200)
   verifier(
     "la puce d'une section ne laisse qu'elle",
-    (await page.getByText("Widget d'écran d'accueil").isVisible()) &&
-      !(await page.getByText("Le micro se coupe en pleine phrase").isVisible()),
+    (await dansLeTableau("Widget d'écran d'accueil")) &&
+      !(await dansLeTableau("Le micro se coupe en pleine phrase")),
   )
   await puce("Le téléphone").click()
   await pause(200)
@@ -163,7 +189,7 @@ try {
   await pause(250)
   verifier(
     "annuler ne supprime rien",
-    await page.getByText("Le micro se coupe en pleine phrase").isVisible(),
+    await dansLeTableau("Le micro se coupe en pleine phrase"),
   )
 
   // Et confirmer supprime vraiment : une confirmation qui n'aboutit pas est
@@ -174,7 +200,7 @@ try {
   await pause(400)
   verifier(
     "confirmer supprime pour de bon",
-    !(await page.getByText("Le micro se coupe en pleine phrase").isVisible()),
+    !(await dansLeTableau("Le micro se coupe en pleine phrase")),
   )
 
   // ── Gérer les sections ──
@@ -205,7 +231,7 @@ try {
   verifier("le mode « choisir » s'annonce", await visible("Touche les chantiers à traiter ensemble"))
   verifier(
     "et déplie tout : on ne coche pas ce qu'on ne voit pas",
-    await page.getByText("Widget d'écran d'accueil").isVisible(),
+    await dansLeTableau("Widget d'écran d'accueil"),
   )
 
   await page.getByRole("button", { name: "Tout ce qui est affiché" }).first().click()
@@ -254,7 +280,7 @@ try {
   // d'un état connu, sans dépendre des appuis précédents.
   await enTete("À classer").click()
   await pause(250)
-  await page.getByText("Un chantier dicté trop vite").click()
+  await tableau.getByText("Un chantier dicté trop vite").first().click()
   await pause(250)
   verifier(
     "la ligne dépliée propose statut, priorité et section",
