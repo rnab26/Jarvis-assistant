@@ -84,6 +84,10 @@ interface MicButtonProps {
   /** Durée pendant laquelle le micro reste ouvert après une réponse de
    * Jarvis, pour enchaîner sans retoucher le bouton. 0 = désactivé. */
   suiteMs: number
+  /** Appelé quand un échange se termine et que le statut revient au repos
+   * — utilisé par la fenêtre de l'appui long pour se refermer d'elle-même,
+   * jamais par l'app normale. */
+  onIdle?: () => void
 }
 
 /** Début d'une note : de quoi reconnaître l'élément dont parle Raphaël sans
@@ -156,10 +160,22 @@ export function MicButton({
   wakeWordEnabled,
   voiceIndex,
   suiteMs,
+  onIdle,
 }: MicButtonProps) {
   const { listen, stop: stopListening, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
   const [status, setStatus] = useState<Status>("idle")
+  // Ne prévenir qu'un vrai retour au repos APRÈS un échange, jamais le repos
+  // initial du montage — sinon la fenêtre de l'appui long se refermerait
+  // avant même d'avoir écouté quoi que ce soit.
+  const dejaActifRef = useRef(false)
+  useEffect(() => {
+    if (status !== "idle") {
+      dejaActifRef.current = true
+      return
+    }
+    if (dejaActifRef.current) onIdle?.()
+  }, [status, onIdle])
   const [lastUserText, setLastUserText] = useState<string | null>(null)
   const [lastReply, setLastReply] = useState<string | null>(null)
   // Un tap pendant que Jarvis parle (barge-in) relance l'écoute lui-même ;

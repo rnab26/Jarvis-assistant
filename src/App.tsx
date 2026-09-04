@@ -1,8 +1,11 @@
-import { Navigate, Route, HashRouter, Routes } from "react-router-dom"
+import { useEffect } from "react"
+import { Navigate, Route, HashRouter, Routes, useNavigate } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
 import { AuthProvider } from "@/components/auth/AuthProvider"
 import { ProtectedShell } from "@/components/layout/ProtectedShell"
 import { useAuth } from "@/hooks/useAuth"
+import { AssistOverlay } from "@/lib/assistOverlayPlugin"
+import { AssistantOverlayPage } from "@/pages/AssistantOverlayPage"
 import { CockpitPage } from "@/pages/CockpitPage"
 import { ContactsPage } from "@/pages/ContactsPage"
 import { DashboardPage } from "@/pages/DashboardPage"
@@ -11,8 +14,26 @@ import { LoginPage } from "@/pages/LoginPage"
 import { MemoirePage } from "@/pages/MemoirePage"
 import { SettingsPage } from "@/pages/SettingsPage"
 
+/**
+ * La fenêtre de l'appui long est une DEUXIÈME BridgeActivity Android, avec
+ * son propre pont Capacitor — AssistOverlay n'y est enregistré que là (voir
+ * AssistOverlayActivity.java). On le sait donc dès qu'un appel réussit,
+ * sans passer par une URL ou un extra d'intent : dans l'app normale (et sur
+ * le web), l'appel échoue simplement, plugin absent.
+ */
+function useRedirigerVersOverlay() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    AssistOverlay.estOverlay()
+      .then(() => navigate("/assistant", { replace: true }))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+}
+
 function AppRoutes() {
   const { session } = useAuth()
+  useRedirigerVersOverlay()
 
   return (
     <Routes>
@@ -20,6 +41,7 @@ function AppRoutes() {
         path="/login"
         element={session ? <Navigate to="/" replace /> : <LoginPage />}
       />
+      <Route path="/assistant" element={<AssistantOverlayPage />} />
       <Route element={<ProtectedShell />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/cockpit" element={<CockpitPage />} />

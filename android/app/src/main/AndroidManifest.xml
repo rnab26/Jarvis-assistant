@@ -44,6 +44,29 @@
             </intent-filter>
         </activity>
 
+        <!-- Déclenché par l'appui long sur le bouton d'alimentation (rôle
+             assistant d'Android), comme Perplexity : une fenêtre en
+             surcouche, pas l'app entière. Activité séparée de MainActivity
+             plutôt qu'un mode particulier de celle-ci, pour garder une vraie
+             fenêtre translucide et ancrée en bas (voir Theme.Jarvis.Assist
+             dans styles.xml) sans changer le comportement du lancement
+             normal. singleInstance + taskAffinity vide : un deuxième appui
+             pendant qu'elle est déjà ouverte la ramène au premier plan au
+             lieu d'en empiler une deuxième, et elle n'apparaît jamais dans
+             les tâches récentes à côté de l'app principale. -->
+        <activity
+            android:name=".AssistOverlayActivity"
+            android:theme="@style/Theme.Jarvis.Assist"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <receiver android:name=".JarvisWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
