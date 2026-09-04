@@ -9,6 +9,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
 import { clientAdmin, obtenirAccessToken } from "../_shared/google.ts"
+// Les règles de dates vivent à côté, dans un fichier sans dépendance Deno,
+// pour que scripts/verifier-agenda-google.mjs puisse les prouver sous Node.
+import { bornes, FUSEAU, instant, instantISO } from "./dates.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,10 +25,6 @@ const json = (corps: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   })
 
-// Raphaël vit en Israël : un "rendez-vous demain à 14h" dicté sans précision
-// est une heure locale, pas une heure UTC. Sans ce fuseau, Google placerait
-// l'événement avec trois heures de décalage.
-const FUSEAU = "Asia/Jerusalem"
 const API = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
 
 type Evenement = {
@@ -52,27 +51,6 @@ function simplifier(e: Evenement) {
   }
 }
 
-/** Une date dictée peut arriver en "2026-09-04T14:00" comme en ISO complet. */
-function bornes(debut?: string | null, fin?: string | null, journeeEntiere?: boolean) {
-  if (!debut) return null
-  if (journeeEntiere) {
-    const jour = debut.slice(0, 10)
-    const lendemain = new Date(`${jour}T00:00:00Z`)
-    lendemain.setUTCDate(lendemain.getUTCDate() + 1)
-    return {
-      start: { date: jour },
-      end: { date: (fin ?? lendemain.toISOString()).slice(0, 10) },
-    }
-  }
-  // Une heure sans fin annoncée dure une heure : c'est ce qu'attend
-  // quelqu'un qui dicte "rendez-vous à 14h" sans en dire plus.
-  const finCalculee =
-    fin ?? new Date(new Date(debut).getTime() + 60 * 60 * 1000).toISOString()
-  return {
-    start: { dateTime: debut, timeZone: FUSEAU },
-    end: { dateTime: finCalculee, timeZone: FUSEAU },
-  }
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders })
@@ -110,14 +88,23 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "list") {
+      // Google exige un instant complet ici : un "2026-09-04T00:00:00" dicté
+      // tel quel lui vaut un 400, et Jarvis répondait « Google a refusé la
+      // demande » sur la question la plus banale, « qu'est-ce que j'ai
+      // demain ? ».
+      const depuis = corps.depuis ? instantISO(String(corps.depuis)) : new Date().toISOString()
+      if (!depuis) return json({ error: "Début de période illisible." }, 400)
+      const jusquA = corps.jusqu_a ? instantISO(String(corps.jusqu_a)) : null
+      if (corps.jusqu_a && !jusquA) return json({ error: "Fin de période illisible." }, 400)
+
       const params = new URLSearchParams({
         singleEvents: "true",
         orderBy: "startTime",
         maxResults: String(Math.min(Number(corps.limite ?? 10), 50)),
-        timeMin: corps.depuis ?? new Date().toISOString(),
+        timeMin: depuis,
         timeZone: FUSEAU,
       })
-      if (corps.jusqu_a) params.set("timeMax", corps.jusqu_a)
+      if (jusquA) params.set("timeMax", jusquA)
       if (corps.recherche) params.set("q", String(corps.recherche))
 
       const reponse = await fetch(`${API}?${params}`, { headers: entetes })
@@ -128,7 +115,12 @@ Deno.serve(async (req: Request) => {
 
     if (action === "create") {
       const dates = bornes(corps.debut, corps.fin, corps.journee_entiere)
-      if (!dates) return json({ error: "Il manque la date de début." }, 400)
+      if (!dates) {
+        return json(
+          { error: corps.debut ? "Date de début illisible." : "Il manque la date de début." },
+          400,
+        )
+      }
 
       const reponse = await fetch(API, {
         method: "POST",
@@ -151,7 +143,31 @@ Deno.serve(async (req: Request) => {
       if (corps.titre !== undefined) modifs.summary = corps.titre
       if (corps.description !== undefined) modifs.description = corps.description
       if (corps.lieu !== undefined) modifs.location = corps.lieu
-      if (corps.debut) Object.assign(modifs, bornes(corps.debut, corps.fin, corps.journee_entiere))
+      if (corps.debut) {
+        // Décaler un rendez-vous ne doit pas le raccourcir. « Décale mon
+        // rendez-vous de jeudi à 16h » n'annonce pas de fin : sans cette
+        // relecture, l'heure par défaut d'une heure écrasait la durée réelle
+        // et un créneau de deux heures se retrouvait amputé de moitié.
+        let fin = corps.fin ?? null
+        if (!fin && !corps.journee_entiere) {
+          const actuel = await fetch(
+            `${API}/${encodeURIComponent(String(corps.event_id))}`,
+            { headers: entetes },
+          )
+          if (actuel.ok) {
+            const e = (await actuel.json()) as Evenement
+            const d0 = e.start?.dateTime ? Date.parse(e.start.dateTime) : NaN
+            const f0 = e.end?.dateTime ? Date.parse(e.end.dateTime) : NaN
+            const debutAbsolu = instant(String(corps.debut))
+            if (!Number.isNaN(d0) && !Number.isNaN(f0) && !Number.isNaN(debutAbsolu.getTime())) {
+              fin = new Date(debutAbsolu.getTime() + (f0 - d0)).toISOString()
+            }
+          }
+        }
+        const dates = bornes(corps.debut, fin, corps.journee_entiere)
+        if (!dates) return json({ error: "Date de début illisible." }, 400)
+        Object.assign(modifs, dates)
+      }
 
       if (Object.keys(modifs).length === 0) {
         return json({ error: "Aucune modification demandée." }, 400)

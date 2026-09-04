@@ -232,6 +232,15 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   S'il bute quelque part, il l'écrit dans le champ du bas : document
   `fiche/brancher-google` (`action: "read_db"`, `db_op: "get"`).
 
+- **L'arbitrage WhatsApp** — **RÉPONDU le 3 sept. au soir, ne repose pas la
+  question.** Ses décisions, à traiter comme acquises : (1) on reste sur le
+  TÉLÉPHONE — pas de compte business, pas de bibliothèque non officielle ;
+  (2) les envois programmés passent par une intervention de Jarvis au moment
+  dit, il valide à la voix ; (3) les reçus arrivent par mail ET par SMS ;
+  (4) **finbot est un service automatique sur WhatsApp**, à qui il envoie des
+  reçus en photo. La fiche et le détail de ses mots :
+  https://claude.ai/code/artifact/c12ec042-2873-423b-af88-c5cf68370cf3
+  (`action: "read_db"`, `db_op: "get"`, collection `fiche`, doc_id `whatsapp`).
 - **Ce qui ferait grandir Jarvis** — les deux chantiers non codables du thème
   « L'app elle-même » : quatre décisions de capacité (cache du contexte,
   recherche web, lecture de liens/PDF, mémoire des conversations) et trois
@@ -339,6 +348,9 @@ node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
+node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, sur le compte réellement branché
+ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
+ANON_KEY=... node scripts/verifier-messages-programmes.mjs  # messages programmés : cycle + cloisonnement RLS
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
@@ -356,6 +368,53 @@ Le script suit vraiment l'URL produite par `/start` et vérifie que Google
 l'accepte — un contrôle sur le seul contenu de l'URL ne l'aurait pas vu.
 **À relancer après tout déploiement de `google-oauth`**, avant de dire à
 Raphaël d'essayer : c'est lui qui se prend l'erreur sinon.
+
+## Gmail : Jarvis prépare, Raphaël valide, et seulement ensuite ça part
+
+Un e-mail part vers l'extérieur **en son nom**. La Edge Function `google-gmail`
+sépare donc `preparer` (qui rend le brouillon, sans rien envoyer) et `envoyer`
+(qui exige `confirme: true`). Le garde-fou est placé **avant** la lecture du
+jeton Google, pour qu'un envoi non confirmé soit refusé sans qu'on ait seulement
+approché Gmail — et pour rester vérifiable sans compte branché.
+
+**Ne refonds jamais ces deux actions en une, et ne pose jamais `confirme: true`
+par défaut côté app.** Ce drapeau atteste d'une validation que Raphaël a
+réellement dite. `scripts/verifier-gmail.mjs` le vérifie sur la fonction
+déployée : si ce contrôle vire au rouge, un e-mail peut partir sans son accord.
+
+Le reste des actions : `list` (syntaxe de recherche Gmail), `read` (corps
+lisible, citations du fil retirées, pièces jointes listées, marqué lu),
+`piece_jointe` (récupère un document reçu, plafonné à 8 Mo). L'encodage MIME
+vit dans `google-gmail/message.ts`, sans dépendance Deno pour être testable
+sous Node — ses erreurs sont silencieuses (objet accentué en charabia, réponse
+qui crée un fil neuf faute d'`In-Reply-To`), d'où les contrôles hors ligne.
+
+La portée `gmail.modify` couvre la lecture, l'envoi et les pièces jointes :
+aucune portée supplémentaire à demander à Raphaël.
+
+### Un reçu au bout d'un lien : `document_lien`, et pourquoi il est gardé
+
+Beaucoup de fournisseurs n'envoient pas le PDF, ils envoient une adresse (« ils
+m'envoient un SMS avec la facture dans le lien »). L'action `document_lien` va
+la chercher — mais **cette adresse vient d'un e-mail, donc d'un inconnu**.
+Sans garde-fou, c'est un client HTTP offert à qui veut, à l'intérieur de notre
+infrastructure, et rien ne se verrait à l'usage.
+
+`google-gmail/lien.ts` impose donc : https seul, aucune adresse interne
+(boucle locale, réseaux privés, et `169.254.169.254`, l'adresse des métadonnées
+de l'hébergeur), redirections suivies **à la main et revalidées une par une**
+— une adresse publique peut rediriger vers l'intérieur —, taille plafonnée à
+8 Mo, et seuls un PDF ou une image acceptés en retour. **Ne relâche aucun de
+ces contrôles** ; `scripts/verifier-gmail.mjs` les vérifie tous hors ligne.
+
+### Les messages programmés (`messages_programmes`, migration 0017)
+
+La table ne sait pas envoyer, et ne doit jamais le savoir : décision de Raphaël
+du 3 sept., on reste sur le téléphone et rien ne part sans qu'il appuie. D'où
+`statut`, où **« annoncé » est distinct de « envoyé »** — un message que Jarvis
+a présenté sans réponse ne doit pas disparaître de sa liste comme s'il était
+parti. `canal` reste `null` tant qu'il n'a pas dit WhatsApp ou SMS.
+Client : `src/lib/messagesProgrammes.ts`.
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
