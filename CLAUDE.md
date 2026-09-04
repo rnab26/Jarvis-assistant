@@ -8,6 +8,40 @@ seulement celui-ci — est consignée dans `docs/methode-de-travail.md`. Lis-la
 si tu débarques : elle explique pourquoi le cockpit et le journal existent, et
 ce qu'il attend d'une session qui reprend un travail commencé ailleurs.
 
+## Livrer une fonctionnalité utilisable, pas du code qui marche
+
+Consigne de Raphaël du 4 sept. 2026, après-midi, ses mots : « tu me livres du
+code qui marche techniquement mais pas une fonctionnalité utilisable. Il
+manque systématiquement la suppression, la modification, le réglage, le
+message d'erreur, l'état vide. Je dois demander cinquante fois. Ça s'arrête
+maintenant. » Règle permanente, pour toute session.
+
+**AVANT d'écrire une ligne de code**, lui donner en cinq lignes maximum ce qui
+sera livré côté usage, et attendre sa correction :
+- ce qu'il pourra faire concrètement (créer / voir / modifier / supprimer) ;
+- ce qui sera réglable, et où il le règle ;
+- ce qu'il verra quand c'est vide, quand ça charge, quand ça échoue ;
+- ce qui n'est pas couvert volontairement.
+
+**Une fonctionnalité n'est PAS finie tant que :**
+- il ne peut pas défaire ce qu'il a fait — modifier et supprimer, avec une
+  confirmation avant toute suppression ;
+- une valeur arbitraire (délai, seuil, activé/désactivé, texte affiché) reste
+  codée en dur au lieu d'être dans les réglages ;
+- une action peut échouer sans qu'il le voie — chaque action dit visiblement
+  qu'elle a réussi ou échoué ;
+- les états vide / en chargement / en erreur ne sont pas traités ;
+- elle n'a pas été parcourue comme lui la parcourra, depuis l'écran, sur un
+  écran de téléphone — pas seulement testée par une fonction qui renvoie la
+  bonne valeur.
+
+**En livrant**, trois lignes : ce qu'il peut faire maintenant, ce qu'il ne
+peut pas encore faire, ce qu'il lui reste à faire de son côté (installer
+l'APK, accorder une permission, configurer une clé).
+
+Si une de ces exigences double le travail : le dire et proposer de découper en
+deux étapes — jamais la sauter en silence.
+
 ## Cockpit de développement (chantiers)
 
 Ce projet a un **cockpit interne** dans l'app elle-même (`/cockpit`), soutenu
