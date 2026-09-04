@@ -18,7 +18,13 @@ import { appelerGemini } from "../_shared/gemini.ts"
  * la mémoire consommerait la moitié du quota de Jarvis. Trier des faits
  * n'en demande pas plus. Réglable par le secret GEMINI_MODELE_MEMOIRE.
  */
-const MODELE_EXTRACTION = Deno.env.get("GEMINI_MODELE_MEMOIRE") || "gemini-2.5-flash-lite"
+// gemini-2.5-flash-lite est mort le 4 sept. 2026 : 404 « no longer available
+// to new users », sur les deux clés. La mémorisation échouait donc en silence
+// — c'est sa nature, elle ne doit jamais déranger l'utilisateur — et personne
+// ne l'aurait vu. gemini-3.7-flash répond (essayé pour de vrai avec les deux
+// clés) et n'est utilisé nulle part ailleurs : son seau reste à elle seule, ce
+// qui est tout l'objet du réglage.
+const MODELE_EXTRACTION = Deno.env.get("GEMINI_MODELE_MEMOIRE") || "gemini-3.7-flash"
 
 /**
  * AUCUN secours, et c'est délibéré.

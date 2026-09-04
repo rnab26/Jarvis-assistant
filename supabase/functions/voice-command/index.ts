@@ -89,6 +89,25 @@ function normaliserAction(
     input = { ...input, message_channel: undefined }
   }
 
+  // 1d. Et le pendant exact, dans l'autre sens : « envoie un SMS à Dylan » et
+  //     le champ reste vide. Le canal appartient à ce qui a été dit — s'il a
+  //     été dit, il n'a pas à dépendre de l'attention du modèle. Constaté le
+  //     4 sept. 2026 en changeant de modèle par force (Google avait retiré le
+  //     précédent) : gemini-3.1-flash-lite oubliait ce champ là où son
+  //     prédécesseur le remplissait. Un garde-fou qui ne vaut que dans un sens
+  //     laisse la moitié du cas à la chance.
+  if (input.action === "send_message" && input.message_channel === undefined) {
+    const dit = plat(contexte.transcript)
+    const iWhatsapp = dit.search(/whatsapp/)
+    const iSms = dit.search(/\bsms\b|texto/)
+    if (iWhatsapp !== -1 || iSms !== -1) {
+      // Les deux cités : on suit l'ordre de la phrase, pas un ordre à nous.
+      const canal =
+        iSms === -1 || (iWhatsapp !== -1 && iWhatsapp < iSms) ? "whatsapp" : "sms"
+      input = { ...input, message_channel: canal }
+    }
+  }
+
   const champs = CHAMPS_MODIFIABLES[String(input.action)]
   if (!champs) return input
 
@@ -454,7 +473,14 @@ const VOICE_ACTION_TOOL = {
  * de buter sur la limite. N'y insère jamais une donnée variable.
  */
 /** Voir le commentaire sur `modele` dans l'appel, plus bas. */
-const MODELE_PAR_DEFAUT = "gemini-3.5-flash-lite"
+// gemini-3.5-flash-lite a tenu ce rôle jusqu'au 4 sept. 2026, où il a
+// commencé à répondre 503 « This model is currently experiencing high demand »
+// en continu, sur les DEUX clés du projet — donc Jarvis muet chez Raphaël.
+// gemini-3.1-flash-lite est de la même famille (Lite = ~640 ms, la latence ne
+// s'entend pas) et répond, mesuré le jour même par un appel réel sur les deux
+// clés. Il n'est plus le modèle de la mémoire, qui a bougé de son côté : les
+// seaux restent distincts.
+const MODELE_PAR_DEFAUT = "gemini-3.1-flash-lite"
 
 /** Essayés dans l'ordre si la minute du premier est saturée : le quota gratuit
  * est compté PAR MODÈLE, donc basculer rend la main tout de suite là où
@@ -469,7 +495,14 @@ const MODELE_PAR_DEFAUT = "gemini-3.5-flash-lite"
 // On descend maintenant vers des modèles d'une autre génération et d'un autre
 // gabarit : trois compteurs séparés. Plus lents que le Lite, mais un Jarvis
 // qui répond en trois secondes vaut mieux qu'un Jarvis qui se tait.
-const SECOURS = ["gemini-2.5-flash", "gemini-3.5-flash"]
+//
+// PIÈGE VÉRIFIÉ LE 4 SEPT. 2026 : la liste rendue par ListModels n'est PAS une
+// autorisation. Les deux clés annoncent gemini-2.5-flash et
+// gemini-2.5-flash-lite, et generateContent les refuse toutes les deux en 404
+// « no longer available to new users ». Un secours écrit d'après la liste, ou
+// de mémoire, ne se voit donc qu'en production. Les trois modèles ci-dessous
+// ont été essayés pour de vrai, avec chaque clé, avant d'être écrits ici.
+const SECOURS = ["gemini-3.5-flash", "gemini-3.6-flash"]
 
 const CONSIGNES = `Tu es l'assistant vocal de Jarvis, qui gère huit domaines pour l'utilisateur :
 1. Ses tâches personnelles/clients, organisées par catégorie.

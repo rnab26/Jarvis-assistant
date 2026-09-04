@@ -126,8 +126,14 @@ const STATUTS_A_REESSAYER = new Set([408, 409, 429, 500, 502, 503, 504])
  *   répondait « Le modèle est débordé » à Raphaël au même moment. On rejouait
  *   trois fois le modèle saturé, puis on abandonnait sans jamais essayer les
  *   secours, qui eux répondaient.
+ * - 404 « no longer available to new users » : Google retire ses modèles sans
+ *   prévenir, et sans les retirer de ListModels — gemini-2.5-flash et
+ *   gemini-2.5-flash-lite sont tombés le même jour, alors qu'ils figuraient
+ *   encore dans la liste. Un modèle disparu doit être SAUTÉ, pas faire
+ *   abandonner toute la chaîne : sinon le jour où Google retire celui qu'on a
+ *   mis en tête, Jarvis se tait alors que trois autres répondaient.
  */
-const STATUTS_CHANGER_DE_MODELE = new Set([429, 503])
+const STATUTS_CHANGER_DE_MODELE = new Set([404, 429, 503])
 
 /** Trois essais au plus, ~15 s dans le pire des cas : l'app abandonne à 25 s. */
 const ESSAIS_MAX = 3
