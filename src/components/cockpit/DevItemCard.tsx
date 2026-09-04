@@ -1,5 +1,6 @@
 import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -175,15 +176,26 @@ export function DevItemCard({
           </Button>
         }
       />
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="shrink-0"
-        aria-label="Supprimer"
-        onClick={() => onDelete(item.id).catch(alreadyNotified)}
-      >
-        <Trash2 className="size-3.5" />
-      </Button>
+      {/* Un chantier supprimé ne se retrouve nulle part — contrairement à un
+          chantier archivé, qui reste consultable. Sur un téléphone, la
+          corbeille est à trois millimètres du crayon : elle demande donc
+          confirmation, et rappelle ce qu'on est en train de supprimer. */}
+      <ConfirmerAction
+        titre="Supprimer ce chantier ?"
+        description={
+          <>
+            « {item.title} » sera supprimé définitivement. Pour le garder sans
+            l'avoir dans la liste, archive-le plutôt.
+          </>
+        }
+        libelleConfirmation="Supprimer"
+        onConfirmer={() => onDelete(item.id)}
+        trigger={
+          <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Supprimer">
+            <Trash2 className="size-3.5" />
+          </Button>
+        }
+      />
     </div>
   )
 }
