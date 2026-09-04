@@ -166,6 +166,17 @@ Deux règles à ne pas défaire :
 Les corrections écrites dans le registre remontent dans le bloc injecté au
 démarrage de chaque session : c'est par là qu'elles servent à corriger.
 
+### « Ça existe déjà » à la saisie (`src/lib/doublonChantier.ts`)
+
+Pendant qu'il écrit, la fenêtre d'envoi montre les chantiers proches — les
+ouverts ET **les archivés**, ces derniers en premier : redemander une chose
+déjà livrée fait tout refaire à une session, et parfois défaire ce qui
+marchait. Comparaison de mots, locale, jamais un appel au modèle. Elle ne
+bloque rien et se tait dès qu'il n'y a qu'un mot courant en commun — un
+avertissement qui se déclenche à tort n'est plus lu du tout. Elle n'attrape
+que la redite littérale : deux demandes qui disent la même chose avec un autre
+vocabulaire ne se ressemblent pas pour elle, et c'est écrit dans son en-tête.
+
 ### Les actions groupées et le « Annuler »
 
 Le bouton « Choisir » du cockpit passe le tableau en mode sélection : tout se
@@ -674,6 +685,7 @@ node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jo
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
+node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS

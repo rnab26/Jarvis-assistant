@@ -86,6 +86,39 @@ try {
   const tableau = page.getByRole("region", { name: "Chantiers" })
   const dansLeTableau = (texte) => tableau.getByText(texte).first().isVisible()
 
+  // ── La fenêtre d'envoi : ce qui existe déjà, et la section suggérée ──
+  const quoiFaire = page.getByLabel("Ce qu'il faut faire")
+  await quoiFaire.fill("Le micro se coupe en pleine phrase quand je dicte longtemps")
+  await pause(400)
+  verifier(
+    "écrire une demande déjà en cours le signale avant d'envoyer",
+    await visible("Ça ressemble à ce qui existe déjà"),
+    "on ouvrirait un doublon sans jamais le savoir",
+  )
+  verifier(
+    "et dit dans quel état est ce qui existe",
+    await visible("en cours"),
+  )
+  verifier(
+    "la section est suggérée d'après ce qui est déjà rangé",
+    await visible("Section suggérée"),
+  )
+  verifier(
+    "et elle dit sur quels mots elle s'appuie",
+    await visible("d'après"),
+    "une suggestion qu'on ne peut pas juger est acceptée sans être relue",
+  )
+
+  await quoiFaire.fill("Acheter du pain demain matin")
+  await pause(400)
+  verifier(
+    "une demande sans rapport ne déclenche aucun avertissement",
+    !(await page.getByText("Ça ressemble à ce qui existe déjà").isVisible()),
+    "un avertissement qui se déclenche à tort finit par ne plus être lu",
+  )
+  await quoiFaire.fill("")
+  await pause(250)
+
   // ── Qui travaille en ce moment ──
   verifier(
     "la carte dit quelle session travaille, et sur quoi",

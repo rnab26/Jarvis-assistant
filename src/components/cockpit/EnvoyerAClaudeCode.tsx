@@ -1,11 +1,13 @@
 import { Send, Sparkles } from "lucide-react"
 import { useMemo, useState } from "react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { decouperDemande } from "@/lib/demandeChantier"
+import { chantiersProches } from "@/lib/doublonChantier"
 import { suggererSection } from "@/lib/suggestionTheme"
 import { resoudreTheme } from "@/lib/themeChantier"
 import type { DevItem, DevItemInput, DevPriority, DevSection } from "@/types/database"
@@ -87,6 +89,14 @@ export function EnvoyerAClaudeCode({
     [texte, devItems, sections],
   )
 
+  // « Ça existe déjà. » Raphaël redemande souvent une chose déjà demandée, et
+  // parfois une chose déjà LIVRÉE — auquel cas une session la refait de zéro.
+  // Les archivés sont donc compris dans la recherche, et passent devant.
+  const proches = useMemo(
+    () => (texte.trim().length < 12 ? [] : chantiersProches(texte, devItems)),
+    [texte, devItems],
+  )
+
   // Le thème retenu est DÉRIVÉ, pas recopié dans un état : tant que Raphaël
   // n'a rien choisi, c'est la suggestion qui vaut, et elle suit ce qu'il tape
   // sans qu'un effet ait à la recopier (un état recopié d'un autre finit
@@ -142,6 +152,41 @@ export function EnvoyerAClaudeCode({
           <p className="text-xs text-muted-foreground">
             Titre du chantier : <span className="font-medium">{apercu.titre}</span>
           </p>
+        )}
+
+        {/* Jamais bloquant : c'est une information, pas un garde-fou. Il
+            arrive qu'un chantier proche soit réellement un autre sujet, et
+            c'est lui qui en juge. */}
+        {proches.length > 0 && (
+          <div className="flex flex-col gap-1.5 rounded-lg border border-dashed p-2">
+            <p className="text-xs font-medium">Ça ressemble à ce qui existe déjà</p>
+            {proches.map(({ item, motsCommuns }) => (
+              <div key={item.id} className="flex items-start gap-1.5">
+                <Badge
+                  variant={item.archived_at ? "secondary" : "outline"}
+                  className="mt-0.5 shrink-0 px-1.5 text-xs font-normal"
+                >
+                  {item.archived_at
+                    ? `livré le ${new Date(item.archived_at).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "short",
+                      })}`
+                    : item.status === "in_progress"
+                      ? "en cours"
+                      : "à faire"}
+                </Badge>
+                <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                  {item.title}
+                  {motsCommuns.length > 0 && (
+                    <span className="opacity-70"> — {motsCommuns.join(", ")}</span>
+                  )}
+                </p>
+              </div>
+            ))}
+            <p className="text-xs text-muted-foreground">
+              Si c'est autre chose, envoie quand même : rien n'est bloqué.
+            </p>
+          </div>
         )}
 
         {/* Des puces plutôt qu'un champ libre : sur un téléphone, retaper
