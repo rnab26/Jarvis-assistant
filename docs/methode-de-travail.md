@@ -112,6 +112,26 @@ sera livré côté usage :
 Il corrige à ce moment-là, pas après. Ces cinq lignes remplacent cinquante
 allers-retours par une seule correction, au moment où elle ne coûte rien.
 
+**Ce qu'on construit existe déjà ailleurs. Partir de là, pas de zéro.**
+
+Une galerie de photos, un panier, une messagerie, un calendrier, un éditeur :
+ce sont des objets connus, dont on attend un jeu de fonctions précis. Quand
+Raphaël demande une galerie, il n'attend pas trois cases et une case à cocher —
+il attend ce qu'une galerie sait faire partout ailleurs : importer plusieurs
+fichiers d'un coup, des miniatures, réordonner, renommer et légender,
+prévisualiser en grand, sélectionner plusieurs éléments et agir dessus en lot,
+remplacer, supprimer avec confirmation, voir la progression d'un envoi, et un
+message clair quand un fichier est trop lourd ou d'un format refusé.
+
+Alors avant de coder : **nommer la catégorie de ce qu'on construit, lister ce
+que cette catégorie sait faire partout ailleurs, et lui proposer ce jeu-là.** Il
+retire ce dont il ne veut pas. C'est infiniment plus rapide que de partir d'un
+minimum et d'ajouter pièce par pièce sur cinquante allers-retours.
+
+S'inspirer de ce qui existe — y compris de ce que le projet fait déjà ailleurs,
+pour rester cohérent avec lui — et l'adapter. Ne pas réinventer une version
+appauvrie de quelque chose de connu.
+
 **Une fonctionnalité n'est pas finie tant que :**
 
 - on ne peut pas défaire ce qu'on a fait — modifier et supprimer, avec une
