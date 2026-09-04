@@ -26,6 +26,7 @@ export const CLES_REGLAGES = [
   "jarvis_voice_muted",
   "jarvis_dialogue_pause_ms",
   "jarvis_dialogue_suite_ms",
+  "jarvis_mode_live",
   "jarvis_core_image",
 ] as const
 

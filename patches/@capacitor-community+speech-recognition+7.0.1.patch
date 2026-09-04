@@ -1,0 +1,82 @@
+diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
+index a99ea69..7c891c3 100644
+--- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
++++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
+@@ -8,6 +8,12 @@ import android.os.Bundle;
+ import android.speech.RecognitionListener;
+ import android.speech.RecognizerIntent;
+ import android.speech.SpeechRecognizer;
++import android.speech.RecognitionService;
++import android.content.ComponentName;
++import android.content.pm.PackageManager;
++import android.content.pm.ResolveInfo;
++import android.provider.Settings;
++import java.util.List;
+ import androidx.activity.result.ActivityResult;
+ import com.getcapacitor.JSArray;
+ import com.getcapacitor.JSObject;
+@@ -151,6 +157,46 @@ public class SpeechRecognition extends Plugin implements Constants {
+         this.listening = value;
+     }
+ 
++    /** JARVIS (patch-package) : paquets de services de reconnaissance sans tonalite, par ordre de preference. */
++    private static final String[] PAQUETS_PREFERES = {
++        "com.google.android.googlequicksearchbox",
++        "com.google.android.as",
++        "com.google.android.tts",
++    };
++
++    private ComponentName servicePrefereJarvis() {
++        try {
++            PackageManager pm = bridge.getContext().getPackageManager();
++            List<ResolveInfo> services = pm.queryIntentServices(new Intent(RecognitionService.SERVICE_INTERFACE), 0);
++            for (String paquet : PAQUETS_PREFERES) {
++                for (ResolveInfo ri : services) {
++                    if (ri.serviceInfo != null && paquet.equals(ri.serviceInfo.packageName)) {
++                        return new ComponentName(ri.serviceInfo.packageName, ri.serviceInfo.name);
++                    }
++                }
++            }
++        } catch (Exception ignore) {}
++        return null;
++    }
++
++    /**
++     * JARVIS (patch-package) : quel service de reconnaissance est utilise, et lequel est
++     * celui par defaut du telephone — pour le journal d ecoute, afin de savoir ce qui
++     * tourne sur l appareil de Raphael sans deviner.
++     */
++    @PluginMethod
++    public void recognitionService(PluginCall call) {
++        ComponentName prefere = servicePrefereJarvis();
++        String defaut = null;
++        try {
++            defaut = Settings.Secure.getString(bridge.getContext().getContentResolver(), "voice_recognition_service");
++        } catch (Exception ignore) {}
++        JSObject ret = new JSObject();
++        ret.put("choisi", prefere != null ? prefere.flattenToShortString() : "defaut");
++        ret.put("defaut", defaut != null ? defaut : "");
++        call.resolve(ret);
++    }
++
+     private void beginListening(
+         String language,
+         int maxResults,
+@@ -188,7 +234,16 @@ public class SpeechRecognition extends Plugin implements Constants {
+                             speechRecognizer = null;
+                         }
+ 
+-                        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(bridge.getActivity());
++                        // JARVIS (patch-package) : le service par defaut de Samsung joue une
++                        // tonalite a chaque demarrage et coupe a chaque respiration. Celui de
++                        // Google ne bipe pas et respecte DICTATION_MODE. On le prend s il est
++                        // installe, sinon le defaut, sans jamais echouer.
++                        ComponentName servicePrefere = servicePrefereJarvis();
++                        if (servicePrefere != null) {
++                            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(bridge.getActivity(), servicePrefere);
++                        } else {
++                            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(bridge.getActivity());
++                        }
+                         SpeechRecognitionListener listener = new SpeechRecognitionListener();
+                         listener.setCall(call);
+                         listener.setPartialResults(partialResults);

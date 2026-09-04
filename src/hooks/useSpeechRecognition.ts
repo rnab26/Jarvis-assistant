@@ -226,6 +226,21 @@ export function useSpeechRecognition() {
       throw new Error("Micro refusé. Autorise l'accès au micro dans les paramètres de l'app.")
     }
     microPretRef.current = true
+
+    // Quel service de reconnaissance tourne vraiment (méthode ajoutée au
+    // plugin par patches/@capacitor-community+speech-recognition : Google
+    // s'il est installé, sinon le défaut Samsung qui bipe). Une fois par
+    // session, dans le journal, pour ne plus le deviner.
+    const plugin = NativeSpeechRecognition as unknown as {
+      recognitionService?: () => Promise<{ choisi: string; defaut: string }>
+    }
+    if (plugin.recognitionService) {
+      const service = await borner(plugin.recognitionService(), 2000)
+      noterEcoute("service_reconnaissance", {
+        choisi: service?.choisi ?? "inconnu",
+        defaut: service?.defaut ?? "",
+      })
+    }
   }, [])
 
   /**
