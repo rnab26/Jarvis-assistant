@@ -1,4 +1,4 @@
-import { Check, Send } from "lucide-react"
+import { Check, Reply, Send, X } from "lucide-react"
 import { useState } from "react"
 import { LoadError } from "@/components/LoadError"
 import { Badge } from "@/components/ui/badge"
@@ -37,13 +37,25 @@ function courtAuteur(auteur: string) {
   return auteur.replace(/^claude\//, "")
 }
 
+/**
+ * Le journal sert deux conversations différentes : les sessions entre elles,
+ * et les sessions avec Raphaël — rien ne les distingue dans le schéma. La
+ * convention déjà suivie par toutes les sessions ce soir (vérifiable dans le
+ * journal réel) est d'ouvrir un message adressé à une autre session par
+ * "Pour la session ...". On s'appuie dessus plutôt que d'ajouter une colonne
+ * qu'il faudrait faire adopter par toutes les sessions en parallèle.
+ */
+function questionPourRaphael(entry: DevLogEntry) {
+  return entry.kind === "question" && !entry.answered_at && !/^pour la session\b/i.test(entry.body.trim())
+}
+
 interface DevLogFeedProps {
   entries: DevLogEntry[]
   devItems: DevItem[]
   loading: boolean
   error: string | null
   onRefresh: () => void
-  onAdd: (body: string) => Promise<void>
+  onAdd: (body: string, kind?: DevLogKind, itemId?: string | null) => Promise<void>
   onMarkAnswered: (id: string) => Promise<void>
 }
 
@@ -62,15 +74,34 @@ export function DevLogFeed({
 }: DevLogFeedProps) {
   const [draft, setDraft] = useState("")
   const [sending, setSending] = useState(false)
+  const [repondreA, setRepondreA] = useState<DevLogEntry | null>(null)
 
   const titreParItem = new Map(devItems.map((i) => [i.id, i.title]))
-  const enAttente = entries.filter((e) => e.kind === "question" && !e.answered_at).length
+  const enAttente = entries.filter(questionPourRaphael).length
+
+  // Les questions qui lui sont adressées remontent en tête du fil : c'est
+  // elles que le badge annonce, pas la peine de défiler pour les trouver.
+  const entriesTriees = [
+    ...entries.filter(questionPourRaphael),
+    ...entries.filter((e) => !questionPourRaphael(e)),
+  ]
+
+  function repondre(entry: DevLogEntry) {
+    setRepondreA(entry)
+    setDraft("")
+  }
 
   async function send() {
     if (!draft.trim()) return
     setSending(true)
     try {
-      await onAdd(draft.trim())
+      if (repondreA) {
+        await onAdd(draft.trim(), "reponse", repondreA.item_id)
+        await onMarkAnswered(repondreA.id)
+        setRepondreA(null)
+      } else {
+        await onAdd(draft.trim())
+      }
       setDraft("")
     } catch {
       // Erreur déjà signalée par un toast : on garde le texte saisi.
@@ -91,9 +122,29 @@ export function DevLogFeed({
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
+          {repondreA && (
+            <div className="flex items-center gap-2 rounded-lg bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">
+              <Reply className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                Réponse à {courtAuteur(repondreA.author)} : {repondreA.body}
+              </span>
+              <button
+                type="button"
+                aria-label="Annuler la réponse"
+                className="shrink-0"
+                onClick={() => setRepondreA(null)}
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          )}
           <Textarea
             value={draft}
-            placeholder="Un mot aux sessions en cours : une consigne, une réponse, la prochaine priorité…"
+            placeholder={
+              repondreA
+                ? "Ta réponse…"
+                : "Un mot aux sessions en cours : une consigne, une réponse, la prochaine priorité…"
+            }
             aria-label="Écrire dans le journal de bord"
             onChange={(e) => setDraft(e.target.value)}
           />
@@ -104,7 +155,7 @@ export function DevLogFeed({
             onClick={send}
           >
             <Send className="size-4" />
-            Publier
+            {repondreA ? "Répondre" : "Publier"}
           </Button>
         </div>
 
@@ -118,7 +169,7 @@ export function DevLogFeed({
           </p>
         ) : (
           <div className="flex flex-col gap-3">
-            {entries.map((entry) => {
+            {entriesTriees.map((entry) => {
               const attente = entry.kind === "question" && !entry.answered_at
               return (
                 <div
@@ -139,15 +190,20 @@ export function DevLogFeed({
                   </div>
                   <p className="text-sm whitespace-pre-line text-muted-foreground">{entry.body}</p>
                   {attente && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="self-start"
-                      onClick={() => onMarkAnswered(entry.id).catch(alreadyNotified)}
-                    >
-                      <Check className="size-4" />
-                      Marquer traité
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => repondre(entry)}>
+                        <Reply className="size-4" />
+                        Répondre
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onMarkAnswered(entry.id).catch(alreadyNotified)}
+                      >
+                        <Check className="size-4" />
+                        Marquer traité
+                      </Button>
+                    </div>
                   )}
                 </div>
               )

@@ -74,11 +74,31 @@ window.__sr = { instances: [], starts: 0, refuseDeDemarrer: false }
 window.SpeechRecognition = FauxMoteur
 window.webkitSpeechRecognition = FauxMoteur
 window.__derniere = () => window.__sr.instances[window.__sr.instances.length - 1]
+// Fausse synthèse vocale : Chromium sans haut-parleur ne termine jamais une
+// lecture, et Jarvis attendrait la fin de sa phrase pour toujours.
+Object.defineProperty(window, "speechSynthesis", {
+  configurable: true,
+  value: {
+    cancel() {},
+    getVoices() { return [] },
+    speak(u) { setTimeout(() => { u.onstart && u.onstart(); u.onend && u.onend() }, 10) },
+    onvoiceschanged: null,
+  },
+})
+window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text } }
 `
 
 const chromium = await chargerChromium()
+// Le banc du cœur monte le vrai MicButton, qui charge le client Supabase au
+// démarrage : sans ces deux variables il lève avant d'afficher quoi que ce
+// soit. Des valeurs factices suffisent, rien ne part sur le réseau ici.
 const vite = spawn("npx", ["vite", "--port", String(PORT), "--host", "127.0.0.1"], {
   stdio: "ignore",
+  env: {
+    ...process.env,
+    VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL ?? "https://banc-d-essai.invalid",
+    VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY ?? "banc-d-essai",
+  },
 })
 
 let echecs = 0
@@ -269,6 +289,38 @@ try {
   verifier("veille : démarrage refusé → rendu en moins de 2 s", Date.now() - avantRefus < 2000, true)
   verifier("veille : démarrage refusé → c'est dit, pas avalé", (await resultat()).startsWith("ERR:"), true)
   await page.evaluate("window.__sr.refuseDeDemarrer = false")
+
+  // --- Test du 4 sept. : « Jarvis, quelles sont mes tâches ? » → « Aucune
+  // tâche trouvée » alors qu'il y en avait dix-neuf. La conversation ouverte
+  // par le mot-clé tournait avec les données du PREMIER rendu, encore vides.
+  // Le vrai MicButton, des tâches qui arrivent après le montage, et le
+  // mot-clé dit une fois qu'elles sont là : la réponse doit les citer.
+  const coeur = await navigateur.newPage()
+  coeur.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (cœur):", e.message)
+  })
+  await coeur.addInitScript(FAUX_MOTEUR)
+  await coeur.goto(`${BASE}/scripts/harness/micbutton.html`)
+  // La veille démarre d'elle-même (mot-clé activé) ; on attend qu'elle écoute
+  // ET que les tâches soient chargées (400 ms après le montage).
+  await coeur.waitForFunction("window.__sr && window.__sr.starts >= 1", null, { timeout: 10000 })
+  await pause(900)
+  await coeur.evaluate("window.__derniere().dire('jarvis quelles sont mes tâches', true)")
+  await coeur
+    .waitForFunction("document.body.textContent.includes('Jarvis :')", null, { timeout: 8000 })
+    .catch(() => {
+      echecs++
+      console.log("ÉCHEC mot-clé : Jarvis n'a rien répondu")
+    })
+  const reponseCoeur = (await coeur.textContent("body")) ?? ""
+  verifier(
+    "mot-clé : la conversation voit les tâches chargées après le montage",
+    reponseCoeur.includes("Tu as 2 tâches : Appeler le plombier, Payer l'arnona."),
+    true,
+  )
+  if (!reponseCoeur.includes("Tu as 2 tâches")) console.log("      page :", reponseCoeur.replace(/\s+/g, " ").slice(0, 300))
+  await coeur.close()
 } finally {
   await navigateur?.close()
   vite.kill()

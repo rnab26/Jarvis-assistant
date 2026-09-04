@@ -7,8 +7,12 @@ import { useAuth } from "@/hooks/useAuth"
 import { useDevLog } from "@/hooks/useDevLog"
 
 /**
- * Le cockpit, de haut en bas : ce qu'on envoie, ce qui est en cours, ce qu'on
- * se dit entre sessions.
+ * Le cockpit, de haut en bas : ce qu'on envoie, ce qu'on se dit entre
+ * sessions, ce qui est en cours. Le journal est collé à la fenêtre d'envoi —
+ * les deux servent à PILOTER les sessions, pas à consulter la liste des
+ * chantiers — plutôt que séparé d'elle par tout le tableau (Raphaël, 3 sept. :
+ * « cette fenêtre est complètement perdue, autant la rapprocher de la fenêtre
+ * qui crée les chantiers »).
  *
  * Le bouton « + Chantier » qui ouvrait un formulaire à cinq champs a été
  * retiré : il faisait exactement la même chose que la fenêtre d'envoi, en
@@ -40,6 +44,16 @@ export function CockpitPage() {
         onSend={addDevItem}
       />
 
+      <DevLogFeed
+        entries={devLog.entries}
+        devItems={devItems}
+        loading={devLog.loading}
+        error={devLog.error}
+        onRefresh={devLog.refresh}
+        onAdd={devLog.addEntry}
+        onMarkAnswered={devLog.markAnswered}
+      />
+
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>
       ) : error ? (
@@ -53,16 +67,6 @@ export function CockpitPage() {
           onUnarchive={unarchiveDevItem}
         />
       )}
-
-      <DevLogFeed
-        entries={devLog.entries}
-        devItems={devItems}
-        loading={devLog.loading}
-        error={devLog.error}
-        onRefresh={devLog.refresh}
-        onAdd={devLog.addEntry}
-        onMarkAnswered={devLog.markAnswered}
-      />
     </div>
   )
 }

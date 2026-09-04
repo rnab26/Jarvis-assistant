@@ -379,10 +379,29 @@ de voix, la fin de tour, l'interruption et la transcription. Derrière la case
   verrouillé sur le modèle `GEMINI_MODELE_LIVE` (défaut
   `gemini-2.5-flash-native-audio-preview-12-2025`, gratuit). `verify_jwt` reste
   à true : il faut être connecté.
+- **La configuration de la session (consigne, outil, contexte, audio) vit
+  DANS le jeton**, côté serveur. Vérifié le 4 sept. avec
+  `verifier-live-contexte.mjs` : avec un jeton éphémère, Google IGNORE la
+  configuration envoyée par l'app à la connexion — Jarvis disait « je n'ai
+  pas accès à tes tâches » alors que l'app les lui donnait. L'app envoie son
+  contexte (tâches, chantiers, contacts, date) dans le corps de la requête à
+  `live-jeton`, et se connecte avec une configuration vide. Ne remets jamais
+  de `systemInstruction` côté app : elle serait perdue en silence.
 - Côté app : `src/lib/live/` (audio, session). Le modèle Live ne connaît qu'un
   outil, `commande_jarvis`, qui repasse par `resolveTranscript` +
   `executerActions` de `MicButton` — une seule source de vérité pour les
-  actions.
+  actions. Raphaël clôt à la voix (« terminé », « fin de transmission »,
+  « au revoir »… : `src/lib/live/finConversation.ts`) ; c'est l'app qui
+  reconnaît la formule, pas le modèle, et la phrase entière doit être un
+  adieu — « termine le chantier X » reste une commande.
+- **Dans `MicButton`, tout ce qu'un effet lance passe par `derniersRef`**,
+  jamais par un appel direct. La boucle de veille vit dans un effet monté
+  une fois : elle gardait `demarrerLive` du premier rendu, où les tâches
+  n'étaient pas encore chargées, et « Jarvis, quelles sont mes tâches ? »
+  répondait « Aucune tâche trouvée » avec dix-neuf tâches en base (4 sept.,
+  en Live comme en classique — un appui sur le cœur, lui, voyait tout). Le
+  banc du cœur de `verifier-ecoute-web.mjs` monte le vrai `MicButton` avec
+  des tâches chargées après le montage et rejoue exactement ce cas.
 - Vérification : `ANON_KEY=... node scripts/verifier-live-jeton.mjs` (fonction
   déployée, utilisateur de test éphémère). Le comportement audio réel ne se
   vérifie que sur un appareil ; `journal_ecoute` trace `live_debut`,
@@ -407,7 +426,8 @@ ANON_KEY=... node scripts/verifier-donnees.mjs           # temps réel + réglag
 node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole, sans réseau
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
-node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute, vrai navigateur
+node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
+node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
@@ -416,6 +436,7 @@ node --experimental-strip-types scripts/verifier-agenda-google.mjs  # l'agenda, 
 ANON_KEY=... node --experimental-strip-types scripts/verifier-gmail.mjs  # Gmail : encodage, lecture réelle, garde-fou d'envoi
 ANON_KEY=... node scripts/verifier-messages-programmes.mjs  # messages programmés : cycle + cloisonnement RLS
 ANON_KEY=... node scripts/verifier-live-jeton.mjs        # le jeton du mode conversation Live
+ANON_KEY=... node scripts/verifier-live-contexte.mjs     # le modèle Live reçoit bien consigne et contexte (vraie session)
 ```
 
 `verifier-donnees.mjs` couvre ce qui casse en silence : un abonnement temps
@@ -532,8 +553,10 @@ scripts/sql.sh "select id, status from dev_items where id = '...';"
 
 **Grouper reste bon pour les écritures**, dont on n'attend pas de lignes :
 plusieurs `update`/`insert` liés, ou une structure complète (table + index +
-policies RLS + trigger), dans un `begin; ... commit;` pour que tout passe ou
-rien. Fais juste la vérification dans un appel séparé.
+policies RLS + trigger). Fais juste la vérification dans un appel séparé.
+**Sans `begin; … commit;`** : `exec_sql` refuse les commandes de transaction
+(« EXECUTE of transaction commands is not implemented », constaté le
+4 sept.) — et de toute façon un appel est déjà exécuté d'un bloc.
 
 Et dans tous les cas, ne fais pas un appel par ligne à mettre à jour :
 `where id in (...)`, `update ... from (values ...)` ou des `case when`.
