@@ -593,6 +593,16 @@ Et avant de conclure qu'un fichier écrit par une autre session est cassé :
 **`npm install`**. Un `node_modules` antérieur à son commit produit des
 « Cannot find module » et des `any` implicites sur du code parfaitement sain.
 
+**Un `--` est interdit N'IMPORTE OÙ dans un commentaire XML**, pas seulement
+en bordure. Citer `--primary` ou `--foreground` (les variables CSS de l'app)
+dans un commentaire de `android/app/src/main/res/**` casse le build entier,
+avec un message qui ne parle pas du commentaire. Écris-les autrement, et
+contrôle avant de pousser :
+
+```bash
+python3 -c "import xml.dom.minidom,glob;[xml.dom.minidom.parse(f) for f in glob.glob('android/app/src/main/res/**/*.xml',recursive=True)]"
+```
+
 ## Le web se met à jour tout seul, l'app Android jamais
 
 Piège découvert le 3 sept. 2026 : Raphaël pensait suivre les nouveautés en
