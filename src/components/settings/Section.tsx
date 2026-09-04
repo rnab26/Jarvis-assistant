@@ -1,5 +1,6 @@
 import { ChevronDown } from "lucide-react"
 import { useEffect, useState, type ReactNode } from "react"
+import { sansAccents } from "@/lib/dateOrale"
 
 /**
  * Une section de Paramètres, repliée par défaut.
@@ -36,20 +37,74 @@ interface SectionProps {
   cle: string
   /** Ouverte au premier affichage. Réservé à la section la plus consultée. */
   ouverteParDefaut?: boolean
+  /**
+   * Ce qu'on peut taper pour retrouver cette section : le nom de chaque
+   * réglage qu'elle contient, et les mots qu'on emploierait pour le chercher
+   * sans connaître son intitulé exact.
+   *
+   * À TENIR À JOUR en ajoutant un réglage : une carte que la recherche ne
+   * trouve pas est aussi introuvable qu'avant, et c'est justement ce qu'on
+   * essaie de réparer.
+   */
+  motsCles?: string
+  /** Ce que Raphaël a tapé dans la recherche. Vide = affichage normal. */
+  filtre?: string
   children: ReactNode
 }
 
-export function Section({ titre, resume, cle, ouverteParDefaut = false, children }: SectionProps) {
+/** Vrai si la section répond à ce qu'on cherche. Sans accents ni casse :
+ * « echeance » doit trouver « échéance ». */
+export function sectionCorrespond(
+  { titre, resume, motsCles }: Pick<SectionProps, "titre" | "resume" | "motsCles">,
+  filtre: string,
+): boolean {
+  const terme = sansAccents(filtre.trim()).toLowerCase()
+  if (!terme) return true
+  const foin = sansAccents(`${titre} ${resume ?? ""} ${motsCles ?? ""}`).toLowerCase()
+  // Chaque mot tapé doit être présent : « voix jarvis » ne doit pas ramener
+  // tout ce qui contient « jarvis ».
+  return terme.split(/\s+/).every((mot) => foin.includes(mot))
+}
+
+export function Section({
+  titre,
+  resume,
+  cle,
+  ouverteParDefaut = false,
+  motsCles,
+  filtre = "",
+  children,
+}: SectionProps) {
   const [ouverte, setOuverte] = useState(() => lireOuvert(cle, ouverteParDefaut))
+  const recherche = filtre.trim().length > 0
 
   useEffect(() => {
+    // Pendant une recherche, l'ouverture est imposée par le résultat : la
+    // mémoriser ferait revenir toutes les sections dépliées une fois la
+    // recherche effacée.
+    if (recherche) return
     try {
       localStorage.setItem(PREFIXE + cle, ouverte ? "1" : "0")
     } catch {
       // Stockage refusé : la section s'ouvrira simplement fermée la prochaine
       // fois. Rien à signaler à Raphaël pour ça.
     }
-  }, [cle, ouverte])
+  }, [cle, ouverte, recherche])
+
+  // Une recherche qui laisserait le résultat replié ne servirait à rien : il
+  // faudrait encore le déplier à la main pour voir ce qu'on a trouvé.
+  if (recherche) {
+    if (!sectionCorrespond({ titre, resume, motsCles }, filtre)) return null
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="rounded-lg border px-3 py-2.5">
+          <span className="block text-sm font-semibold">{titre}</span>
+          {resume && <span className="block text-xs text-muted-foreground">{resume}</span>}
+        </div>
+        <div className="flex flex-col gap-3">{children}</div>
+      </div>
+    )
+  }
 
   // Pas une Card : les réglages qu'elle contient en sont déjà. Emboîter une
   // carte dans une carte doublerait le cadre — le « pavé » que Raphaël veut

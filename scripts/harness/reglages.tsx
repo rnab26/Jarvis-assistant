@@ -1,15 +1,19 @@
 import { Capacitor } from "@capacitor/core"
+import { ThemeProvider } from "next-themes"
 import { useState } from "react"
 import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
 import { Notifications } from "@/components/settings/Notifications"
+import { Reinitialiser } from "@/components/settings/Reinitialiser"
 import { Section } from "@/components/settings/Section"
+import { Theme } from "@/components/settings/Theme"
 import type { NotificationsApi } from "@/hooks/useNotifications"
 import type { MajWebApi } from "@/hooks/useMajWeb"
 import type { PublishedBuild, UpdateStatus, Verdict } from "@/hooks/useUpdateCheck"
 import { PREFS_NOTIFS_DEFAUT, type PrefsNotifications } from "@/lib/notifications/prefs"
+import { THEME_KEY } from "@/lib/theme"
 import type { EtatNotifications } from "@/lib/notifications/service"
 
 /**
@@ -160,6 +164,38 @@ function BancDesReglages() {
         </Section>
       </div>
 
+      {/* La recherche : une section qui répond s'affiche dépliée, les autres
+          disparaissent. Le filtre est figé ici — ce qui se vérifie, c'est le
+          comportement de la section, pas le champ de saisie. */}
+      <div id="recherche">
+        <Section
+          titre="Voix et écoute"
+          resume="Sa voix, le rythme"
+          cle="banc-r1"
+          motsCles="voix débit"
+          filtre="notification"
+        >
+          <p>Contenu voix</p>
+        </Section>
+        <Section
+          titre="Notifications"
+          resume="Ce que Jarvis a le droit de faire sonner"
+          cle="banc-r2"
+          motsCles="notification sonner rappel"
+          filtre="notification"
+        >
+          <p>Contenu notifications</p>
+        </Section>
+      </div>
+
+      <div id="theme">
+        <Theme />
+      </div>
+
+      <div id="reinit">
+        <Reinitialiser />
+      </div>
+
       <div id="maj-apk">
         <Section titre="Mise à jour qui demande l'APK" cle="banc-maj-apk" ouverteParDefaut>
           <MettreAJour update={updateFactice("update-available")} majWeb={majFactice(false)} />
@@ -169,4 +205,8 @@ function BancDesReglages() {
   )
 }
 
-createRoot(document.getElementById("root")!).render(<BancDesReglages />)
+createRoot(document.getElementById("root")!).render(
+  <ThemeProvider attribute="class" defaultTheme="system" storageKey={THEME_KEY} enableSystem>
+    <BancDesReglages />
+  </ThemeProvider>,
+)
