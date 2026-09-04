@@ -85,6 +85,7 @@ try {
   const refuse = page.locator("#notifs-refuse")
   const ok = page.locator("#notifs-ok")
   const alarmes = page.locator("#notifs-alarmes")
+  const coupees = page.locator("#notifs-coupees")
   const rapide = page.locator("#maj-rapide")
   const parApk = page.locator("#maj-apk")
 
@@ -97,6 +98,17 @@ try {
     "et n'affiche aucun interrupteur qui ne commanderait rien",
     !(await refuse.getByText("Le point du matin", { exact: true }).isVisible()),
     "des réglages sans effet, c'est pire que pas de réglages : on croirait avoir coupé quelque chose",
+  )
+
+  // ── Coupées côté système : ne pas laisser dans une impasse ──
+  verifier(
+    "des notifications coupées par Android sont signalées",
+    await coupees.getByText(/coupées dans les réglages du téléphone/).isVisible(),
+  )
+  verifier(
+    "et l'écran d'Android s'ouvre depuis là",
+    await coupees.getByRole("button", { name: "Ouvrir les réglages d'Android" }).isVisible(),
+    "sans ce bouton, il faudrait aller chercher l'écran soi-même dans le téléphone",
   )
 
   // ── Ce qu'Android peut retarder, il faut le dire ──

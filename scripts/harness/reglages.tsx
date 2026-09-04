@@ -155,6 +155,22 @@ function BancDesReglages() {
         </Section>
       </div>
 
+      {/* Notifications coupées côté système : le seul recours est l'écran
+          d'Android, et il faut pouvoir l'ouvrir d'ici. */}
+      <div id="notifs-coupees">
+        <Section titre="Notifications (coupées côté système)" cle="banc-coupees" ouverteParDefaut>
+          <Notifications
+            api={notifsFactices(
+              { ...ETAT_AUTORISE, actives: false },
+              PREFS_NOTIFS_DEFAUT,
+              0,
+              () => {},
+              PREFS_NOTIFS_DEFAUT,
+            )}
+          />
+        </Section>
+      </div>
+
       <div id="notifs-alarmes">
         <Section titre="Notifications (alarmes inexactes)" cle="banc-alarmes" ouverteParDefaut>
           <Notifications
