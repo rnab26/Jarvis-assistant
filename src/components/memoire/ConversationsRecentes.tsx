@@ -5,8 +5,7 @@ import { LoadError } from "@/components/LoadError"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { useAuth } from "@/hooks/useAuth"
-import { useEchanges } from "@/hooks/useEchanges"
+import type { EchangesApi } from "@/hooks/useEchanges"
 import type { Echange } from "@/types/database"
 
 /** Combien on affiche avant de demander « voir plus » : une conversation d'une
@@ -37,9 +36,8 @@ function sansAccents(texte: string): string {
  * doit donc pouvoir voir ce qui est gardé et en effacer ce qu'il veut —
  * sinon la seule façon de le savoir serait de le demander à Jarvis.
  */
-export function ConversationsRecentes() {
-  const { session } = useAuth()
-  const { echanges, loading, error, refresh, oublier, toutOublier } = useEchanges(session?.user.id)
+export function ConversationsRecentes({ api }: { api: EchangesApi }) {
+  const { echanges, loading, error, refresh, oublier, toutOublier } = api
   const [recherche, setRecherche] = useState("")
   const [limite, setLimite] = useState(PAR_PAGE)
   const [aSupprimer, setASupprimer] = useState<Echange | null>(null)

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/useAuth"
+import { useEchanges } from "@/hooks/useEchanges"
 import { useSouvenirs } from "@/hooks/useSouvenirs"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { Souvenir, SouvenirCategorie } from "@/types/database"
@@ -126,6 +127,7 @@ export function MemoirePage() {
   const { souvenirs, loading, error, refresh, corriger, oublier, perimer } = useSouvenirs(
     session?.user.id,
   )
+  const echanges = useEchanges(session?.user.id)
 
   const vivants = souvenirs.filter((s) => !s.perime_at)
 
@@ -181,7 +183,7 @@ export function MemoirePage() {
 
       {/* Les faits retenus ci-dessus, et le mot-à-mot ci-dessous : Jarvis se
           sert des deux, Raphaël doit pouvoir contrôler les deux. */}
-      <ConversationsRecentes />
+      <ConversationsRecentes api={echanges} />
     </div>
   )
 }

@@ -7,6 +7,20 @@ import { withTimeout } from "@/lib/withTimeout"
 import type { Echange } from "@/types/database"
 
 /**
+ * Ce dont la carte « Vos conversations » a besoin. Nommé pour que le banc
+ * d'essai (scripts/harness/memoire.tsx) puisse en fournir une version factice
+ * et parcourir la vraie carte sans Supabase — même motif que NotificationsApi.
+ */
+export interface EchangesApi {
+  echanges: Echange[]
+  loading: boolean
+  error: string | null
+  refresh: () => Promise<void>
+  oublier: (id: string) => Promise<void>
+  toutOublier: () => Promise<void>
+}
+
+/**
  * Le mot-à-mot des conversations des sept derniers jours.
  *
  * Jarvis s'en sert pour répondre à « on avait parlé de quoi pour la villa
@@ -17,7 +31,7 @@ import type { Echange } from "@/types/database"
  *
  * La purge à sept jours est faite côté serveur, à chaque échange.
  */
-export function useEchanges(userId: string | undefined) {
+export function useEchanges(userId: string | undefined): EchangesApi {
   const [echanges, setEchanges] = useState<Echange[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

@@ -668,6 +668,7 @@ node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
+node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
 node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
