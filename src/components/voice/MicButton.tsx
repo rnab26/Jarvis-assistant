@@ -471,11 +471,13 @@ export function MicButton({
       onReponse: (texte) => setLastReply(texte),
       onCommande: async (demande) => {
         setLastUserText(demande)
-        const actions = await resolveTranscript(demande)
+        // Le rendu courant, pas celui de l'ouverture : une tâche ajoutée
+        // pendant la conversation doit se voir à la commande suivante.
+        const actions = await derniersRef.current.resolveTranscript(demande)
         // Une question de précision ne peut pas ouvrir un second micro : on
         // la rend au modèle, qui la posera de vive voix.
         if (actions[0]?.action === "clarify") return actions[0].message ?? "Peux-tu préciser ?"
-        return await executerActions(actions, demande)
+        return await derniersRef.current.executerActions(actions, demande)
       },
       onEtat: (etat, detail) => {
         if (etat === "connexion") setStatus("processing")
@@ -552,7 +554,7 @@ export function MicButton({
     if (!Capacitor.isNativePlatform()) return
     JarvisWidget.getPendingListen()
       .then(({ demarrer }) => {
-        if (demarrer) startListening()
+        if (demarrer) derniersRef.current.startListening()
       })
       .catch(() => {
         // Ancienne app pas encore mise à jour, ou plugin absent : tant pis,
@@ -634,6 +636,17 @@ export function MicButton({
   // En mode Live aussi : dire « Jarvis » ouvre la conversation. Pendant la
   // conversation, l'état n'est jamais au repos, donc la veille attend.
   const veilleActive = wakeWordEnabled && visible
+  // LES FONCTIONS APPELÉES DEPUIS UN EFFET PASSENT PAR CETTE REF, JAMAIS EN
+  // DIRECT. La boucle de veille (et les deux lanceurs ci-dessous) vivent
+  // dans des effets montés une seule fois : ce qu'ils appellent en direct
+  // est figé au rendu où l'effet a démarré — le premier, quand les tâches,
+  // chantiers et contacts n'étaient pas encore chargés. Bug réel du 4 sept.
+  // 2026 : « Jarvis, quelles sont mes tâches ? » répondait « Aucune tâche
+  // trouvée » avec dix-neuf tâches en base, en Live comme en classique, alors
+  // qu'un appui sur le cœur (rendu courant) les voyait. Reproduit par
+  // scripts/verifier-ecoute-web.mjs, banc du cœur.
+  const derniersRef = useRef({ demarrerLive, conduireConversation, startListening, handleClick, resolveTranscript, executerActions })
+  derniersRef.current = { demarrerLive, conduireConversation, startListening, handleClick, resolveTranscript, executerActions }
   useEffect(() => {
     if (!veilleActive) return
     let cancelled = false
@@ -684,12 +697,12 @@ export function MicButton({
         if (modeLiveRef.current && (suite === "conversation" || suite === "oui")) {
           // Mode Live : le mot-clé ouvre la conversation, et ce qui a été
           // dit après lui part comme premier message.
-          await demarrerLive(suite === "conversation" ? demande : undefined)
+          await derniersRef.current.demarrerLive(suite === "conversation" ? demande : undefined)
         } else if (suite === "conversation") {
           // « Jarvis, ajoute une tâche » : la demande est déjà là.
           priseRef.current++
           setStatus("idle")
-          await conduireConversation(demande)
+          await derniersRef.current.conduireConversation(demande)
         } else if (suite === "oui") {
           // « Jarvis » seul : on dit « Oui ? » PENDANT que le micro s'ouvre,
           // pas avant. Le service met une bonne demi-seconde à démarrer, la
@@ -697,7 +710,7 @@ export function MicButton({
           // seconde de moins avant que Raphaël puisse parler.
           bargeInRef.current = false
           void speak("Oui ?", voiceIndex ?? undefined)
-          await startListening(sansAccuse)
+          await derniersRef.current.startListening(sansAccuse)
         } else {
           setStatus("idle")
         }
@@ -729,7 +742,7 @@ export function MicButton({
     if (searchParams.get("mic") === "1" && !autoStarted.current) {
       autoStarted.current = true
       setSearchParams({}, { replace: true })
-      handleClick()
+      derniersRef.current.handleClick()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
