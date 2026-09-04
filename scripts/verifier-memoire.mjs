@@ -1,0 +1,309 @@
+/**
+ * Vérifie sur la fonction RÉELLEMENT DÉPLOYÉE que la mémoire ne réécrit plus
+ * trois fois la même chose.
+ *
+ *   ANON_KEY=... node scripts/verifier-memoire.mjs
+ *
+ * `verifier-dedoublonnage.ts` vérifie la décision hors ligne. Ici on vérifie la
+ * chaîne entière, celle qui a produit le bug : trois phrases dictées coup sur
+ * coup, l'extraction par le modèle, l'empreinte calculée dans l'Edge Function,
+ * la recherche du voisin le plus proche et l'écriture. Aucun de ces maillons
+ * n'est visible depuis un test hors ligne, et la mémorisation est SILENCIEUSE
+ * par construction : si elle se remet à empiler des doublons, personne ne le
+ * verra — sauf ce contrôle.
+ *
+ * Utilisateur de test éphémère, créé puis supprimé : rien ne touche à la
+ * mémoire de Raphaël. L'en-tête x-jarvis-essai fait utiliser la clé Gemini du
+ * projet de test, pour ne pas puiser dans son quota du jour.
+ *
+ * ANON_KEY : la clé publique du projet (outil MCP get_publishable_keys).
+ * SUPABASE_SERVICE_ROLE_KEY vient de l'environnement : elle sert à créer et
+ * supprimer l'utilisateur de test, et à relire ce qui a été mémorisé.
+ */
+import { execFileSync } from "node:child_process"
+
+const URL_PROJET = "https://bexiyvmdbxcwxasgslxp.supabase.co"
+const ANON = process.env.ANON_KEY
+const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
+const FONCTION = process.env.FONCTION ?? "voice-command"
+/**
+ * La mémorisation part en tâche de fond, et elle peut être LENTE : quand le
+ * modèle répond 429, `appelerGemini` patiente puis change de modèle. Mesuré le
+ * 4 sept. : plus d'une minute entre la phrase et l'écriture du souvenir. Un
+ * délai fixe faisait lire la base trop tôt et déclarait la mémoire morte alors
+ * qu'elle travaillait encore. On attend donc que ça se stabilise.
+ */
+const ATTENTE_MAX_MS = Number(process.env.ATTENTE_MAX_MS ?? 240000)
+/**
+ * Plancher d'attente. Un compte de souvenirs qui ne bouge pas ne veut PAS dire
+ * que la mémorisation a fini : elle peut être en train d'attendre un modèle.
+ * Mesuré le 4 sept. : 60 s entre la phrase et l'écriture quand le premier
+ * modèle répond 429. Sans ce plancher, le contrôle lisait la base avant
+ * l'écriture et déclarait l'échec d'un dédoublonnage qui, dans les journaux de
+ * la fonction, avait bel et bien eu lieu.
+ */
+const ATTENTE_MIN_MS = Number(process.env.ATTENTE_MIN_MS ?? 90000)
+/**
+ * Espacement entre deux phrases. Mesuré le 4 sept. 2026 : à 4 s d'intervalle,
+ * le modèle de la mémoire répond 429 (limite PAR MINUTE de l'offre gratuite)
+ * dès la deuxième phrase, l'extraction saute, et le contrôle ci-dessous
+ * passait au vert sans avoir rien dédoublonné du tout — pour la seule raison
+ * que les redites n'étaient jamais arrivées jusqu'à la mémoire.
+ */
+const PAUSE_MS = Number(process.env.PAUSE_MS ?? 22000)
+
+if (!ANON || !SERVICE) {
+  console.error("Il manque ANON_KEY et/ou SUPABASE_SERVICE_ROLE_KEY (voir l'en-tête du fichier).")
+  process.exit(2)
+}
+
+function sql(requete) {
+  const sortie = execFileSync("scripts/sql.sh", [requete], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 })
+  const reponse = JSON.parse(sortie)
+  if (!reponse.ok) throw new Error(`SQL en échec : ${sortie}`)
+  return reponse.rows ?? []
+}
+
+async function admin(chemin, options = {}) {
+  const r = await fetch(`${URL_PROJET}${chemin}`, {
+    ...options,
+    headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json", ...options.headers },
+  })
+  return { statut: r.status, corps: await r.json().catch(() => null) }
+}
+
+const email = `essai-memoire-${Date.now()}@jarvis-test.local`
+const motDePasse = crypto.randomUUID()
+
+const cree = await admin("/auth/v1/admin/users", {
+  method: "POST",
+  body: JSON.stringify({ email, password: motDePasse, email_confirm: true }),
+})
+if (!cree.corps?.id) { console.error("création impossible", cree); process.exit(1) }
+const userId = cree.corps.id
+
+const connexion = await fetch(`${URL_PROJET}/auth/v1/token?grant_type=password`, {
+  method: "POST",
+  headers: { apikey: ANON, "Content-Type": "application/json" },
+  body: JSON.stringify({ email, password: motDePasse }),
+})
+const jeton = (await connexion.json()).access_token
+if (!jeton) { console.error("connexion impossible"); process.exit(1) }
+
+async function dire(phrase) {
+  const r = await fetch(`${URL_PROJET}/functions/v1/${FONCTION}`, {
+    method: "POST",
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${jeton}`,
+      "Content-Type": "application/json",
+      "x-jarvis-essai": "1",
+    },
+    body: JSON.stringify({
+      transcript: phrase,
+      categories: [], tasks: [], devItems: [], themes: [], documents: [], contacts: [],
+      placeReminders: [], pronunciations: [],
+      widgetConfig: { maxTasks: 3, urgentOnly: false, categoryId: null },
+      todayISO: new Date().toISOString().slice(0, 10),
+    }),
+  })
+  return await r.json()
+}
+
+function compter(champ = "*") {
+  return sql(`select count(${champ})::int as n from souvenirs where user_id = '${userId}'`)[0].n
+}
+
+/**
+ * Attend que la mémorisation ait fini d'écrire : le compte de souvenirs ne
+ * bouge plus depuis trois relevés, et au moins un a été écrit — sinon on
+ * patiente jusqu'à la limite avant de conclure.
+ */
+async function attendreStabilisation() {
+  const debut = Date.now()
+  let precedent = -1
+  let immobile = 0
+  while (Date.now() - debut < ATTENTE_MAX_MS) {
+    await new Promise((r) => setTimeout(r, 6000))
+    const n = compter()
+    process.stdout.write(`\r  ${Math.round((Date.now() - debut) / 1000)} s — ${n} souvenir(s) écrit(s)   `)
+    immobile = n === precedent ? immobile + 1 : 0
+    precedent = n
+    if (Date.now() - debut < ATTENTE_MIN_MS) continue
+    if (n > 0 && immobile >= 3) break
+  }
+  console.log("")
+}
+
+let echecs = 0
+const verifier = (nom, ok, detail = "") => {
+  if (!ok) echecs++
+  console.log(`${ok ? "OK  " : "ÉCHEC"} ${nom}${ok ? "" : `\n      ${detail}`}`)
+}
+
+/**
+ * Le vrai cas de Raphaël, transposé : la même information redite trois fois,
+ * comme le 3 sept. 2026 à 07:56 où trois souvenirs quasi identiques sur la
+ * boutique Fripouille ont été écrits en 38 secondes.
+ */
+const REDITES = [
+  "Pour info, mon associé sur le dossier de la tour Gamma s'appelle Ovadia.",
+  "Sur le dossier de la tour Gamma, c'est Ovadia mon associé.",
+  "Mon associé pour la tour Gamma, c'est Ovadia.",
+]
+
+for (const phrase of REDITES) {
+  const r = await dire(phrase)
+  if (r.error) { console.error(`erreur serveur sur « ${phrase} » : ${r.error}`); break }
+  await new Promise((r) => setTimeout(r, PAUSE_MS))
+}
+
+console.log("Attente de la mémorisation (tâche de fond) :")
+await attendreStabilisation()
+
+const vivants = sql(
+  `select id, contenu, categorie, perime_at, (updated_at > created_at + interval '1 second') as retouche
+   from souvenirs where user_id = '${userId}' and perime_at is null order by created_at`,
+)
+const tous = compter()
+
+console.log(`\n${tous} souvenir(s) écrit(s), ${vivants.length} vivant(s) :`)
+for (const s of vivants) console.log(`  - (${s.categorie}) ${s.contenu}`)
+
+verifier(
+  "la mémoire a bien tourné (au moins un souvenir retenu)",
+  vivants.length >= 1,
+  "aucun souvenir : soit le modèle de mémoire ne répond plus, soit l'extraction est cassée — " +
+    "dans les deux cas le contrôle des doublons ci-dessous ne prouve rien",
+)
+
+// LE contrôle : plus aucune paire de souvenirs vivants au-dessus des seuils.
+// Les seuils sont recopiés de dedoublonnage.ts ; s'ils y changent, ils
+// changent ici (le contrôle hors ligne, lui, vérifie qu'ils restent sensés).
+const doublons = vivants.length < 2 ? [] : sql(
+  `select a.contenu as a, b.contenu as b, round((1 - (a.embedding operator(extensions.<=>) b.embedding))::numeric, 3) as prox
+   from souvenirs a join souvenirs b on a.id < b.id
+   where a.user_id = '${userId}' and b.user_id = '${userId}'
+     and a.perime_at is null and b.perime_at is null
+     and 1 - (a.embedding operator(extensions.<=>) b.embedding) >= 0.95`,
+)
+
+verifier(
+  "trois fois la même information ne laissent pas trois souvenirs",
+  doublons.length === 0,
+  doublons.map((d) => `  cos ${d.prox} : « ${d.a} » ≈ « ${d.b} »`).join("\n"),
+)
+
+verifier(
+  "l'information a été retenue une fois, pas zéro",
+  vivants.some((s) => /ovadia/i.test(s.contenu)),
+  `retenu : ${JSON.stringify(vivants.map((s) => s.contenu))}`,
+)
+
+// LA preuve que le dédoublonnage a vraiment tourné, et pas que le modèle a
+// simplement sauté les redites : `ranger()` touche `updated_at` quand il
+// fusionne, et rien d'autre ne le touche. Sans ce contrôle, le test passait
+// au vert en n'ayant rien vérifié du tout.
+verifier(
+  "une redite a bien été fondue dans le souvenir existant (updated_at retouché)",
+  vivants.some((s) => s.retouche === true),
+  "aucun souvenir retouché : les redites n'ont pas atteint la mémoire (429 du " +
+    "modèle ? augmente PAUSE_MS) — le contrôle des doublons ne prouve alors rien",
+)
+
+// Un chiffre qui change met à jour au lieu d'empiler : l'ancien est périmé.
+await dire("Le loyer de la tour Gamma est de 4000 shekels par mois.")
+await new Promise((r) => setTimeout(r, PAUSE_MS))
+await dire("Correction, le loyer de la tour Gamma est de 4500 shekels par mois.")
+await attendreStabilisation()
+
+const loyers = sql(
+  `select contenu, perime_at from souvenirs where user_id = '${userId}' and contenu ilike '%loyer%' order by created_at`,
+)
+console.log(`\n${loyers.length} souvenir(s) sur le loyer :`)
+for (const s of loyers) console.log(`  - ${s.perime_at ? "(périmé) " : ""}${s.contenu}`)
+
+if (loyers.length >= 2) {
+  verifier(
+    "un montant corrigé périme l'ancien souvenir au lieu de laisser les deux vivants",
+    loyers.filter((s) => !s.perime_at).length === 1,
+    "les deux montants restent vivants : Jarvis pourrait ressortir l'ancien",
+  )
+} else {
+  console.log("      (le modèle n'a retenu qu'un seul souvenir de loyer : rien à départager ici)")
+}
+
+// ---------------------------------------------------------------------------
+// Retrouver une CONVERSATION passée, pas seulement un fait (chantier caa54df2).
+//
+// On choisit exprès un échange dont la consigne d'extraction dit qu'il ne doit
+// PAS devenir un souvenir (« les questions de culture générale et leurs
+// réponses »). Si Jarvis sait quand même y revenir, c'est que le mot-à-mot a
+// bien été retrouvé — et pas un fait retenu par ailleurs.
+// ---------------------------------------------------------------------------
+
+const QUESTION_CULTURE = "Explique-moi en deux mots ce qu'est le grès cérame pleine masse."
+const RAPPEL = "Tu te souviens, on avait parlé de quoi à propos du grès cérame ?"
+
+await dire(QUESTION_CULTURE)
+await new Promise((r) => setTimeout(r, PAUSE_MS))
+
+const empreintes = sql(
+  `select count(*)::int as n from echanges where user_id = '${userId}' and embedding is not null`,
+)[0].n
+verifier(
+  "l'échange est enregistré avec son empreinte, donc retrouvable",
+  empreintes >= 1,
+  "aucune empreinte : la recherche par le sens dans les conversations ne trouvera jamais rien",
+)
+
+const reponseRappel = await dire(RAPPEL)
+const messageRappel = (reponseRappel.actions ?? []).map((x) => x.message ?? "").join(" ")
+await new Promise((r) => setTimeout(r, PAUSE_MS))
+
+// Preuve côté base : la question de rappel, une fois enregistrée avec sa
+// propre empreinte, retrouve bien l'échange précédent au-dessus du seuil de
+// chercher_echanges (0,75). Requête équivalente à la fonction SQL, avec
+// l'utilisateur en clair — la fonction, elle, s'appuie sur auth.uid(), que la
+// clé de service ne renseigne pas.
+const retrouves = sql(
+  `select a.transcript as trouve,
+          round((1 - (a.embedding operator(extensions.<=>) b.embedding))::numeric, 3) as prox
+   from echanges a, echanges b
+   where a.user_id = '${userId}' and b.user_id = '${userId}'
+     and b.transcript = $q$${RAPPEL}$q$
+     and a.transcript = $q$${QUESTION_CULTURE}$q$
+     and a.embedding is not null and b.embedding is not null`,
+)
+console.log(`\nProximité entre la question de rappel et l'échange visé : ${retrouves[0]?.prox ?? "—"}`)
+verifier(
+  "la question de rappel retrouve l'échange passé au-dessus du seuil (0,75)",
+  retrouves.length === 1 && Number(retrouves[0].prox) > 0.75,
+  retrouves.length
+    ? `proximité ${retrouves[0].prox} : sous le seuil, chercher_echanges ne le remonterait pas`
+    : "les deux échanges n'ont pas tous les deux leur empreinte",
+)
+
+const souvenirCulture = sql(
+  `select count(*)::int as n from souvenirs where user_id = '${userId}' and contenu ilike '%cérame%'`,
+)[0].n
+console.log(`Réponse de Jarvis au rappel : « ${messageRappel.slice(0, 300)} »`)
+if (souvenirCulture === 0) {
+  verifier(
+    "Jarvis sait revenir sur la conversation, sans qu'aucun souvenir ne le lui souffle",
+    /c[eé]rame|carrelage|gr[eè]s/i.test(messageRappel),
+    "il ne cite pas le sujet : le mot-à-mot n'est pas arrivé jusqu'au modèle",
+  )
+} else {
+  console.log(
+    "      (un souvenir sur le grès cérame a été créé : la réponse pourrait venir de là, " +
+      "le contrôle décisif reste celui de la proximité ci-dessus)",
+  )
+}
+
+await admin(`/auth/v1/admin/users/${userId}`, { method: "DELETE" })
+const restes = sql(`select count(*)::int as n from souvenirs where user_id = '${userId}'`)
+verifier("l'utilisateur de test et ses souvenirs sont bien supprimés", restes[0].n === 0, `${restes[0].n} restant(s)`)
+
+console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
+process.exit(echecs === 0 ? 0 : 1)

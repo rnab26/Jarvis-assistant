@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
 import { memoriser, rappelerSouvenirs } from "./memoire.ts"
+import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
 import { appelerGemini, phrasePourEchec } from "../_shared/gemini.ts"
 
 const corsHeaders = {
@@ -544,6 +545,7 @@ Quand la phrase COMMENCE par une demande de note ("ajoute une tâche", "rajoute 
 Pour send_message et call_contact : résous contact_id depuis la liste de contacts fournie, par nom approchant. Si le contact existe mais n'a pas de numéro (champ phone vide) et que l'utilisateur n'en a pas dicté un, utilise quand même send_message : WhatsApp demandera à qui envoyer. Pour call_contact en revanche, sans numéro l'appel est impossible : renvoie une action clarify qui demande le numéro de la personne.
 Ces actions préparent le geste sans l'accomplir : le message s'affiche prêt à partir, l'appel est composé, et c'est l'utilisateur qui appuie. Dis-le simplement dans ta réponse ("je te l'ai préparé, tu n'as plus qu'à envoyer"), sans t'en excuser ni t'étendre dessus.
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
+${CONSIGNE_ENVIRONNEMENT}
 Réponds toujours en français dans le champ message.`
 
 

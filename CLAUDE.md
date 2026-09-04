@@ -438,9 +438,24 @@ concernée** ; une fonction jetable de dix lignes déployée puis supprimée suf
 (et garde la clé côté Supabase, là où le classificateur de permissions ne
 bloque pas — il refuse toute commande shell qui porte un secret en clair).
 
-Les quatre seaux en place, chacun essayé pour de vrai avant d'être écrit :
-principal `gemini-3.1-flash-lite`, secours `gemini-3.5-flash` puis
-`gemini-3.6-flash`, mémoire `gemini-3.7-flash`.
+Les cinq seaux en place, chacun essayé pour de vrai avant d'être écrit :
+commande — principal `gemini-3.1-flash-lite`, secours `gemini-3.5-flash` puis
+`gemini-3.6-flash` ; mémoire — principal `gemini-3.5-flash-lite`, secours
+`gemini-3.7-flash`. La mémoire ne touche JAMAIS aux modèles de la commande :
+c'est ce qui a rendu Jarvis muet le 3 sept.
+
+### Un modèle peut aussi être plafonné à vingt requêtes par jour
+
+Découvert le 4 sept. 2026 en essayant de vérifier le dédoublonnage : la
+mémoire n'écrivait plus rien, et les journaux disaient pourquoi —
+`quota {"modele":"gemini-3.7-flash","id":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","limite":"20"}`.
+Vingt mémorisations par jour et par projet, puis plus rien, **en silence**, la
+mémoire étant muette par construction. Personne ne l'aurait vu.
+
+Un modèle qui répond n'est donc pas un modèle utilisable : regarde la ligne
+`quota` des journaux de la fonction après un vrai essai, elle donne le plafond
+réel. Un `flash` n'a pas du tout le même plafond qu'un `flash-lite` — c'est ce
+qui a fait remettre la mémoire sur `gemini-3.5-flash-lite`.
 
 Et dans `_shared/gemini.ts`, `STATUTS_CHANGER_DE_MODELE` vaut **404, 429, 503**
 — trois façons de dire « ce modèle-là ne répond pas », toutes les trois
@@ -577,6 +592,65 @@ La CI a les vraies valeurs. Et le typecheck qui compte est celui de la CI,
 `npx tsc --noEmit` à la racine ne vérifie PAS l'app et dit « OK » à tort
 (constaté le 4 sept. : CI rouge sur une erreur qu'il n'avait pas vue).
 
+## La mémoire longue durée : ce qu'elle retient, et ce qu'elle ne redit pas deux fois
+
+Trois pièces, toutes dans `supabase/functions/voice-command/` :
+
+- `memoire.ts` — l'extraction des faits, le rappel, et l'écriture.
+- `dedoublonnage.ts` — la DÉCISION : ce fait existe-t-il déjà ? Sans dépendance
+  Deno, exprès, pour se vérifier sous Node hors ligne.
+- migrations `0006_memoire_longue_duree.sql` (souvenirs) et
+  `0018_echanges_recherche.sql` (recherche dans le mot-à-mot).
+
+**Deux mesures, jamais une seule, pour dire « c'est le même fait ».** Mesuré le
+4 sept. 2026 sur les 21 souvenirs réels de Raphaël, toutes les paires : avec
+gte-small, deux phrases françaises sans le moindre rapport (« Raphaël est
+marié » / « une boutique appelée Fripouille à Hipouy ») sont à **0,907** de
+proximité. Un seuil cosinus seul, assez haut pour être sûr, ne dédoublonnerait
+plus rien. Les seuils retenus — proximité ≥ 0,95 **ET** recouvrement lexical
+≥ 0,40 — laissent une marge des deux côtés : vrais doublons à 0,958-0,978 /
+0,44-0,50, faux ami le plus proche à 0,938 / 0,33. `verifier-dedoublonnage.ts`
+protège cette marge ; ne la resserre pas sans refaire la mesure.
+
+**Ne fusionne jamais deux sujets qui se ressemblent.** Le garde-fou des noms
+propres (`nomsPropres`) empêche « villa Dan » et « villa Ben » de n'en faire
+qu'une, même à 0,995 de proximité. Un nom propre présent d'un seul côté n'est
+qu'une précision et fusionne ; deux noms propres mutuellement exclusifs, non.
+
+**Un chiffre qui change n'est pas un doublon.** L'ancien souvenir est marqué
+`perime_at`, jamais effacé : Jarvis doit pouvoir dire « avant c'était 4 000, tu
+m'as dit 4 500 depuis ». Rien n'est jamais supprimé par la mémoire — l'onglet
+Mémoire montre les périmés barrés, avec un bouton pour les réactiver.
+
+Le rattrapage sur l'existant se relance à volonté, et ne périme que des
+doublons (aucun `delete`) :
+
+```bash
+node --experimental-strip-types scripts/nettoyer-souvenirs.ts             # montre
+node --experimental-strip-types scripts/nettoyer-souvenirs.ts --appliquer # écrit
+```
+
+**Retrouver une conversation, pas seulement un fait.** Depuis la migration
+0018, `echanges` porte une empreinte et `chercher_echanges()` cherche dedans
+par le sens : « on avait parlé de quoi pour la villa Dan ? » trouve enfin sa
+réponse. Le seuil y est plus haut (0,75) que pour les souvenirs, pour la même
+raison qu'au-dessus. La purge à sept jours ne bouge pas, c'est le choix de
+Raphaël. Les échanges antérieurs reçoivent leur empreinte tout seuls, quelques
+lignes à chaque phrase (`rattraperEmpreintes`) — pas de script à lancer.
+
+## Ce que Jarvis sait de sa propre application
+
+`supabase/functions/_shared/environnement.ts` — **une seule source**, importée
+par `voice-command` ET `live-jeton`. Raphaël, 4 sept. : « où est la fenêtre de
+question où je dois répondre ? » → « je n'ai pas accès à l'interface de
+l'application ».
+
+**Quand un onglet, une carte de Paramètres ou une section du cockpit change de
+nom, apparaît ou disparaît, corrige ce fichier dans le même travail**, et
+redéploie les deux fonctions — sinon Jarvis envoie Raphaël vers un bouton qui
+n'existe plus. Quatre contrôles de `verifier-commande-vocale.mjs` (« il sait
+où… ») disent si le texte arrive bien jusqu'au modèle.
+
 ## Les vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
@@ -592,6 +666,9 @@ node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « termi
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
+node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
+ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
+node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
 node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau

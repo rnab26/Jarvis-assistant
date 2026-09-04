@@ -6,6 +6,7 @@ import "@/index.css"
 import { Toaster } from "@/components/ui/sonner"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
+import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
 import type {
   DevItem,
   DevSection,
@@ -88,10 +89,31 @@ const SECTIONS = [
   section("Entraînement", 3),
 ]
 
+/** Une réservation en cours, et une qui a expiré : les deux cas de la carte
+ * « Qui travaille en ce moment ». */
+function reserve(item: DevItem, session: string, minutes: number): DevItem {
+  return {
+    ...item,
+    claimed_by: session,
+    claimed_at: new Date(Date.now() - 60 * 60000).toISOString(),
+    claim_expires_at: new Date(Date.now() + minutes * 60000).toISOString(),
+  }
+}
+
 const CHANTIERS = [
-  chantier("Le micro se coupe en pleine phrase", "Voix et écoute", "in_progress"),
+  reserve(
+    chantier("Le micro se coupe en pleine phrase", "Voix et écoute", "in_progress"),
+    "claude/voix-et-ecoute",
+    45,
+  ),
   chantier("Réveil vocal en arrière-plan", "Voix et écoute"),
-  chantier("Widget d'écran d'accueil", "Le téléphone"),
+  reserve(chantier("Widget d'écran d'accueil", "Le téléphone"), "claude/telephone-arretee", -120),
+  // Une archive récente : la liste des archivées et le compte « livrés cette
+  // semaine » n'étaient couverts par rien.
+  {
+    ...chantier("Le badge de version, livré", "Le téléphone", "done"),
+    archived_at: new Date(Date.now() - 2 * 24 * 3600_000).toISOString(),
+  },
   chantier("Un chantier dicté trop vite", null),
 ]
 
@@ -137,6 +159,16 @@ function BancDuCockpit() {
           « Annuler » après une action groupée. Sans lui, le banc verrait
           l'action réussir et manquerait la moitié qui compte. */}
       <Toaster />
+      <SessionsAuTravail
+        devItems={devItems}
+        onLiberer={async (id) => {
+          setDevItems((items) =>
+            items.map((i) =>
+              i.id === id ? { ...i, claimed_by: null, claimed_at: null, claim_expires_at: null } : i,
+            ),
+          )
+        }}
+      />
       <ErreursJarvis
         erreursState={erreursState}
         devItems={devItems}

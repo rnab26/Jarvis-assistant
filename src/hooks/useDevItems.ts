@@ -199,6 +199,28 @@ export function useDevItems(userId: string | undefined) {
     })
   }
 
+  /**
+   * Libère la réservation d'un chantier qu'une session a laissée derrière
+   * elle. Une session interrompue ne libère rien : sa réservation expire, mais
+   * le chantier continue d'afficher « Prise par … » jusqu'à la date, et on
+   * croit qu'il est traité alors que personne n'est dessus.
+   */
+  async function libererReservation(id: string) {
+    await withErrorToast("Impossible de libérer le chantier", async () => {
+      const { error } = await supabase
+        .from("dev_items")
+        .update({
+          claimed_by: null,
+          claimed_at: null,
+          claim_expires_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
+  }
+
   async function unarchiveDevItem(id: string) {
     await withErrorToast("Impossible de désarchiver le chantier", async () => {
       const { error } = await supabase
@@ -220,6 +242,7 @@ export function useDevItems(userId: string | undefined) {
     deleteDevItem,
     archiveDevItem,
     unarchiveDevItem,
+    libererReservation,
     updateManyDevItems,
     archiveManyDevItems,
     deleteManyDevItems,
