@@ -114,6 +114,21 @@ function lireQuota(texte: string): Echec["quota"] {
  */
 const STATUTS_A_REESSAYER = new Set([408, 409, 429, 500, 502, 503, 504])
 
+/**
+ * Statuts qui visent CE modèle-là, et pour lesquels changer de modèle rend la
+ * main tout de suite là où insister ne donne rien.
+ *
+ * - 429 : le plafond gratuit est compté par modèle, le suivant a le sien.
+ * - 503 « This model is currently experiencing high demand » : c'est la
+ *   capacité de ce modèle chez Google qui manque, pas la nôtre. Constaté le
+ *   4 sept. 2026 : les DIX contrôles de scripts/verifier-commande-vocale.mjs
+ *   sont tombés d'affilée là-dessus, sur une clé au quota intact — et Jarvis
+ *   répondait « Le modèle est débordé » à Raphaël au même moment. On rejouait
+ *   trois fois le modèle saturé, puis on abandonnait sans jamais essayer les
+ *   secours, qui eux répondaient.
+ */
+const STATUTS_CHANGER_DE_MODELE = new Set([429, 503])
+
 /** Trois essais au plus, ~15 s dans le pire des cas : l'app abandonne à 25 s. */
 const ESSAIS_MAX = 3
 
@@ -158,9 +173,10 @@ export async function appelerGemini(appel: AppelModele): Promise<ResultatModele>
   for (const modele of candidats) {
     dernierResultat = await tenterUnModele(appel, modele)
     if (!dernierResultat.echec) return { ...dernierResultat, modele }
-    // Quota de la minute atteint sur CE modèle : le suivant a le sien. Toute
-    // autre erreur se reproduirait à l'identique, on s'arrête là.
-    if (dernierResultat.echec.statut !== 429) break
+    // Quota atteint ou modèle saturé chez Google : le suivant a son propre
+    // seau et sa propre capacité. Toute autre erreur (400, 403…) vient de la
+    // requête ou de la clé et se reproduirait à l'identique, on s'arrête là.
+    if (!STATUTS_CHANGER_DE_MODELE.has(dernierResultat.echec.statut)) break
   }
 
   return dernierResultat
@@ -223,10 +239,13 @@ async function tenterUnModele(appel: AppelModele, modele: string): Promise<Resul
       }
 
       const texte = await reponse.text()
-      // 429 : inutile d'attendre ici, l'appelant bascule sur un autre modèle,
-      // dont le quota est distinct. Les autres pannes passagères, elles,
-      // valent la peine d'être rejouées sur le même modèle.
-      const passager = reponse.status !== 429 && STATUTS_A_REESSAYER.has(reponse.status)
+      // Inutile d'attendre ici quand l'appelant va changer de modèle : les
+      // trois essais seraient dépensés sur celui qui vient de refuser, et le
+      // budget de 25 s de l'app serait mangé avant d'avoir essayé les autres.
+      // Les autres pannes passagères, elles, valent la peine d'être rejouées
+      // sur le même modèle.
+      const passager =
+        !STATUTS_CHANGER_DE_MODELE.has(reponse.status) && STATUTS_A_REESSAYER.has(reponse.status)
       const quota = reponse.status === 429 ? lireQuota(texte) : undefined
       dernier = { statut: reponse.status, texte, passager, quota }
 
