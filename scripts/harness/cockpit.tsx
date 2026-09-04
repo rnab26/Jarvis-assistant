@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
+import { Toaster } from "@/components/ui/sonner"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import type {
@@ -132,6 +133,10 @@ function BancDuCockpit() {
 
   return (
     <div className="flex flex-col gap-4 p-3">
+      {/* Le même Toaster que l'app : c'est lui qui porte le bouton
+          « Annuler » après une action groupée. Sans lui, le banc verrait
+          l'action réussir et manquerait la moitié qui compte. */}
+      <Toaster />
       <ErreursJarvis
         erreursState={erreursState}
         devItems={devItems}
@@ -141,12 +146,39 @@ function BancDuCockpit() {
       <CockpitBoard
         devItems={devItems}
         sectionsState={sectionsState}
-        onUpdate={rien}
+        onUpdate={async (id, patch) => {
+          setDevItems((items) => items.map((i) => (i.id === id ? { ...i, ...patch } : i)))
+        }}
         onDelete={async (id) => {
           setDevItems((items) => items.filter((i) => i.id !== id))
         }}
         onArchive={rien}
         onUnarchive={rien}
+        onUpdateMany={async (ids, patch) => {
+          setDevItems((items) =>
+            items.map((i) => (ids.includes(i.id) ? { ...i, ...patch } : i)),
+          )
+        }}
+        onArchiveMany={async (ids) => {
+          setDevItems((items) =>
+            items.map((i) =>
+              ids.includes(i.id)
+                ? { ...i, status: "done", archived_at: "2026-09-04T12:00:00Z" }
+                : i,
+            ),
+          )
+        }}
+        onDeleteMany={async (ids) => {
+          setDevItems((items) => items.filter((i) => !ids.includes(i.id)))
+        }}
+        onRestore={async (etats) => {
+          setDevItems((items) =>
+            items.map((i) => {
+              const etat = etats.find((e) => e.id === i.id)
+              return etat ? { ...i, ...etat } : i
+            }),
+          )
+        }}
       />
     </div>
   )

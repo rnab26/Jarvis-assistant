@@ -95,13 +95,19 @@ try {
   )
   verifier("« À classer » recueille le chantier non classé", await visible("À classer"))
 
-  await page.getByRole("button", { name: /Voix et écoute/ }).first().click()
+  // L'en-tête d'une section porte « — N restants » ; la puce du filtre, elle,
+  // ne porte que le nom et son compteur. Viser l'un pour l'autre ferait passer
+  // un contrôle qui ne vérifie rien (arrivé en écrivant ce script).
+  const enTete = (nom) => page.getByRole("button", { name: new RegExp(`${nom} —`) }).first()
+  const puce = (nom) => page.getByRole("button", { name: new RegExp(`^${nom} \\d`) }).first()
+
+  await enTete("Voix et écoute").click()
   await pause(150)
   verifier(
     "appuyer sur la section la déplie",
     await page.getByText("Le micro se coupe en pleine phrase").isVisible(),
   )
-  await page.getByRole("button", { name: /Voix et écoute/ }).first().click()
+  await enTete("Voix et écoute").click()
   await pause(150)
   verifier(
     "et un second appui la replie",
@@ -129,18 +135,22 @@ try {
   )
 
   // ── Le filtre par section, d'un seul geste ──
-  await page.getByRole("button", { name: /^Le téléphone/ }).first().click()
+  await puce("Le téléphone").click()
   await pause(200)
   verifier(
     "la puce d'une section ne laisse qu'elle",
     (await page.getByText("Widget d'écran d'accueil").isVisible()) &&
       !(await page.getByText("Le micro se coupe en pleine phrase").isVisible()),
   )
-  await page.getByRole("button", { name: /^Le téléphone/ }).first().click()
+  await puce("Le téléphone").click()
   await pause(200)
+  verifier(
+    "et un second appui sur la puce rend toute la liste",
+    await visible("Voix et écoute —"),
+  )
 
   // ── La suppression demande avant ──
-  await page.getByRole("button", { name: /Voix et écoute/ }).first().click()
+  await enTete("Voix et écoute").click()
   await pause(150)
   await page.getByRole("button", { name: "Supprimer" }).first().click()
   await pause(250)
@@ -188,6 +198,75 @@ try {
   )
   verifier("les erreurs sont comptées par type", await visible("Compréhension"))
   verifier("une erreur répétée montre son compteur", await visible("×3"))
+
+  // ── Choisir plusieurs chantiers et les traiter ensemble ──
+  await page.getByRole("button", { name: "Choisir" }).first().click()
+  await pause(250)
+  verifier("le mode « choisir » s'annonce", await visible("Touche les chantiers à traiter ensemble"))
+  verifier(
+    "et déplie tout : on ne coche pas ce qu'on ne voit pas",
+    await page.getByText("Widget d'écran d'accueil").isVisible(),
+  )
+
+  await page.getByRole("button", { name: "Tout ce qui est affiché" }).first().click()
+  await pause(250)
+  verifier(
+    "« tout ce qui est affiché » coche ce qui est visible, pas la base entière",
+    await visible("3 chantiers choisis"),
+    "le nombre coché ne correspond pas aux chantiers affichés",
+  )
+
+  await page.getByRole("checkbox", { name: /Widget d'écran d'accueil/ }).click()
+  await pause(200)
+  verifier("décocher un chantier se voit tout de suite", await visible("2 chantiers choisis"))
+
+  verifier(
+    "la barre d'actions dit sur combien de chantiers elle agit",
+    await visible("2 chantiers — les traiter ensemble"),
+  )
+
+  await page.getByRole("button", { name: "→ Le téléphone" }).first().click()
+  await pause(500)
+  verifier(
+    "ranger un lot dans une section marche d'un geste",
+    await visible("2 chantiers rangés dans « Le téléphone »"),
+  )
+  // Le bouton du bandeau, pas celui d'une fenêtre de confirmation : viser
+  // « Annuler » au hasard dans la page attrape l'un pour l'autre.
+  const annulerDuBandeau = page.locator("[data-sonner-toast] button", { hasText: "Annuler" })
+  verifier("et propose de l'annuler", await annulerDuBandeau.first().isVisible())
+
+  await annulerDuBandeau.first().click()
+  await pause(700)
+  // Les en-têtes portent le compte : c'est ce qu'on lit pour savoir où sont
+  // les chantiers, sans avoir à déplier (et sans dépendre de ce qui était
+  // déplié avant, ce qui rendrait ce contrôle faux une fois sur deux).
+  verifier(
+    "annuler remet les chantiers dans leur section d'origine",
+    (await visible("Voix et écoute — 1 restant")) && (await visible("Le téléphone — 1 restant")),
+    "les chantiers sont restés dans « Le téléphone »",
+  )
+  await page.getByRole("button", { name: "Terminer" }).first().click()
+  await pause(250)
+
+  // ── Changer statut et priorité sans ouvrir de fenêtre ──
+  // La section « À classer » n'a jamais été dépliée jusqu'ici : on part donc
+  // d'un état connu, sans dépendre des appuis précédents.
+  await enTete("À classer").click()
+  await pause(250)
+  await page.getByText("Un chantier dicté trop vite").click()
+  await pause(250)
+  verifier(
+    "la ligne dépliée propose statut, priorité et section",
+    (await page.getByRole("button", { name: "Haute", exact: true }).count()) > 0,
+    "il faut encore ouvrir le formulaire pour changer une priorité",
+  )
+  await page.getByRole("button", { name: "Haute", exact: true }).first().click()
+  await pause(400)
+  verifier(
+    "changer la priorité depuis la ligne, sans formulaire ni enregistrement",
+    await page.getByRole("button", { name: "Haute", exact: true }).first().getAttribute("aria-pressed") === "true",
+  )
 
   // ── Rien ne déborde en largeur ──
   const debordement = await page.evaluate(

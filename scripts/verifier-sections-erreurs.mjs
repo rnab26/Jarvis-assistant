@@ -341,6 +341,67 @@ try {
     encore.corps === e1.corps,
     "les occurrences suivantes seraient reparties sur une nouvelle ligne",
   )
+  // ─────────────────────── Les actions groupées ───────────────────────
+  // Un appel par chantier ferait vingt allers-retours pour reclasser un thème,
+  // et laisserait le travail à moitié fait si la connexion lâche au milieu.
+  const lot = await (
+    await commeUtilisateur(a.jeton, "dev_items", {
+      method: "POST",
+      body: JSON.stringify([
+        { user_id: a.id, title: "Lot 1", theme: "Fonctionnalités", status: "todo" },
+        { user_id: a.id, title: "Lot 2", theme: "Fonctionnalités", status: "in_progress" },
+        { user_id: a.id, title: "Lot 3", theme: null, status: "todo" },
+      ]),
+    })
+  ).json()
+  const idsLot = lot.map((c) => c.id)
+  verifier("créer un lot de trois chantiers", idsLot.length === 3, JSON.stringify(lot))
+
+  const rangementGroupe = await commeUtilisateur(
+    a.jeton,
+    `dev_items?id=in.(${idsLot.join(",")})`,
+    { method: "PATCH", body: JSON.stringify({ theme: "Entraînement de Jarvis" }) },
+  )
+  const corpsRangement = rangementGroupe.ok ? await rangementGroupe.json() : []
+  verifier(
+    "une seule requête range les trois",
+    rangementGroupe.ok && corpsRangement.length === 3,
+    `HTTP ${rangementGroupe.status}, ${corpsRangement.length} lignes`,
+  )
+
+  // Le « Annuler » du bandeau : les chantiers n'avaient pas tous le même
+  // statut, donc une requête par état d'origine — pas une valeur commune.
+  await commeUtilisateur(a.jeton, `dev_items?id=in.(${idsLot[0]},${idsLot[2]})`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "todo", theme: null }),
+  })
+  await commeUtilisateur(a.jeton, `dev_items?id=eq.${idsLot[1]}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "in_progress", theme: "Fonctionnalités" }),
+  })
+  const remis = await lire(
+    a.jeton,
+    `dev_items?id=in.(${idsLot.join(",")})&select=title,status,theme&order=title`,
+  )
+  verifier(
+    "chaque chantier retrouve SON état d'origine, pas un état commun",
+    remis[0]?.status === "todo" &&
+      remis[1]?.status === "in_progress" &&
+      remis[1]?.theme === "Fonctionnalités" &&
+      remis[2]?.theme === null,
+    JSON.stringify(remis),
+  )
+
+  const lotVoleParB = await commeUtilisateur(b.jeton, `dev_items?id=in.(${idsLot.join(",")})`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "done" }),
+  })
+  const corpsVol = lotVoleParB.ok ? await lotVoleParB.json() : []
+  verifier(
+    "une action groupée ne franchit pas la frontière entre deux comptes",
+    !lotVoleParB.ok || corpsVol.length === 0,
+    `HTTP ${lotVoleParB.status}, ${JSON.stringify(corpsVol)}`,
+  )
 } finally {
   await admin(`/auth/v1/admin/users/${a.id}`, { method: "DELETE" })
   await admin(`/auth/v1/admin/users/${b.id}`, { method: "DELETE" })
