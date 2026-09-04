@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { Nouveautes } from "@/components/settings/Nouveautes"
+import { Section } from "@/components/settings/Section"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -218,26 +220,6 @@ const APK_DOWNLOAD_URL =
 
 /** Les notes archivées finissent par "Commit <hash>." — même logique que
  * DevItemCard, pour rendre le hash cliquable vers GitHub. */
-function renderNotes(notes: string) {
-  const match = notes.match(/^(.*commit )([0-9a-f]{7,40})(\.?)$/i)
-  if (!match) return notes
-  const [, prefix, hash, suffix] = match
-  return (
-    <>
-      {prefix}
-      <a
-        href={`https://github.com/rnab26/Jarvis-assistant/commit/${hash}`}
-        target="_blank"
-        rel="noreferrer"
-        className="underline"
-      >
-        {hash}
-      </a>
-      {suffix}
-    </>
-  )
-}
-
 const UPDATE_STATUS_LABEL = {
   checking: "Vérification...",
   "up-to-date": "À jour",
@@ -443,12 +425,6 @@ function MettreAJour({
           </p>
         )}
 
-        {isNative && status === "update-available" && (
-          <p className="text-sm text-muted-foreground">
-            Après l'installation, reviens ici : si "Version installée" n'a pas changé, c'est que
-            l'installation n'a pas abouti.
-          </p>
-        )}
         {etat === "besoin-permission" && (
           <div className="flex flex-col gap-2 text-sm">
             <p className="text-muted-foreground">
@@ -670,63 +646,22 @@ export function SettingsPage() {
     .sort((a, b) => (b.archived_at! < a.archived_at! ? -1 : 1))
     .slice(0, 5)
 
-  // Trois groupes, et pas une pile.
+  // Six secteurs repliables, tous fermés sauf « L'application ».
   //
-  // « Agencement de la section paramètres qui aujourd'hui met tout en vrac
-  // entre les nouvelles fonctionnalités des nouvelles mises à jour et les
-  // réglages modifiables à la main » — Raphaël, 3 sept. 2026. C'était juste :
-  // la mise à jour, le compte Google et les nouveautés étaient intercalés
-  // entre les réglages, sans rien pour dire ce qui était quoi.
+  // Raphaël, 4 sept. 2026 : « il faut la sectoriser […] pas foutre tous les
+  // paramètres à la chaîne, mélangés dans le désordre ». Un premier essai les
+  // avait groupés en trois blocs, mais tout restait déroulé : il fallait
+  // encore parcourir l'écran entier pour trouver un réglage. Ce qui manquait
+  // n'était pas le regroupement, c'était de pouvoir REFERMER le reste.
   //
-  // Si tu ajoutes une carte ici, mets-la dans un des trois groupes ; une carte
-  // posée entre deux sections recrée exactement le vrac.
+  // « L'application » s'ouvre seule : c'est la seule qu'il consulte pour agir
+  // — voir s'il est à jour. Les autres sont des réglages qu'on pose une fois.
+  //
+  // Une carte ajoutée ici va DANS un secteur. Posée entre deux, elle recrée
+  // exactement la chaîne qu'on vient de défaire.
   return (
-    <div className="flex flex-col gap-6">
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            L'application
-          </h2>
-          <p className="text-xs text-muted-foreground">Sa version, ce qu'elle vient d'apprendre.</p>
-        </div>
-        <MettreAJour
-          status={status}
-          published={published}
-          verifieA={verifieA}
-          recheck={recheck}
-        />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Nouveautés</CardTitle>
-            <CardDescription>Derniers chantiers terminés (depuis le cockpit).</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentChanges.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Rien à afficher pour l'instant.</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {recentChanges.map((item) => (
-                  <li key={item.id} className="text-sm">
-                    <p className="font-medium">{item.title}</p>
-                    {item.notes && (
-                      <p className="text-muted-foreground">{renderNotes(item.notes)}</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Réglages de Jarvis
-          </h2>
-          <p className="text-xs text-muted-foreground">Ce que tu changes toi-même, sans passer par moi.</p>
-        </div>
+    <div className="flex flex-col gap-3">
+      <Section titre="Voix et écoute" resume="Sa voix, le rythme, le mot-clé de réveil" cle="voix">
         <Card>
           <CardHeader>
             <CardTitle>Voix de Jarvis</CardTitle>
@@ -919,7 +854,9 @@ export function SettingsPage() {
             )}
           </CardContent>
         </Card>
+      </Section>
 
+      <Section titre="Tâches et organisation" resume="Widget d'écran d'accueil, rappels de lieu" cle="taches">
         <Card>
           <CardHeader>
             <CardTitle>Widget d'écran d'accueil</CardTitle>
@@ -1016,21 +953,30 @@ export function SettingsPage() {
         </Card>
 
         <RappelsGeolocalises />
+      </Section>
 
+      <Section titre="Ce que Jarvis utilise" resume="Applications par défaut, canal des messages" cle="apps">
         <AppsParDefaut />
+      </Section>
 
+      <Section titre="Apparence" resume="L'image du cœur" cle="apparence">
         <CoeurDeJarvis />
-      </section>
+      </Section>
 
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-            Comptes et connexions
-          </h2>
-          <p className="text-xs text-muted-foreground">Les services branchés à Jarvis.</p>
-        </div>
+      <Section titre="Comptes et connexions" resume="Google" cle="comptes">
         <CompteGoogle />
-      </section>
+      </Section>
+
+      <Section titre="L'application" resume="Version, mise à jour, nouveautés" cle="app" ouverteParDefaut>
+        <MettreAJour
+          status={status}
+          published={published}
+          verifieA={verifieA}
+          recheck={recheck}
+        />
+
+        <Nouveautes items={recentChanges} />
+      </Section>
     </div>
   )
 }
