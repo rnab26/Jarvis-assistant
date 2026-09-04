@@ -56,6 +56,13 @@ jobs:
       - name: Pas deux thèmes pour le même sujet
         run: node --experimental-strip-types scripts/verifier-theme.ts
 
+      # Les seuils du dédoublonnage sont mesurés sur les vraies données : ce
+      # contrôle refuse qu'on les resserre « pour être sûr » (plus rien ne
+      # serait dédoublonné) ou qu'on les desserre « pour en attraper plus »
+      # (deux dossiers distincts finiraient fondus en un).
+      - name: La mémoire ne redit pas trois fois la même chose
+        run: node --experimental-strip-types scripts/verifier-dedoublonnage.ts
+
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
 
