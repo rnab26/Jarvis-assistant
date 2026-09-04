@@ -25,7 +25,20 @@
          La taille et l'ancrage en bas se posent en code (WindowManager,
          AssistOverlayActivity) plutôt qu'ici : un thème seul ne peut pas
          dire "un tiers d'écran en bas". -->
-    <style name="Theme.Jarvis.Assist" parent="Theme.AppCompat.Translucent.NoTitleBar">
+    <!-- Parent : Theme.AppCompat.NoActionBar.
+
+         « Theme.AppCompat.Translucent.NoTitleBar » n'existe pas — AppCompat ne
+         fournit pas de variante translucide. Le lien d'AAPT échouait donc et
+         AUCUNE APK ne se construisait plus (« resource style/... not found »),
+         ce qui bloquait toutes les mises à jour du téléphone, pas seulement
+         l'assistant. Constaté sur la CI le 4 sept. 2026.
+
+         AssistOverlayActivity étend BridgeActivity, donc AppCompatActivity :
+         le parent DOIT rester un thème AppCompat, on ne peut pas basculer sur
+         android:Theme.Translucent.NoTitleBar. Et ce n'est pas nécessaire — la
+         translucidité vient des attributs ci-dessous, que ce style pose
+         lui-même. -->
+    <style name="Theme.Jarvis.Assist" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowNoTitle">true</item>
