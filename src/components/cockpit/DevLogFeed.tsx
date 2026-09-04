@@ -3,7 +3,8 @@ import { useState } from "react"
 import { LoadError } from "@/components/LoadError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Textarea } from "@/components/ui/textarea"
 import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
 import { questionPourRaphael } from "@/lib/journalDestinataire"
@@ -72,15 +73,25 @@ export function DevLogFeed({
   }
 
   return (
-    <Card>
-      <CardHeader className="grid-cols-[1fr_auto] items-center gap-2">
-        <CardTitle className="text-base">Journal de bord</CardTitle>
-        {enAttente > 0 && (
-          <Badge variant="default">
+    // Repliée par défaut, mais son badge reste sur la barre de titre : une
+    // question qui l'attend se voit sans ouvrir. Mesuré le 4 sept. : dépliée,
+    // cette carte à elle seule repoussait le tableau des chantiers de 424
+    // points sur un écran de téléphone.
+    <CarteRepliable
+      ouverteParDefaut={enAttente > 0}
+      titre="Journal de bord"
+      badge={
+        enAttente > 0 ? (
+          <Badge variant="default" className="shrink-0">
             {enAttente} question{enAttente > 1 ? "s" : ""} en attente
           </Badge>
-        )}
-      </CardHeader>
+        ) : (
+          <Badge variant="outline" className="shrink-0">
+            {entries.length}
+          </Badge>
+        )
+      }
+    >
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           {repondreA && (
@@ -172,6 +183,6 @@ export function DevLogFeed({
           </div>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

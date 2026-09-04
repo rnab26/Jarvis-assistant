@@ -166,6 +166,30 @@ Deux règles à ne pas défaire :
 Les corrections écrites dans le registre remontent dans le bloc injecté au
 démarrage de chaque session : c'est par là qu'elles servent à corriger.
 
+### Ce qu'on voit en ouvrant le cockpit, mesuré et pas supposé
+
+Sur un écran de téléphone (390 × 844), les cartes empilées au-dessus du
+tableau faisaient : fenêtre d'envoi 514 points, « Qui travaille » 132, journal
+de bord 424, registre des erreurs 56. Le premier chantier commençait à **1 632
+points du haut** — deux écrans pleins avant d'atteindre le résumé par section,
+celui-là même qui avait été demandé pour ne plus avoir à faire défiler.
+
+Trois changements, et le résumé s'affiche maintenant à 482 points, dans le
+premier écran :
+
+- `CarteRepliable` (`src/components/cockpit/CarteRepliable.tsx`) : les cartes
+  secondaires sont repliées, mais **gardent leur badge sur la barre de titre**
+  — une question en attente, une réservation à libérer se voient sans ouvrir.
+  Elles s'ouvrent d'elles-mêmes quand elles ont quelque chose à dire.
+- La fenêtre d'envoi ne montre le thème, la priorité et le bouton qu'une fois
+  qu'il a écrit quelque chose : sa règle, « une étape à la fois, ne montre pas
+  un contrôle qui appartient à une étape avant qu'elle soit atteinte ».
+- `scripts/verifier-cockpit-web.mjs` monte le cockpit à SA VRAIE TAILLE
+  (`?volume=1` : 83 chantiers, 9 sections) et un jour ordinaire
+  (`&calme=1`) : tout ce qui rend une liste lisible se vérifie sur quatre
+  chantiers et se casse sur quatre-vingts. C'est ce banc-là qui a trouvé les
+  1 632 points ; ne le retire pas en ajoutant une carte au cockpit.
+
 ### Les marqueurs des notes sont visibles dans l'app (`src/lib/marqueurChantier.ts`)
 
 `[À CADRER AVEC RAPHAËL]`, `[LIBRE]`, `[BLOQUÉ PAR : …]`, `[DOUBLON — …]`,

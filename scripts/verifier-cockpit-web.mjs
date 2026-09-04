@@ -128,7 +128,7 @@ try {
   )
   verifier(
     "une réservation expirée est signalée à part, pas comptée comme du travail",
-    (await visible("1 session")) && (await visible("sans le libérer")),
+    (await visible("1 à libérer")) && (await visible("sans le libérer")),
     "un chantier que personne ne traite continuerait d'afficher « Prise par… »",
   )
   await page.getByRole("button", { name: "Libérer" }).first().click()
@@ -189,7 +189,9 @@ try {
     "répondre se fait depuis le chantier, sans passer par le journal",
     await visible("Qu'il attende, oui."),
   )
-  await page.getByRole("button", { name: "Marquer traité" }).first().click()
+  // Dans le tableau : le journal de bord, plus haut dans la page, porte le
+  // même bouton, et c'est le sien qu'on marquerait.
+  await tableau.getByRole("button", { name: "Marquer traité" }).first().click()
   await pause(400)
   verifier(
     "et marquer traité fait tomber le compteur de questions en attente",
@@ -433,6 +435,116 @@ try {
     debordement <= 0,
     `${debordement} points de trop — il faudrait faire défiler latéralement`,
   )
+  // ─────────── Le cockpit à sa vraie taille : 83 chantiers, 9 sections ───────────
+  // Tout ce qui rend une liste lisible se vérifie sur quatre chantiers et se
+  // casse sur quatre-vingts.
+  const gros = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  gros.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (volume):", e.message)
+  })
+  await gros.goto(`${BASE}/scripts/harness/cockpit.html?volume=1`)
+  await gros.waitForSelector("text=Voix et écoute")
+  await pause(500)
+
+  const tableauGros = gros.getByRole("region", { name: "Chantiers" })
+
+  verifier(
+    "à 83 chantiers, rien n'est déplié : on voit le résumé, pas la liste",
+    (await tableauGros.getByText(/^Chantier numéro/).count()) === 0,
+    "la liste s'ouvre en entier, ce qui fait une vingtaine d'écrans à faire défiler",
+  )
+
+  const debordementGros = await gros.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  verifier(
+    "et rien ne déborde en largeur malgré neuf sections et six marqueurs",
+    debordementGros <= 0,
+    `${debordementGros} points de trop`,
+  )
+
+  // La barre de filtres est en haut, donc elle mange l'écran avant la liste :
+  // si elle prend plus de la moitié d'un téléphone, on ne voit plus rien.
+  const hauteurFiltres = await gros.evaluate(() => {
+    const region = document.querySelector('[aria-label="Chantiers"]')
+    const carte = region?.firstElementChild
+    return carte ? Math.round(carte.getBoundingClientRect().height) : -1
+  })
+  verifier(
+    "la barre de filtres tient dans la moitié haute de l'écran",
+    hauteurFiltres > 0 && hauteurFiltres < 430,
+    `elle fait ${hauteurFiltres} points de haut sur 844 : le tableau commencerait sous la ligne de flottaison`,
+  )
+
+  // Chercher dans 83 chantiers doit rendre la main tout de suite.
+  const avant = Date.now()
+  await gros.getByLabel("Chercher un chantier").fill("numéro 42")
+  await gros.waitForFunction(
+    () => !!document.body.innerText.match(/1 chantier affiché/),
+    null,
+    { timeout: 3000 },
+  )
+  const delai = Date.now() - avant
+  verifier(
+    "la recherche dans 83 chantiers répond en moins d'une seconde",
+    delai < 1000,
+    `${delai} ms`,
+  )
+  await gros.getByRole("button", { name: "Tout afficher" }).first().click()
+  await pause(300)
+
+  // La sélection multiple à cette échelle : la barre d'actions doit rester
+  // atteignable au pouce, pas repoussée par la liste.
+  await gros.getByRole("button", { name: "Choisir" }).first().click()
+  await pause(400)
+  await gros.getByRole("button", { name: "Tout ce qui est affiché" }).first().click()
+  await pause(500)
+  verifier(
+    // 83 chantiers dont un quart archivés : 63 actifs.
+    "« tout ce qui est affiché » coche les 63 chantiers actifs, et pas les archivés",
+    await gros.getByText("63 chantiers choisis").isVisible(),
+    (await gros.locator("body").innerText()).match(/\d+ chantiers? choisis?/)?.[0] ?? "aucun compte",
+  )
+  const barreVisible = await gros.evaluate(() => {
+    const bandeau = [...document.querySelectorAll("p")].find((p) =>
+      /les traiter ensemble/.test(p.textContent ?? ""),
+    )
+    if (!bandeau) return null
+    const r = bandeau.getBoundingClientRect()
+    return { haut: Math.round(r.top), dansLEcran: r.top >= 0 && r.top <= window.innerHeight }
+  })
+  verifier(
+    "et la barre d'actions reste à l'écran, collée en bas",
+    barreVisible?.dansLEcran === true,
+    `bandeau à ${barreVisible?.haut} points — hors de l'écran, il faudrait faire défiler 60 chantiers pour l'atteindre`,
+  )
+  // ── Le cockpit un jour ordinaire : rien qui appelle une action ──
+  // C'est l'état dans lequel il l'ouvre le plus souvent. Le résumé par
+  // section — ce qu'il a demandé pour ne plus avoir à faire défiler — doit
+  // s'y voir sans faire défiler, justement.
+  const calme = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  calme.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (calme):", e.message)
+  })
+  await calme.goto(`${BASE}/scripts/harness/cockpit.html?volume=1&calme=1`)
+  await calme.waitForSelector("text=Voix et écoute")
+  await pause(500)
+
+  const hautDuResume = await calme.evaluate(() => {
+    const region = document.querySelector('[aria-label="Chantiers"]')
+    return region ? Math.round(region.getBoundingClientRect().top) : -1
+  })
+  verifier(
+    "un jour ordinaire, le résumé des chantiers s'affiche dans le premier écran",
+    hautDuResume > 0 && hautDuResume < 844,
+    `il commence à ${hautDuResume} points : il faudrait faire défiler avant de voir quoi que ce soit du tableau`,
+  )
+  await calme.close()
+
+  await gros.close()
+
 } finally {
   if (navigateur) await navigateur.close()
   vite.kill()
