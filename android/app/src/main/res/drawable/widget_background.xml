@@ -3,10 +3,10 @@
 
      Avant : un violet plat (#7E14FF) qui n'existe nulle part dans l'app et
      qui écrasait le fond d'écran. La palette de Jarvis est neutre (voir
-     src/index.css : --primary et --foreground sont des gris très sombres,
-     sans teinte). On reprend cette neutralité, en assombrissant pour rester
-     lisible par-dessus une photo, et on arrondit à 20dp — le rayon des
-     widgets Android d'aujourd'hui. -->
+     src/index.css, variables "primary" et "foreground" : des gris très
+     sombres, sans teinte). On reprend cette neutralité, en assombrissant
+     pour rester lisible par-dessus une photo, et on arrondit à 20dp — le
+     rayon des widgets Android d'aujourd'hui. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <solid android:color="#F21C1C1F" />
     <corners android:radius="20dp" />
