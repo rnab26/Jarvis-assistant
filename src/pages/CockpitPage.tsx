@@ -39,6 +39,10 @@ export function CockpitPage() {
     deleteDevItem,
     archiveDevItem,
     unarchiveDevItem,
+    updateManyDevItems,
+    archiveManyDevItems,
+    deleteManyDevItems,
+    restoreDevItems,
   } = devItemsState
 
   // Les puces de la fenêtre d'envoi listent les sections déclarées ET les
@@ -90,6 +94,10 @@ export function CockpitPage() {
           onDelete={deleteDevItem}
           onArchive={archiveDevItem}
           onUnarchive={unarchiveDevItem}
+          onUpdateMany={updateManyDevItems}
+          onArchiveMany={archiveManyDevItems}
+          onDeleteMany={deleteManyDevItems}
+          onRestore={restoreDevItems}
         />
       )}
     </div>

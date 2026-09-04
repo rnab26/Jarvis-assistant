@@ -166,6 +166,27 @@ Deux règles à ne pas défaire :
 Les corrections écrites dans le registre remontent dans le bloc injecté au
 démarrage de chaque session : c'est par là qu'elles servent à corriger.
 
+### Les actions groupées et le « Annuler »
+
+Le bouton « Choisir » du cockpit passe le tableau en mode sélection : tout se
+déplie (on ne coche pas ce qu'on ne voit pas), chaque ligne porte une case, et
+une barre collée en bas agit sur le lot — statut, section, archivage,
+suppression.
+
+Deux règles :
+
+- **Une requête par lot, jamais une par chantier** (`updateManyDevItems`,
+  `archiveManyDevItems`, `deleteManyDevItems`, qui passent tous par `.in("id",
+  ids)`). Vingt allers-retours pour reclasser un thème laisseraient le travail
+  à moitié fait si la connexion lâche au milieu.
+- **Chaque action groupée mémorise l'état d'avant et propose « Annuler »**
+  (`src/lib/annulation.ts`, huit secondes). `restoreDevItems` regroupe les
+  chantiers par état d'origine et envoie une requête par groupe : un lot
+  mélange des chantiers qui n'avaient ni le même statut ni la même section, et
+  leur rendre une valeur commune serait pire que ne rien annuler. Un `upsert`
+  serait plus court et faux — PostgreSQL construit d'abord la ligne à insérer
+  et la refuserait faute de titre.
+
 ### La section suggérée à la saisie (`src/lib/suggestionTheme.ts`)
 
 Calcul **local**, jamais un appel au modèle : ranger un chantier n'a pas à
