@@ -78,8 +78,14 @@ const MAX_FAITS_PAR_ECHANGE = 5
 const MAX_ECHANGES_RAPPELES = 3
 /** Au-delà, on tronque : un extrait sert à se rappeler, pas à tout relire. */
 const EXTRAIT_MAX = 300
-/** Échanges anciens ré-empreints à chaque phrase, pour rattraper le passé. */
-const RATTRAPAGE_PAR_PHRASE = 5
+/**
+ * Échanges anciens ré-empreints à chaque phrase, pour rattraper le passé.
+ * Dix, pas cinq : Raphaël avait 75 échanges sans empreinte au moment du
+ * chantier, et à cinq par phrase le rattrapage aurait couru derrière la purge
+ * à sept jours. Le calcul est local et gratuit, et il tourne en tâche de fond
+ * après la réponse — il ne coûte rien à l'utilisateur.
+ */
+const RATTRAPAGE_PAR_PHRASE = 10
 
 /** Souvenirs voisins descendus de la base avant d'en insérer un nouveau. */
 const MAX_CANDIDATS_DOUBLON = 8
