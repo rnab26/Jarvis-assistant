@@ -509,3 +509,40 @@ Tu prends le CADRAGE : les chantiers marqués [À CADRER AVEC RAPHAËL AVANT DE 
 
 Ne touche pas à : src/components/voice/MicButton.tsx, src/lib/live/**, src/hooks/useSpeechRecognition.ts, supabase/functions/live-jeton/**, scripts/harness/**, scripts/verifier-ecoute-web.mjs : la session Voix et écoute (claude/cockpit-chantiers-ikfpnq) y travaille.
 ```
+
+
+## Le front « Le cockpit » du 5 sept. au soir — claude/cockpit-lisible-0509
+
+Ouvert après sa phrase : « là vraiment je commence à avoir des chantiers de
+partout, je ne comprends plus rien, je ne sais plus où mettre le nez. Je
+travaille de tous les côtés et toi aussi et il y a des chantiers ouverts de
+partout, mais je ne sais pas ce qui avance, ce qui n'avance pas. »
+
+**Fichiers tenus par ce front** (les autres sessions ne les touchent pas) :
+`src/components/cockpit/**`, `src/components/settings/**`,
+`src/components/ConfirmerAction.tsx`, `src/hooks/useDevItems.ts`,
+`useDevLog.ts`, `useTasks.ts`, `src/lib/journalBord.ts`,
+`journalDestinataire.ts`, `marqueurChantier.ts`, `themeChantier.ts`,
+`doublonChantier.ts`, `suggestionTheme.ts`, `annulation.ts`, `reglages.ts`,
+`ouJenSuis.ts`, `decisions.ts`, `memoirePrefs.ts`, `cockpitPrefs.ts`,
+`supabase/migrations/**`, `.claude/hooks/session-start.sh`, les
+`scripts/verifier-*cockpit*`, `verifier-sections.ts`, `verifier-reglages*`.
+
+**Ce qu'il NE touche pas** : `android/**`, `src/lib/commandeLocale.ts`,
+`voiceActions.ts`, `supabase/functions/voice-command/**` (session « Le
+téléphone », seule à déployer cette fonction) ; les hooks vocaux,
+`MicButton.tsx`, `src/lib/live/**` (session « Voix et écoute »).
+
+**Ce que ce front a changé pour tout le monde**, et qu'il faut connaître avant
+d'ouvrir une session sur un autre thème :
+
+1. **On ne publie plus d'artefact pour poser une question à Raphaël.** Elles
+   passent par `scripts/demander.sh` (voir le CLAUDE.md). Sa réponse revient
+   dans le bloc injecté au démarrage de chaque session.
+2. Le hook de démarrage injecte deux blocs de plus : « Ce qui attend une
+   DÉCISION de Raphaël » et « Ce que Raphaël a répondu ». Lis-les avant de
+   proposer quoi que ce soit — une question déjà tranchée qu'on repose est ce
+   qui l'épuise le plus.
+3. Le cockpit a un budget de hauteur mesuré : si tu ajoutes une carte,
+   `scripts/verifier-cockpit-web.mjs` la refusera tant que tu n'auras pas pris
+   la place à quelque chose qui fait doublon.
