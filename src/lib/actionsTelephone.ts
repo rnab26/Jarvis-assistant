@@ -7,8 +7,18 @@ export interface ApplicationInstallee {
   paquet: string
 }
 
+/** Une entrée du répertoire DU TÉLÉPHONE — pas du carnet de Jarvis. Un
+ * contact qui a plusieurs numéros donne plusieurs entrées, chacune avec son
+ * étiquette (« Mobile », « Domicile »). */
+export interface ContactTelephone {
+  nom: string
+  numero: string
+  etiquette: string
+}
+
 interface ActionsTelephonePlugin {
   listerApplications(): Promise<{ applications: ApplicationInstallee[] }>
+  lireContacts(): Promise<{ contacts: ContactTelephone[] }>
   ouvrirApplication(options: { paquet?: string; recherche?: string }): Promise<void>
   preparerWhatsApp(options: { texte: string; numero?: string }): Promise<void>
   preparerSms(options: { texte: string; numero?: string }): Promise<void>

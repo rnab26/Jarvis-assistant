@@ -90,6 +90,9 @@ jobs:
       - name: L'aller-retour avec une IA installée sur le téléphone
         run: node --experimental-strip-types scripts/verifier-aller-retour-ia.ts
 
+      - name: Retrouver quelqu'un dans le répertoire du téléphone
+        run: node --experimental-strip-types scripts/verifier-contact-repertoire.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.
