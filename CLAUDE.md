@@ -290,6 +290,39 @@ les mots sur lesquels elle s'appuie, et **elle se tait quand rien ne se
 détache** — une suggestion fausse est acceptée sans être relue, donc elle coûte
 plus cher qu'une absence de suggestion.
 
+## Les contacts viennent du TÉLÉPHONE, plus d'un carnet dans Jarvis
+
+Décision de Raphaël, 5 sept. 2026, à ne pas rouvrir : « ça ne sert à rien,
+sachant que tu as déjà une mémoire active dans Jarvis qui retient tout ce
+qu'on dit. À partir du moment où il est connecté au téléphone à mes contacts,
+il sait tout. »
+
+Le carnet d'adresses de Jarvis (table `contacts`, onglet dédié) dupliquait deux
+choses qui existaient déjà ailleurs et mieux : les **numéros**, qui sont dans
+le répertoire du téléphone, et ce qu'il dit des **gens**, que la mémoire longue
+durée retient toute seule sans qu'il ait à dicter une fiche. Onglet, route,
+page et les quatre actions vocales `list/add/update/delete_contact` sont
+retirés (commits `8d5441c`, `24185f7`).
+
+- `ActionsTelephonePlugin.lireContacts()` (permission `READ_CONTACTS`) lit le
+  répertoire **à la demande** et n'en copie rien. Recopier en base recréerait
+  la deuxième source de vérité qu'on vient d'enlever.
+- `src/lib/chercherContact.ts` est **pur** : composer le numéro de quelqu'un
+  d'autre est l'erreur qu'on ne rattrape pas. Deux homonymes → on demande
+  lequel. Un fragment (« Yo ») ne trouve rien. Plusieurs numéros → le mobile,
+  jamais le premier de la liste.
+- `src/lib/repertoire.ts` distingue **refus de permission** et **aucun
+  contact** : rendre une liste vide sur un refus ferait dire à Jarvis « tu n'as
+  personne » alors qu'il n'a pas regardé.
+- Côté serveur, la consigne dit désormais de **ne jamais réclamer un numéro**
+  et de passer `contact_name` : le modèle ne voit pas le répertoire, le
+  téléphone si. C'est l'inverse exact de ce qu'elle disait avant, et c'est
+  cette consigne-là qui faisait répondre « il faut que tu me donnes son
+  numéro ».
+
+La table `contacts` n'est pas supprimée (vide, sans coût, et une suppression de
+table ne se défait pas) : à faire seulement sur sa demande explicite.
+
 ## Supprimer demande toujours, partout dans l'app
 
 `src/components/ConfirmerAction.tsx` : la fenêtre qui pose la question avant
