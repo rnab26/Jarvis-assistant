@@ -501,6 +501,12 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   Son avancement : document `fiche/cle-test` (`action: "read_db"`,
   `db_op: "get"`) — un booléen par étape (projet, studio, creer, copier,
   deposer, dire) plus ses commentaires. **Chantier 4eaf9c1d.**
+- **Ce qui attend Raphaël** (5 sept.) — 5 actions et 8 décisions restées ouvertes
+  après les 24 h de sessions autonomes : mises à jour en Wi-Fi, voix app fermée,
+  conservation des conversations, contenu du briefing, recherche web payante ou
+  non, ElevenLabs, périmètre du contrôle du téléphone, barre d'actions du site
+  de Mélissa. Ses réponses sont enregistrées : `action: "read_db"` sur l'URL.
+  https://claude.ai/code/artifact/4e952f48-99a4-41de-9c67-44c24769bc17
 
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
