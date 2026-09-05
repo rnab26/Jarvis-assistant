@@ -376,6 +376,39 @@ export function interpreterLocalement(
     return [{ action: "media_control", media_command: "precedent" }]
   }
 
+  /* ---------- Une recherche confiée à une IA installée ----------
+     AVANT « ouvre / lance une application », et c'est indispensable : sinon
+     « lance une recherche via Perplexity… » part en open_app, où le
+     rapprochement flou finit par ouvrir n'importe quelle application. */
+  // Sa tournure du 5 sept., qui ne passait pas : « lance une recherche via
+  // Perplexity pour des restaurants de viande réputés à Netanya ». Le nom de
+  // l'app est encadré par « via / sur / avec » d'un côté et « pour / sur / : »
+  // de l'autre : rien n'est deviné, ce qui permet de sortir du vocabulaire
+  // fermé de « demande à X » sans retomber dans l'approximation.
+  const rechercheVia = texte.match(
+    /^(?:lance|fais|effectue|demarre|balance)\s+(?:une?\s+)?recherche\s+(?:via|sur|avec|par)\s+([a-z0-9.-]+(?: [a-z0-9.-]+)?)\s*(?::|\s+(?:pour|sur|concernant|a propos de))\s+(.+)$/,
+  )
+  if (rechercheVia) {
+    const question = rechercheVia[2].trim()
+    if (!question) return null
+    return [{ action: "ask_ai", app_name: majuscule(rechercheVia[1].trim()), question: majuscule(question) }]
+  }
+  // « cherche des restaurants … sur Perplexity » : l'application est à la fin.
+  // Ici la question est libre, donc le nom de l'app doit être connu — sans
+  // quoi « cherche un restaurant dans le quartier » deviendrait une app.
+  const rechercheApresQuestion = texte.match(
+    /^(?:cherche|recherche|trouve)(?:-moi)?\s+(.+?)\s+(?:sur|via|avec|dans)\s+(chatgpt|perplexity|claude|grok|gemini|copilot)$/,
+  )
+  if (rechercheApresQuestion) {
+    const question = rechercheApresQuestion[1].trim()
+    if (!question) return null
+    return [{
+      action: "ask_ai",
+      app_name: majuscule(rechercheApresQuestion[2]),
+      question: majuscule(question),
+    }]
+  }
+
   /* ---------- Ouvrir une application, avec ou sans musique précise ---------- */
   const musiqueSur = texte.match(/^(?:mets?|joue|lance)\s+(.+?)\s+sur\s+([a-z0-9 ]+)$/)
   if (musiqueSur) {
