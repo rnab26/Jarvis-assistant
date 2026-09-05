@@ -171,6 +171,77 @@ try {
     "la plupart des tâches dictées n'ont qu'une date : sans ce réglage, elles sonneraient à une heure imposée",
   )
 
+  // ── La durée de conservation des conversations ──
+  // Ce réglage EFFACE, à chaque phrase, sans corbeille. Ce qui compte à
+  // l'écran n'est pas qu'il existe : c'est qu'il demande AVANT, et qu'il dise
+  // combien de conversations vont disparaître.
+  const memoire = page.locator("#memoire")
+  const memoireVide = page.locator("#memoire-vide")
+  const memoirePanne = page.locator("#memoire-panne")
+
+  verifier(
+    "la durée de conservation est réglable, sans limite comprise",
+    (await memoire.getByRole("button", { name: "Garder Sans limite" }).isVisible()) &&
+      (await memoire.getByRole("button", { name: "Garder 7 jours" }).isVisible()),
+    "elle était écrite en dur dans une fonction SQL, invisible et impossible à changer",
+  )
+  verifier(
+    "et le défaut ne détruit rien",
+    (await memoire
+      .getByRole("button", { name: "Garder Sans limite" })
+      .getAttribute("aria-pressed")) === "true",
+    "supprimer est irréversible, garder ne l'est pas",
+  )
+  verifier(
+    "la carte dit combien de conversations sont gardées",
+    await memoire.getByText(/4 conversations gardées/).isVisible(),
+  )
+
+  await memoire.getByRole("button", { name: "Garder 30 jours" }).click()
+  await pause(250)
+  verifier(
+    "raccourcir la durée DEMANDE avant d'effacer",
+    await page.getByText("Ne garder que 30 jours ?").isVisible(),
+    "un appui de travers effacerait des mois de conversations, sans corbeille",
+  )
+  verifier(
+    "et dit combien vont disparaître, nommément",
+    await page.getByText(/2 conversations/).first().isVisible(),
+    "« des conversations seront effacées » ne permet pas de décider",
+  )
+  await page.getByRole("button", { name: "Annuler" }).first().click()
+  await pause(250)
+  verifier(
+    "annuler ne change rien",
+    (await memoire
+      .getByRole("button", { name: "Garder Sans limite" })
+      .getAttribute("aria-pressed")) === "true",
+  )
+
+  await memoireVide.getByRole("button", { name: "Garder 7 jours" }).click()
+  await pause(250)
+  verifier(
+    "sans rien à perdre, la fenêtre le dit au lieu d'annoncer une purge",
+    await page.getByText(/Rien n'est effacé aujourd'hui/).isVisible(),
+    "il renoncerait à un réglage qui ne détruit rien",
+  )
+  await page.getByRole("button", { name: "Annuler" }).first().click()
+  await pause(250)
+
+  await memoirePanne.getByRole("button", { name: "Garder 7 jours" }).click()
+  await pause(250)
+  verifier(
+    "une lecture en échec ne se lit PAS comme « aucune conversation »",
+    await page.getByText(/Impossible de dire combien/).isVisible(),
+    "il confirmerait en croyant ne rien perdre, juste avant une purge qui efface tout",
+  )
+  await page.getByRole("button", { name: "Annuler" }).first().click()
+  await pause(250)
+  verifier(
+    "et la carte signale l'incident au lieu de rester muette",
+    await memoirePanne.getByText(/n'a pas pu être chargée/).isVisible(),
+  )
+
   // ── Ce qui est programmé se voit, et s'annule en le demandant ──
   verifier(
     "le nombre de notifications programmées s'affiche",
@@ -384,8 +455,8 @@ try {
     })
 
     verifier(
-      "les sept autres sections sont bien repliées",
-      mesures.nbBarres === 7,
+      "les huit autres sections sont bien repliées",
+      mesures.nbBarres === 8,
       `${mesures.nbBarres} barres repliées trouvées`,
     )
     verifier(

@@ -5,6 +5,7 @@ import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { Cockpit } from "@/components/settings/Cockpit"
+import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
@@ -83,6 +84,13 @@ const SECTIONS = {
     resume: "Applications par défaut, canal des messages",
     motsCles:
       "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia",
+  },
+  memoire: {
+    cle: "memoire",
+    titre: "Mémoire",
+    resume: "Combien de temps il garde tes conversations",
+    motsCles:
+      "mémoire conversation mot-à-mot historique échanges garder conserver effacer purge durée 7 30 90 jours sans limite souvenirs oubli",
   },
   cockpit: {
     cle: "cockpit",
@@ -444,6 +452,9 @@ function CoeurDeJarvis() {
 }
 
 export function SettingsPage() {
+  // Les dates des conversations gardées : la carte « Mémoire » en a besoin
+  // pour annoncer combien une purge effacerait, avant qu'il confirme.
+  const datesEchanges = useDatesEchanges()
   const {
     wakeWordState,
     dialogueState,
@@ -904,6 +915,10 @@ export function SettingsPage() {
 
       <Section {...SECTIONS.apps} filtre={recherche}>
         <AppsParDefaut />
+      </Section>
+
+      <Section {...SECTIONS.memoire} filtre={recherche}>
+        <Memoire api={datesEchanges} />
       </Section>
 
       <Section {...SECTIONS.cockpit} filtre={recherche}>

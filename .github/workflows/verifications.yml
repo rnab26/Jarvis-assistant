@@ -75,6 +75,14 @@ jobs:
       - name: Une panne de la mémoire ne se lit pas comme une absence
         run: node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts
 
+      # Ce réglage commande une SUPPRESSION sans corbeille, à chaque phrase.
+      # Le contrôle lit LES DEUX moitiés — le bouton de Paramètres et la
+      # fonction SQL — et refuse qu'elles divergent : une valeur que l'app
+      # écrit et que le SQL ne comprend pas vaudrait « sans limite » en
+      # silence, et le réglage ne servirait plus à rien.
+      - name: La durée de conservation des conversations
+        run: node --experimental-strip-types scripts/verifier-retention.ts
+
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
 
