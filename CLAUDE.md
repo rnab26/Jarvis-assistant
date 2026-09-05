@@ -388,6 +388,38 @@ en même temps que les chantiers.
 et laisse le reste libre, pour qu'une autre session puisse avancer en
 parallèle au lieu d'attendre après toi.
 
+## Un artefact est un lieu de passage : ce qu'il répond va EN BASE
+
+Sa demande du 5 sept. 2026 au soir, après avoir répondu aux quatorze points
+d'une fiche pour rien : « les artefacts ont trop de durée de vie limitée et je
+te colle des réponses détaillées quand c'était nécessaire ». Deux choses
+distinctes se sont passées ce soir-là, et il faut retenir les deux.
+
+**Le bug, pour ne pas le refaire.** La fiche n'enregistrait QUE les champs de
+texte. `enregistrer()` abandonnait en silence tant que `claude.use("db")`
+n'avait pas répondu — ce qui arrive toujours APRÈS le premier rendu, parfois
+plusieurs secondes plus tard. Tous ses appuis des premières secondes étaient
+donc perdus, puis le chargement tardif écrasait l'état en mémoire et
+redessinait la page vide. Le compteur affichait « 0 / 14 » pendant qu'il
+cochait : le signe était à l'écran, personne ne l'a lu. Toute page à capacité
+`db` doit donc (1) **mettre en file** ce qui arrive avant que la base réponde
+et le vider dès qu'elle est là, (2) ne **jamais** laisser un chargement écraser
+ce que l'utilisateur a déjà touché — un drapeau posé au premier geste et jamais
+remis à faux, pas un drapeau d'écriture en cours, qui retombe.
+
+**La règle, qui vaut au-delà du bug.** Une fiche reste bonne pour POSER les
+questions au pouce. Mais ses réponses ne doivent pas y rester : **recopie-les
+dans les notes des chantiers concernés dès que tu les lis**, en citant ses mots.
+Une note de chantier survit à tout ; un artefact, non — il vit hors du dépôt et
+hors de la base, et la session suivante ne sait même pas qu'il existe si
+personne n'a collé son URL ici.
+
+Le chantier `85ae62b5` porte la sortie définitive : un écran « Ce qui attend ta
+décision » dans l'app elle-même, alimenté par une table, avec les options
+cliquables, un commentaire par question et les photos dans le Storage Supabase.
+Le jour où il est livré, **on cesse de publier des fiches pour lui poser des
+questions**.
+
 ## Plusieurs questions à Raphaël : une fiche, pas un mur de texte
 
 Dès que tu as **plus de deux ou trois questions** à lui poser, ne les empile pas
