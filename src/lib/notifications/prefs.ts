@@ -47,6 +47,14 @@ export interface PrefsNotifications {
   silenceDebut: string
   /** Fin de la plage silencieuse, "HH:MM". */
   silenceFin: string
+  /**
+   * Dire la notification à voix haute quand l'app est ouverte, ou quand il
+   * vient d'appuyer dessus — au lieu de seulement l'afficher. Sa demande
+   * d'origine (chantier 7567cd47) : « Jarvis doit pouvoir intervenir à l'oral
+   * pour donner une information tel un rappel ». Jamais pendant les heures de
+   * silence, jamais si la voix de Jarvis est coupée.
+   */
+  direAVoixHaute: boolean
 }
 
 export const PREFS_NOTIFS_DEFAUT: PrefsNotifications = {
@@ -65,6 +73,10 @@ export const PREFS_NOTIFS_DEFAUT: PrefsNotifications = {
   silenceNuit: true,
   silenceDebut: "22:30",
   silenceFin: "07:30",
+  // Activé : une notification qu'on entend pendant qu'on a le téléphone en
+  // main évite de le déverrouiller pour lire trois mots. Les heures de
+  // silence la retiennent déjà, et un interrupteur suffit à la couper.
+  direAVoixHaute: true,
 }
 
 /** Les avances proposées dans Paramètres. Une liste fermée : un champ libre
@@ -111,6 +123,7 @@ export function normaliserPrefs(brut: unknown): PrefsNotifications {
     silenceNuit: booleen(o.silenceNuit, PREFS_NOTIFS_DEFAUT.silenceNuit),
     silenceDebut: heureValide(o.silenceDebut, PREFS_NOTIFS_DEFAUT.silenceDebut),
     silenceFin: heureValide(o.silenceFin, PREFS_NOTIFS_DEFAUT.silenceFin),
+    direAVoixHaute: booleen(o.direAVoixHaute, PREFS_NOTIFS_DEFAUT.direAVoixHaute),
   }
 }
 

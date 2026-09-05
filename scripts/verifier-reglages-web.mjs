@@ -128,11 +128,17 @@ try {
   ]) {
     verifier(`« ${ligne} » est réglable`, await ok.getByText(ligne, { exact: true }).first().isVisible())
   }
-  verifier(
-    "cinq notifications réglables (plus les heures de silence), ni agenda ni mail",
-    (await ok.getByRole("switch").count()) === 6,
-    "Google prévient déjà pour l'agenda et les mails ; deux notifications pour la même chose, c'est une de trop",
-  )
+  // Ce que ce contrôle protège, c'est l'ABSENCE de l'agenda et des mails, pas
+  // un nombre : compter les interrupteurs le faisait échouer dès qu'on en
+  // ajoutait un qui n'a rien à voir (« dire les rappels à voix haute », 5
+  // sept.). On vise donc ce qui ne doit pas être là.
+  for (const interdit of ["agenda", "rendez-vous", "mail", "e-mail"]) {
+    verifier(
+      `aucune notification « ${interdit} » : Google prévient déjà`,
+      (await ok.getByRole("switch").filter({ hasText: new RegExp(interdit, "i") }).count()) === 0,
+      "deux notifications pour la même chose, c'est une de trop",
+    )
+  }
   verifier(
     "et la raison de leur absence est écrite",
     await ok.getByText(/Google prévient déjà/).isVisible(),
