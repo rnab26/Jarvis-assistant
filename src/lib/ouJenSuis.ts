@@ -2,6 +2,7 @@
 // `node --experimental-strip-types` pour sa vérification, qui ne connaît pas
 // l'alias « @/ » de Vite. Les imports de TYPES sont effacés à la compilation
 // et peuvent, eux, garder l'alias.
+import { enAttenteDeRaphael } from "./journalDestinataire.ts"
 import { marqueurDe } from "./marqueurChantier.ts"
 import { SANS_SECTION, sectionDe } from "./sections.ts"
 import { cleTheme } from "./themeChantier.ts"
@@ -118,7 +119,8 @@ export interface Bilan {
   sections: EtatSection[]
   /** Les sections où il ne reste que des chantiers endormis. */
   auRepos: EtatSection[]
-  /** Questions du journal qui ne portent sur aucun chantier. */
+  /** Questions et actions qui ne portent sur aucun chantier : elles
+   * n'apparaissent sur aucune ligne, il faut donc les compter à part. */
   questionsGenerales: DevLogEntry[]
   totaux: { bouge: number; livres: number; attend: number; dort: number; abandonnees: number }
   /** Vrai quand il n'y a strictement rien à afficher. */
@@ -156,7 +158,11 @@ export function ouJenSuis(
   const questionsGenerales: DevLogEntry[] = []
   const connus = new Set(items.map((i) => i.id))
   for (const m of messages) {
-    if (m.kind !== "question" || m.answered_at) continue
+    // Même règle que l'écran où il répond (`journalDestinataire`) : compter ici
+    // ce qu'il n'y verrait pas — ou l'inverse — est exactement ce qui l'a fait
+    // répondre deux fois au même point. Les questions d'une session à une
+    // AUTRE session n'en font donc pas partie.
+    if (!enAttenteDeRaphael(m)) continue
     if (m.item_id && connus.has(m.item_id)) {
       // La plus ancienne fait foi : c'est celle qui attend depuis le plus
       // longtemps, donc celle qu'on veut voir en premier.

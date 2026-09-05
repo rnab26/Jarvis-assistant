@@ -9,6 +9,7 @@ import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPa
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
+import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
 import { FILTRE_VIDE, type FiltreCockpit } from "@/lib/sections"
 import type {
@@ -162,6 +163,48 @@ const MESSAGES: DevLogEntry[] = [
   },
 ]
 
+/**
+ * Les deux familles de « Ce qui attend ta décision » : une DÉCISION avec ses
+ * options cliquables, et une ACTION de son côté. Rattachées à aucun chantier
+ * exprès — c'est le cas qui n'apparaît sur aucune ligne de « Où j'en suis » et
+ * qui, sans cet écran, attendrait indéfiniment.
+ */
+const DECISIONS: DevLogEntry[] = [
+  {
+    id: "d1",
+    user_id: "banc",
+    item_id: "c2",
+    author: "claude/memoire",
+    kind: "question",
+    body: "On garde le mot-à-mot des conversations combien de temps ?",
+    pourquoi: "Supprimer est irréversible, garder ne l'est pas.",
+    options: [
+      {
+        cle: "sans_limite",
+        libelle: "Sans limite",
+        aide: "Rien n'est jamais supprimé, tu peux redescendre quand tu veux.",
+        recommande: true,
+      },
+      { cle: "30j", libelle: "30 jours" },
+      { cle: "7j", libelle: "7 jours" },
+    ],
+    answered_at: null,
+    created_at: new Date(Date.now() - 26 * 3600_000).toISOString(),
+  },
+  {
+    id: "d2",
+    user_id: "banc",
+    item_id: null,
+    author: "claude/telephone",
+    kind: "action",
+    body: "Dépose GOOGLE_GEOCODING_API_KEY dans les secrets Supabase",
+    pourquoi: "Sans elle, les rappels de lieu ne savent pas géocoder une adresse.",
+    etat: null,
+    answered_at: null,
+    created_at: new Date(Date.now() - 4 * 3600_000).toISOString(),
+  },
+]
+
 const ERREURS = [
   erreur("Il a créé une tâche au lieu d'un chantier", "comprehension", 3),
   erreur("Le serveur vocal a refusé de répondre", "serveur"),
@@ -261,7 +304,7 @@ function BancDuCockpit() {
   const [sections] = useState<DevSection[]>(REELLES?.sections ?? REEL?.sections ?? SECTIONS)
   const [erreurs, setErreurs] = useState<JarvisErreur[]>(VOLUME ? erreursEnVolume() : ERREURS)
   const [messages, setMessages] = useState<DevLogEntry[]>(
-    REELLES?.messages ?? (CALME ? [] : MESSAGES),
+    REELLES?.messages ?? (CALME ? [] : [...MESSAGES, ...DECISIONS]),
   )
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
 
@@ -310,6 +353,36 @@ function BancDuCockpit() {
           )
         }}
         onVoirSection={(nom) => setFiltre({ ...FILTRE_VIDE, section: nom })}
+      />
+      <CeQuiAttendTaDecision
+        messages={messages}
+        devItems={devItems}
+        onRepondre={async (question, option, commentaire) => {
+          setMessages((m) => [
+            ...m.map((x) =>
+              x.id === question.id ? { ...x, answered_at: new Date().toISOString() } : x,
+            ),
+            {
+              id: `rep-${question.id}`,
+              user_id: "banc",
+              item_id: question.item_id,
+              author: "Raphaël",
+              kind: "reponse",
+              body: [option?.libelle, commentaire.trim()].filter(Boolean).join(" — "),
+              answered_at: null,
+              created_at: new Date().toISOString(),
+            },
+          ])
+        }}
+        onEtat={async (id, etat) => {
+          setMessages((m) =>
+            m.map((x) =>
+              x.id === id
+                ? { ...x, etat, answered_at: etat === "fait" ? new Date().toISOString() : null }
+                : x,
+            ),
+          )
+        }}
       />
       <EnvoyerAClaudeCode
         devItems={devItems}

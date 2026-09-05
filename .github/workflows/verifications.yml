@@ -85,6 +85,13 @@ jobs:
       - name: « Où j'en suis », en tête du cockpit
         run: node --experimental-strip-types scripts/verifier-ou-jen-suis.ts
 
+      # Une question posée par une session doit REVENIR à Raphaël, et sa
+      # réponse repartir vers les sessions sous une forme lisible des années
+      # après. La fiche du 5 sept. n'enregistrait que les champs de texte, et
+      # affichait « 0 / 14 » pendant qu'il répondait : personne ne l'a vu.
+      - name: Ce qui attend sa décision, et ce qu'il répond
+        run: node --experimental-strip-types scripts/verifier-decisions.ts
+
       - name: La section suggérée à la saisie
         run: node --experimental-strip-types scripts/verifier-suggestion-theme.ts
 

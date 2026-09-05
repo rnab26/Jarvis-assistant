@@ -214,13 +214,14 @@ export function OuJenSuis({
           </p>
         )}
 
-        {/* Une question de session qui ne porte sur aucun chantier n'apparaît
-            dans aucune ligne : sans ce rappel, elle attendrait indéfiniment. */}
+        {/* Un point qui ne porte sur aucun chantier n'apparaît sur aucune
+            ligne : sans ce rappel, il attendrait indéfiniment. On y répond
+            dans « Ce qui attend ta décision », juste en dessous. */}
         {bilan.questionsGenerales.length > 0 && (
           <p className="text-xs text-destructive">
-            {bilan.questionsGenerales.length} question
-            {bilan.questionsGenerales.length > 1 ? "s" : ""} de session sans chantier, dans le
-            journal de bord.
+            {bilan.questionsGenerales.length} point
+            {bilan.questionsGenerales.length > 1 ? "s" : ""} sans chantier — à traiter dans « Ce
+            qui attend ta décision », juste en dessous.
           </p>
         )}
       </CardContent>

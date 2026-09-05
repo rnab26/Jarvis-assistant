@@ -1,5 +1,6 @@
 import { useRef, useState } from "react"
 import { LoadError } from "@/components/LoadError"
+import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
 import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
@@ -98,6 +99,16 @@ export function CockpitPage() {
         error={error}
         onLiberer={libererReservation}
         onVoirSection={voirSection}
+      />
+
+      {/* Juste sous « Où j'en suis », qui vient de compter ces questions-là
+          dans sa colonne « pour toi » : c'est ici qu'on y répond. La carte
+          n'existe pas quand rien n'attend. */}
+      <CeQuiAttendTaDecision
+        messages={devLog.entries}
+        devItems={devItems}
+        onRepondre={devLog.repondreAQuestion}
+        onEtat={devLog.changerEtatAction}
       />
 
       <EnvoyerAClaudeCode

@@ -103,7 +103,7 @@ try {
   )
   verifier(
     "avec le compte de ce qui a été livré, ouvert et écrit",
-    (await visible("1 livré")) && (await visible("4 nouveaux")) && (await visible("2 messages")),
+    (await visible("1 livré")) && (await visible("4 nouveaux")) && (await visible("4 messages")),
     (await page.locator("body").innerText()).slice(0, 200),
   )
   verifier(
@@ -134,7 +134,7 @@ try {
   )
   verifier(
     "il annonce d'abord ce qui l'attend, LUI",
-    await visible("2 pour toi"),
+    await visible("3 pour toi"),
     (await page.locator("body").innerText()).slice(0, 300),
   )
   verifier(
@@ -152,8 +152,9 @@ try {
     "il faudrait déplier chaque section et lire les « Prise par… » un par un",
   )
   verifier(
-    "et pourquoi un chantier l'attend",
-    await visible("question de voix-et-ecoute"),
+    "et pourquoi un chantier l'attend — la plus ancienne question d'abord",
+    await visible("question de memoire"),
+    "c'est celle qui attend depuis le plus longtemps",
   )
   await ligne("Voix et écoute").click()
   await pause(200)
@@ -176,6 +177,79 @@ try {
   )
   await ligne("Le téléphone").click()
   await pause(200)
+
+  // ── « Ce qui attend ta décision » : la fin des fiches hors du dépôt ──
+  // Chantier 85ae62b5. Ses mots : « j'ai répondu à ton artefact mais j'ai
+  // l'impression qu'il n'enregistre pas mes réponses ».
+  verifier(
+    "les questions des sessions s'affichent DANS l'app, pas dans une fiche",
+    await visible("Ce qui attend ta décision"),
+    "une fiche vit hors du dépôt et hors de la base : la session suivante ne sait pas qu'elle existe",
+  )
+  verifier(
+    "ce qu'il doit FAIRE est distingué de ce qu'il doit DÉCIDER",
+    (await visible("À faire par toi")) && (await visible("Tu décides")),
+    "c'est sa demande depuis la première fiche : pour une action il ne choisit pas, il dit où il en est",
+  )
+  verifier(
+    "chaque question dit POURQUOI on la pose",
+    await visible("Supprimer est irréversible"),
+    "une question dont on ne voit pas l'enjeu reste sans réponse",
+  )
+  verifier(
+    "et propose la recommandation de la session",
+    await visible("Ce qu'on te recommande"),
+  )
+  verifier(
+    "une ACTION propose fait / pas encore / ça bloque",
+    (await page.getByRole("button", { name: /^Fait — Dépose/ }).isVisible()) &&
+      (await page.getByRole("button", { name: /^Ça bloque — Dépose/ }).isVisible()),
+    "« il me demande de créer des clés, mais je ne peux pas écrire si ça bloque »",
+  )
+  verifier(
+    "chaque point porte SON champ de commentaire",
+    (await page.getByLabel(/^Ton commentaire sur : /).count()) === 3,
+    `${await page.getByLabel(/^Ton commentaire sur : /).count()} champs pour 3 points — un champ unique en bas de page ne dit plus à quoi il répond`,
+  )
+  verifier(
+    "et SON bouton pour joindre une capture",
+    (await page.getByLabel(/^Joindre une photo à : /).count()) === 3,
+  )
+
+  // « Ça bloque » : l'état s'enregistre, et la ligne reste ouverte — c'est
+  // exactement ce qu'une fiche ne savait pas porter.
+  await page.getByRole("button", { name: /^Ça bloque — Dépose/ }).click()
+  await pause(400)
+  verifier(
+    "dire que ça bloque garde le point ouvert et demande où ça coince",
+    (await visible("Dis en deux mots où ça coince")) &&
+      (await page.getByRole("button", { name: /^Ça bloque — Dépose/ }).getAttribute("aria-pressed")) ===
+        "true",
+    "l'état ne serait pas enregistré, ou la ligne disparaîtrait sans qu'on sache pourquoi",
+  )
+
+  // Une décision : il choisit une option, écrit à côté, et voit ce qui partira.
+  const commentaire = page.getByLabel(/^Ton commentaire sur : On garde le mot/)
+  await page.getByRole("button", { name: "Sans limite" }).click()
+  await commentaire.fill("Illimité mais ultra compacter")
+  await pause(300)
+  verifier(
+    "il voit ce qui partira, mot pour mot, avant d'envoyer",
+    await visible("Sans limite — Illimité mais ultra compacter"),
+    "la fiche du 5 sept. affichait « 0 / 14 » pendant qu'il répondait, et personne ne l'a vu",
+  )
+  await page.getByRole("button", { name: /^Répondre à : On garde le mot/ }).click()
+  await pause(500)
+  verifier(
+    "sa réponse referme le point : il ne peut pas y répondre deux fois",
+    !(await page.getByText("On garde le mot-à-mot des conversations").isVisible()),
+    "deux fiches lui ont posé la même question le même soir, et il a répondu deux choses différentes",
+  )
+  verifier(
+    "et le compteur de ce qui l'attend redescend",
+    await visible("2 dont 1 à faire"),
+    (await page.locator("body").innerText()).match(/\d+ dont \d+ à faire/)?.[0] ?? "aucun compte",
+  )
 
   // ── La fenêtre d'envoi : ce qui existe déjà, et la section suggérée ──
   // Repliée par défaut depuis que « Où j'en suis » occupe le haut de la page :

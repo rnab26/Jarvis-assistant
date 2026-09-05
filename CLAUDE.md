@@ -497,10 +497,70 @@ cliquables, un commentaire par question et les photos dans le Storage Supabase.
 Le jour où il est livré, **on cesse de publier des fiches pour lui poser des
 questions**.
 
-## Plusieurs questions à Raphaël : une fiche, pas un mur de texte
+## Une question à Raphaël : `scripts/demander.sh`, plus jamais un artefact
 
-Dès que tu as **plus de deux ou trois questions** à lui poser, ne les empile pas
-dans un message : publie un **artefact** qu'il remplit au pouce. Il travaille
+**Livré le 5 sept. 2026 (chantier `85ae62b5`). C'est la règle courante ; tout
+ce qui suit sur les fiches est de l'histoire, gardé pour ses réponses passées.**
+
+```bash
+scripts/demander.sh --question "On garde le mot-à-mot combien de temps ?" \
+  --pourquoi "Supprimer est irréversible, garder ne l'est pas." \
+  --chantier 5ca5c4a3-19c6-44f4-8846-b53f9e4d7ee1 \
+  --option "Sans limite|Rien n'est jamais supprimé.|recommande" \
+  --option "30 jours|Un mois glissant, puis on efface."
+
+# Ce qu'il doit FAIRE, lui, et non décider :
+scripts/demander.sh --action --question "Dépose GOOGLE_GEOCODING_API_KEY dans les secrets Supabase" \
+  --pourquoi "Sans elle, les rappels de lieu ne savent pas géocoder une adresse."
+```
+
+La question devient une ligne de `dev_log` (colonnes `pourquoi`, `options`,
+`etat`, `photo_chemin`, migration 0022). Elle s'affiche **en tête de son
+cockpit** — carte « Ce qui attend ta décision », sous « Où j'en suis » — avec
+les options cliquables, un **champ de commentaire par question**, un bouton
+photo par question, et pour une action les trois états **Fait / Pas encore /
+Ça bloque**. Sa réponse repart dans `dev_log` en `kind = 'reponse'`, et le hook
+de démarrage l'injecte dans **chaque** session suivante, dans deux blocs
+dédiés : « Ce qui attend une DÉCISION de Raphaël » et « Ce que Raphaël a
+répondu ». Une capture jointe se récupère avec `scripts/photo.sh <chemin>`.
+
+**Pourquoi on a arrêté les fiches**, ses mots du 5 sept. : « les artefacts ont
+trop de durée de vie limitée et je te colle des réponses détaillées quand
+c'était nécessaire ». Une fiche vit hors du dépôt ET hors de la base : la
+session suivante ne sait même pas qu'elle existe si personne n'a collé son URL
+ici. Ce soir-là, deux fiches lui ont posé LA MÊME question et il a répondu deux
+choses différentes.
+
+**On n'a PAS ouvert de table `decisions`.** Elle aurait fait ce que `dev_log`
+fait déjà — une session demande, il répond, `answered_at` referme — et il y
+aurait eu deux endroits où chercher une question, avec la moitié dans chacun.
+Ce qui manquait tenait en quatre colonnes. Même raison pour la réponse : elle
+s'écrit en toutes lettres (le LIBELLÉ de l'option, pas sa clé), dans une entrée
+de journal ordinaire, lisible telle quelle des années après même si le code qui
+a posé la question a disparu.
+
+**Une seule règle décide de ce qui l'attend**, `enAttenteDeRaphael` dans
+`src/lib/journalDestinataire.ts` : elle sert à la fois à la carte où il répond
+et à la colonne « pour toi » de « Où j'en suis ». Deux lectures différentes du
+même message, c'est exactement ce qui lui a fait répondre deux fois. Une
+question adressée à une AUTRE session (« Pour la session … ») n'en fait pas
+partie.
+
+Avant de poser une question : **relis les notes du chantier, le journal et le
+bloc de démarrage**. Une question à laquelle il a déjà répondu et qu'on repose
+est ce qui l'épuise le plus.
+
+## Historique : les fiches d'avant le 5 sept. (ne plus en publier)
+
+### Plusieurs questions à Raphaël : ce que les fiches faisaient
+
+**Ne publie plus de fiche : passe par `scripts/demander.sh`, ci-dessus.** Cette
+section reste parce que ses réponses passées y sont, et parce qu'elle dit ce
+qu'une bonne question doit porter — c'est ce que la carte du cockpit reprend.
+
+Ce qu'on faisait avant : dès qu'il y avait **plus de deux ou trois questions**,
+ne pas les empiler dans un message mais publier un **artefact** qu'il remplit
+au pouce. Il travaille
 souvent depuis son téléphone, et répondre point par point dans une
 conversation lui fait perdre le fil.
 

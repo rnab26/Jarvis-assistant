@@ -174,6 +174,31 @@ const bilanDe = (
 }
 
 {
+  // Une ACTION de son côté l'attend autant qu'une question, et c'est la même
+  // règle que l'écran où il répond : deux lectures différentes du même
+  // message sont ce qui lui a fait répondre deux fois au même point.
+  const item = chantier()
+  const b = bilanDe([item], [message({ item_id: item.id, kind: "action" })])
+  verifier(
+    "une action qu'il doit faire compte comme « pour toi »",
+    b.totaux.attend === 1,
+    "elle n'apparaîtrait nulle part, alors qu'elle bloque tout ce qui en dépend",
+  )
+
+  // Une question qu'une session pose à une AUTRE session ne le concerne pas :
+  // même convention que le badge du journal, « Pour la session … ».
+  const entreSessions = bilanDe(
+    [chantier()],
+    [message({ body: "Pour la session cockpit : tu es toujours sur X ?" })],
+  )
+  verifier(
+    "une question adressée à une autre session ne l'attend pas",
+    entreSessions.totaux.attend === 0,
+    "son écran se remplirait de conversations entre sessions",
+  )
+}
+
+{
   // Une question du journal qui ne porte sur aucun chantier n'apparaîtrait
   // dans aucune ligne : sans le compteur à part, elle attendrait pour rien.
   const b = bilanDe([chantier()], [message({ item_id: null })])
