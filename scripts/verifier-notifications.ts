@@ -30,7 +30,9 @@ import {
   planifierEcheances,
   planifierMatins,
 } from "../src/lib/notifications/plan.ts"
+import { phraseAnnonce } from "../src/lib/notifications/annonceVocale.ts"
 import { normaliserPrefs, PREFS_NOTIFS_DEFAUT } from "../src/lib/notifications/prefs.ts"
+import type { PrefsNotifications } from "../src/lib/notifications/prefs.ts"
 import type { Task } from "../src/types/database.ts"
 
 let echecs = 0
@@ -341,6 +343,64 @@ function tache(partiel: Partial<Task>): Task {
   )
   verifier("l'identifiant de test nous appartient", estNotreNotif(ID_TEST))
   verifier("un identifiant étranger n'est jamais annulé par nous", !estNotreNotif(42))
+}
+
+// ── Ce que Jarvis DIT quand une notification arrive (chantier 7567cd47) ──
+// Quatre façons de rendre cette annonce nuisible, et aucune ne lève d'erreur :
+// parler la nuit, parler alors qu'il a coupé la voix, parler quand il a dit
+// non, et répéter deux fois la même phrase.
+{
+  const base: PrefsNotifications = { ...PREFS_NOTIFS_DEFAUT, direAVoixHaute: true }
+  const jour = new Date("2026-09-05T14:00:00")
+  const nuit = new Date("2026-09-05T03:00:00")
+  const dire = (
+    notif: { title?: string | null; body?: string | null },
+    p: Partial<PrefsNotifications> = {},
+    voixCoupee = false,
+    maintenant = jour,
+  ) => phraseAnnonce(notif, { prefs: { ...base, ...p }, voixCoupee, maintenant })
+
+  verifier(
+    "un rappel arrivé pendant que l'app est ouverte se dit",
+    dire({ title: "Appeler le plombier", body: "C'est l'heure." }) ===
+      "Appeler le plombier. C'est l'heure.",
+    String(dire({ title: "Appeler le plombier", body: "C'est l'heure." })),
+  )
+  verifier(
+    "le corps qui reprend le titre ne le fait pas répéter",
+    dire({ title: "Appeler le plombier", body: "Appeler le plombier, c'est l'heure." }) ===
+      "Appeler le plombier, c'est l'heure.",
+    String(dire({ title: "Appeler le plombier", body: "Appeler le plombier, c'est l'heure." })),
+  )
+  verifier(
+    "l'interrupteur de Paramètres fait taire l'annonce",
+    dire({ title: "Appeler le plombier" }, { direAVoixHaute: false }) === null,
+  )
+  verifier(
+    "voix de Jarvis coupée : on n'annonce rien non plus",
+    dire({ title: "Appeler le plombier" }, {}, true) === null,
+    "le réglage de voix vaut pour tout ce que Jarvis dit",
+  )
+  verifier(
+    "pendant les heures de silence, la notification s'affiche mais ne se dit pas",
+    dire({ title: "Appeler le plombier" }, {}, false, nuit) === null,
+    "une voix à 3 h du matin réveille exactement ce que le canal muet protégeait",
+  )
+  verifier(
+    "sauf s'il a désactivé les heures de silence",
+    dire({ title: "Appeler le plombier" }, { silenceNuit: false }, false, nuit) ===
+      "Appeler le plombier",
+  )
+  verifier(
+    "une notification vide ne fait rien dire",
+    dire({ title: "  ", body: null }) === null,
+  )
+  const long = dire({ title: "Point du matin", body: "x".repeat(900) })
+  verifier(
+    "un point du matin très chargé est écourté, pas lu pendant une minute",
+    !!long && long.length <= 600 && long.endsWith("…"),
+    `${long?.length} caractères`,
+  )
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
