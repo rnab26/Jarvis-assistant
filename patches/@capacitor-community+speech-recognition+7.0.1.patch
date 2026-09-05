@@ -1,5 +1,5 @@
 diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
-index a99ea69..83f0728 100644
+index a99ea69..ed6be02 100644
 --- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 +++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 @@ -2,10 +2,15 @@ package com.getcapacitor.community.speechrecognition;
@@ -18,7 +18,7 @@ index a99ea69..83f0728 100644
  import android.speech.RecognizerIntent;
  import android.speech.SpeechRecognizer;
  import androidx.activity.result.ActivityResult;
-@@ -37,6 +42,17 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -37,6 +42,40 @@ public class SpeechRecognition extends Plugin implements Constants {
      private Receiver languageReceiver;
      private SpeechRecognizer speechRecognizer;
  
@@ -33,10 +33,33 @@ index a99ea69..83f0728 100644
 +    // audio le temps du "beep" plutot que de le laisser sonner.
 +    private boolean streamCoupe = false;
 +
++    /**
++     * Rend le son, quoi qu'il arrive.
++     *
++     * MESURE DU 5 SEPT. 2026 sur le journal d'ecoute de Raphael : sur son
++     * telephone, `servicesDisponibles` vaut
++     * "com.google.android.as,com.google.android.tts,com.anthropic.claude" --
++     * PAS de com.google.android.googlequicksearchbox. Le service de Google
++     * n'est donc pas installe, `serviceChoisi` reste "defaut", et CHAQUE
++     * rafale coupe STREAM_MUSIC. Or le son n'etait retabli que dans
++     * onBeginningOfSpeech, c'est-a-dire seulement quand quelqu'un parlait
++     * pour de vrai. 363 rafales de veille se sont terminees sans qu'un mot
++     * soit prononce : autant de fois ou la musique restait coupee, sans que
++     * rien ne le signale. On retablit donc le son sur TOUTES les sorties --
++     * parole detectee, fin d'ecoute, erreur, arret -- pas seulement sur
++     * celle du cas heureux.
++     */
++    private void retablirSon() {
++        if (!streamCoupe) return;
++        streamCoupe = false;
++        AudioManager audio = (AudioManager) bridge.getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
++        if (audio != null) audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
++    }
++
      private final ReentrantLock lock = new ReentrantLock();
      private boolean listening = false;
  
-@@ -48,7 +64,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -48,7 +87,7 @@ public class SpeechRecognition extends Plugin implements Constants {
          bridge
              .getWebView()
              .post(() -> {
@@ -45,7 +68,7 @@ index a99ea69..83f0728 100644
                  SpeechRecognitionListener listener = new SpeechRecognitionListener();
                  speechRecognizer.setRecognitionListener(listener);
                  Logger.info(getLogTag(), "Instantiated SpeechRecognizer in load()");
-@@ -118,6 +134,13 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -118,6 +157,13 @@ public class SpeechRecognition extends Plugin implements Constants {
          call.resolve(new JSObject().put("listening", SpeechRecognition.this.listening));
      }
  
@@ -59,7 +82,7 @@ index a99ea69..83f0728 100644
      @ActivityCallback
      private void listeningResult(PluginCall call, ActivityResult result) {
          if (call == null) {
-@@ -151,6 +174,44 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -151,6 +197,44 @@ public class SpeechRecognition extends Plugin implements Constants {
          this.listening = value;
      }
  
@@ -104,7 +127,7 @@ index a99ea69..83f0728 100644
      private void beginListening(
          String language,
          int maxResults,
-@@ -188,11 +249,18 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -188,11 +272,18 @@ public class SpeechRecognition extends Plugin implements Constants {
                              speechRecognizer = null;
                          }
  
@@ -124,15 +147,52 @@ index a99ea69..83f0728 100644
                          speechRecognizer.startListening(intent);
                          SpeechRecognition.this.listening(true);
                          if (partialResults) {
-@@ -245,6 +313,11 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -217,6 +308,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+                         speechRecognizer.stopListening();
+                         SpeechRecognition.this.listening(false);
+                     }
++                    SpeechRecognition.this.retablirSon();
+                 } catch (Exception ex) {
+                     throw ex;
+                 } finally {
+@@ -245,6 +337,7 @@ public class SpeechRecognition extends Plugin implements Constants {
          public void onBeginningOfSpeech() {
              try {
                  SpeechRecognition.this.lock.lock();
-+                if (streamCoupe) {
-+                    AudioManager audio = (AudioManager) bridge.getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
-+                    if (audio != null) audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
-+                    streamCoupe = false;
-+                }
++                SpeechRecognition.this.retablirSon();
                  // Notify listeners that recording has started
                  JSObject ret = new JSObject();
                  ret.put("status", "started");
+@@ -268,6 +361,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+                     try {
+                         SpeechRecognition.this.lock.lock();
+                         SpeechRecognition.this.listening(false);
++                        SpeechRecognition.this.retablirSon();
+ 
+                         JSObject ret = new JSObject();
+                         ret.put("status", "stopped");
+@@ -281,8 +375,24 @@ public class SpeechRecognition extends Plugin implements Constants {
+         @Override
+         public void onError(int error) {
+             SpeechRecognition.this.stopListening();
++            SpeechRecognition.this.retablirSon();
+             String errorMssg = getErrorText(error);
+ 
++            // LA RAISON ETAIT JETEE, ET C'EST TOUT LE PROBLEME. En mode
++            // partiels `start()` s'est deja resolu : ce `reject` porte donc
++            // sur un appel resolu, Capacitor l'ignore, et l'erreur d'Android
++            // disparait. Cote JS il ne restait qu'un `isListening()` qui
++            // passe a faux -- la "mort silencieuse" du journal d'ecoute, vue
++            // 363 fois sans qu'on puisse jamais dire si c'etait un silence
++            // ordinaire (ERROR_NO_MATCH, ERROR_SPEECH_TIMEOUT) ou une vraie
++            // panne (service occupe, reseau, permission refusee). On l'emet
++            // donc comme evenement, qui lui n'est jamais perdu.
++            JSObject ret = new JSObject();
++            ret.put("status", "error");
++            ret.put("code", error);
++            ret.put("message", errorMssg);
++            SpeechRecognition.this.notifyListeners(LISTENING_EVENT, ret);
++
+             if (this.call != null) {
+                 call.reject(errorMssg);
+             }

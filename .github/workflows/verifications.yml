@@ -47,6 +47,13 @@ jobs:
       - name: La clôture de la conversation à la voix
         run: node --experimental-strip-types scripts/verifier-fin-conversation.ts
 
+      # Le registre des erreurs n'avait qu'une ligne ouverte, et c'était une
+      # fausse alerte : 363 rafales de veille dans une pièce calme signalées
+      # comme des pannes. Ce contrôle garde la frontière dans les DEUX sens —
+      # ne plus crier sur un silence, ne jamais se taire sur une vraie panne.
+      - name: Ce qui finit dans le registre des erreurs, et ce qui n'y finit pas
+        run: node --experimental-strip-types scripts/verifier-raison-ecoute.ts
+
       - name: L'envoi d'un chantier à Claude Code
         run: node --experimental-strip-types scripts/verifier-envoi-chantier.ts
 

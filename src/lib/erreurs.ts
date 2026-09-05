@@ -1,3 +1,9 @@
+// Import relatif avec extension, comme veille.ts → motCle.ts : ce module doit
+// pouvoir se charger sous Node sans bundler, pour que la table de
+// correspondance ci-dessous se vérifie sans réseau
+// (scripts/verifier-raison-ecoute.ts). Les imports `@/…` ne s'y résolvent pas ;
+// `@/types/database` reste possible parce qu'il est effacé (import type).
+import { estUnePanne, titreDeLaPanne, type RaisonEcoute } from "./raisonEcoute.ts"
 import type { ErreurCategorie } from "@/types/database"
 
 /**
@@ -87,7 +93,7 @@ export function oublierRepetitions(): void {
 /**
  * Ce qu'on retient d'un événement du journal d'écoute, s'il raconte un échec.
  * Rendu ici plutôt que dans journalEcoute.ts pour être vérifiable sans
- * réseau (`scripts/verifier-erreurs.ts`) : c'est cette table de
+ * réseau (`scripts/verifier-raison-ecoute.ts`) : c'est cette table de
  * correspondance qui décide si un échec réel finit dans le registre ou
  * disparaît avec les 7 jours du journal d'écoute.
  */
@@ -131,16 +137,41 @@ export function erreurDepuisEcoute(
     }
   }
 
-  // Une mort silencieuse isolée arrive et se rattrape toute seule ; c'est la
-  // rafale qui se termine SANS avoir rien entendu qui est une vraie perte.
-  if (
-    (evenement === "rafale_fin" || evenement === "commande_fin") &&
-    !texte("entendu") &&
-    (detail.mort_silencieuse === true || Number(detail.morts_silencieuses ?? 0) > 0)
-  ) {
+  if (evenement === "rafale_fin" || evenement === "commande_fin") {
+    // On a entendu quelque chose : le tour a fait son travail, quoi qu'il se
+    // soit passé en chemin (le mode commande relance et rattrape tout seul —
+    // 16 tours sur 21 le 5 sept.).
+    if (texte("entendu")) return null
+
+    const raison = texte("raison") as RaisonEcoute | null
+    const silencieuse = detail.mort_silencieuse === true || Number(detail.morts_silencieuses ?? 0) > 0
+
+    // Fin ANORMALE, de l'une des deux façons dont on peut la connaître : on a
+    // vu le service mourir sans un mot (le pouls, seul signal des APK d'avant
+    // le patch), ou Android nous a dit pourquoi (depuis le patch). Il faut
+    // les deux : depuis que l'erreur remonte, elle arrive AVANT le pouls, qui
+    // ne se déclenche donc plus — ne regarder que `mort_silencieuse` rendrait
+    // le registre aveugle aux vraies pannes sur les APK récentes.
+    if (!silencieuse && raison === null) return null
+
+    // LA VEILLE QUI N'ENTEND RIEN N'EST PAS UNE PANNE. C'est la pièce qui est
+    // calme : le téléphone posé sur la table, la boucle qui relance une
+    // rafale toutes les 1 à 8 s, et Android qui répond « personne n'a parlé ».
+    // Mesuré le 5 sept. sur le journal réel : 363 rafales de veille sur 387
+    // finissent ainsi, et AUCUNE d'elles n'avait entendu quoi que ce soit.
+    // On les signalait toutes — d'où « Le micro s'est arrêté sans rien
+    // entendre », vue 10 fois, seule ligne ouverte du registre, qui masquait
+    // les vraies. Une rafale de veille ne se signale donc que si Android a
+    // donné une VRAIE raison (service occupé, micro refusé, réseau).
+    if (texte("mode") === "veille" && !estUnePanne(raison)) return null
+
+    // Ici, soit c'est le mode commande — Raphaël a appuyé, il a parlé, et
+    // rien n'est arrivé : c'est une perte, même sans raison connue — soit
+    // Android a nommé une panne. Le titre dit la cause quand on la connaît,
+    // pour que le registre soit actionnable au lieu d'être descriptif.
     return {
       categorie: "ecoute",
-      titre: "Le micro s'est arrêté sans rien entendre",
+      titre: raison && estUnePanne(raison) ? titreDeLaPanne(raison) : "Le micro s'est arrêté sans rien entendre",
       detail: `${evenement} — ${JSON.stringify(detail).slice(0, 300)}`,
       source: "ecoute",
     }
