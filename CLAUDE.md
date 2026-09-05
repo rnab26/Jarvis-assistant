@@ -1143,6 +1143,14 @@ scripts : voir `README.md`.
 - `.github/workflows/android-build.yml` — build de l'APK debug, publié en
   artifact ET sur une GitHub Release à URL fixe (tag `latest-debug`,
   téléchargement direct depuis l'onglet Paramètres de l'app).
+- `.github/workflows/verifications-navigateur.yml` — les cinq parcours dans un
+  vrai Chromium, à la taille d'un téléphone (cockpit, corbeille d'une tâche,
+  réglages, « Vos conversations », moteur d'écoute). **Sur toutes les
+  branches.** Séparé des contrôles hors ligne parce qu'il installe un
+  navigateur : 91 s contre 25. C'est cette famille-là qui attrape ce qui casse
+  à L'ÉCRAN — une carte qui ne se déplie pas, une corbeille qui supprime sans
+  demander, un tableau qui déborde en largeur, une panne de chargement qui se
+  lit comme une absence.
 - `.github/workflows/verifications.yml` — les contrôles hors ligne (typecheck
   des projets référencés + les scripts `verifier-*.ts` sans réseau + la
   validité des XML Android). **Sur toutes les branches**, pas seulement le
