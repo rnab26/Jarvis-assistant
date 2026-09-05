@@ -735,7 +735,16 @@ tout seul les fichiers voisins (`memoire.ts`) et le dossier `_shared/` quand
 la fonction s'en sert, et il relit puis **conserve le réglage `verify_jwt`
 existant** — `google-oauth` doit rester ouvert pour recevoir la redirection de
 Google, qui ne porte aucun jeton ; le refermer casserait la connexion du
-compte Google. **Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
+compte Google. **`git fetch && git merge` AVANT de déployer, toujours.** Le script envoie ce
+qui est SUR LE DISQUE, pas ce qui est sur la branche. Le 5 sept., un
+déploiement fait pour une raison sans rapport (une phrase de
+`_shared/environnement.ts`) a remis en ligne l'`index.ts` d'avant le correctif
+qu'une autre session venait de pousser — le rouge est tombé une demi-heure
+plus tard sur `verifier-commande-vocale.mjs`, chez celui qui n'y était pour
+rien. Plusieurs sessions déploient la MÊME fonction ; l'état du disque n'est à
+jour que si on vient de le mettre à jour.
+
+**Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
 à mettre dans les variables d'environnement de l'environnement cloud — jamais
 dans le dépôt). Tant qu'elle manque, le script le dit et s'arrête.
 
