@@ -30,7 +30,7 @@ import {
   planifierEcheances,
   planifierMatins,
 } from "../src/lib/notifications/plan.ts"
-import { phraseAnnonce } from "../src/lib/notifications/annonceVocale.ts"
+import { phraseAnnonce, raisonDuSilence } from "../src/lib/notifications/annonceVocale.ts"
 import { normaliserPrefs, PREFS_NOTIFS_DEFAUT } from "../src/lib/notifications/prefs.ts"
 import type { PrefsNotifications } from "../src/lib/notifications/prefs.ts"
 import type { Task } from "../src/types/database.ts"
@@ -395,6 +395,34 @@ function tache(partiel: Partial<Task>): Task {
     "une notification vide ne fait rien dire",
     dire({ title: "  ", body: null }) === null,
   )
+  // La RAISON du silence part dans le journal d'écoute : sans elle, une
+  // annonce muette sur son téléphone serait indistinguable, vue d'ici, d'une
+  // annonce jamais déclenchée.
+  const pourquoi = (
+    notif: { title?: string | null; body?: string | null },
+    p: Partial<PrefsNotifications> = {},
+    voixCoupee = false,
+    maintenant = jour,
+  ) => raisonDuSilence(notif, { prefs: { ...base, ...p }, voixCoupee, maintenant })
+
+  verifier(
+    "quand il parle, aucune raison de se taire n'est écrite",
+    pourquoi({ title: "Appeler le plombier" }) === null,
+  )
+  for (const [attendu, p, coupee, quand] of [
+    ["desactive", { direAVoixHaute: false }, false, jour],
+    ["voix_coupee", {}, true, jour],
+    ["heures_de_silence", {}, false, nuit],
+    ["rien_a_dire", {}, false, jour],
+  ] as [string, Partial<PrefsNotifications>, boolean, Date][]) {
+    const notif = attendu === "rien_a_dire" ? { title: " " } : { title: "Appeler le plombier" }
+    verifier(
+      `le journal dira « ${attendu} »`,
+      pourquoi(notif, p, coupee, quand) === attendu,
+      String(pourquoi(notif, p, coupee, quand)),
+    )
+  }
+
   const long = dire({ title: "Point du matin", body: "x".repeat(900) })
   verifier(
     "un point du matin très chargé est écourté, pas lu pendant une minute",

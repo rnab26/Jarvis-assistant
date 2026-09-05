@@ -45,6 +45,26 @@ function propre(texte: string | null | undefined): string {
 }
 
 /**
+ * POURQUOI Jarvis se tait, quand il se tait — ou null s'il va parler.
+ *
+ * Rendue à part pour être ÉCRITE DANS LE JOURNAL D'ÉCOUTE. Sans ça, une
+ * annonce muette sur le téléphone de Raphaël est indistinguable, vue d'ici,
+ * d'une annonce qui n'a jamais été déclenchée : le pont Android ne se vérifie
+ * pas depuis une machine sans téléphone, et « ça n'a pas parlé » n'aurait
+ * aucune cause lisible. C'est la même règle que partout dans ce projet : une
+ * panne ne doit pas se lire comme une absence.
+ */
+export type RaisonSilence = "desactive" | "voix_coupee" | "heures_de_silence" | "rien_a_dire"
+
+export function raisonDuSilence(notif: NotifRecue, ctx: ContexteAnnonce): RaisonSilence | null {
+  if (!ctx.prefs.direAVoixHaute) return "desactive"
+  if (ctx.voixCoupee) return "voix_coupee"
+  if (dansLaPlageSilencieuse(ctx.maintenant, ctx.prefs)) return "heures_de_silence"
+  if (!propre(notif.title) && !propre(notif.body)) return "rien_a_dire"
+  return null
+}
+
+/**
  * La phrase à dire, ou null pour se taire.
  *
  * Les quatre raisons de se taire, dans cet ordre :
@@ -56,13 +76,10 @@ function propre(texte: string | null | undefined): string {
  *   4. il n'y a rien à dire.
  */
 export function phraseAnnonce(notif: NotifRecue, ctx: ContexteAnnonce): string | null {
-  if (!ctx.prefs.direAVoixHaute) return null
-  if (ctx.voixCoupee) return null
-  if (dansLaPlageSilencieuse(ctx.maintenant, ctx.prefs)) return null
+  if (raisonDuSilence(notif, ctx)) return null
 
   const titre = propre(notif.title)
   const corps = propre(notif.body)
-  if (!titre && !corps) return null
 
   // Le corps répète souvent le titre (« Appeler le plombier » / « Appeler le
   // plombier, c'est l'heure ») : le dire deux fois de suite s'entend.
