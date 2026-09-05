@@ -145,6 +145,23 @@ function majuscule(texte: string): string {
 }
 
 /**
+ * Est-ce que ce qui suit « ouvre » / « lance » ressemble à un nom
+ * d'application, ou à une phrase ?
+ *
+ * La différence n'est pas cosmétique : `executerActionTelephone` rapproche ce
+ * texte des applications installées de façon FLOUE, et finit toujours par en
+ * trouver une. Une phrase entière lui est donc rendue comme une application,
+ * et Jarvis l'ouvre — c'est ce qui s'est passé le 5 sept., deux fois d'affilée.
+ * Trois mots au plus, et aucune ponctuation de phrase (« : », « . », « ; »,
+ * « , »), qu'aucun nom d'application ne porte.
+ */
+function estUnNomDApp(cible: string): boolean {
+  if (/[:;,.!?]/.test(cible)) return false
+  const mots = cible.split(/\s+/).filter(Boolean)
+  return mots.length >= 1 && mots.length <= 3
+}
+
+/**
  * Un titre de tâche ne garde ni l'amorce de commande qui le précède, ni la
  * ponctuation laissée par le retrait de la date. « une tâche pour demain :
  * sortir les poubelles » donne « Sortir les poubelles », pas
@@ -283,8 +300,12 @@ export function interpreterLocalement(
   // « rajoute » plutôt qu'« ajoute », « dans les chantiers à développer… » :
   // ce sont ses tournures réelles, relevées dans la table `echanges` le
   // 3 sept. plutôt que devinées.
+  // « lance » et les infinitifs (« créer », « ajouter ») : ses tournures du
+  // 5 sept., relevées dans `journal_ecoute` après qu'elles ont ouvert une
+  // application au lieu de créer le chantier. Le mot « chantier » qui suit
+  // lève toute ambiguïté — « lance Spotify » n'est pas concerné.
   const ajoutChantier = texte.match(
-    /^(?:(?:dans (?:les|mes) (?:chantiers|taches de developpement)[^,]*,?\s*)?(?:ajoute|rajoute|cree|note|nouveau|nouvelle))\s+(?:un |une |le |la )?(?:chantier|tache de developpement)\s*(?:a traiter\s*)?:?\s*(.+)$/,
+    /^(?:(?:dans (?:les|mes) (?:chantiers|taches de developpement)[^,]*,?\s*)?(?:ajouter?|rajouter?|creer?|noter?|nouveau|nouvelle|lance[rz]?|demarrer?|ouvre|ouvrir))\s+(?:un |une |le |la |moi un |moi une )?(?:chantier|tache de developpement)\b\s*(?:a traiter\s*)?(?:et (?:vas-y )?(?:ajoute|rajoute)(?:-le)?\.?\s*)?(?:j'aimerais\s+)?:?\s*(.+)$/,
   )
   if (ajoutChantier) {
     const brut = titreDepuis(ajoutChantier[1])
@@ -383,6 +404,13 @@ export function interpreterLocalement(
     if (/^(?:de la |la )?musique$/.test(cible)) {
       return [{ action: "media_control", media_command: "lecture" }]
     }
+    // Un nom d'application, c'est un ou deux mots — « Spotify », « Apple
+    // Music ». Le 5 sept., « lance un chantier et ajoute-le : savoir combien
+    // il me reste de crédit » est parti en open_app, et le rapprochement flou
+    // a ouvert מכבי : une phrase de dix mots avait été prise pour un nom
+    // d'app. Au-delà de trois mots, ou dès qu'il y a une ponctuation de
+    // phrase, on rend la main au serveur plutôt que d'ouvrir n'importe quoi.
+    if (!estUnNomDApp(cible)) return null
     return [{ action: "open_app", app_name: majuscule(cible) }]
   }
 
@@ -494,8 +522,11 @@ export function interpreterLocalement(
     return [{ action: "navigate_to", destination: majuscule(itineraire[1].trim()) }]
   }
 
+  // `\s+` et non `\s*` : avec `\s*`, « créer X » se lisait « cree » + « r X »
+  // et la tâche s'appelait « R X ». Vu le 5 sept. sur son téléphone, trois
+  // fois de suite. Les infinitifs sont donc dans la liste, explicitement.
   const ajoutTache = texte.match(
-    /^(?:ajoute|rajoute|cree|note|rappelle-moi|pense a|il faut que je|je dois)\s*(?:une |la |le |de |d')?\s*(?:tache\s*:?\s*)?(.+)$/,
+    /^(?:ajouter?|rajouter?|creer?|noter?|rappelle-moi|pense a|il faut que je|je dois)\s+(?:une |la |le |de |d')?\s*(?:tache\s*:?\s*)?(.+)$/,
   )
   if (ajoutTache) {
     // « note que Dylan est le client de Melissa » est une information sur

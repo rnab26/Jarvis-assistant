@@ -280,6 +280,52 @@ doitDonner("ajoute une tâche : appeler le plombier", {
   title: "Appeler le plombier",
 })
 
+console.log("\n— Créer un chantier à la voix : ses phrases réelles du 5 sept. —")
+
+// Les trois phrases ci-dessous ne sont pas inventées : elles sont copiées de
+// `journal_ecoute`, le 5 sept. 2026 entre 17 h 59 et 18 h 00. Les trois ont
+// échoué, chacune autrement — deux ont ouvert une application israélienne au
+// hasard, la troisième a créé une TÂCHE intitulée « R un chantier ».
+doitDonner("Lance un chantier et ajoute-le : savoir combien il me reste de crédit", {
+  action: "add_dev_item",
+  title: "Savoir combien il me reste de credit",
+})
+doitDonner("Lance un chantier et vas-y ajoute-le. J'aimerais savoir combien il me reste de crédit", {
+  action: "add_dev_item",
+  title: "Savoir combien il me reste de credit",
+})
+// Le piège était un `\\s*` au lieu d'un `\\s+` : « creer » se lisait « cree »
+// suivi de « r », et le « r » restait collé en tête du titre.
+doitDonner("Créer un chantier : savoir combien il reste de crédit", {
+  action: "add_dev_item",
+  title: "Savoir combien il reste de credit",
+})
+doitDonner("créer une tâche : appeler le plombier", {
+  action: "add_task",
+  title: "Appeler le plombier",
+})
+doitDonner("ajouter une tâche : commander les carreaux", {
+  action: "add_task",
+  title: "Commander les carreaux",
+})
+// Ce qui doit continuer de marcher : « lance » suivi d'une vraie application.
+doitDonner("lance Spotify", { action: "open_app", app_name: "Spotify" })
+doitDonner("ouvre Apple Music", { action: "open_app", app_name: "Apple music" })
+
+console.log("\n— Une phrase n'est pas un nom d'application —")
+
+// `executerActionTelephone` rapproche le texte des apps installées de façon
+// floue : il trouve TOUJOURS quelque chose. Une phrase doit donc être
+// arrêtée ici, pas plus loin.
+doitLaisserPasser(
+  "lance la procédure de sauvegarde du serveur avant ce soir",
+  "dix mots ne sont pas un nom d'application",
+)
+doitLaisserPasser(
+  "ouvre le dossier, prends la facture et envoie-la",
+  "une phrase ponctuée n'est pas un nom d'application",
+)
+
 console.log("\n— Ce qu'il doit laisser au serveur, plutôt que de deviner —")
 
 doitLaisserPasser("c'est quoi la capitale de l'Australie", "question de culture générale")
