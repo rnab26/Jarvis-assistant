@@ -116,6 +116,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/AppsParDefaut.tsx",
   },
   {
+    cle: "jarvis_delai_annulation",
+    ou: "Paramètres › Ce que Jarvis utilise › Le temps de l'arrêter",
+    fichier: "src/components/settings/FenetreAnnulation.tsx",
+  },
+  {
     cle: "jarvis_notifications",
     ou: "Paramètres › Notifications › Quand Jarvis te dérange",
     fichier: "src/components/settings/Notifications.tsx",

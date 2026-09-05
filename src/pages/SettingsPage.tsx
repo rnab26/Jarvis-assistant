@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { CarteAutorisations } from "@/components/settings/Autorisations"
 import { Confidentialite } from "@/components/settings/Confidentialite"
+import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
@@ -93,7 +94,7 @@ const SECTIONS = {
     titre: "Ce que Jarvis utilise",
     resume: "Applications par défaut, canal des messages",
     motsCles:
-      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia",
+      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia délai annuler arrêter avant d'agir mal entendu",
   },
   apparence: {
     cle: "apparence",
@@ -912,6 +913,7 @@ export function SettingsPage() {
 
       <Section {...SECTIONS.apps} filtre={recherche}>
         <AppsParDefaut />
+        <FenetreAnnulation />
       </Section>
 
       <Section {...SECTIONS.apparence} filtre={recherche}>

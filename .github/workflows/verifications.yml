@@ -99,6 +99,17 @@ jobs:
       - name: Lancer une musique dit ce qui s'est vraiment passé
         run: node --experimental-strip-types scripts/verifier-musique.ts
 
+      # Une demande redite à la voix ne doit pas créer un second chantier —
+      # et une demande NEUVE ne doit jamais être refusée pour trois mots
+      # communs : la perdre en silence serait bien pire que le doublon.
+      - name: Dicter deux fois ne crée pas deux chantiers
+        run: node --experimental-strip-types scripts/verifier-doublon-vocal.ts
+
+      # Le garde-fou des commandes mal entendues ne doit jamais redevenir la
+      # confirmation bloquante que Raphaël a écartée.
+      - name: La fenêtre d'annulation des actions du téléphone
+        run: node --experimental-strip-types scripts/verifier-fenetre-annulation.ts
+
       - name: Les autorisations du téléphone
         run: node --experimental-strip-types scripts/verifier-autorisations.ts
 

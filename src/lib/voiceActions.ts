@@ -1,5 +1,6 @@
 import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
 import { cleTheme } from "@/lib/themeChantier"
+import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
 import type {
   Category,
   Contact,
@@ -343,6 +344,14 @@ export async function executeVoiceAction(
     }
 
     case "add_dev_item": {
+      // « Ça existe déjà », à la voix. Il dicte, ne voit pas le résultat, et
+      // reformule en croyant que ça n'a pas pris : le 5 sept. deux phrases à
+      // une minute d'intervalle ont créé deux chantiers jumeaux. La
+      // comparaison est locale et gratuite ; elle ne pose aucune question —
+      // elle dit, et ne recrée pas une redite littérale.
+      const doublon = deciderDoublonVocal(action.title, action.notes, devItems)
+      if (doublon.verdict === "refuser") return doublon.phrase
+
       await addDevItem({
         title: action.title,
         notes: action.notes ?? null,
@@ -355,7 +364,10 @@ export async function executeVoiceAction(
       // phrase, il pouvait croire qu'une session allait s'en saisir tout de
       // suite — c'est le même malentendu que corrige le bandeau permanent
       // de la fenêtre d'envoi du cockpit.
-      return `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
+      const ajoute = `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
+      return doublon.verdict === "creer_en_avertissant"
+        ? `${doublon.phrase} ${ajoute}`
+        : ajoute
     }
 
     case "update_dev_item": {

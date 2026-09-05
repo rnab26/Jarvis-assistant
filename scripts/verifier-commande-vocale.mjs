@@ -660,6 +660,35 @@ cas.push(
     },
   },
   {
+    // SA PHRASE EXACTE du 5 sept. à 19 h 34. Résultat à l'époque : un
+    // chantier « Lancer une nouvelle session pour l'intégration IA » avec le
+    // thème « Intégration IA », et AUCUNE ligne dans dev_sections. La section
+    // n'existait donc que comme texte libre porté par un chantier, et elle
+    // aurait disparu du cockpit le jour où ce chantier serait archivé.
+    nom: "« ouvre une section pour X et lance une session » crée bien la SECTION",
+    phrase:
+      "Ouvrir une nouvelle section de chantier pour l'intégration d'application IA et lancer une nouvelle session.",
+    controle: (r) => {
+      const actions = r.actions ?? []
+      const a = actions.find((x) => x.action === "add_dev_section")
+      if (!a) return [false, `aucune section créée : ${JSON.stringify(actions.map((x) => x.action))}`]
+      if (!/ia|intelligence/i.test(a.section_nom ?? "")) return [false, `section_nom = ${a.section_nom}`]
+      return [true]
+    },
+  },
+  {
+    // Jarvis ne peut pas lancer une session Claude Code. L'ignorer laissait
+    // croire que c'était fait ; en faire un chantier ajoutait du bruit.
+    nom: "et il dit qu'il ne sait pas lancer une session Claude Code",
+    phrase:
+      "Ouvrir une nouvelle section de chantier pour l'intégration d'application IA et lancer une nouvelle session.",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (!/session/i.test(message)) return [false, `il n'en dit rien : "${message}"`]
+      return [true]
+    },
+  },
+  {
     // Supprimer une section déplace TOUS ses chantiers. À la voix il n'y a ni
     // confirmation ni bouton Annuler ; le cockpit a les deux. Jarvis doit donc
     // y renvoyer, pas le faire.
@@ -672,6 +701,37 @@ cas.push(
       }
       const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
       if (!/cockpit/i.test(message)) return [false, `il ne renvoie pas au cockpit : "${message}"`]
+      return [true]
+    },
+  },
+)
+
+// « envoie un message à Mel » (sa femme) compris comme une demande Gmail, le
+// 4 sept. : « Mel » sonne comme « mail ». Sa consigne est explicite — ne pas
+// coder en dur « Mel n'est pas mail », c'est une CLASSE de bug (Sam/SMS,
+// Al/appel), pas un cas particulier. On vérifie donc la règle générale sur
+// deux prénoms différents, dont un qui n'est dans aucune liste de contacts.
+cas.push(
+  {
+    nom: "« envoie un message à Mel » va aux messages, pas à Gmail",
+    phrase: "Envoie un message à Mel.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.some((t) => `${t}`.includes("email"))) {
+        return [false, `il est parti sur Gmail : ${JSON.stringify(types)}`]
+      }
+      if (!types.includes("send_message") && !types.includes("clarify")) {
+        return [false, `ni message ni clarification : ${JSON.stringify(types)}`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "et « appelle Al » reste un appel",
+    phrase: "Appelle Al.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "call_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
       return [true]
     },
   },

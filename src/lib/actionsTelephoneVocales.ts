@@ -1,6 +1,12 @@
 import { Capacitor } from "@capacitor/core"
 import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/actionsTelephone"
 import { phraseMusique, type ResultatOuverture } from "@/lib/actionsTelephoneMusique"
+import {
+  annonceAction,
+  delaiAnnulation,
+  passeParLaFenetre,
+} from "@/lib/actionsTelephoneFenetre"
+import { attendreOuAnnuler } from "@/lib/actionsTelephoneToast"
 import { ecrireReglage } from "@/lib/reglages"
 import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
@@ -152,6 +158,29 @@ function dureeLisible(secondes: number): string {
 }
 
 /**
+ * Ce que l'annonce nomme : l'application, la personne, la destination.
+ *
+ * C'est le seul mot qui permet de repérer une commande mal entendue.
+ * « J'ouvre une application » ne dit rien ; « J'ouvre מכבי » se corrige en
+ * une seconde — c'est exactement ce qui est arrivé le 5 sept.
+ */
+function cibleAnnoncee(action: ActionTelephone, contacts: Contact[]): string | null {
+  switch (action.action) {
+    case "open_app":
+      return action.app_name || (action.music_query ? appPreferee("musique") : null)
+    case "call_contact":
+    case "send_message":
+      return nomDe(contacts, action.contact_id) ?? action.contact_name ?? action.phone_number ?? null
+    case "navigate_to":
+      return action.destination
+    case "ask_ai":
+      return action.app_name || appPreferee("ia")
+    default:
+      return null
+  }
+}
+
+/**
  * Exécute une action dans une autre application du téléphone et renvoie la
  * phrase que Jarvis dira.
  *
@@ -168,6 +197,21 @@ export async function executerActionTelephone(
   contacts: Contact[],
 ): Promise<string> {
   if (!Capacitor.isNativePlatform()) return SUR_LE_TELEPHONE_SEULEMENT
+
+  // La fenêtre d'annulation, pour les seules actions qui SORTENT de Jarvis.
+  // Rien n'attend son accord : le décompte fini, ça part. C'est le compromis
+  // du chantier 3f3ad20b — il a écarté toute confirmation bloquante, mais
+  // quatre commandes mal entendues le 5 sept. ont ouvert des applications au
+  // hasard, et il n'avait aucun moyen de les arrêter.
+  const attente = delaiAnnulation()
+  if (attente > 0 && passeParLaFenetre(action.action)) {
+    const annonce = annonceAction(action.action, cibleAnnoncee(action, contacts))
+    const continuer = await attendreOuAnnuler(annonce, attente)
+    if (!continuer) {
+      noterEcoute("action_annulee", { action: action.action })
+      return "D'accord, j'annule."
+    }
+  }
 
   try {
     switch (action.action) {
