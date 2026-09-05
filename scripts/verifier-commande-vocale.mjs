@@ -70,6 +70,12 @@ const CHANTIERS = [
   { id: "c-widget", title: "Widget", notes: null, status: "todo", priority: "low", theme: "L'app elle-même" },
 ]
 const THEMES = ["Voix et écoute", "L'app elle-même"]
+// « Entraînement » est DÉCLARÉE et ne porte aucun chantier : c'est le cas qui
+// a motivé le chantier a4348872. Elle n'apparaît donc pas dans THEMES.
+const SECTIONS = [
+  { id: "sec-entrainement", nom: "Entraînement" },
+  { id: "sec-app", nom: "L'app elle-même" },
+]
 const CONTACTS = [
   { id: "ct-yoni", name: "Yoni", notes: "Chef de chantier", phone: "0612345678" },
   { id: "ct-dylan", name: "Dylan", notes: "Client de Melissa, villa Dan", phone: null },
@@ -93,7 +99,7 @@ async function demander(phrase) {
     },
     body: JSON.stringify({
       transcript: phrase,
-      categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, documents: [], contacts: CONTACTS,
+      categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, sections: SECTIONS, documents: [], contacts: CONTACTS,
       placeReminders: [], pronunciations: PRONONCIATIONS,
       widgetConfig: { maxTasks: 3, urgentOnly: false, categoryId: null },
       todayISO: new Date().toISOString().slice(0, 10),
@@ -615,6 +621,62 @@ cas.push(
 
 // sature le quota et fait échouer la vérification pour une raison étrangère
 // au code : d'où la pause entre deux cas, réglable par PAUSE_MS.
+// ── Les sections de chantiers. Ajoutés par la session « Mémoire et
+//    connaissance de soi ». Une section créée d'avance et encore vide était
+//    invisible pour Jarvis : dicter « ajoute un chantier dans Entraînement »
+//    en fabriquait une jumelle au lieu d'y ranger (chantier a4348872).
+cas.push(
+  {
+    nom: "un chantier se range dans une section DÉCLARÉE mais encore vide",
+    phrase: "Ajoute un chantier dans Entraînement : apprendre à Jarvis à lire mes plans.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_dev_item")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.theme !== "Entraînement") {
+        return [false, `thème = ${JSON.stringify(a.theme)} — une section jumelle serait créée à côté de la vraie`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "créer une section à la voix",
+    phrase: "Crée une section Facturation clients.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_dev_section")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/facturation/i.test(a.section_nom ?? "")) return [false, `section_nom = ${a.section_nom}`]
+      return [true]
+    },
+  },
+  {
+    nom: "renommer une section, en visant la bonne",
+    phrase: "Renomme la section Entraînement en Formation.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "rename_dev_section")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.section_id !== "sec-entrainement") return [false, `section_id = ${a.section_id}`]
+      if (!/formation/i.test(a.section_nom ?? "")) return [false, `section_nom = ${a.section_nom}`]
+      return [true]
+    },
+  },
+  {
+    // Supprimer une section déplace TOUS ses chantiers. À la voix il n'y a ni
+    // confirmation ni bouton Annuler ; le cockpit a les deux. Jarvis doit donc
+    // y renvoyer, pas le faire.
+    nom: "supprimer une section n'est PAS fait à la voix, mais renvoyé au cockpit",
+    phrase: "Supprime la section Entraînement.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.some((t) => `${t}`.includes("section") && t !== "add_dev_section")) {
+        return [false, `il a tenté une action de section : ${JSON.stringify(types)}`]
+      }
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (!/cockpit/i.test(message)) return [false, `il ne renvoie pas au cockpit : "${message}"`]
+      return [true]
+    },
+  },
+)
+
 // Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
 // au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
 // répond « J'ai atteint la limite de l'offre gratuite », ou meurt en

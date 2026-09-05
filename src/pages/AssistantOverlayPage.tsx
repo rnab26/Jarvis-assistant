@@ -23,6 +23,7 @@ function AssistantOverlayContent() {
     dialogueState,
     voiceState,
     widgetState,
+    devSectionsState,
   } = useJarvisData()
 
   return (
@@ -30,6 +31,7 @@ function AssistantOverlayContent() {
       <MicButton
         tasksApi={tasksState}
         devItemsApi={devItemsState}
+        devSectionsApi={devSectionsState}
         documentsApi={documentsState}
         contactsApi={contactsState}
         placeRemindersApi={{

@@ -111,6 +111,20 @@ rate.
 
 ### Le rattachement reste `dev_items.theme`. Ne change pas ça.
 
+**Et Jarvis voit les sections DÉCLARÉES, pas seulement les thèmes portés.**
+`MicButton` envoyait `themesDe(devItems)` — la liste des thèmes réellement
+portés par un chantier. Une section créée d'avance et encore vide
+(« Entraînement », le cas de la demande d'origine) était donc invisible pour
+lui : dicter « ajoute un chantier dans Entraînement » en fabriquait une
+jumelle. Il reçoit maintenant `sections` (id + nom) en plus, et sait qu'une
+section peut exister sans rien contenir.
+
+Il crée et renomme une section à la voix (`add_dev_section`,
+`rename_dev_section`). Il ne SUPPRIME ni ne FUSIONNE pas : ça déplace tous les
+chantiers de la section, et à la voix il n'y a ni confirmation ni bouton
+Annuler — le cockpit a les deux. La consigne lui dit d'y renvoyer, et un
+contrôle de `verifier-commande-vocale.mjs` vérifie qu'il le fait.
+
 `theme` est du texte libre, et c'est ce que TOUT le projet lit : le hook de
 démarrage, la commande vocale, les scripts SQL, les autres sessions. La table
 `dev_sections` ne porte que ce que le texte libre ne sait pas porter — exister
