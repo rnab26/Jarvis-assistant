@@ -168,7 +168,11 @@ export function useNotifications(
       enAttenteRef.current = []
       timerLivraisonRef.current = null
       if (titres.length === 0) return
-      void notifierMaintenant({
+      // .catch() et pas void : une notification qui ne peut pas partir
+      // (permission retirée entre-temps) laisserait sinon une promesse
+      // rejetée non gérée, qui casse la page pour une information
+      // secondaire. Elle observe, elle ne commande rien.
+      notifierMaintenant({
         id: ID_CHANTIERS_LIVRES,
         titre:
           titres.length === 1
@@ -177,7 +181,7 @@ export function useNotifications(
         corps: corpsChantiersLivres(titres),
         canal: "livraisons",
         route: "/cockpit",
-      })
+      }).catch(() => {})
     }, FENETRE_GROUPEMENT_MS)
   }, [devItems, prefs.livre])
 
@@ -204,7 +208,7 @@ export function useNotifications(
           ({ new: ligne }) => {
             const entree = ligne as DevLogEntry
             if (!estPourRaphael(entree)) return
-            void notifierMaintenant({
+            notifierMaintenant({
               id: ID_SESSION_BLOQUEE,
               titre:
                 entree.kind === "blocage"
@@ -213,7 +217,7 @@ export function useNotifications(
               corps: entree.body.slice(0, 240),
               canal: "blocages",
               route: "/cockpit",
-            })
+            }).catch(() => {})
           },
         )
         .subscribe()

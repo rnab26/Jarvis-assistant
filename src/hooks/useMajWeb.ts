@@ -157,13 +157,20 @@ export function useMajWeb(
     traiteRef.current = published.buildNumber
 
     if (verdict.possible && auto && Date.now() - DEMARRAGE < FENETRE_AUTO_MS) {
-      void appliquerRef.current()
+      // .catch() et pas void : appliquer() relance l'erreur après l'avoir
+      // mise à l'écran, et une promesse rejetée que personne n'attrape
+      // remonte en erreur non gérée — de quoi casser la page pour une mise à
+      // jour qui n'a pas pu se télécharger.
+      appliquerRef.current().catch(() => {})
       return
     }
 
     if (!notifierApk || dejaAnnonce(published.buildNumber)) return
     noterAnnonce(published.buildNumber)
-    void notifierMaintenant({
+    // Une notification qui ne peut pas partir (permission retirée depuis, ou
+    // canal refusé par Android) ne doit jamais casser l'écran qui l'a
+    // déclenchée : elle observe, elle ne commande rien.
+    notifierMaintenant({
       id: ID_MAJ_APP,
       titre: "Nouvelle version de Jarvis",
       corps: verdict.possible
@@ -171,7 +178,7 @@ export function useMajWeb(
         : "Celle-ci demande d'installer l'APK. Ouvre Paramètres.",
       canal: "app",
       route: "/settings",
-    })
+    }).catch(() => {})
   }, [pret, status, published, verdict, auto, notifierApk])
 
   const setAuto = useCallback((actif: boolean) => {
