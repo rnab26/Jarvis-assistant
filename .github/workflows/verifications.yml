@@ -72,6 +72,9 @@ jobs:
       - name: « Ça existe déjà » à la saisie d'un chantier
         run: node --experimental-strip-types scripts/verifier-doublon-chantier.ts
 
+      - name: Ce qui a bougé depuis le dernier passage
+        run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.
