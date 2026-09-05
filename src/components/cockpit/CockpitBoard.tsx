@@ -303,6 +303,22 @@ export function CockpitBoard({
             </div>
           )}
 
+          {/* Une panne de chargement des sections ne doit pas passer pour une
+              absence de sections : sans ce mot, le cockpit affiche les
+              chantiers groupés par leur thème, dans le désordre, sans les
+              sections vides — et rien ne dit que c'est un incident. */}
+          {sectionsState.error && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed p-2">
+              <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                Les sections n'ont pas pu être chargées : l'ordre que tu as choisi et les
+                sections vides manquent. Les chantiers, eux, sont bien là.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => sectionsState.refresh()}>
+                Réessayer
+              </Button>
+            </div>
+          )}
+
           <div className="relative">
             <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input

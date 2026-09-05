@@ -600,6 +600,64 @@ try {
     await gros.getByRole("button", { name: "Supprimer" }).first().isVisible(),
   )
 
+  // ── Le registre des erreurs à sa taille future ──
+  await gros.getByRole("button", { name: /Erreurs de Jarvis/ }).first().click()
+  await pause(500)
+  const lignesErreurs = await gros.getByText(/^Erreur numéro/).count()
+  verifier(
+    "avec quarante erreurs, la carte n'en déroule pas quarante d'un coup",
+    lignesErreurs > 0 && lignesErreurs <= 25,
+    `${lignesErreurs} lignes affichées : la carte ferait un mur`,
+  )
+  verifier(
+    "et propose de voir les autres",
+    await gros.getByRole("button", { name: /Voir les \d+ autres/ }).isVisible(),
+  )
+  await gros.getByRole("button", { name: /Voir les \d+ autres/ }).click()
+  await pause(400)
+  verifier(
+    "qui s'affichent alors toutes",
+    (await gros.getByText(/^Erreur numéro/).count()) === 40,
+    `${await gros.getByText(/^Erreur numéro/).count()} au lieu de 40`,
+  )
+  await gros.getByRole("button", { name: /Erreurs de Jarvis/ }).first().click()
+  await pause(300)
+
+  // ── Quand le chargement échoue, le cockpit le DIT ──
+  // Une panne muette se lit comme une absence : sections dans le désordre et
+  // sections vides disparues d'un côté, « 0 erreur ouverte » de l'autre, sans
+  // que rien ne signale l'incident.
+  const panne = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  panne.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (panne):", e.message)
+  })
+  await panne.goto(`${BASE}/scripts/harness/cockpit.html?panne=1`)
+  await panne.waitForSelector('[aria-label="Chantiers"]')
+  await pause(400)
+
+  verifier(
+    "sections non chargées : le cockpit le dit au lieu de faire comme s'il n'y en avait pas",
+    await panne.getByText("Les sections n'ont pas pu être chargées").isVisible(),
+    "les chantiers s'afficheraient sans ordre ni sections vides, sans un mot",
+  )
+  verifier(
+    "et propose de réessayer",
+    await panne.getByRole("button", { name: "Réessayer" }).first().isVisible(),
+  )
+  verifier(
+    "erreurs non chargées : la carte ne prétend pas qu'il n'y en a aucune",
+    (await panne.getByText("non chargées").isVisible()) &&
+      !(await panne.getByText("0 ouverte").isVisible()),
+    "elle annoncerait « 0 ouverte » alors qu'elle n'a rien pu lire",
+  )
+  verifier(
+    "et les chantiers, eux, restent affichés",
+    await panne.getByRole("region", { name: "Chantiers" }).getByText(/restant/).first().isVisible(),
+    "une panne des sections ne doit pas emporter le tableau avec elle",
+  )
+  await panne.close()
+
   await gros.close()
 
 } finally {
