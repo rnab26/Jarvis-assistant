@@ -1,14 +1,16 @@
 import { Check, Pencil, Trash2, Undo2 } from "lucide-react"
 import { useState } from "react"
-import { ConfirmerSuppression } from "@/components/ConfirmerSuppression"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { ConversationsRecentes } from "@/components/memoire/ConversationsRecentes"
+import { SanteMemoire } from "@/components/memoire/SanteMemoire"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/hooks/useAuth"
 import { useEchanges } from "@/hooks/useEchanges"
+import { useSanteMemoire } from "@/hooks/useSanteMemoire"
 import { useSouvenirs } from "@/hooks/useSouvenirs"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { Souvenir, SouvenirCategorie } from "@/types/database"
@@ -36,7 +38,6 @@ function LigneSouvenir({
 }) {
   const [edition, setEdition] = useState(false)
   const [texte, setTexte] = useState(souvenir.contenu)
-  const [confirmation, setConfirmation] = useState(false)
   const perime = souvenir.perime_at !== null
 
   async function enregistrer() {
@@ -95,22 +96,19 @@ function LigneSouvenir({
             >
               <Undo2 className="size-4" />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Oublier définitivement"
-              onClick={() => setConfirmation(true)}
-            >
-              <Trash2 className="size-4" />
-            </Button>
             {/* Un souvenir oublié ne revient pas, et la corbeille se touche
-                par erreur en faisant défiler sur un téléphone. */}
-            <ConfirmerSuppression
-              ouvert={confirmation}
+                par erreur en faisant défiler sur un téléphone. Le texte propose
+                l'issue moins radicale : « périmé » le met de côté sans
+                l'effacer, et Jarvis peut encore dire que ça a changé. */}
+            <ConfirmerAction
+              trigger={
+                <Button variant="ghost" size="icon" aria-label="Oublier définitivement">
+                  <Trash2 className="size-4" />
+                </Button>
+              }
               titre="Oublier ce souvenir ?"
-              detail={`« ${souvenir.contenu} » — Jarvis ne s'en servira plus. Pour le mettre de côté sans l'effacer, utilise plutôt « périmé ».`}
-              libelleAction="Oublier"
-              onFermer={() => setConfirmation(false)}
+              description={`« ${souvenir.contenu} » — Jarvis ne s'en servira plus. Pour le mettre de côté sans l'effacer, utilise plutôt « périmé ».`}
+              libelleConfirmation="Oublier"
               onConfirmer={() => onOublier(souvenir.id)}
             />
           </div>
@@ -128,11 +126,16 @@ export function MemoirePage() {
     session?.user.id,
   )
   const echanges = useEchanges(session?.user.id)
+  const sante = useSanteMemoire(session?.user.id)
 
   const vivants = souvenirs.filter((s) => !s.perime_at)
 
   return (
     <div className="flex flex-col gap-4">
+      {/* En tête, parce qu'une mémoire morte rend tout le reste de la page
+          trompeur : la liste aurait l'air normale, simplement figée. */}
+      <SanteMemoire api={sante} />
+
       <p className="text-sm text-muted-foreground">
         Jarvis retient au fil de vos échanges, sans rien te demander. Voilà tout ce qu'il a gardé —
         corrige ce qui est faux, fais-lui oublier ce qui ne sert plus. Le mot-à-mot des

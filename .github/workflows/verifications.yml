@@ -77,11 +77,35 @@ jobs:
       - name: La mémoire ne redit pas trois fois la même chose
         run: node --experimental-strip-types scripts/verifier-dedoublonnage.ts
 
+      # Ce que Raphaël reprend à Jarvis doit lui revenir — et rien d'autre :
+      # une erreur « serveur » n'apprend rien à un modèle de langue et coûte
+      # du quota à chaque phrase.
+      - name: Les corrections de Raphaël arrivent jusqu'au modèle
+        run: node --experimental-strip-types scripts/verifier-corrections.ts
+
+      # « Une panne qui se lit comme une absence » : un rappel de mémoire qui
+      # échoue rendait le même résultat qu'un rappel qui n'a rien trouvé. Ce
+      # contrôle lit le code, parce que la règle porte sur sa forme.
+      - name: Une panne de la mémoire ne se lit pas comme une absence
+        run: node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts
+
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
 
       - name: La section suggérée à la saisie
         run: node --experimental-strip-types scripts/verifier-suggestion-theme.ts
+
+      - name: « Ça existe déjà » à la saisie d'un chantier
+        run: node --experimental-strip-types scripts/verifier-doublon-chantier.ts
+
+      - name: Ce qui a bougé depuis le dernier passage
+        run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
+
+      - name: L'aller-retour avec une IA installée sur le téléphone
+        run: node --experimental-strip-types scripts/verifier-aller-retour-ia.ts
+
+      - name: Retrouver quelqu'un dans le répertoire du téléphone
+        run: node --experimental-strip-types scripts/verifier-contact-repertoire.ts
 
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une

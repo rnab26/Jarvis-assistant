@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { NotificationsApi } from "@/hooks/useNotifications"
+import { ReglagesSysteme } from "@/lib/reglagesSystemePlugin"
 import { CHOIX_AVANT_MIN } from "@/lib/notifications/prefs"
 
 /** "aujourd'hui à 14 h 30", "demain à 09 h 15", "ven. 6 sept. à 09 h 15" —
@@ -83,19 +84,40 @@ export function Notifications({ api }: { api: NotificationsApi }) {
     api
   const [occupe, setOccupe] = useState(false)
   const [confirmerEffacement, setConfirmerEffacement] = useState(false)
+  // Android ne redemande jamais deux fois : après un refus, le seul chemin
+  // est l'écran système. On ne le propose qu'à ce moment-là, pour ne pas
+  // encombrer l'écran d'un bouton dont on n'a besoin qu'une fois.
+  const [refuse, setRefuse] = useState(false)
 
   async function autoriser() {
     setOccupe(true)
     try {
       const suivant = await demander()
-      if (suivant.autorise) toast.success("Notifications autorisées.")
-      else
+      if (suivant.autorise) {
+        setRefuse(false)
+        toast.success("Notifications autorisées.")
+      } else {
+        setRefuse(true)
         toast.error("Autorisation refusée", {
-          description:
-            "Android ne redemande pas deux fois : ouvre les réglages du téléphone, section Notifications de Jarvis.",
+          description: "Android ne la redemande pas. Passe par les réglages du téléphone.",
         })
+      }
     } finally {
       setOccupe(false)
+    }
+  }
+
+  async function ouvrirReglagesAndroid() {
+    try {
+      await ReglagesSysteme.ouvrirNotifications()
+    } catch {
+      // Plugin absent (web, ou APK plus ancienne que cette interface depuis
+      // la mise à jour rapide) : on dit où aller plutôt que d'échouer sans
+      // un mot.
+      toast.error("Impossible d'ouvrir les réglages depuis ici", {
+        description:
+          "Réglages d'Android › Applications › Jarvis › Notifications. Installe la dernière APK pour que le bouton fonctionne.",
+      })
     }
   }
 
@@ -152,17 +174,35 @@ export function Notifications({ api }: { api: NotificationsApi }) {
               Android demande ton autorisation avant qu'une application puisse afficher quoi que ce
               soit. Sans elle, aucun des réglages ci-dessous n'aura d'effet.
             </p>
-            <Button onClick={autoriser} disabled={occupe}>
-              <BellRing className="size-4" />
-              Autoriser les notifications
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={autoriser} disabled={occupe}>
+                <BellRing className="size-4" />
+                Autoriser les notifications
+              </Button>
+              {refuse && (
+                <Button variant="outline" onClick={ouvrirReglagesAndroid}>
+                  Ouvrir les réglages d'Android
+                </Button>
+              )}
+            </div>
+            {refuse && (
+              <p className="text-sm text-muted-foreground">
+                Android ne redemande jamais deux fois : le bouton ci-dessus ouvre directement
+                l'écran des notifications de Jarvis, autorise-les là-bas puis reviens.
+              </p>
+            )}
           </div>
         ) : (
           <>
             {!etat.actives && (
-              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-                Les notifications de Jarvis sont coupées dans les réglages du téléphone. Rien ne
-                s'affichera tant qu'elles y seront désactivées.
+              <div className="flex flex-col gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <p>
+                  Les notifications de Jarvis sont coupées dans les réglages du téléphone. Rien ne
+                  s'affichera tant qu'elles y seront désactivées.
+                </p>
+                <Button size="sm" variant="outline" className="w-fit" onClick={ouvrirReglagesAndroid}>
+                  Ouvrir les réglages d'Android
+                </Button>
               </div>
             )}
             {!etat.alarmesExactes && (
@@ -253,6 +293,43 @@ export function Notifications({ api }: { api: NotificationsApi }) {
               actif={prefs.bloque}
               onChange={(actif) => setPrefs({ bloque: actif })}
             />
+
+            {/* Sa demande d'origine allait plus loin que la notification :
+                « Jarvis doit pouvoir intervenir à l'oral pour donner une
+                information tel un rappel » (chantier 7567cd47). Il le fait
+                quand l'app est ouverte ou qu'il vient d'appuyer dessus ;
+                parler app fermée demanderait un service Android permanent,
+                qui reste à cadrer avec lui. */}
+            <Interrupteur
+              titre="Dire les rappels à voix haute"
+              description="Quand l'app est ouverte, ou quand tu appuies sur la notification, Jarvis la dit au lieu de seulement l'afficher. Jamais pendant les heures de silence, ni si sa voix est coupée."
+              actif={prefs.direAVoixHaute}
+              onChange={(actif) => setPrefs({ direAVoixHaute: actif })}
+            />
+
+            <Interrupteur
+              titre="Ne rien faire sonner la nuit"
+              description="Les rappels s'affichent quand même, sans bruit : ils sont là au réveil, ils n'ont réveillé personne."
+              actif={prefs.silenceNuit}
+              onChange={(actif) => setPrefs({ silenceNuit: actif })}
+            >
+              {prefs.silenceNuit && (
+                <div className="flex flex-col gap-3 border-t pt-3">
+                  <ChoixHeure
+                    id="silence-debut"
+                    label="À partir de"
+                    valeur={prefs.silenceDebut}
+                    onChange={(v) => setPrefs({ silenceDebut: v })}
+                  />
+                  <ChoixHeure
+                    id="silence-fin"
+                    label="Jusqu'à"
+                    valeur={prefs.silenceFin}
+                    onChange={(v) => setPrefs({ silenceFin: v })}
+                  />
+                </div>
+              )}
+            </Interrupteur>
 
             <div className="flex flex-col gap-2 rounded-lg border p-3">
               <p className="text-sm">

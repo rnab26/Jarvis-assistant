@@ -1,12 +1,18 @@
 import { Capacitor } from "@capacitor/core"
-import { Trash2 } from "lucide-react"
+import { Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
+import { Confidentialite } from "@/components/settings/Confidentialite"
 import { MettreAJour } from "@/components/settings/MettreAJour"
+import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
 import { Nouveautes } from "@/components/settings/Nouveautes"
-import { Section } from "@/components/settings/Section"
+import { Reinitialiser } from "@/components/settings/Reinitialiser"
+import { Section, sectionCorrespond } from "@/components/settings/Section"
+import { Theme } from "@/components/settings/Theme"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import type { UpdateStatus } from "@/hooks/useUpdateCheck"
 import { useSpeechSynthesis, type SpeechSynthesisVoice } from "@/hooks/useSpeechSynthesis"
 import {
   PAUSE_MAX_MS,
@@ -32,6 +39,91 @@ import {
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
 
 const isNative = Capacitor.isNativePlatform()
+
+/** Les sections de l'écran : leur titre, leur résumé, et ce qu'on peut taper
+ * pour les retrouver. Déclarées ici et étalées dans le rendu (`{...SECTIONS.voix}`)
+ * plutôt qu'écrites deux fois — sinon les mots-clés de la recherche et ceux
+ * de la section auraient divergé au premier ajout, et la recherche aurait
+ * compté des résultats qu'elle n'affiche pas. */
+const SECTIONS = {
+  // EN PREMIER, et c'est une demande de Raphaël du 5 sept. 2026 : « pour la
+  // mise à jour, il faut que je descende tout en bas, essaye de la rehausser ».
+  // C'est la section qu'il ouvre le plus souvent, et c'était la septième.
+  app: {
+    cle: "app",
+    titre: "L'application",
+    resume: "Version, mise à jour, nouveautés",
+    motsCles:
+      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
+  },
+  voix: {
+    cle: "voix",
+    titre: "Voix et écoute",
+    resume: "Sa voix, le rythme, le mot-clé de réveil",
+    motsCles:
+      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue mode live conversation continue essai",
+  },
+  taches: {
+    cle: "taches",
+    titre: "Tâches et organisation",
+    resume: "Widget d'écran d'accueil, rappels de lieu",
+    motsCles:
+      "widget écran d'accueil nombre de tâches urgentes catégorie rappel de lieu géolocalisation position gps arriver sur place",
+  },
+  notifications: {
+    cle: "notifications",
+    titre: "Notifications",
+    resume: "Ce que Jarvis a le droit de faire sonner",
+    motsCles:
+      "notification sonner déranger alerte rappel échéance heure d'une tâche avance point du matin briefing résumé nouvelle version chantier livré session bloquée alarme exacte permission tester silencieux",
+  },
+  apps: {
+    cle: "apps",
+    titre: "Ce que Jarvis utilise",
+    resume: "Applications par défaut, appui long sur le bouton",
+    motsCles:
+      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android",
+  },
+  apparence: {
+    cle: "apparence",
+    titre: "Apparence",
+    resume: "Thème clair ou sombre, image du cœur",
+    motsCles: "thème clair sombre nuit couleur affichage cœur réacteur image logo animation",
+  },
+  comptes: {
+    cle: "comptes",
+    titre: "Comptes et connexions",
+    resume: "Google",
+    motsCles: "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation",
+  },
+} as const
+
+const LISTE_SECTIONS = Object.values(SECTIONS)
+
+/**
+ * Ce que la barre « L'application » dit sans qu'on l'ouvre.
+ *
+ * Sa consigne du 3 sept. : le badge « À jour / Nouvelle version » est fait
+ * pour qu'il puisse vérifier lui-même à tout moment. Enfoui dans une section
+ * repliée, en bas de page, il ne remplissait plus ce rôle.
+ *
+ * Rien pendant la vérification ni quand elle échoue : un badge qui clignote à
+ * chaque ouverture, ou qui affiche « inconnu », use l'attention sans rien
+ * apprendre. Seul « à jour » et « nouvelle version » disent quelque chose.
+ */
+function BadgeMaj({ status }: { status: UpdateStatus }) {
+  if (status === "update-available") {
+    return (
+      <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+        Nouvelle version
+      </span>
+    )
+  }
+  if (status === "up-to-date") {
+    return <span className="shrink-0 text-xs text-muted-foreground">À jour</span>
+  }
+  return null
+}
 
 /** Active/désactive le déclenchement des rappels de lieu par
  * géolocalisation réelle (Geofencing Android) — demande les permissions
@@ -359,6 +451,7 @@ export function SettingsPage() {
     notificationsState,
   } = useJarvisData()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
+  const [recherche, setRecherche] = useState("")
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
 
@@ -421,9 +514,72 @@ export function SettingsPage() {
   //
   // Une carte ajoutée ici va DANS un secteur. Posée entre deux, elle recrée
   // exactement la chaîne qu'on vient de défaire.
+  //
+  // Et depuis le 4 sept., une recherche : sept secteurs repliés, c'est bien
+  // rangé mais ça ne dit pas OÙ est un réglage. Tout écran de réglages un peu
+  // fourni en a un — Android, iOS, n'importe quelle application. Sans lui, il
+  // faut ouvrir les sections une par une pour retrouver la vitesse de la
+  // voix. Les mots-clés de chaque section sont à tenir à jour quand on y
+  // ajoute une carte.
+  const sectionsAffichees = LISTE_SECTIONS.filter((sec) =>
+    sectionCorrespond(sec, recherche),
+  ).length
+
   return (
     <div className="flex flex-col gap-3">
-      <Section titre="Voix et écoute" resume="Sa voix, le rythme, le mot-clé de réveil" cle="voix">
+      <div className="flex flex-col gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="search"
+            value={recherche}
+            onChange={(e) => setRecherche(e.target.value)}
+            placeholder="Chercher un réglage"
+            aria-label="Chercher un réglage"
+            className="h-10 w-full rounded-lg border bg-background pl-8 pr-3 text-sm"
+          />
+        </div>
+        {recherche.trim() && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {sectionsAffichees === 0
+                ? `Aucun réglage ne correspond à « ${recherche.trim()} ».`
+                : `${sectionsAffichees} section${sectionsAffichees > 1 ? "s" : ""} sur ${LISTE_SECTIONS.length}.`}
+            </p>
+            <Button variant="ghost" size="sm" onClick={() => setRecherche("")}>
+              Tout afficher
+            </Button>
+          </div>
+        )}
+        {/* Un résultat vide qui ne proposerait rien laisserait devant un écran
+            blanc, sans savoir si le réglage existe ailleurs ou pas du tout. */}
+        {recherche.trim() && sectionsAffichees === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Essaie un autre mot : « voix », « notification », « thème », « widget », « google »,
+            « mise à jour ».
+          </p>
+        )}
+      </div>
+
+      {/* Remontée en tête le 5 sept. 2026 : elle fermait la page, et c'est
+          celle qu'il ouvre le plus. Son badge est sur la barre, pour qu'il
+          sache s'il a une version en retard SANS ouvrir ni faire défiler. */}
+      <Section
+        {...SECTIONS.app}
+        filtre={recherche}
+        ouverteParDefaut
+        badge={<BadgeMaj status={updateState.status} />}
+      >
+        <MettreAJour update={updateState} majWeb={majWebState} />
+
+        <Nouveautes items={recentChanges} />
+
+        <Reinitialiser />
+
+        <Confidentialite />
+      </Section>
+
+      <Section {...SECTIONS.voix} filtre={recherche}>
         <Card>
           <CardHeader>
             <CardTitle>Voix de Jarvis</CardTitle>
@@ -561,6 +717,8 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
+        <ModeLive />
+
         <Card>
           <CardHeader>
             <CardTitle>Mot-clé de réveil "Jarvis"</CardTitle>
@@ -602,14 +760,22 @@ export function SettingsPage() {
                       <p className="font-medium">{p.veut_dire}</p>
                       <p className="text-sm text-muted-foreground">entendu « {p.entendu} »</p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Supprimer"
-                      onClick={() => pronunciationsState.deletePronunciation(p.id)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <ConfirmerAction
+                      titre="Supprimer cette correction ?"
+                      description={
+                        <>
+                          Jarvis réentendra « {p.entendu} » sans savoir que tu dis
+                          « {p.veut_dire} ».
+                        </>
+                      }
+                      libelleConfirmation="Supprimer"
+                      onConfirmer={() => pronunciationsState.deletePronunciation(p.id)}
+                      trigger={
+                        <Button variant="ghost" size="icon" aria-label="Supprimer">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      }
+                    />
                   </li>
                 ))}
               </ul>
@@ -618,7 +784,7 @@ export function SettingsPage() {
         </Card>
       </Section>
 
-      <Section titre="Tâches et organisation" resume="Widget d'écran d'accueil, rappels de lieu" cle="taches">
+      <Section {...SECTIONS.taches} filtre={recherche}>
         <Card>
           <CardHeader>
             <CardTitle>Widget d'écran d'accueil</CardTitle>
@@ -699,14 +865,22 @@ export function SettingsPage() {
                       <p className="font-medium">{p.place}</p>
                       <p className="text-sm text-muted-foreground">{p.reminder}</p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Supprimer"
-                      onClick={() => placeRemindersState.deletePlaceReminder(p.id)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <ConfirmerAction
+                      titre="Supprimer ce rappel de lieu ?"
+                      description={
+                        <>
+                          Jarvis ne te rappellera plus « {p.reminder} » en arrivant à
+                          « {p.place} ».
+                        </>
+                      }
+                      libelleConfirmation="Supprimer"
+                      onConfirmer={() => placeRemindersState.deletePlaceReminder(p.id)}
+                      trigger={
+                        <Button variant="ghost" size="icon" aria-label="Supprimer">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      }
+                    />
                   </li>
                 ))}
               </ul>
@@ -717,31 +891,24 @@ export function SettingsPage() {
         <RappelsGeolocalises />
       </Section>
 
-      <Section
-        titre="Notifications"
-        resume="Ce que Jarvis a le droit de faire sonner"
-        cle="notifications"
-      >
+      <Section {...SECTIONS.notifications} filtre={recherche}>
         <Notifications api={notificationsState} />
       </Section>
 
-      <Section titre="Ce que Jarvis utilise" resume="Applications par défaut, canal des messages" cle="apps">
+      <Section {...SECTIONS.apps} filtre={recherche}>
+        <AssistantTelephone />
         <AppsParDefaut />
       </Section>
 
-      <Section titre="Apparence" resume="L'image du cœur" cle="apparence">
+      <Section {...SECTIONS.apparence} filtre={recherche}>
+        <Theme />
         <CoeurDeJarvis />
       </Section>
 
-      <Section titre="Comptes et connexions" resume="Google" cle="comptes">
+      <Section {...SECTIONS.comptes} filtre={recherche}>
         <CompteGoogle />
       </Section>
 
-      <Section titre="L'application" resume="Version, mise à jour, nouveautés" cle="app" ouverteParDefaut>
-        <MettreAJour update={updateState} majWeb={majWebState} />
-
-        <Nouveautes items={recentChanges} />
-      </Section>
     </div>
   )
 }

@@ -83,6 +83,55 @@ try {
 
   const etat = (nom) => page.locator(`[data-etat="${nom}"]`)
 
+  // ── Le témoin de la mémoire : quatre états, dont deux qui n'existent que
+  //    le jour où quelque chose casse. C'est là que ça compte, et c'est
+  //    justement là qu'on ne peut pas les voir en s'en servant normalement.
+  verifier(
+    "quand tout va bien, le témoin tient sur une ligne discrète",
+    (await page.getByText(/Mémoire active/).isVisible()) &&
+      !(await page.getByText(/ne retient plus rien/).isVisible()),
+    "un avertissement permanent finit par ne plus être lu du tout",
+  )
+
+  await etat("sante-silence").click()
+  await pause(200)
+  verifier(
+    "un silence prolongé se voit, même sans erreur signalée",
+    await page.getByText("La mémoire de Jarvis ne retient plus rien").isVisible(),
+    "c'est le cas RÉEL du 4 sept. : 42 échanges dictés, rien de retenu, et la mémoire n'avait même pas pu dire qu'elle était morte",
+  )
+  verifier(
+    "et il dit combien d'échanges se sont perdus",
+    await page.getByText(/42 échanges dictés/).isVisible(),
+  )
+  verifier(
+    "il rassure sur ce qui n'est PAS touché",
+    await page.getByText(/tes tâches, tes chantiers/).isVisible(),
+    "sans ça, on croirait que Jarvis a tout perdu",
+  )
+
+  await etat("sante-panne").click()
+  await pause(200)
+  verifier(
+    "quand la mémoire a su signaler sa panne, le témoin dit POURQUOI",
+    await page.getByText(/quota du modèle épuisé/).isVisible(),
+    "sans le motif, il faudrait rouvrir les journaux Supabase — c'est ce qu'on voulait éviter",
+  )
+  verifier(
+    "et combien de fois",
+    await page.getByText(/7 fois/).isVisible(),
+  )
+
+  await etat("sante-illisible").click()
+  await pause(200)
+  verifier(
+    "si le témoin lui-même ne peut pas se charger, il le dit au lieu de se taire",
+    await page.getByText(/Impossible de savoir si la mémoire tourne/).isVisible(),
+    "un témoin muet se confond avec un témoin au vert",
+  )
+  await etat("sante-active").click()
+  await pause(200)
+
   // ── Ce qu'on voit d'emblée ──
   verifier(
     "la carte dit à quoi sert ce qui est gardé, et combien de temps",

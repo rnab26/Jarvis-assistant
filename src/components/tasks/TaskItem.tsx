@@ -1,5 +1,6 @@
 import { Pencil, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -87,15 +88,20 @@ export function TaskItem({
             </Button>
           }
         />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label="Supprimer"
-          onClick={() => onDelete(task.id).catch(alreadyNotified)}
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+        {/* Une tâche supprimée ne se retrouve nulle part, et sur un téléphone
+            la corbeille est à trois millimètres du crayon. Même règle que
+            dans le cockpit depuis le 4 sept. */}
+        <ConfirmerAction
+          titre="Supprimer cette tâche ?"
+          description={<>« {task.title} » sera supprimée définitivement.</>}
+          libelleConfirmation="Supprimer"
+          onConfirmer={() => onDelete(task.id)}
+          trigger={
+            <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Supprimer">
+              <Trash2 className="size-3.5" />
+            </Button>
+          }
+        />
       </div>
       {task.notes && (
         // Alignée sous le titre, pas sous la case : la note appartient au

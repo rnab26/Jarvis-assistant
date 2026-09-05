@@ -33,6 +33,7 @@ import { ecrireModeLive, lireModeLive } from "@/lib/livePrefs"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import type { DevItem } from "@/types/database"
 import {
+  type DevSectionsVoiceApi,
   executeVoiceAction,
   type ContactsApi,
   type DevItemsApi,
@@ -77,6 +78,7 @@ function questionAmbigueAppTelephone(
 interface MicButtonProps {
   tasksApi: TasksApi
   devItemsApi: DevItemsApi
+  devSectionsApi: DevSectionsVoiceApi
   documentsApi: DocumentsApi
   contactsApi: ContactsApi
   placeRemindersApi: PlaceRemindersApi
@@ -155,6 +157,7 @@ function normalizeText(text: string) {
 export function MicButton({
   tasksApi,
   devItemsApi,
+  devSectionsApi,
   documentsApi,
   contactsApi,
   placeRemindersApi,
@@ -260,6 +263,11 @@ export function MicButton({
           })),
           devItems: chantiersPourLeModele(devItemsApi.devItems),
           themes: themesDe(devItemsApi.devItems),
+          // Les sections DÉCLARÉES, et pas seulement les thèmes portés par un
+          // chantier : une section créée d'avance et encore vide était
+          // invisible pour Jarvis, qui en fabriquait une jumelle au lieu d'y
+          // ranger (chantier a4348872). L'id sert au renommage.
+          sections: devSectionsApi.sections.map((s) => ({ id: s.id, nom: s.nom })),
           documents: documentsApi.documents.map((d) => ({ name: d.name })),
           contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, notes: c.notes, phone: c.phone })),
           placeReminders: placeRemindersApi.placeReminders.map((p) => ({
@@ -383,6 +391,7 @@ export function MicButton({
             action,
             tasksApi,
             devItemsApi,
+            devSectionsApi,
             documentsApi,
             contactsApi,
             placeRemindersApi,

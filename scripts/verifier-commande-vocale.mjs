@@ -70,6 +70,12 @@ const CHANTIERS = [
   { id: "c-widget", title: "Widget", notes: null, status: "todo", priority: "low", theme: "L'app elle-même" },
 ]
 const THEMES = ["Voix et écoute", "L'app elle-même"]
+// « Entraînement » est DÉCLARÉE et ne porte aucun chantier : c'est le cas qui
+// a motivé le chantier a4348872. Elle n'apparaît donc pas dans THEMES.
+const SECTIONS = [
+  { id: "sec-entrainement", nom: "Entraînement" },
+  { id: "sec-app", nom: "L'app elle-même" },
+]
 const CONTACTS = [
   { id: "ct-yoni", name: "Yoni", notes: "Chef de chantier", phone: "0612345678" },
   { id: "ct-dylan", name: "Dylan", notes: "Client de Melissa, villa Dan", phone: null },
@@ -93,7 +99,7 @@ async function demander(phrase) {
     },
     body: JSON.stringify({
       transcript: phrase,
-      categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, documents: [], contacts: CONTACTS,
+      categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, sections: SECTIONS, documents: [], contacts: CONTACTS,
       placeReminders: [], pronunciations: PRONONCIATIONS,
       widgetConfig: { maxTasks: 3, urgentOnly: false, categoryId: null },
       todayISO: new Date().toISOString().slice(0, 10),
@@ -373,14 +379,25 @@ cas.push(
     },
   },
   {
-    nom: "retenir le numéro dicté d'un contact existant",
+    // Réécrit le 5 sept. 2026, après le retrait des fiches contacts. Il
+    // vérifiait update_contact, une action qui n'existe plus : les numéros
+    // viennent du répertoire du téléphone. Ce qui compte maintenant, c'est que
+    // Jarvis NE MENTE PAS — sa première réponse après le retrait était « j'ai
+    // ajouté le numéro de Dylan à sa fiche contact », alors qu'il n'avait rien
+    // fait et qu'aucune fiche n'existe. Prétendre avoir enregistré quelque
+    // chose est pire que de ne rien enregistrer : Raphaël s'y fie.
+    nom: "un numéro dicté : il le retient sans prétendre l'avoir fiché",
     phrase: "Le numéro de Dylan c'est le 07 88 99 00 11.",
     controle: (r) => {
-      const a = (r.actions ?? []).find((x) => x.action === "update_contact")
-      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
-      if (a.contact_id !== "ct-dylan") return [false, `contact_id = ${a.contact_id}`]
-      const tel = (a.changes?.phone ?? "").replace(/\D/g, "")
-      if (tel !== "0788990011") return [false, `changes = ${JSON.stringify(a.changes)}`]
+      const actions = (r.actions ?? []).map((x) => x.action)
+      const interdites = actions.filter((a) => /contact/.test(a) && a !== "call_contact")
+      if (interdites.length > 0) {
+        return [false, `action de fiche contact renvoyée : ${JSON.stringify(interdites)}`]
+      }
+      const dit = (r.message ?? "").toLowerCase()
+      if (/fiche|dans (?:tes|ses) contacts|carnet/.test(dit)) {
+        return [false, `il prétend avoir fiché le numéro : « ${r.message} »`]
+      }
       return [true]
     },
   },
@@ -615,6 +632,71 @@ cas.push(
 
 // sature le quota et fait échouer la vérification pour une raison étrangère
 // au code : d'où la pause entre deux cas, réglable par PAUSE_MS.
+// ── Les sections de chantiers. Ajoutés par la session « Mémoire et
+//    connaissance de soi ». Une section créée d'avance et encore vide était
+//    invisible pour Jarvis : dicter « ajoute un chantier dans Entraînement »
+//    en fabriquait une jumelle au lieu d'y ranger (chantier a4348872).
+cas.push(
+  {
+    nom: "un chantier se range dans une section DÉCLARÉE mais encore vide",
+    phrase: "Ajoute un chantier dans Entraînement : apprendre à Jarvis à lire mes plans.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_dev_item")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.theme !== "Entraînement") {
+        return [false, `thème = ${JSON.stringify(a.theme)} — une section jumelle serait créée à côté de la vraie`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "créer une section à la voix",
+    phrase: "Crée une section Facturation clients.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_dev_section")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/facturation/i.test(a.section_nom ?? "")) return [false, `section_nom = ${a.section_nom}`]
+      return [true]
+    },
+  },
+  {
+    nom: "renommer une section, en visant la bonne",
+    phrase: "Renomme la section Entraînement en Formation.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "rename_dev_section")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.section_id !== "sec-entrainement") return [false, `section_id = ${a.section_id}`]
+      if (!/formation/i.test(a.section_nom ?? "")) return [false, `section_nom = ${a.section_nom}`]
+      return [true]
+    },
+  },
+  {
+    // Supprimer une section déplace TOUS ses chantiers. À la voix il n'y a ni
+    // confirmation ni bouton Annuler ; le cockpit a les deux. Jarvis doit donc
+    // y renvoyer, pas le faire.
+    nom: "supprimer une section n'est PAS fait à la voix, mais renvoyé au cockpit",
+    phrase: "Supprime la section Entraînement.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.some((t) => `${t}`.includes("section") && t !== "add_dev_section")) {
+        return [false, `il a tenté une action de section : ${JSON.stringify(types)}`]
+      }
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (!/cockpit/i.test(message)) return [false, `il ne renvoie pas au cockpit : "${message}"`]
+      return [true]
+    },
+  },
+)
+
+// Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
+// au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
+// répond « J'ai atteint la limite de l'offre gratuite », ou meurt en
+// IDLE_TIMEOUT à 150 s en attendant un modèle saturé. Le contrôle tombe, mais
+// le code est bon — les mêmes cas rejoués lentement repassent au vert. Sans ce
+// relevé, on relit son diff pendant une heure pour rien.
+const SIGNATURE_QUOTA = /IDLE_TIMEOUT|limite de l'offre gratuite|quota|RESOURCE_EXHAUSTED|429/i
+const suspectsQuota = []
+
 let premier = true
 for (const c of cas) {
   // Rien à attendre avant le tout premier appel : la pause ne sert qu'à
@@ -626,9 +708,30 @@ for (const c of cas) {
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }
   const [ok, detail] = c.controle(r)
   verifier(c.nom, ok, detail)
-  if (!ok) console.log("      réponse :", JSON.stringify(r.actions ?? r).slice(0, 400))
+  if (!ok) {
+    console.log("      réponse :", JSON.stringify(r.actions ?? r).slice(0, 400))
+    if (SIGNATURE_QUOTA.test(JSON.stringify(r))) {
+      suspectsQuota.push(c.nom)
+      console.log("      ↑ signature d'un quota épuisé, PAS d'un bug — voir le bilan en bas")
+    }
+  }
 }
 
 await admin(`/auth/v1/admin/users/${userId}`, { method: "DELETE" })
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
+
+// Le rouge reste rouge — on ne fait jamais passer un échec pour un succès. Mais
+// on dit ce qu'on a vu, pour que personne ne relise son diff pendant une heure.
+if (suspectsQuota.length) {
+  console.log(
+    `\n${suspectsQuota.length} de ces échecs portent une signature de quota épuisé :\n` +
+      suspectsQuota.map((n) => `  - ${n}`).join("\n") +
+      "\n\nCe n'est PROBABLEMENT pas ton code. Avant de chercher un bug :\n" +
+      "  1. rejoue-les lentement — PAUSE_MS=15000 node scripts/verifier-commande-vocale.mjs ;\n" +
+      "  2. lis la ligne « quota » des journaux de la fonction : elle nomme le modèle ET son plafond ;\n" +
+      "  3. le plafond du jour se compte PAR PROJET et PAR MODÈLE, et se remet à zéro à minuit heure du Pacifique.\n" +
+      "S'ils repassent au vert en les espaçant, c'était le quota : note-le et passe à la suite.",
+  )
+}
+
 process.exit(echecs === 0 ? 0 : 1)

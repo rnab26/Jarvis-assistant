@@ -1,12 +1,11 @@
 import { Search, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
-import { ConfirmerSuppression } from "@/components/ConfirmerSuppression"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import type { EchangesApi } from "@/hooks/useEchanges"
-import type { Echange } from "@/types/database"
 
 /** Combien on affiche avant de demander « voir plus » : une conversation d'une
  *  journée tient largement dedans, et la page reste lisible sur un téléphone. */
@@ -40,8 +39,6 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
   const { echanges, loading, error, refresh, oublier, toutOublier } = api
   const [recherche, setRecherche] = useState("")
   const [limite, setLimite] = useState(PAR_PAGE)
-  const [aSupprimer, setASupprimer] = useState<Echange | null>(null)
-  const [toutSupprimer, setToutSupprimer] = useState(false)
 
   const filtres = useMemo(() => {
     const q = sansAccents(recherche.trim())
@@ -58,10 +55,18 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
           <CardTitle className="text-base">Vos conversations (sept derniers jours)</CardTitle>
           <span className="flex-1" />
           {echanges.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setToutSupprimer(true)}>
-              <Trash2 className="size-4" />
-              Tout effacer
-            </Button>
+            <ConfirmerAction
+              trigger={
+                <Button variant="ghost" size="sm">
+                  <Trash2 className="size-4" />
+                  Tout effacer
+                </Button>
+              }
+              titre="Effacer tout l'historique ?"
+              description={`Les ${echanges.length} échanges gardés seront supprimés. Ce que Jarvis a retenu de toi (les souvenirs, plus haut) n'est pas touché.`}
+              libelleConfirmation="Tout effacer"
+              onConfirmer={toutOublier}
+            />
           )}
         </div>
         <p className="text-sm text-muted-foreground">
@@ -120,14 +125,17 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
                       <span className="pt-0.5 text-xs whitespace-nowrap text-muted-foreground">
                         {heure(echange.created_at)}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="Effacer cet échange"
-                        onClick={() => setASupprimer(echange)}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <ConfirmerAction
+                        trigger={
+                          <Button variant="ghost" size="icon" aria-label="Effacer cet échange">
+                            <Trash2 className="size-4" />
+                          </Button>
+                        }
+                        titre="Effacer cet échange ?"
+                        description={`« ${echange.transcript.slice(0, 160)}${echange.transcript.length > 160 ? "…" : ""} » — Jarvis ne pourra plus y revenir.`}
+                        libelleConfirmation="Effacer"
+                        onConfirmer={() => oublier(echange.id)}
+                      />
                     </div>
                     {echange.reponse && (
                       <p className="text-sm text-muted-foreground">— {echange.reponse}</p>
@@ -145,29 +153,6 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
         )}
       </CardContent>
 
-      <ConfirmerSuppression
-        ouvert={aSupprimer !== null}
-        titre="Effacer cet échange ?"
-        detail={
-          aSupprimer
-            ? `« ${aSupprimer.transcript.slice(0, 160)}${aSupprimer.transcript.length > 160 ? "…" : ""} » — Jarvis ne pourra plus y revenir.`
-            : ""
-        }
-        libelleAction="Effacer"
-        onFermer={() => setASupprimer(null)}
-        onConfirmer={async () => {
-          if (aSupprimer) await oublier(aSupprimer.id)
-        }}
-      />
-
-      <ConfirmerSuppression
-        ouvert={toutSupprimer}
-        titre="Effacer tout l'historique ?"
-        detail={`Les ${echanges.length} échanges gardés seront supprimés. Ce que Jarvis a retenu de toi (les souvenirs, plus haut) n'est pas touché.`}
-        libelleAction="Tout effacer"
-        onFermer={() => setToutSupprimer(false)}
-        onConfirmer={toutOublier}
-      />
     </Card>
   )
 }

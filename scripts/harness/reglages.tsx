@@ -1,15 +1,23 @@
 import { Capacitor } from "@capacitor/core"
-import { useState } from "react"
+import { ThemeProvider } from "next-themes"
+import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
+import { AssistantTelephone, type PontAssistant } from "@/components/settings/AssistantTelephone"
+import { Confidentialite } from "@/components/settings/Confidentialite"
+import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
+import { Reinitialiser } from "@/components/settings/Reinitialiser"
 import { Section } from "@/components/settings/Section"
+import { Theme } from "@/components/settings/Theme"
 import type { NotificationsApi } from "@/hooks/useNotifications"
 import type { MajWebApi } from "@/hooks/useMajWeb"
 import type { PublishedBuild, UpdateStatus, Verdict } from "@/hooks/useUpdateCheck"
 import { PREFS_NOTIFS_DEFAUT, type PrefsNotifications } from "@/lib/notifications/prefs"
+import { REGLAGES_RESTAURES } from "@/lib/reglages"
+import { THEME_KEY } from "@/lib/theme"
 import type { EtatNotifications } from "@/lib/notifications/service"
 
 /**
@@ -33,6 +41,21 @@ Capacitor.isNativePlatform = () => true
 const { MettreAJour } = await import("@/components/settings/MettreAJour")
 
 const rien = async () => {}
+
+/** Le pont vers Android, en factice : le banc tourne dans un vrai navigateur,
+ * où le plugin n'existe pas. Les trois états qui comptent (APK trop ancienne,
+ * candidat mais pas choisi, choisi) se parcourent ainsi à 390 points de large,
+ * comme Raphaël les verra. */
+function pontFactice(assistant: { candidat: boolean; role: "actif" | "inactif" | "inconnu" } | null): PontAssistant {
+  return {
+    natif: true,
+    lire: async () => {
+      if (assistant === null) throw new Error("plugin absent de cette APK")
+      return assistant
+    },
+    ouvrir: async () => ({ ecran: "assistant" }),
+  }
+}
 
 const ETAT_AUTORISE: EtatNotifications = {
   disponible: true,
@@ -115,6 +138,14 @@ function updateFactice(status: UpdateStatus) {
 
 function BancDesReglages() {
   const [prefs, setPrefs] = useState<PrefsNotifications>(PREFS_NOTIFS_DEFAUT)
+  // Ce que le micro écoute pour se relire : sans ce signal, l'interrupteur du
+  // mode Live n'aurait d'effet qu'au prochain lancement de l'app.
+  const [signaux, setSignaux] = useState(0)
+  useEffect(() => {
+    const run = () => setSignaux((n) => n + 1)
+    window.addEventListener(REGLAGES_RESTAURES, run)
+    return () => window.removeEventListener(REGLAGES_RESTAURES, run)
+  }, [])
 
   return (
     <div className="flex flex-col gap-4 p-3">
@@ -140,6 +171,22 @@ function BancDesReglages() {
         </Section>
       </div>
 
+      {/* Notifications coupées côté système : le seul recours est l'écran
+          d'Android, et il faut pouvoir l'ouvrir d'ici. */}
+      <div id="notifs-coupees">
+        <Section titre="Notifications (coupées côté système)" cle="banc-coupees" ouverteParDefaut>
+          <Notifications
+            api={notifsFactices(
+              { ...ETAT_AUTORISE, actives: false },
+              PREFS_NOTIFS_DEFAUT,
+              0,
+              () => {},
+              PREFS_NOTIFS_DEFAUT,
+            )}
+          />
+        </Section>
+      </div>
+
       <div id="notifs-alarmes">
         <Section titre="Notifications (alarmes inexactes)" cle="banc-alarmes" ouverteParDefaut>
           <Notifications
@@ -154,10 +201,104 @@ function BancDesReglages() {
         </Section>
       </div>
 
+      {/* L'assistant du téléphone : la carte doit dire POURQUOI Jarvis
+          n'apparaît pas dans la liste d'Android — une APK trop ancienne — au
+          lieu de laisser chercher. */}
+      <div id="assistant-ancien">
+        <Section titre="Assistant (APK trop ancienne)" cle="banc-assist-vieux" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice(null)} />
+        </Section>
+      </div>
+
+      <div id="assistant-candidat">
+        <Section titre="Assistant (choisissable)" cle="banc-assist-candidat" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice({ candidat: true, role: "inactif" })} />
+        </Section>
+      </div>
+
+      <div id="assistant-actif">
+        <Section titre="Assistant (actif)" cle="banc-assist-actif" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice({ candidat: true, role: "actif" })} />
+        </Section>
+      </div>
+
       <div id="maj-rapide">
         <Section titre="Mise à jour rapide possible" cle="banc-maj-rapide" ouverteParDefaut>
           <MettreAJour update={updateFactice("update-available")} majWeb={majFactice(true)} />
         </Section>
+      </div>
+
+      {/* La recherche : une section qui répond s'affiche dépliée, les autres
+          disparaissent. Le filtre est figé ici — ce qui se vérifie, c'est le
+          comportement de la section, pas le champ de saisie. */}
+      <div id="recherche">
+        <Section
+          titre="Voix et écoute"
+          resume="Sa voix, le rythme"
+          cle="banc-r1"
+          motsCles="voix débit"
+          filtre="notification"
+        >
+          <p>Contenu voix</p>
+        </Section>
+        <Section
+          titre="Notifications"
+          resume="Ce que Jarvis a le droit de faire sonner"
+          cle="banc-r2"
+          motsCles="notification sonner rappel"
+          filtre="notification"
+        >
+          <p>Contenu notifications</p>
+        </Section>
+      </div>
+
+      {/* Le mode Live : ce qui compte est que le micro, qui garde son propre
+          état, soit prévenu. Le compteur affiche le signal reçu. */}
+      <div id="live">
+        <ModeLive />
+        <p>signaux : {signaux}</p>
+      </div>
+
+      <div id="theme">
+        <Theme />
+      </div>
+
+      <div id="reinit">
+        <Reinitialiser />
+      </div>
+
+      <div id="confidentialite">
+        <Confidentialite />
+      </div>
+
+      {/* L'ORDRE RÉEL des sections de Paramètres, replié comme il l'est à
+          l'ouverture, avec la vraie carte de mise à jour dedans. C'est le seul
+          moyen de MESURER ce que Raphaël décrit — « pour la mise à jour, il
+          faut que je descende tout en bas » — au lieu de le supposer. Les
+          titres et l'ordre sont recopiés de SettingsPage : s'ils y changent,
+          ce banc mesure autre chose, et c'est écrit ici pour qu'on le sache. */}
+      <div id="ordre-reel" className="flex flex-col gap-2">
+        <Section
+          titre="L'application"
+          resume="Version, mise à jour, nouveautés"
+          cle="banc-ordre-app"
+          ouverteParDefaut
+          badge={<span className="shrink-0 text-xs text-muted-foreground">À jour</span>}
+        >
+          <MettreAJour update={updateFactice("up-to-date")} majWeb={majFactice(true)} />
+        </Section>
+        {[
+          ["Voix et écoute", "Sa voix, le rythme, le mot-clé de réveil"],
+          ["Tâches et organisation", "Widget d'écran d'accueil, rappels de lieu"],
+          ["Notifications", "Ce que Jarvis a le droit de faire sonner"],
+          ["Ce que Jarvis utilise", "Applications par défaut, canal des messages"],
+          ["Apparence", "Thème clair ou sombre, image du cœur"],
+          ["Comptes et connexions", "Google"],
+        ].map(([titre, resume], i) => (
+          <Section key={titre} titre={titre} resume={resume} cle={`banc-ordre-${i}`}>
+            <p>Contenu</p>
+          </Section>
+        ))}
       </div>
 
       <div id="maj-apk">
@@ -169,4 +310,8 @@ function BancDesReglages() {
   )
 }
 
-createRoot(document.getElementById("root")!).render(<BancDesReglages />)
+createRoot(document.getElementById("root")!).render(
+  <ThemeProvider attribute="class" defaultTheme="system" storageKey={THEME_KEY} enableSystem>
+    <BancDesReglages />
+  </ThemeProvider>,
+)

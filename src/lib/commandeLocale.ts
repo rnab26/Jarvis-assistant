@@ -145,6 +145,23 @@ function majuscule(texte: string): string {
 }
 
 /**
+ * Est-ce que ce qui suit « ouvre » / « lance » ressemble à un nom
+ * d'application, ou à une phrase ?
+ *
+ * La différence n'est pas cosmétique : `executerActionTelephone` rapproche ce
+ * texte des applications installées de façon FLOUE, et finit toujours par en
+ * trouver une. Une phrase entière lui est donc rendue comme une application,
+ * et Jarvis l'ouvre — c'est ce qui s'est passé le 5 sept., deux fois d'affilée.
+ * Trois mots au plus, et aucune ponctuation de phrase (« : », « . », « ; »,
+ * « , »), qu'aucun nom d'application ne porte.
+ */
+function estUnNomDApp(cible: string): boolean {
+  if (/[:;,.!?]/.test(cible)) return false
+  const mots = cible.split(/\s+/).filter(Boolean)
+  return mots.length >= 1 && mots.length <= 3
+}
+
+/**
  * Un titre de tâche ne garde ni l'amorce de commande qui le précède, ni la
  * ponctuation laissée par le retrait de la date. « une tâche pour demain :
  * sortir les poubelles » donne « Sortir les poubelles », pas
@@ -283,8 +300,12 @@ export function interpreterLocalement(
   // « rajoute » plutôt qu'« ajoute », « dans les chantiers à développer… » :
   // ce sont ses tournures réelles, relevées dans la table `echanges` le
   // 3 sept. plutôt que devinées.
+  // « lance » et les infinitifs (« créer », « ajouter ») : ses tournures du
+  // 5 sept., relevées dans `journal_ecoute` après qu'elles ont ouvert une
+  // application au lieu de créer le chantier. Le mot « chantier » qui suit
+  // lève toute ambiguïté — « lance Spotify » n'est pas concerné.
   const ajoutChantier = texte.match(
-    /^(?:(?:dans (?:les|mes) (?:chantiers|taches de developpement)[^,]*,?\s*)?(?:ajoute|rajoute|cree|note|nouveau|nouvelle))\s+(?:un |une |le |la )?(?:chantier|tache de developpement)\s*(?:a traiter\s*)?:?\s*(.+)$/,
+    /^(?:(?:dans (?:les|mes) (?:chantiers|taches de developpement)[^,]*,?\s*)?(?:ajouter?|rajouter?|creer?|noter?|nouveau|nouvelle|lance[rz]?|demarrer?|ouvre|ouvrir))\s+(?:un |une |le |la |moi un |moi une )?(?:chantier|tache de developpement)\b\s*(?:a traiter\s*)?(?:et (?:vas-y )?(?:ajoute|rajoute)(?:-le)?\.?\s*)?(?:j'aimerais\s+)?:?\s*(.+)$/,
   )
   if (ajoutChantier) {
     const brut = titreDepuis(ajoutChantier[1])
@@ -355,6 +376,39 @@ export function interpreterLocalement(
     return [{ action: "media_control", media_command: "precedent" }]
   }
 
+  /* ---------- Une recherche confiée à une IA installée ----------
+     AVANT « ouvre / lance une application », et c'est indispensable : sinon
+     « lance une recherche via Perplexity… » part en open_app, où le
+     rapprochement flou finit par ouvrir n'importe quelle application. */
+  // Sa tournure du 5 sept., qui ne passait pas : « lance une recherche via
+  // Perplexity pour des restaurants de viande réputés à Netanya ». Le nom de
+  // l'app est encadré par « via / sur / avec » d'un côté et « pour / sur / : »
+  // de l'autre : rien n'est deviné, ce qui permet de sortir du vocabulaire
+  // fermé de « demande à X » sans retomber dans l'approximation.
+  const rechercheVia = texte.match(
+    /^(?:lance|fais|effectue|demarre|balance)\s+(?:une?\s+)?recherche\s+(?:via|sur|avec|par)\s+([a-z0-9.-]+(?: [a-z0-9.-]+)?)\s*(?::|\s+(?:pour|sur|concernant|a propos de))\s+(.+)$/,
+  )
+  if (rechercheVia) {
+    const question = rechercheVia[2].trim()
+    if (!question) return null
+    return [{ action: "ask_ai", app_name: majuscule(rechercheVia[1].trim()), question: majuscule(question) }]
+  }
+  // « cherche des restaurants … sur Perplexity » : l'application est à la fin.
+  // Ici la question est libre, donc le nom de l'app doit être connu — sans
+  // quoi « cherche un restaurant dans le quartier » deviendrait une app.
+  const rechercheApresQuestion = texte.match(
+    /^(?:cherche|recherche|trouve)(?:-moi)?\s+(.+?)\s+(?:sur|via|avec|dans)\s+(chatgpt|perplexity|claude|grok|gemini|copilot)$/,
+  )
+  if (rechercheApresQuestion) {
+    const question = rechercheApresQuestion[1].trim()
+    if (!question) return null
+    return [{
+      action: "ask_ai",
+      app_name: majuscule(rechercheApresQuestion[2]),
+      question: majuscule(question),
+    }]
+  }
+
   /* ---------- Ouvrir une application, avec ou sans musique précise ---------- */
   const musiqueSur = texte.match(/^(?:mets?|joue|lance)\s+(.+?)\s+sur\s+([a-z0-9 ]+)$/)
   if (musiqueSur) {
@@ -383,6 +437,13 @@ export function interpreterLocalement(
     if (/^(?:de la |la )?musique$/.test(cible)) {
       return [{ action: "media_control", media_command: "lecture" }]
     }
+    // Un nom d'application, c'est un ou deux mots — « Spotify », « Apple
+    // Music ». Le 5 sept., « lance un chantier et ajoute-le : savoir combien
+    // il me reste de crédit » est parti en open_app, et le rapprochement flou
+    // a ouvert מכבי : une phrase de dix mots avait été prise pour un nom
+    // d'app. Au-delà de trois mots, ou dès qu'il y a une ponctuation de
+    // phrase, on rend la main au serveur plutôt que d'ouvrir n'importe quoi.
+    if (!estUnNomDApp(cible)) return null
     return [{ action: "open_app", app_name: majuscule(cible) }]
   }
 
@@ -390,8 +451,16 @@ export function interpreterLocalement(
   const appelContact = texte.match(/^(?:appelle|telephone a)\s+(.+)$/)
   if (appelContact) {
     const contact = meilleurContact(appelContact[1], ctx.contacts ?? [])
-    if (!contact) return null
-    return [{ action: "call_contact", contact_id: contact.id }]
+    if (contact) return [{ action: "call_contact", contact_id: contact.id }]
+    // Aucun contact enregistré ne correspond : on rend quand même l'action,
+    // avec le nom tel qu'il l'a dit. C'est le TÉLÉPHONE qui cherchera dans
+    // son vrai répertoire (chercherContact), et qui répondra « je ne trouve
+    // personne à ce nom » si rien ne colle. Avant le 5 sept. 2026 on rendait
+    // null, et la phrase partait au serveur pour finir par lui réclamer un
+    // numéro qu'il avait déjà dans son téléphone.
+    const nomDit = appelContact[1].trim()
+    if (nomDit.length < 2) return null
+    return [{ action: "call_contact", contact_name: majuscule(nomDit) }]
   }
 
   /* ---------- Préparer un message ---------- */
@@ -494,8 +563,11 @@ export function interpreterLocalement(
     return [{ action: "navigate_to", destination: majuscule(itineraire[1].trim()) }]
   }
 
+  // `\s+` et non `\s*` : avec `\s*`, « créer X » se lisait « cree » + « r X »
+  // et la tâche s'appelait « R X ». Vu le 5 sept. sur son téléphone, trois
+  // fois de suite. Les infinitifs sont donc dans la liste, explicitement.
   const ajoutTache = texte.match(
-    /^(?:ajoute|rajoute|cree|note|rappelle-moi|pense a|il faut que je|je dois)\s*(?:une |la |le |de |d')?\s*(?:tache\s*:?\s*)?(.+)$/,
+    /^(?:ajouter?|rajouter?|creer?|noter?|rappelle-moi|pense a|il faut que je|je dois)\s+(?:une |la |le |de |d')?\s*(?:tache\s*:?\s*)?(.+)$/,
   )
   if (ajoutTache) {
     // « note que Dylan est le client de Melissa » est une information sur

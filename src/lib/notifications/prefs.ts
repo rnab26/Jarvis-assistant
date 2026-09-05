@@ -36,6 +36,25 @@ export interface PrefsNotifications {
   livre: boolean
   /** Une session est bloquée et attend une réponse de Raphaël. */
   bloque: boolean
+  /**
+   * Ne rien faire SONNER pendant la nuit. Les rappels s'affichent quand
+   * même, en silence : les supprimer ou les décaler ferait manquer une
+   * échéance, alors qu'un rappel muet dans le volet est encore là au
+   * réveil.
+   */
+  silenceNuit: boolean
+  /** Début de la plage silencieuse, "HH:MM". Peut passer minuit. */
+  silenceDebut: string
+  /** Fin de la plage silencieuse, "HH:MM". */
+  silenceFin: string
+  /**
+   * Dire la notification à voix haute quand l'app est ouverte, ou quand il
+   * vient d'appuyer dessus — au lieu de seulement l'afficher. Sa demande
+   * d'origine (chantier 7567cd47) : « Jarvis doit pouvoir intervenir à l'oral
+   * pour donner une information tel un rappel ». Jamais pendant les heures de
+   * silence, jamais si la voix de Jarvis est coupée.
+   */
+  direAVoixHaute: boolean
 }
 
 export const PREFS_NOTIFS_DEFAUT: PrefsNotifications = {
@@ -47,6 +66,17 @@ export const PREFS_NOTIFS_DEFAUT: PrefsNotifications = {
   apk: true,
   livre: true,
   bloque: true,
+  // Activé par défaut, et c'est un choix : sa règle est qu'« une
+  // notification non désirée sur un téléphone se paie cher ». Rien n'est
+  // perdu — les rappels de nuit s'affichent, ils ne sonnent pas — et il
+  // suffit d'un interrupteur pour rendre la nuit sonore.
+  silenceNuit: true,
+  silenceDebut: "22:30",
+  silenceFin: "07:30",
+  // Activé : une notification qu'on entend pendant qu'on a le téléphone en
+  // main évite de le déverrouiller pour lire trois mots. Les heures de
+  // silence la retiennent déjà, et un interrupteur suffit à la couper.
+  direAVoixHaute: true,
 }
 
 /** Les avances proposées dans Paramètres. Une liste fermée : un champ libre
@@ -90,6 +120,10 @@ export function normaliserPrefs(brut: unknown): PrefsNotifications {
     apk: booleen(o.apk, PREFS_NOTIFS_DEFAUT.apk),
     livre: booleen(o.livre, PREFS_NOTIFS_DEFAUT.livre),
     bloque: booleen(o.bloque, PREFS_NOTIFS_DEFAUT.bloque),
+    silenceNuit: booleen(o.silenceNuit, PREFS_NOTIFS_DEFAUT.silenceNuit),
+    silenceDebut: heureValide(o.silenceDebut, PREFS_NOTIFS_DEFAUT.silenceDebut),
+    silenceFin: heureValide(o.silenceFin, PREFS_NOTIFS_DEFAUT.silenceFin),
+    direAVoixHaute: booleen(o.direAVoixHaute, PREFS_NOTIFS_DEFAUT.direAVoixHaute),
   }
 }
 

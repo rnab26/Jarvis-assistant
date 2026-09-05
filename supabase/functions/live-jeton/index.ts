@@ -1,6 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
-import { createClient } from "jsr:@supabase/supabase-js@2"
+import { type SupabaseClient, createClient } from "jsr:@supabase/supabase-js@2"
 import { GoogleGenAI, Modality, Type } from "npm:@google/genai"
+import { rappelerCorrections } from "../_shared/corrections.ts"
+import { signalerPanne } from "../_shared/pannes.ts"
 import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
 
 /**
@@ -49,11 +51,18 @@ Quand Raphaël te demande de FAIRE quelque chose (ajouter, modifier, terminer un
 Pour le reste (questions générales, discussion, conseil), réponds directement.
 ${CONSIGNE_ENVIRONNEMENT}
 Le contexte ci-dessous date de l'ouverture de la conversation : après une modification (tâche ajoutée, terminée…), reconsulte par l'outil plutôt que de répondre de mémoire.
+SE SOUVENIR D'UNE CONVERSATION PASSÉE. Les faits que tu as retenus sur Raphaël sont dans le contexte ci-dessous, sers-t'en directement. En revanche le MOT-À-MOT de vos échanges passés (« on avait parlé de quoi pour la villa Dan ? », « qu'est-ce que tu m'avais dit à propos de… », « tu te souviens quand je t'ai parlé de… ») n'y est PAS : appelle alors l'outil commande_jarvis avec sa question telle quelle, c'est lui qui va rechercher dans vos conversations des sept derniers jours. Ne réponds jamais que tu ne t'en souviens pas sans avoir appelé l'outil.
 Quand Raphaël clôt la conversation (« terminé », « fin de transmission », « au revoir », « c'est tout »…), réponds seulement « À plus tard. » — l'application ferme la conversation d'elle-même.
 Si tu n'as pas compris, dis-le en un mot et laisse-le reformuler.`
 
 /** Le contexte envoyé par l'app est borné : c'est relu à chaque tour. */
 const CONTEXTE_MAX = 12000
+
+/**
+ * Souvenirs joints au contexte scellé. Quarante suffisent largement (Raphaël
+ * en a une vingtaine de vivants), et ça reste petit devant CONTEXTE_MAX.
+ */
+const MAX_SOUVENIRS_LIVE = 40
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,6 +87,37 @@ function json(corps: unknown, statut = 200) {
     status: statut,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   })
+}
+
+/**
+ * Les faits que Jarvis a retenus, mis en forme pour la consigne.
+ *
+ * Ne lève jamais : une mémoire indisponible doit dégrader la conversation,
+ * pas l'empêcher de s'ouvrir.
+ */
+async function souvenirsDeLUtilisateur(supabase: SupabaseClient): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from("souvenirs")
+      .select("contenu, categorie")
+      .is("perime_at", null)
+      .order("created_at", { ascending: false })
+      .limit(MAX_SOUVENIRS_LIVE)
+    if (error) {
+      // En Live le contexte est scellé UNE fois : une lecture ratée rend Jarvis
+      // amnésique pour toute la conversation, sans que rien ne le dise.
+      await signalerPanne(supabase, "Jarvis n'a pas pu relire ses souvenirs pour le mode Live", error)
+      return ""
+    }
+    if (!data?.length) return ""
+    const lignes = (data as { contenu: string; categorie: string }[]).map(
+      (s) => `- (${s.categorie}) ${s.contenu}`,
+    )
+    return `Ce que tu sais déjà de Raphaël, retenu au fil de vos échanges :\n${lignes.join("\n")}\nSers-t'en naturellement, sans annoncer que tu t'en souviens.`
+  } catch (err) {
+    await signalerPanne(supabase, "Jarvis n'a pas pu relire ses souvenirs pour le mode Live", err)
+    return ""
+  }
 }
 
 Deno.serve(async (req) => {
@@ -123,6 +163,25 @@ Deno.serve(async (req) => {
     } catch {
       // Pas de corps : une session sans contexte, c'est permis.
     }
+
+    // Ce que Jarvis a retenu de Raphaël, joint ICI et pas par l'app.
+    //
+    // POURQUOI ICI. En mode classique, voice-command cherche les souvenirs
+    // pertinents à CHAQUE phrase (rappelerSouvenirs). En Live, le contexte est
+    // scellé une seule fois à l'ouverture : on ne sait pas encore de quoi on
+    // va parler, donc on ne peut rien chercher « par rapport à la question ».
+    // On joint donc ce qu'il sait, tout court. C'est petit — une vingtaine de
+    // phrases courtes — et ça évite que Jarvis soit amnésique dans un mode et
+    // pas dans l'autre.
+    //
+    // Et côté serveur plutôt que côté app : le contexte envoyé par l'app est
+    // déjà volumineux, l'app n'a pas besoin de charger les souvenirs pour
+    // parler, et surtout ça reste vrai même si une autre session change
+    // contexteLive() dans MicButton.
+    // Les corrections que Raphaël a écrites suivent aussi : se faire reprendre
+    // deux fois sur la même chose est ce qui l'agace le plus, et ça ne doit pas
+    // dépendre du mode dans lequel il parle.
+    contexte = `${contexte}\n${await souvenirsDeLUtilisateur(supabase)}\n${await rappelerCorrections(supabase)}`.trim()
 
     // Les jetons éphémères ne vivent que dans la version v1alpha de l'API.
     const ai = new GoogleGenAI({ apiKey: cle, httpOptions: { apiVersion: "v1alpha" } })

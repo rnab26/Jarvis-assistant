@@ -1,6 +1,7 @@
 import { LoadError } from "@/components/LoadError"
 import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
+import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
@@ -60,6 +61,11 @@ export function CockpitPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Tout en haut, et seulement quand il y a quelque chose à dire : c'est
+          la question qu'on se pose en revenant, avant même d'envoyer quoi que
+          ce soit. */}
+      <DepuisTonDernierPassage devItems={devItems} messages={devLog.entries} />
+
       <EnvoyerAClaudeCode
         devItems={devItems}
         sections={devSectionsState.sections}
@@ -102,6 +108,9 @@ export function CockpitPage() {
           onArchiveMany={archiveManyDevItems}
           onDeleteMany={deleteManyDevItems}
           onRestore={restoreDevItems}
+          messages={devLog.entries}
+          onRepondre={(itemId, body) => devLog.addEntry(body, "reponse", itemId)}
+          onMarquerTraite={devLog.markAnswered}
         />
       )}
     </div>

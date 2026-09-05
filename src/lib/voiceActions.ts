@@ -1,4 +1,5 @@
 import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
+import { cleTheme } from "@/lib/themeChantier"
 import type {
   Category,
   Contact,
@@ -6,6 +7,7 @@ import type {
   DevItem,
   DevItemInput,
   DevPriority,
+  DevSection,
   DevStatus,
   DocumentFile,
   EvenementAgenda,
@@ -42,6 +44,8 @@ export type VoiceAction =
   | { action: "update_dev_item"; item_id: string; changes: Partial<DevItemInput> }
   | { action: "delete_dev_item"; item_id: string }
   | { action: "archive_dev_item"; item_id: string }
+  | { action: "add_dev_section"; section_nom: string }
+  | { action: "rename_dev_section"; section_id: string; section_nom: string }
   | { action: "list_documents" }
   | { action: "save_document"; filename: string; content: string }
   | {
@@ -260,10 +264,24 @@ async function retrouverEvenement(
 }
 
 /** Exécute une VoiceAction résolue par la Edge Function et renvoie la phrase à énoncer. */
+/**
+ * Ce dont les actions de section ont besoin. Volontairement réduit à trois
+ * champs : supprimer et fusionner une section restent au cockpit, où Raphaël
+ * a une confirmation et un bouton Annuler — à la voix il n'aurait ni l'une ni
+ * l'autre, et une section supprimée déplace tous ses chantiers.
+ */
+export interface DevSectionsVoiceApi {
+  sections: DevSection[]
+  addSection: (nom: string, description?: string | null) => Promise<void>
+  /** Rend le nombre de chantiers dont le thème a suivi. */
+  renameSection: (id: string, nom: string) => Promise<number>
+}
+
 export async function executeVoiceAction(
   action: VoiceAction,
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
   { devItems, addDevItem, updateDevItem, deleteDevItem, archiveDevItem }: DevItemsApi,
+  { sections, addSection, renameSection }: DevSectionsVoiceApi,
   { documents, saveTextDocument }: DocumentsApi,
   { contacts, addContact, updateContact, deleteContact }: ContactsApi,
   { placeReminders, addPlaceReminder, deletePlaceReminder, geocodePlace }: PlaceRemindersApi,
@@ -368,6 +386,35 @@ export async function executeVoiceAction(
       const item = devItems.find((i) => i.id === action.item_id)
       await archiveDevItem(action.item_id)
       return `"${item?.title ?? "Chantier"}" marqué fait et archivé.`
+    }
+
+    case "add_dev_section": {
+      const nom = action.section_nom?.trim()
+      if (!nom) return "Je n'ai pas compris le nom de la section."
+      // Une section « Entrainement » quand « Entraînement » existe déjà ne doit
+      // pas en créer une seconde : la base a le même garde-fou (index unique
+      // sur cle_section), on évite juste de lui faire lever une erreur.
+      const existante = sections.find((s) => cleTheme(s.nom) === cleTheme(nom))
+      if (existante) return `La section "${existante.nom}" existe déjà.`
+      await addSection(nom)
+      return `Section "${nom}" créée. Elle est vide pour l'instant : tu peux y ranger un chantier en le disant.`
+    }
+
+    case "rename_dev_section": {
+      const nom = action.section_nom?.trim()
+      const section = sections.find((s) => s.id === action.section_id)
+      if (!section) return "Je n'ai pas trouvé cette section."
+      if (!nom) return `Je n'ai pas compris le nouveau nom de "${section.nom}".`
+      // renommer_section renomme la section ET le thème de tous ses chantiers,
+      // en une seule fonction SQL : deux écritures séparées laisseraient une
+      // section vide à côté de chantiers orphelins.
+      const suivis = await renameSection(section.id, nom)
+      // Le nombre de chantiers déplacés est dit à voix haute : renommer une
+      // section renomme aussi le thème de tout ce qu'elle contient, et c'est
+      // le seul moment où Raphaël peut s'apercevoir qu'il visait la mauvaise.
+      return suivis > 0
+        ? `Section "${section.nom}" renommée en "${nom}". ${suivis} chantier${suivis > 1 ? "s ont" : " a"} suivi.`
+        : `Section "${section.nom}" renommée en "${nom}". Elle était vide.`
     }
 
     case "list_documents": {

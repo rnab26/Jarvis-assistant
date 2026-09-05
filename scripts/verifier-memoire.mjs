@@ -90,6 +90,18 @@ const connexion = await fetch(`${URL_PROJET}/auth/v1/token?grant_type=password`,
 const jeton = (await connexion.json()).access_token
 if (!jeton) { console.error("connexion impossible"); process.exit(1) }
 
+/** Appelle une fonction SQL AVEC LE JETON de l'utilisateur de test : c'est le
+ *  seul moyen de vérifier ce que voit vraiment l'app, puisque ces fonctions
+ *  s'appuient sur auth.uid() — que la clé de service ne renseigne pas. */
+async function rpc(nom, corps = {}) {
+  const r = await fetch(`${URL_PROJET}/rest/v1/rpc/${nom}`, {
+    method: "POST",
+    headers: { apikey: ANON, Authorization: `Bearer ${jeton}`, "Content-Type": "application/json" },
+    body: JSON.stringify(corps),
+  })
+  return await r.json()
+}
+
 async function dire(phrase) {
   const r = await fetch(`${URL_PROJET}/functions/v1/${FONCTION}`, {
     method: "POST",
@@ -234,6 +246,52 @@ if (loyers.length >= 2) {
 }
 
 // ---------------------------------------------------------------------------
+// Le rattrapage des empreintes écrit-il VRAIMENT ? (5 sept. 2026)
+//
+// Il n'écrivait rien depuis deux jours, en silence : `echanges` avait des
+// politiques SELECT/INSERT/DELETE mais aucune pour UPDATE, et RLS ne refuse
+// pas bruyamment un UPDATE — il restreint les lignes. Zéro ligne touchée,
+// succès rendu, rien à attraper. Aucun contrôle ne le voyait parce que tous
+// regardaient le code, qui était juste.
+// ---------------------------------------------------------------------------
+
+{
+  // Un vieil échange sans empreinte, comme les 75 de Raphaël.
+  await fetch(`${URL_PROJET}/rest/v1/echanges`, {
+    method: "POST",
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${jeton}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      transcript: "Un vieil échange que personne n'a jamais rendu cherchable.",
+      reponse: "ok",
+    }),
+  })
+  const avant = sql(
+    `select count(*)::int as n from echanges where user_id = '${userId}' and embedding is null`,
+  )[0].n
+  verifier("un échange sans empreinte est bien en place pour le test", avant >= 1, `${avant} trouvé(s)`)
+
+  // Une phrase quelconque déclenche le rattrapage, qui tourne en tâche de fond.
+  await dire("Bonjour, ça va ?")
+  await attendreStabilisation()
+
+  const apres = sql(
+    `select count(*)::int as n from echanges where user_id = '${userId}' and embedding is null`,
+  )[0].n
+  verifier(
+    "le rattrapage rend vraiment cherchables les échanges anciens",
+    apres < avant,
+    `${avant} sans empreinte avant, ${apres} après — l'écriture ne passe pas ` +
+      "(politique RLS UPDATE manquante sur echanges ?), et elle le fait en silence",
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Retrouver une CONVERSATION passée, pas seulement un fait (chantier caa54df2).
 //
 // On choisit exprès un échange dont la consigne d'extraction dit qu'il ne doit
@@ -300,6 +358,178 @@ if (souvenirCulture === 0) {
       "le contrôle décisif reste celui de la proximité ci-dessus)",
   )
 }
+
+// ---------------------------------------------------------------------------
+// Le témoin de la mémoire (chantier 9ab3ca4d).
+//
+// La mémorisation est silencieuse et avale ses erreurs : le 4 sept. elle est
+// restée morte des heures sans que rien ne le dise. sante_memoire() est ce qui
+// rend l'état consultable — encore faut-il qu'elle dise vrai.
+// ---------------------------------------------------------------------------
+
+const sante = (await rpc("sante_memoire"))[0]
+console.log(`\nSanté de la mémoire : ${JSON.stringify(sante)}`)
+
+verifier(
+  "le témoin voit que la mémoire a travaillé",
+  sante && sante.dernier_souvenir !== null,
+  "dernier_souvenir vide alors que des souvenirs viennent d'être écrits",
+)
+// Compté en base plutôt que déduit : le nombre de souvenirs retenus dépend de
+// ce que le modèle a jugé digne d'être gardé, et il varie d'un passage à
+// l'autre. Ce qu'on vérifie ici, c'est que le témoin EXCLUT les périmés — pas
+// qu'il tombe sur un chiffre qu'on aurait deviné.
+const compte = sql(
+  `select count(*) filter (where perime_at is null)::int as vivants,
+          count(*) filter (where perime_at is not null)::int as perimes
+   from souvenirs where user_id = '${userId}'`,
+)[0]
+verifier(
+  "il compte les souvenirs vivants, pas les périmés",
+  sante && sante.souvenirs_vivants === compte.vivants && compte.perimes > 0,
+  `témoin ${sante?.souvenirs_vivants}, base ${compte.vivants} vivants et ${compte.perimes} périmé(s)`,
+)
+verifier(
+  "il ne crie pas au loup quand tout va bien",
+  sante && sante.echanges_depuis < 12 && sante.erreur_titre === null,
+  `${sante?.echanges_depuis} échanges depuis, erreur « ${sante?.erreur_titre} »`,
+)
+
+// Une correction à la main ne doit PAS passer pour un travail de la mémoire :
+// sinon le témoin repasserait au vert dès que Raphaël retouche un souvenir,
+// exactement au moment où il faudrait qu'il reste rouge.
+const aCorriger = (await rpc("sante_memoire"))[0]
+await fetch(`${URL_PROJET}/rest/v1/souvenirs?user_id=eq.${userId}&perime_at=is.null&limit=1`, {
+  method: "PATCH",
+  headers: {
+    apikey: ANON,
+    Authorization: `Bearer ${jeton}`,
+    "Content-Type": "application/json",
+    Prefer: "return=minimal",
+  },
+  body: JSON.stringify({ contenu: "Corrigé à la main par Raphaël.", updated_at: new Date().toISOString() }),
+})
+const apresCorrection = (await rpc("sante_memoire"))[0]
+verifier(
+  "corriger un souvenir à la main ne fait pas passer le témoin pour actif",
+  apresCorrection?.dernier_souvenir === aCorriger?.dernier_souvenir,
+  `la date a bougé (${aCorriger?.dernier_souvenir} → ${apresCorrection?.dernier_souvenir}) : ` +
+    "le témoin repasserait au vert dès que Raphaël retouche un souvenir, au pire moment",
+)
+
+// Une panne signalée par la mémoire elle-même doit remonter jusqu'au témoin.
+await rpc("signaler_erreur", {
+  p_categorie: "serveur",
+  p_titre: "La mémoire n'a rien pu retenir de cet échange",
+  p_detail: "Contrôle automatique : quota du modèle épuisé (simulé).",
+  p_contexte: "verifier-memoire.mjs",
+  p_source: "memoire",
+})
+const santeApres = (await rpc("sante_memoire"))[0]
+verifier(
+  "une panne signalée par la mémoire remonte jusqu'au témoin",
+  santeApres?.erreur_titre === "La mémoire n'a rien pu retenir de cet échange",
+  `erreur_titre = ${JSON.stringify(santeApres?.erreur_titre)} — la panne resterait invisible`,
+)
+verifier(
+  "et le témoin dit POURQUOI, pas seulement QUE",
+  typeof santeApres?.erreur_detail === "string" && santeApres.erreur_detail.length > 0,
+  "sans le détail, il faudrait rouvrir les journaux Supabase — c'est ce qu'on voulait éviter",
+)
+
+// Le cloisonnement : le témoin d'un utilisateur ne voit que sa propre mémoire.
+const anonyme = await fetch(`${URL_PROJET}/rest/v1/rpc/sante_memoire`, {
+  method: "POST",
+  headers: { apikey: ANON, "Content-Type": "application/json" },
+  body: "{}",
+})
+const vuParUnAnonyme = await anonyme.json().catch(() => null)
+verifier(
+  "un anonyme ne voit rien de la mémoire de Raphaël",
+  !Array.isArray(vuParUnAnonyme) ||
+    vuParUnAnonyme.length === 0 ||
+    (vuParUnAnonyme[0]?.dernier_souvenir == null && vuParUnAnonyme[0]?.souvenirs_vivants === 0),
+  `réponse : ${JSON.stringify(vuParUnAnonyme).slice(0, 200)}`,
+)
+
+// ---------------------------------------------------------------------------
+// Ce que Raphaël reprend à Jarvis lui revient (chantier 057fbe10).
+//
+// Le registre des erreurs lui fait écrire « ce qu'il aurait fallu faire ».
+// Jusqu'ici ça ne servait qu'aux sessions Claude Code : Jarvis refaisait la
+// même erreur le lendemain alors que la réponse était en base.
+//
+// La correction utilisée ici contient un fait que le modèle NE PEUT PAS
+// deviner. S'il ressort, c'est qu'il a bien lu la correction — pas qu'il a eu
+// de la chance.
+// ---------------------------------------------------------------------------
+
+const avantCorrection = await dire("Ajoute une tâche pour le grand chantier : commander les poignées.")
+const titreAvant = (avantCorrection.actions ?? [])
+  .filter((a) => a.action === "add_task")
+  .map((a) => `${a.title ?? ""} ${a.notes ?? ""}`)
+  .join(" ")
+console.log(`\nAvant la correction, la tâche créée dit : « ${titreAvant.trim()} »`)
+verifier(
+  "sans correction, Jarvis ne peut pas savoir ce qu'est « le grand chantier »",
+  !/kerouan/i.test(titreAvant),
+  "le test ne prouverait rien : le modèle sort le mot sans avoir lu la correction",
+)
+
+await rpc("signaler_erreur", {
+  p_categorie: "comprehension",
+  p_titre: "« le grand chantier » pris au pied de la lettre",
+  p_detail: "Contrôle automatique.",
+  p_contexte: "Ajoute une tâche pour le grand chantier.",
+  p_source: "manuel",
+})
+// La correction, c'est Raphaël qui l'écrit depuis le cockpit : on fait pareil.
+await fetch(`${URL_PROJET}/rest/v1/jarvis_erreurs?user_id=eq.${userId}&categorie=eq.comprehension`, {
+  method: "PATCH",
+  headers: {
+    apikey: ANON,
+    Authorization: `Bearer ${jeton}`,
+    "Content-Type": "application/json",
+    Prefer: "return=minimal",
+  },
+  body: JSON.stringify({
+    correction: "Quand je dis « le grand chantier », je parle toujours de la villa Kerouan.",
+  }),
+})
+
+await new Promise((r) => setTimeout(r, 3000))
+const apres = await dire("Ajoute une tâche pour le grand chantier : commander les poignées.")
+const titreApres = (apres.actions ?? [])
+  .filter((a) => a.action === "add_task")
+  .map((a) => `${a.title ?? ""} ${a.notes ?? ""}`)
+  .join(" ")
+console.log(`Après la correction, la tâche créée dit : « ${titreApres.trim()} »`)
+verifier(
+  "une correction écrite par Raphaël change ce que Jarvis fait, dès la phrase suivante",
+  /kerouan/i.test(titreApres),
+  "la correction n'atteint pas le modèle : elle ne sert toujours qu'aux sessions Claude Code",
+)
+
+// Et ce qui n'apprend rien au modèle ne doit pas lui coûter de contexte.
+await rpc("signaler_erreur", {
+  p_categorie: "serveur",
+  p_titre: "Le modèle a refusé de répondre",
+  p_detail: "Contrôle automatique.",
+  p_source: "memoire",
+})
+await fetch(`${URL_PROJET}/rest/v1/jarvis_erreurs?user_id=eq.${userId}&categorie=eq.serveur`, {
+  method: "PATCH",
+  headers: { apikey: ANON, Authorization: `Bearer ${jeton}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+  body: JSON.stringify({ correction: "Redémarrer la fonction et repasser sur le modèle de secours." }),
+})
+await new Promise((r) => setTimeout(r, 3000))
+const serveur = await dire("Ajoute une tâche : acheter du café.")
+const toutLeTexte = JSON.stringify(serveur)
+verifier(
+  "une correction d'erreur serveur ne part PAS au modèle",
+  !/red[eé]marrer la fonction/i.test(toutLeTexte) && (serveur.actions ?? []).some((a) => a.action === "add_task"),
+  "elle n'apprend rien à un modèle de langue et coûte du quota à chaque phrase",
+)
 
 await admin(`/auth/v1/admin/users/${userId}`, { method: "DELETE" })
 const restes = sql(`select count(*)::int as n from souvenirs where user_id = '${userId}'`)

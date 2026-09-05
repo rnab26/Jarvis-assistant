@@ -18,6 +18,7 @@
  */
 import {
   construirePlan,
+  dansLaPlageSilencieuse,
   corpsChantiersLivres,
   corpsDuMatin,
   estNotreNotif,
@@ -29,7 +30,9 @@ import {
   planifierEcheances,
   planifierMatins,
 } from "../src/lib/notifications/plan.ts"
+import { phraseAnnonce, raisonDuSilence } from "../src/lib/notifications/annonceVocale.ts"
 import { normaliserPrefs, PREFS_NOTIFS_DEFAUT } from "../src/lib/notifications/prefs.ts"
+import type { PrefsNotifications } from "../src/lib/notifications/prefs.ts"
 import type { Task } from "../src/types/database.ts"
 
 let echecs = 0
@@ -147,6 +150,71 @@ function tache(partiel: Partial<Task>): Task {
     "les identifiants sont stables d'un calcul à l'autre",
     rejoue.map((n) => n.id).join() === plan.map((n) => n.id).join(),
     "sinon chaque rechargement empilerait des doublons au lieu de remplacer",
+  )
+}
+
+// ---------------------------------------------------------- heures de silence
+
+{
+  // La plage par défaut passe minuit : 22:30 -> 07:30. C'est le cas où une
+  // comparaison naïve « début <= t < fin » est toujours fausse, et où la
+  // nuit sonnerait comme le jour sans que rien ne le signale.
+  const cas: [string, number, number, boolean][] = [
+    ["23 h 00, en pleine nuit", 23, 0, true],
+    ["02 h 00, après minuit", 2, 0, true],
+    ["07 h 29, juste avant la fin", 7, 29, true],
+    ["07 h 30, à la fin pile", 7, 30, false],
+    ["22 h 30, au début pile", 22, 30, true],
+    ["22 h 29, juste avant", 22, 29, false],
+    ["14 h 00, en plein jour", 14, 0, false],
+  ]
+  for (const [nom, h, min, attendu] of cas) {
+    const moment = new Date(2026, 8, 3, h, min)
+    verifier(
+      `plage silencieuse : ${nom}`,
+      dansLaPlageSilencieuse(moment, PREFS_NOTIFS_DEFAUT) === attendu,
+    )
+  }
+
+  verifier(
+    "l'interrupteur des heures de silence coupe vraiment",
+    !dansLaPlageSilencieuse(new Date(2026, 8, 3, 23, 0), {
+      ...PREFS_NOTIFS_DEFAUT,
+      silenceNuit: false,
+    }),
+  )
+
+  // Une plage qui NE passe PAS minuit (sieste) doit marcher aussi.
+  const sieste = { ...PREFS_NOTIFS_DEFAUT, silenceDebut: "13:00", silenceFin: "15:00" }
+  verifier(
+    "une plage dans la même journée fonctionne aussi",
+    dansLaPlageSilencieuse(new Date(2026, 8, 3, 14, 0), sieste) &&
+      !dansLaPlageSilencieuse(new Date(2026, 8, 3, 23, 0), sieste),
+  )
+
+  verifier(
+    "une plage vide (début = fin) ne fait taire personne",
+    !dansLaPlageSilencieuse(new Date(2026, 8, 3, 23, 0), {
+      ...PREFS_NOTIFS_DEFAUT,
+      silenceDebut: "22:00",
+      silenceFin: "22:00",
+    }),
+    "sinon on ne saurait pas si « de 22 h à 22 h » veut dire rien ou toute la journée",
+  )
+}
+
+{
+  // Ce qui compte vraiment : le rappel EXISTE toujours, il change juste de
+  // canal. Le supprimer ou le décaler ferait manquer une échéance.
+  const nuit = tache({ due_date: "2026-09-03", due_time: "23:30" })
+  const jour = tache({ due_date: "2026-09-03", due_time: "18:00" })
+  const plan = planifierEcheances([nuit, jour], PREFS_NOTIFS_DEFAUT, MAINTENANT)
+  verifier(
+    "un rappel de nuit est programmé quand même, sur le canal muet",
+    plan.length === 2 &&
+      plan.find((n) => n.quand.getHours() === 23)?.canal === "nuit" &&
+      plan.find((n) => n.quand.getHours() === 18)?.canal === "taches",
+    `obtenu ${JSON.stringify(plan.map((n) => [n.quand.getHours(), n.canal]))}`,
   )
 }
 
@@ -275,6 +343,92 @@ function tache(partiel: Partial<Task>): Task {
   )
   verifier("l'identifiant de test nous appartient", estNotreNotif(ID_TEST))
   verifier("un identifiant étranger n'est jamais annulé par nous", !estNotreNotif(42))
+}
+
+// ── Ce que Jarvis DIT quand une notification arrive (chantier 7567cd47) ──
+// Quatre façons de rendre cette annonce nuisible, et aucune ne lève d'erreur :
+// parler la nuit, parler alors qu'il a coupé la voix, parler quand il a dit
+// non, et répéter deux fois la même phrase.
+{
+  const base: PrefsNotifications = { ...PREFS_NOTIFS_DEFAUT, direAVoixHaute: true }
+  const jour = new Date("2026-09-05T14:00:00")
+  const nuit = new Date("2026-09-05T03:00:00")
+  const dire = (
+    notif: { title?: string | null; body?: string | null },
+    p: Partial<PrefsNotifications> = {},
+    voixCoupee = false,
+    maintenant = jour,
+  ) => phraseAnnonce(notif, { prefs: { ...base, ...p }, voixCoupee, maintenant })
+
+  verifier(
+    "un rappel arrivé pendant que l'app est ouverte se dit",
+    dire({ title: "Appeler le plombier", body: "C'est l'heure." }) ===
+      "Appeler le plombier. C'est l'heure.",
+    String(dire({ title: "Appeler le plombier", body: "C'est l'heure." })),
+  )
+  verifier(
+    "le corps qui reprend le titre ne le fait pas répéter",
+    dire({ title: "Appeler le plombier", body: "Appeler le plombier, c'est l'heure." }) ===
+      "Appeler le plombier, c'est l'heure.",
+    String(dire({ title: "Appeler le plombier", body: "Appeler le plombier, c'est l'heure." })),
+  )
+  verifier(
+    "l'interrupteur de Paramètres fait taire l'annonce",
+    dire({ title: "Appeler le plombier" }, { direAVoixHaute: false }) === null,
+  )
+  verifier(
+    "voix de Jarvis coupée : on n'annonce rien non plus",
+    dire({ title: "Appeler le plombier" }, {}, true) === null,
+    "le réglage de voix vaut pour tout ce que Jarvis dit",
+  )
+  verifier(
+    "pendant les heures de silence, la notification s'affiche mais ne se dit pas",
+    dire({ title: "Appeler le plombier" }, {}, false, nuit) === null,
+    "une voix à 3 h du matin réveille exactement ce que le canal muet protégeait",
+  )
+  verifier(
+    "sauf s'il a désactivé les heures de silence",
+    dire({ title: "Appeler le plombier" }, { silenceNuit: false }, false, nuit) ===
+      "Appeler le plombier",
+  )
+  verifier(
+    "une notification vide ne fait rien dire",
+    dire({ title: "  ", body: null }) === null,
+  )
+  // La RAISON du silence part dans le journal d'écoute : sans elle, une
+  // annonce muette sur son téléphone serait indistinguable, vue d'ici, d'une
+  // annonce jamais déclenchée.
+  const pourquoi = (
+    notif: { title?: string | null; body?: string | null },
+    p: Partial<PrefsNotifications> = {},
+    voixCoupee = false,
+    maintenant = jour,
+  ) => raisonDuSilence(notif, { prefs: { ...base, ...p }, voixCoupee, maintenant })
+
+  verifier(
+    "quand il parle, aucune raison de se taire n'est écrite",
+    pourquoi({ title: "Appeler le plombier" }) === null,
+  )
+  for (const [attendu, p, coupee, quand] of [
+    ["desactive", { direAVoixHaute: false }, false, jour],
+    ["voix_coupee", {}, true, jour],
+    ["heures_de_silence", {}, false, nuit],
+    ["rien_a_dire", {}, false, jour],
+  ] as [string, Partial<PrefsNotifications>, boolean, Date][]) {
+    const notif = attendu === "rien_a_dire" ? { title: " " } : { title: "Appeler le plombier" }
+    verifier(
+      `le journal dira « ${attendu} »`,
+      pourquoi(notif, p, coupee, quand) === attendu,
+      String(pourquoi(notif, p, coupee, quand)),
+    )
+  }
+
+  const long = dire({ title: "Point du matin", body: "x".repeat(900) })
+  verifier(
+    "un point du matin très chargé est écourté, pas lu pendant une minute",
+    !!long && long.length <= 600 && long.endsWith("…"),
+    `${long?.length} caractères`,
+  )
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

@@ -4,7 +4,9 @@ import { createRoot } from "react-dom/client"
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
 import { ConversationsRecentes } from "@/components/memoire/ConversationsRecentes"
+import { SanteMemoire } from "@/components/memoire/SanteMemoire"
 import type { EchangesApi } from "@/hooks/useEchanges"
+import type { SanteMemoireApi } from "@/hooks/useSanteMemoire"
 import type { Echange } from "@/types/database"
 
 /**
@@ -60,9 +62,61 @@ function bancApi(
   }
 }
 
+/** Les quatre états du témoin de la mémoire, dont les deux qui ne se
+ *  produisent que le jour où quelque chose casse. */
+const SANTES: Record<string, SanteMemoireApi> = {
+  "sante-active": {
+    sante: {
+      dernierSouvenir: new Date(Date.now() - 2 * 3600_000).toISOString(),
+      souvenirsVivants: 19,
+      echangesDepuis: 3,
+      erreur: null,
+    },
+    loading: false,
+    error: null,
+    refresh: async () => {},
+  },
+  // Le cas réel du 4 sept. : 42 échanges dictés, rien de retenu, aucune erreur
+  // signalée — la mémoire n'avait même pas pu dire qu'elle était morte.
+  "sante-silence": {
+    sante: {
+      dernierSouvenir: new Date(Date.now() - 8 * 3600_000).toISOString(),
+      souvenirsVivants: 19,
+      echangesDepuis: 42,
+      erreur: null,
+    },
+    loading: false,
+    error: null,
+    refresh: async () => {},
+  },
+  "sante-panne": {
+    sante: {
+      dernierSouvenir: new Date(Date.now() - 9 * 3600_000).toISOString(),
+      souvenirsVivants: 19,
+      echangesDepuis: 22,
+      erreur: {
+        titre: "La mémoire n'a rien pu retenir de cet échange",
+        detail: "quota du modèle épuisé : limite 20 requêtes par jour et par projet",
+        lastSeen: new Date(Date.now() - 40 * 60_000).toISOString(),
+        occurrences: 7,
+      },
+    },
+    loading: false,
+    error: null,
+    refresh: async () => {},
+  },
+  "sante-illisible": {
+    sante: null,
+    loading: false,
+    error: "Réseau injoignable (banc d'essai).",
+    refresh: async () => {},
+  },
+}
+
 function Banc() {
   const [echanges, setEchanges] = useState(ECHANGES)
   const [etat, setEtat] = useState<"pret" | "chargement" | "erreur" | "vide">("pret")
+  const [sante, setSante] = useState<keyof typeof SANTES>("sante-active")
 
   const api = useMemo(
     () =>
@@ -92,6 +146,20 @@ function Banc() {
           </button>
         ))}
       </div>
+      <div className="flex flex-wrap gap-2">
+        {(Object.keys(SANTES) as (keyof typeof SANTES)[]).map((cle) => (
+          <button
+            key={cle}
+            type="button"
+            data-etat={cle}
+            className="rounded border px-2 py-1 text-sm"
+            onClick={() => setSante(cle)}
+          >
+            {cle}
+          </button>
+        ))}
+      </div>
+      <SanteMemoire api={SANTES[sante]} />
       <ConversationsRecentes api={api} />
     </div>
   )

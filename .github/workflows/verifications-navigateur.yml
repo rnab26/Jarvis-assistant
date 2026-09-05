@@ -1,0 +1,68 @@
+name: Vérifications dans un navigateur
+
+# Séparé des vérifications hors ligne, et pas fusionné avec elles : celles-ci
+# demandent un navigateur (≈ 40 s d'installation) et durent une minute de plus.
+# Les garder à part laisse le retour rapide arriver vite, et dit du premier
+# coup d'œil laquelle des deux familles a lâché.
+#
+# Sur TOUTES les branches, comme les vérifications hors ligne : une session qui
+# travaille sur sa branche n'a aucun autre retour avant de fusionner.
+#
+# CE QUE ÇA ATTRAPE, et que rien d'autre n'attrape : ce qui casse à l'écran.
+# Une carte qui ne se déplie pas, une corbeille qui supprime sans demander, un
+# tableau qui déborde en largeur sur un téléphone, un résumé repoussé hors du
+# premier écran, une panne de chargement qui se lit comme une absence. Aucune
+# de ces cinq choses ne se voit dans un typecheck ni dans une fonction qui
+# renvoie la bonne valeur — elles ont toutes été trouvées de cette façon.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  navigateur:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # Le navigateur seul : ni firefox ni webkit, l'app tourne dans une
+      # WebView Chromium sur le téléphone de Raphaël.
+      - name: Installer Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Des valeurs factices : aucun de ces bancs ne parle à Supabase, mais
+      # src/lib/supabase.ts lève au chargement si elles manquent, et le
+      # bundler jette alors toute l'app comme code mort.
+      - name: Le cockpit, sur un écran de téléphone
+        run: node scripts/verifier-cockpit-web.mjs
+        env:
+          VITE_SUPABASE_URL: https://banc-d-essai.invalid
+          VITE_SUPABASE_ANON_KEY: banc-d-essai
+
+      - name: La corbeille d'une tâche demande avant de supprimer
+        run: node scripts/verifier-taches-web.mjs
+        env:
+          VITE_SUPABASE_URL: https://banc-d-essai.invalid
+          VITE_SUPABASE_ANON_KEY: banc-d-essai
+
+      - name: Les réglages, sur un écran de téléphone
+        run: node scripts/verifier-reglages-web.mjs
+        env:
+          VITE_SUPABASE_URL: https://banc-d-essai.invalid
+          VITE_SUPABASE_ANON_KEY: banc-d-essai
+
+      - name: « Vos conversations », sur un écran de téléphone
+        run: node scripts/verifier-memoire-web.mjs
+        env:
+          VITE_SUPABASE_URL: https://banc-d-essai.invalid
+          VITE_SUPABASE_ANON_KEY: banc-d-essai
+
+      - name: Le moteur d'écoute et le banc du cœur
+        run: node scripts/verifier-ecoute-web.mjs
+        env:
+          VITE_SUPABASE_URL: https://banc-d-essai.invalid
+          VITE_SUPABASE_ANON_KEY: banc-d-essai

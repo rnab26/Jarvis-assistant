@@ -1,7 +1,5 @@
 import {
   Check,
-  ChevronDown,
-  ChevronRight,
   EyeOff,
   Pencil,
   Plus,
@@ -9,12 +7,13 @@ import {
   Trash2,
   Wrench,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Textarea } from "@/components/ui/textarea"
 import { ErreurFormDialog } from "@/components/cockpit/ErreurFormDialog"
 import {
@@ -61,6 +60,9 @@ interface ErreursJarvisProps {
 /** Ce qu'on montre par défaut : ce qui n'est ni réglé ni écarté. */
 const OUVERTES: ErreurStatut[] = ["nouveau", "en_cours"]
 
+/** Au-delà, la carte ferait un mur : le registre se remplit tout seul. */
+const AFFICHEES_PAR_DEFAUT = 25
+
 export function ErreursJarvis({
   erreursState,
   devItems,
@@ -68,9 +70,9 @@ export function ErreursJarvis({
   onCreerChantier,
 }: ErreursJarvisProps) {
   const { erreurs, loading, error, refresh } = erreursState
-  const [deplie, setDeplie] = useState(false)
   const [voirReglees, setVoirReglees] = useState(false)
   const [categorie, setCategorie] = useState<ErreurCategorie | null>(null)
+  const [toutVoir, setToutVoir] = useState(false)
 
   const ouvertes = useMemo(() => erreurs.filter((e) => OUVERTES.includes(e.statut)), [erreurs])
   const affichees = useMemo(
@@ -102,35 +104,30 @@ export function ErreursJarvis({
   )
 
   return (
-    <Card>
-      <CardHeader className="grid-cols-[1fr_auto] items-center gap-2">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-          aria-expanded={deplie}
-          onClick={() => setDeplie(!deplie)}
-        >
-          {deplie ? (
-            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-          )}
-          <CardTitle className="min-w-0 flex-1 text-base">
-            Erreurs de Jarvis{" "}
-            <span className="font-normal text-muted-foreground">
-              — {ouvertes.length} ouverte{ouvertes.length > 1 ? "s" : ""}
-            </span>
-          </CardTitle>
-        </button>
-        {ouvertes.some((e) => e.reapparue_at) && (
+    <CarteRepliable
+      titre={
+        <>
+          Erreurs de Jarvis{" "}
+          <span className="font-normal text-muted-foreground">
+            {/* Repliée, cette carte ne dit qu'un chiffre : il ne doit pas être
+                « 0 ouvertes » quand la vérité est « je n'ai pas pu lire ». */}
+            {error
+              ? "— non chargées"
+              : loading
+                ? "— …"
+                : `— ${ouvertes.length} ouverte${ouvertes.length > 1 ? "s" : ""}`}
+          </span>
+        </>
+      }
+      badge={
+        ouvertes.some((e) => e.reapparue_at) ? (
           <Badge variant="destructive" className="shrink-0">
             revenue
           </Badge>
-        )}
-      </CardHeader>
-
-      {deplie && (
-        <CardContent className="flex flex-col gap-3">
+        ) : undefined
+      }
+    >
+      <CardContent className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {boutonAjout}
             <Button
@@ -189,7 +186,7 @@ export function ErreursJarvis({
             </div>
           ) : (
             <div className="divide-y">
-              {affichees.map((erreur) => (
+              {(toutVoir ? affichees : affichees.slice(0, AFFICHEES_PAR_DEFAUT)).map((erreur) => (
                 <LigneErreur
                   key={erreur.id}
                   erreur={erreur}
@@ -199,11 +196,20 @@ export function ErreursJarvis({
                   onCreerChantier={onCreerChantier}
                 />
               ))}
+              {!toutVoir && affichees.length > AFFICHEES_PAR_DEFAUT && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => setToutVoir(true)}
+                >
+                  Voir les {affichees.length - AFFICHEES_PAR_DEFAUT} autres
+                </Button>
+              )}
             </div>
           )}
-        </CardContent>
-      )}
-    </Card>
+      </CardContent>
+    </CarteRepliable>
   )
 }
 
@@ -225,6 +231,15 @@ function LigneErreur({
   const [deplie, setDeplie] = useState(false)
   const [correction, setCorrection] = useState(erreur.correction ?? "")
   const [enregistre, setEnregistre] = useState(false)
+
+  // La correction peut être modifiée AILLEURS que dans ce champ : par la
+  // fenêtre du crayon, ou depuis un autre appareil. Sans cette remise à
+  // niveau, le champ garderait l'ancien texte, le bouton « Enregistrer »
+  // réapparaîtrait, et un appui rendrait la version périmée — en écrasant ce
+  // qui venait d'être écrit.
+  useEffect(() => {
+    setCorrection(erreur.correction ?? "")
+  }, [erreur.correction])
   const chantier = devItems.find((i) => i.id === erreur.dev_item_id)
 
   async function creerChantier() {

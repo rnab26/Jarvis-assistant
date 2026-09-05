@@ -85,6 +85,7 @@ try {
   const refuse = page.locator("#notifs-refuse")
   const ok = page.locator("#notifs-ok")
   const alarmes = page.locator("#notifs-alarmes")
+  const coupees = page.locator("#notifs-coupees")
   const rapide = page.locator("#maj-rapide")
   const parApk = page.locator("#maj-apk")
 
@@ -97,6 +98,17 @@ try {
     "et n'affiche aucun interrupteur qui ne commanderait rien",
     !(await refuse.getByText("Le point du matin", { exact: true }).isVisible()),
     "des réglages sans effet, c'est pire que pas de réglages : on croirait avoir coupé quelque chose",
+  )
+
+  // ── Coupées côté système : ne pas laisser dans une impasse ──
+  verifier(
+    "des notifications coupées par Android sont signalées",
+    await coupees.getByText(/coupées dans les réglages du téléphone/).isVisible(),
+  )
+  verifier(
+    "et l'écran d'Android s'ouvre depuis là",
+    await coupees.getByRole("button", { name: "Ouvrir les réglages d'Android" }).isVisible(),
+    "sans ce bouton, il faudrait aller chercher l'écran soi-même dans le téléphone",
   )
 
   // ── Ce qu'Android peut retarder, il faut le dire ──
@@ -116,11 +128,17 @@ try {
   ]) {
     verifier(`« ${ligne} » est réglable`, await ok.getByText(ligne, { exact: true }).first().isVisible())
   }
-  verifier(
-    "cinq interrupteurs, pas six : ni agenda ni mail",
-    (await ok.getByRole("switch").count()) === 5,
-    "Google prévient déjà pour l'agenda et les mails ; deux notifications pour la même chose, c'est une de trop",
-  )
+  // Ce que ce contrôle protège, c'est l'ABSENCE de l'agenda et des mails, pas
+  // un nombre : compter les interrupteurs le faisait échouer dès qu'on en
+  // ajoutait un qui n'a rien à voir (« dire les rappels à voix haute », 5
+  // sept.). On vise donc ce qui ne doit pas être là.
+  for (const interdit of ["agenda", "rendez-vous", "mail", "e-mail"]) {
+    verifier(
+      `aucune notification « ${interdit} » : Google prévient déjà`,
+      (await ok.getByRole("switch").filter({ hasText: new RegExp(interdit, "i") }).count()) === 0,
+      "deux notifications pour la même chose, c'est une de trop",
+    )
+  }
   verifier(
     "et la raison de leur absence est écrite",
     await ok.getByText(/Google prévient déjà/).isVisible(),
@@ -183,6 +201,30 @@ try {
     await ok.getByRole("button", { name: "Tester" }).isVisible(),
   )
 
+  // ── Les heures de silence ──
+  verifier(
+    "on peut faire taire la nuit sans perdre les rappels",
+    await ok.getByText("Ne rien faire sonner la nuit", { exact: true }).isVisible(),
+  )
+  verifier(
+    "et il est dit que le rappel s'affiche quand même",
+    await ok.getByText(/sans bruit/).isVisible(),
+    "sans cette phrase, on croirait supprimer le rappel",
+  )
+  verifier(
+    "les deux bornes de la nuit se règlent",
+    (await ok.getByText("À partir de", { exact: true }).isVisible()) &&
+      (await ok.getByText("Jusqu'à", { exact: true }).isVisible()),
+  )
+  await ok.getByLabel("Ne rien faire sonner la nuit").click()
+  await pause(200)
+  verifier(
+    "couper les heures de silence range leurs réglages",
+    !(await ok.getByText("À partir de", { exact: true }).isVisible()),
+  )
+  await ok.getByLabel("Ne rien faire sonner la nuit").click()
+  await pause(200)
+
   // ── La mise à jour : rapide quand c'est possible, franche quand ça ne l'est pas ──
   verifier(
     "quand la mise à jour rapide est possible, c'est elle qu'on propose",
@@ -219,6 +261,180 @@ try {
     "et ce retour demande confirmation",
     await parApk.getByRole("button", { name: "Confirmer le retour" }).isVisible(),
   )
+
+  // ── La recherche : ce qui répond s'affiche déplié, le reste disparaît ──
+  const recherche = page.locator("#recherche")
+  verifier(
+    "la section cherchée s'affiche DÉPLIÉE",
+    await recherche.getByText("Contenu notifications").isVisible(),
+    "trouver une section pour devoir la déplier ensuite ne fait pas gagner un geste",
+  )
+  verifier(
+    "et les autres disparaissent",
+    !(await recherche.getByText("Contenu voix").isVisible()) &&
+      !(await recherche.getByText("Voix et écoute").isVisible()),
+  )
+
+  // ── Le mode Live, réglable depuis Paramètres ──
+  const live = page.locator("#live")
+  verifier(
+    "le mode Live se règle depuis Paramètres",
+    await live.getByLabel("Mode conversation Live").isVisible(),
+  )
+  verifier("aucun signal de relecture avant qu'on y touche", await live.getByText("signaux : 0").isVisible())
+  await live.getByLabel("Mode conversation Live").click()
+  await pause(250)
+  verifier(
+    "l'activer l'enregistre là où le micro le lit",
+    (await page.evaluate(() => localStorage.getItem("jarvis_mode_live"))) === "1",
+  )
+  verifier(
+    "et prévient le micro, qui garde son propre état",
+    await live.getByText("signaux : 1").isVisible(),
+    "sans ce signal, l'interrupteur n'aurait d'effet qu'au prochain lancement de l'app",
+  )
+  await live.getByLabel("Mode conversation Live").click()
+  await pause(250)
+  verifier(
+    "et le couper revient au micro classique",
+    (await page.evaluate(() => localStorage.getItem("jarvis_mode_live"))) === "0",
+  )
+
+  // ── Le thème : la palette sombre existait, rien ne pouvait l'allumer ──
+  const theme = page.locator("#theme")
+  verifier(
+    "les trois choix de thème sont proposés",
+    (await theme.getByRole("button", { name: "Clair" }).isVisible()) &&
+      (await theme.getByRole("button", { name: "Sombre" }).isVisible()) &&
+      (await theme.getByRole("button", { name: "Comme le téléphone" }).isVisible()),
+  )
+  await theme.getByRole("button", { name: "Sombre" }).click()
+  await pause(300)
+  verifier(
+    "choisir « Sombre » allume vraiment la palette sombre",
+    await page.evaluate(() => document.documentElement.classList.contains("dark")),
+    "la classe « dark » n'est pas posée : les quarante couleurs du bloc .dark restent lettre morte",
+  )
+  verifier(
+    "et le choix est enregistré là où la synchro le lira",
+    (await page.evaluate(() => localStorage.getItem("jarvis_theme"))) === "dark",
+    "sans ça il serait perdu à la prochaine réinstallation",
+  )
+  await theme.getByRole("button", { name: "Clair" }).click()
+  await pause(300)
+  verifier(
+    "et on peut revenir en clair",
+    !(await page.evaluate(() => document.documentElement.classList.contains("dark"))),
+  )
+
+  // ── Remettre les réglages par défaut ──
+  await page.evaluate(() => localStorage.setItem("jarvis_voice_rate", "1.75"))
+  const reinit = page.locator("#reinit")
+  await reinit.getByRole("button", { name: "Remettre les réglages par défaut" }).click()
+  await pause(200)
+  verifier(
+    "la remise à zéro demande confirmation",
+    await reinit.getByText("Ce qui repart à zéro :").isVisible(),
+    "effacer tous les réglages d'un appui de travers serait irrattrapable",
+  )
+  verifier(
+    "et dit ce qu'elle NE touche pas",
+    await reinit.getByText(/tes tâches, tes chantiers/).isVisible(),
+    "sans ça on croirait effacer ses données",
+  )
+  verifier(
+    "rien n'est effacé tant qu'on n'a pas confirmé",
+    (await page.evaluate(() => localStorage.getItem("jarvis_voice_rate"))) === "1.75",
+  )
+  await reinit.getByRole("button", { name: "Confirmer la remise à zéro" }).click()
+  await pause(300)
+  verifier(
+    "confirmer efface pour de bon",
+    (await page.evaluate(() => localStorage.getItem("jarvis_voice_rate"))) === null,
+  )
+
+  // ── La page de confidentialité, atteignable depuis l'app ──
+  const confid = page.locator("#confidentialite")
+  const lien = confid.getByRole("link", { name: /Lire la page de confidentialité/ })
+  verifier("la page de confidentialité est atteignable depuis Paramètres", await lien.isVisible())
+  verifier(
+    "et elle s'ouvre à côté, pas à la place de Jarvis",
+    (await lien.getAttribute("target")) === "_blank" &&
+      (await lien.getAttribute("href"))?.startsWith("https://"),
+    "un fichier local ouvert dans la fenêtre de l'app remplacerait l'application, qui perdrait son état",
+  )
+
+  // ── L'assistant du téléphone : l'appui long sur la touche latérale ──
+  // Ce qui compte ici n'est pas un calcul mais une PHRASE : quand Jarvis
+  // n'apparaît pas dans la liste d'Android, la carte doit dire que la cause
+  // est l'APK installée, sinon Raphaël cherche dans les réglages du téléphone
+  // un réglage qui ne peut pas y être.
+  const assistVieux = page.locator("#assistant-ancien")
+  await assistVieux.getByText(/ne sait pas encore se déclarer/).waitFor({ timeout: 5000 })
+  verifier(
+    "APK trop ancienne : la carte dit que c'est la version installée qui bloque",
+    await assistVieux.getByText(/ne sait pas encore se déclarer/).isVisible(),
+  )
+  verifier(
+    "et qu'une mise à jour rapide n'y suffira pas",
+    await assistVieux.getByText(/mise à jour rapide ne suffit pas/).isVisible(),
+    "sans cette phrase, il appuie sur « Mettre à jour » et rien ne change",
+  )
+
+  const assistCandidat = page.locator("#assistant-candidat")
+  verifier(
+    "APK à jour mais assistant non choisi : la carte le dit",
+    await assistCandidat.getByText(/ce n'est pas lui pour l'instant/).isVisible(),
+  )
+  verifier(
+    "et propose d'ouvrir le réglage d'Android",
+    await assistCandidat.getByRole("button", { name: "Ouvrir le réglage Android" }).isVisible(),
+  )
+  verifier(
+    "le chemin exact reste écrit : le bouton ne mène pas jusqu'au dernier écran",
+    await assistCandidat.getByText(/Application d'assistant numérique par défaut/).isVisible(),
+    "l'action qui irait pile dessus est protégée par une permission de signature",
+  )
+
+  const assistActif = page.locator("#assistant-actif")
+  verifier(
+    "quand Jarvis est l'assistant, la carte le confirme",
+    await assistActif.getByText("Jarvis est l'assistant du téléphone.").isVisible(),
+  )
+  // ── L'ordre réel : à quelle hauteur commence la mise à jour ──
+  // Raphaël, 5 sept. 2026 : « pour la mise à jour, il faut que je descende
+  // tout en bas, essaye de la rehausser un petit peu, mais en la compactant ».
+  // Mesuré plutôt que supposé, comme le cockpit l'a été le 4 sept.
+  {
+    const bloc = page.locator("#ordre-reel")
+    const mesures = await bloc.evaluate((racine) => {
+      const haut = racine.getBoundingClientRect().top
+      const barres = [...racine.querySelectorAll(':scope > div > button[aria-expanded="false"]')]
+      const bouton = [...racine.querySelectorAll("button")].find((b) =>
+        /Mettre à jour maintenant|Télécharger/.test(b.textContent || ""),
+      )
+      return {
+        boutonMaj: bouton ? Math.round(bouton.getBoundingClientRect().top - haut) : -1,
+        hauteurAutresBarres: barres.reduce((n, b) => n + b.getBoundingClientRect().height + 8, 0),
+        nbBarres: barres.length,
+      }
+    })
+
+    verifier(
+      "les six autres sections sont bien repliées",
+      mesures.nbBarres === 6,
+      `${mesures.nbBarres} barres repliées trouvées`,
+    )
+    verifier(
+      "le bouton de mise à jour est dans le premier écran",
+      mesures.boutonMaj >= 0 && mesures.boutonMaj < 400,
+      `il commence à ${mesures.boutonMaj} points du haut de la liste`,
+    )
+    console.log(
+      `      mesuré : bouton de mise à jour à ${mesures.boutonMaj} pts ; ` +
+        `il était ${Math.round(mesures.hauteurAutresBarres)} pts plus bas quand la section fermait la page`,
+    )
+  }
 
   // ── Rien ne déborde en largeur ──
   const debordement = await page.evaluate(

@@ -40,6 +40,9 @@ interface Options {
 /** Deux signalements identiques à moins d'une minute : un seul part. */
 const FENETRE_REPETITION_MS = 60_000
 
+/** Au-delà, on abandonne ce signalement plutôt que de bloquer les suivants. */
+const DELAI_MAX_MS = 10_000
+
 const dernierEnvoi = new Map<string, number>()
 let enCours: Promise<void> = Promise.resolve()
 
@@ -69,16 +72,26 @@ export function signalerErreur(
   enCours = enCours
     .then(async () => {
       const { supabase } = await import("@/lib/supabase")
+      const { withTimeout } = await import("@/lib/withTimeout")
       const { data } = await supabase.auth.getSession()
       // Pas connecté : rien à enregistrer, et surtout pas d'erreur de plus.
       if (!data.session) return
-      await supabase.rpc("signaler_erreur", {
-        p_categorie: categorie,
-        p_titre: propre.slice(0, 200),
-        p_detail: detail?.slice(0, 2000) ?? null,
-        p_contexte: contexte?.slice(0, 1000) ?? null,
-        p_source: source,
-      })
+      // Borné dans le temps, et c'est essentiel ici : ces signalements
+      // arrivent surtout quand le réseau va mal — c'est même leur raison
+      // d'être. Les appels sont mis à la queue leu leu, donc un seul appel
+      // resté en attente bloquerait TOUS les signalements suivants, sans
+      // qu'on puisse le voir. supabase-js, lui, réessaie près d'une minute
+      // avant d'abandonner.
+      await withTimeout(
+        supabase.rpc("signaler_erreur", {
+          p_categorie: categorie,
+          p_titre: propre.slice(0, 200),
+          p_detail: detail?.slice(0, 2000) ?? null,
+          p_contexte: contexte?.slice(0, 1000) ?? null,
+          p_source: source,
+        }),
+        DELAI_MAX_MS,
+      )
     })
     .catch(() => {
       // Un registre qui ne s'écrit pas ne doit jamais se voir.

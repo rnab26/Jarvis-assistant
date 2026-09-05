@@ -30,8 +30,9 @@ import {
 import { etatDe, type EtatChantier } from "@/hooks/useDevItems"
 import { proposerAnnulation } from "@/lib/annulation"
 import { alreadyNotified } from "@/lib/notifyError"
+import { LIBELLE_MARQUEUR, compterMarqueurs } from "@/lib/marqueurChantier"
 import { cleTheme } from "@/lib/themeChantier"
-import type { DevItem, DevItemInput, DevStatus } from "@/types/database"
+import type { DevItem, DevItemInput, DevLogEntry, DevStatus } from "@/types/database"
 
 /** Conservé pour les appelants existants (MicButton, CockpitPage) : la liste
  * des thèmes réellement portés par des chantiers, telle qu'elle part au
@@ -65,6 +66,10 @@ interface CockpitBoardProps {
   onDeleteMany: (ids: string[]) => Promise<void>
   /** Le retour en arrière proposé après chaque action groupée. */
   onRestore: (etats: EtatChantier[]) => Promise<void>
+  /** Le journal de bord, pour que chaque chantier porte ses messages. */
+  messages?: DevLogEntry[]
+  onRepondre?: (itemId: string, body: string) => Promise<void>
+  onMarquerTraite?: (id: string) => Promise<void>
 }
 
 /**
@@ -94,6 +99,9 @@ export function CockpitBoard({
   onArchiveMany,
   onDeleteMany,
   onRestore,
+  messages = [],
+  onRepondre,
+  onMarquerTraite,
 }: CockpitBoardProps) {
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set())
@@ -133,6 +141,25 @@ export function CockpitBoard({
     const depuis = Date.now() - 7 * 24 * 3600_000
     return archives.filter((i) => new Date(i.archived_at!).getTime() >= depuis).length
   }, [archives])
+
+  // Les messages rangés par chantier une fois pour toutes : les répartir dans
+  // chaque carte reviendrait à parcourir tout le journal autant de fois qu'il
+  // y a de chantiers.
+  const messagesParChantier = useMemo(() => {
+    const parItem = new Map<string, DevLogEntry[]>()
+    for (const m of messages) {
+      if (!m.item_id) continue
+      parItem.set(m.item_id, [...(parItem.get(m.item_id) ?? []), m])
+    }
+    // Le plus ancien en haut : on lit une conversation dans l'ordre où elle
+    // s'est tenue.
+    for (const [, liste] of parItem) liste.sort((a, b) => a.created_at.localeCompare(b.created_at))
+    return parItem
+  }, [messages])
+
+  // « Qu'est-ce qui attend une décision de moi ? » : douze chantiers portaient
+  // le marqueur « à cadrer » le 4 sept., et rien dans l'app ne le disait.
+  const marqueurs = useMemo(() => compterMarqueurs(actifs), [actifs])
 
   const cherche = filtreActif(filtre)
   const totalRestants = groupesComplets.reduce((n, g) => n + g.restants, 0)
@@ -174,18 +201,31 @@ export function CockpitBoard({
    * la base : on ne coche que ce qu'on a sous les yeux. */
   const toutSelectionner = () => setSelection(new Set(filtres.map((i) => i.id)))
 
-  /** Chaque action groupée mémorise l'état d'avant et propose de l'annuler. */
+  /**
+   * Chaque action groupée mémorise l'état d'avant et propose de l'annuler.
+   *
+   * `seulement` écarte les chantiers auxquels l'action ne s'applique pas : un
+   * chantier déjà archivé qu'on ré-archive verrait sa date de livraison
+   * réécrite à aujourd'hui — son histoire fausse, et « livrés cette semaine »
+   * avec elle. Le cas arrive dès qu'on coche une ligne dans le bloc des
+   * archivées.
+   */
   async function agirSurLeLot(
     message: (n: number) => string,
     action: (ids: string[]) => Promise<void>,
+    seulement?: (item: DevItem) => boolean,
   ) {
-    const etats = choisis.map(etatDe)
+    const cibles = seulement ? choisis.filter(seulement) : choisis
+    const etats = cibles.map(etatDe)
     const ids = etats.map((e) => e.id)
     if (ids.length === 0) return
     await action(ids)
     setSelection(new Set())
     proposerAnnulation(message(ids.length), etats, onRestore)
   }
+
+  /** Ce qui peut encore être archivé dans la sélection. */
+  const aArchiver = choisis.filter((i) => !i.archived_at)
 
   const boutonSections = (
     <SectionsDialog
@@ -263,6 +303,22 @@ export function CockpitBoard({
             </div>
           )}
 
+          {/* Une panne de chargement des sections ne doit pas passer pour une
+              absence de sections : sans ce mot, le cockpit affiche les
+              chantiers groupés par leur thème, dans le désordre, sans les
+              sections vides — et rien ne dit que c'est un incident. */}
+          {sectionsState.error && (
+            <div className="flex items-center gap-2 rounded-lg border border-dashed p-2">
+              <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                Les sections n'ont pas pu être chargées : l'ordre que tu as choisi et les
+                sections vides manquent. Les chantiers, eux, sont bien là.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => sectionsState.refresh()}>
+                Réessayer
+              </Button>
+            </div>
+          )}
+
           <div className="relative">
             <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -312,6 +368,25 @@ export function CockpitBoard({
               </Puce>
             ))}
           </div>
+
+          {marqueurs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {marqueurs.map(({ marqueur, nb }) => (
+                <Puce
+                  key={marqueur}
+                  active={filtre.marqueur === marqueur}
+                  onClick={() =>
+                    setFiltre({
+                      ...filtre,
+                      marqueur: filtre.marqueur === marqueur ? null : marqueur,
+                    })
+                  }
+                >
+                  {LIBELLE_MARQUEUR[marqueur]} <span className="opacity-70">{nb}</span>
+                </Puce>
+              ))}
+            </div>
+          )}
 
           <div className="flex gap-1.5">
             {STATUTS.map(({ valeur, libelle }) => (
@@ -373,6 +448,9 @@ export function CockpitBoard({
                 onUpdate={onUpdate}
                 onDelete={onDelete}
                 onArchive={onArchive}
+                messages={messagesParChantier.get(item.id)}
+                onRepondre={onRepondre}
+                onMarquerTraite={onMarquerTraite}
                 selectionnable={enSelection}
                 selectionne={selection?.has(item.id) ?? false}
                 onSelectionner={basculerSelection}
@@ -430,6 +508,9 @@ export function CockpitBoard({
                             onUpdate={onUpdate}
                             onDelete={onDelete}
                             onUnarchive={onUnarchive}
+                            messages={messagesParChantier.get(item.id)}
+                            onRepondre={onRepondre}
+                            onMarquerTraite={onMarquerTraite}
                             selectionnable={enSelection}
                             selectionne={selection?.has(item.id) ?? false}
                             onSelectionner={basculerSelection}
@@ -473,19 +554,24 @@ export function CockpitBoard({
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                agirSurLeLot(
-                  (n) => `${n} chantier${n > 1 ? "s" : ""} archivé${n > 1 ? "s" : ""}`,
-                  onArchiveMany,
-                ).catch(alreadyNotified)
-              }
-            >
-              <Archive className="size-3.5" />
-              Archiver
-            </Button>
+            {/* Rien à archiver si tout ce qui est coché l'est déjà : proposer
+                le bouton laisserait croire qu'il fait quelque chose. */}
+            {aArchiver.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  agirSurLeLot(
+                    (n) => `${n} chantier${n > 1 ? "s" : ""} archivé${n > 1 ? "s" : ""}`,
+                    onArchiveMany,
+                    (i) => !i.archived_at,
+                  ).catch(alreadyNotified)
+                }
+              >
+                <Archive className="size-3.5" />
+                Archiver{aArchiver.length < choisis.length ? ` (${aArchiver.length})` : ""}
+              </Button>
+            )}
 
             <ConfirmerAction
               titre={`Supprimer ${choisis.length} chantier${choisis.length > 1 ? "s" : ""} ?`}

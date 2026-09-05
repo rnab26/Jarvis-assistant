@@ -3,40 +3,13 @@ import { useState } from "react"
 import { LoadError } from "@/components/LoadError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Textarea } from "@/components/ui/textarea"
+import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
 import { questionPourRaphael } from "@/lib/journalDestinataire"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { DevItem, DevLogEntry, DevLogKind } from "@/types/database"
-
-const KIND_LABEL: Record<DevLogKind, string> = {
-  question: "Question",
-  reponse: "Réponse",
-  info: "Info",
-  blocage: "Blocage",
-}
-
-const KIND_VARIANT: Record<DevLogKind, "default" | "secondary" | "destructive" | "outline"> = {
-  question: "default",
-  reponse: "secondary",
-  info: "outline",
-  blocage: "destructive",
-}
-
-/** "il y a 3 h" plutôt qu'une date brute : on lit un fil, pas un registre. */
-function ago(iso: string) {
-  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
-  if (minutes < 1) return "à l'instant"
-  if (minutes < 60) return `il y a ${minutes} min`
-  const heures = Math.round(minutes / 60)
-  if (heures < 24) return `il y a ${heures} h`
-  return `il y a ${Math.round(heures / 24)} j`
-}
-
-/** Une branche de session est longue : on n'en garde que la partie qui distingue. */
-function courtAuteur(auteur: string) {
-  return auteur.replace(/^claude\//, "")
-}
 
 interface DevLogFeedProps {
   entries: DevLogEntry[]
@@ -100,15 +73,25 @@ export function DevLogFeed({
   }
 
   return (
-    <Card>
-      <CardHeader className="grid-cols-[1fr_auto] items-center gap-2">
-        <CardTitle className="text-base">Journal de bord</CardTitle>
-        {enAttente > 0 && (
-          <Badge variant="default">
+    // Repliée par défaut, mais son badge reste sur la barre de titre : une
+    // question qui l'attend se voit sans ouvrir. Mesuré le 4 sept. : dépliée,
+    // cette carte à elle seule repoussait le tableau des chantiers de 424
+    // points sur un écran de téléphone.
+    <CarteRepliable
+      ouverteParDefaut={enAttente > 0}
+      titre="Journal de bord"
+      badge={
+        enAttente > 0 ? (
+          <Badge variant="default" className="shrink-0">
             {enAttente} question{enAttente > 1 ? "s" : ""} en attente
           </Badge>
-        )}
-      </CardHeader>
+        ) : entries.length > 0 ? (
+          <Badge variant="outline" className="shrink-0">
+            {entries.length}
+          </Badge>
+        ) : undefined
+      }
+    >
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           {repondreA && (
@@ -200,6 +183,6 @@ export function DevLogFeed({
           </div>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }
