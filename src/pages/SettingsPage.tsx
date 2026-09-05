@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
 import { CarteAutorisations } from "@/components/settings/Autorisations"
+import { BulleFlottante } from "@/components/settings/BulleFlottante"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
 import { MettreAJour } from "@/components/settings/MettreAJour"
@@ -95,7 +96,7 @@ const SECTIONS = {
     titre: "Ce que Jarvis utilise",
     resume: "Applications par défaut, appui long sur le bouton",
     motsCles:
-      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android délai annuler arrêter avant d'agir mal entendu",
+      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android bulle flottante pastille par-dessus superposition délai annuler arrêter avant d'agir mal entendu",
   },
   apparence: {
     cle: "apparence",
@@ -914,6 +915,7 @@ export function SettingsPage() {
 
       <Section {...SECTIONS.apps} filtre={recherche}>
         <AssistantTelephone />
+        <BulleFlottante />
         <AppsParDefaut />
         <FenetreAnnulation />
       </Section>

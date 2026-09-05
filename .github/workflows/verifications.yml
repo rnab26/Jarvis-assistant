@@ -110,6 +110,12 @@ jobs:
       - name: La fenêtre d'annulation des actions du téléphone
         run: node --experimental-strip-types scripts/verifier-fenetre-annulation.ts
 
+      # La bulle : un interrupteur ne doit jamais dire « Activé » au-dessus
+      # d'un écran vide, et un service de premier plan sans type refuse de
+      # démarrer depuis Android 14, sans le moindre message.
+      - name: La bulle flottante
+        run: node --experimental-strip-types scripts/verifier-bulle.ts
+
       - name: Les autorisations du téléphone
         run: node --experimental-strip-types scripts/verifier-autorisations.ts
 

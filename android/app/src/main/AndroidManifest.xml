@@ -67,6 +67,23 @@
             </intent-filter>
         </activity>
 
+        <!-- La bulle flottante (chantier f5621562). Service de premier plan
+             parce qu'une vue posée par WindowManager vit dans le processus de
+             l'app : sans lui, Android tue ce processus en arriere-plan et la
+             bulle disparait au bout de quelques minutes, en silence.
+             foregroundServiceType "specialUse" : aucun des types prevus par
+             Android (localisation, lecture de media, appel) ne decrit une
+             pastille posee a l'ecran ; la propriete en dessous dit lequel
+             c'est, comme Android l'exige depuis la version 14. -->
+        <service
+            android:name=".BulleService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="pastille flottante d assistance, affichee a la demande de l utilisateur" />
+        </service>
+
         <receiver android:name=".JarvisWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -111,6 +128,16 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- La bulle flottante : afficher une pastille par-dessus les autres
+         applications. Accès spécial, jamais accordé par une fenêtre de
+         demande — il se donne dans un écran de réglages d'Android, et
+         l'interrupteur de Paramètres y renvoie. Désactivée par défaut.
+         FOREGROUND_SERVICE et sa variante « usage particulier » vont avec le
+         service qui tient la bulle en vie. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Mise à jour de l'app : installer l'APK téléchargé par
          ApkDownloaderPlugin, sans passer par un navigateur. -->

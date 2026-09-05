@@ -757,8 +757,23 @@ cas.push(
 const SIGNATURE_QUOTA = /IDLE_TIMEOUT|limite de l'offre gratuite|quota|RESOURCE_EXHAUSTED|429/i
 const suspectsQuota = []
 
+// Rejouer UN sous-ensemble sans redérouler les 46 appels : chaque appel coûte
+// du quota sur la clé de test, et une passe complète pour vérifier un seul
+// correctif en gaspille l'essentiel. FILTRE=section,mel garde les cas dont le
+// nom contient l'un de ces mots.
+const FILTRE = (process.env.FILTRE ?? "")
+  .split(",")
+  .map((m) => m.trim().toLowerCase())
+  .filter(Boolean)
+const aJouer = FILTRE.length
+  ? cas.filter((c) => FILTRE.some((m) => c.nom.toLowerCase().includes(m)))
+  : cas
+if (FILTRE.length) {
+  console.log(`FILTRE actif : ${aJouer.length} cas sur ${cas.length}\n`)
+}
+
 let premier = true
-for (const c of cas) {
+for (const c of aJouer) {
   // Rien à attendre avant le tout premier appel : la pause ne sert qu'à
   // espacer deux requêtes déjà envoyées.
   if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))

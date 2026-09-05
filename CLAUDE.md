@@ -374,6 +374,58 @@ demande : ouvrir une app et lui passer un texte marche déjà sans permission,
 pour n'importe laquelle, sans code par app.
 
 
+## La bulle flottante, et pourquoi il n'y a PAS d'interrupteur pour l'appui long
+
+Livrée le 5 sept. 2026 (chantier `f5621562`, partie b). Sa demande, quand je
+lui proposais de CHOISIR entre l'appui long et la bulle : « oui et aussi
+l'option bulle flottante, les deux doivent être disponibles tant que ce n'est
+pas fonctionnel à 100 %, et simplement par possibilité de changer à tout
+moment. » Les deux coexistent donc, et l'un ne remplace pas l'autre.
+
+`BulleService.java` (la pastille, posée par WindowManager), `BullePlugin.java`
+(l'état réel et le démarrage), `src/lib/bulleFlottante.ts` (le pont et les
+décisions pures), `src/components/settings/BulleFlottante.tsx`.
+
+Quatre choses à ne pas défaire :
+
+1. **Un service de PREMIER PLAN, pas un service ordinaire.** Une vue posée par
+   WindowManager vit dans le processus de l'app ; sans lui, Android tue ce
+   processus en arrière-plan et la bulle disparaît au bout de quelques
+   minutes, en silence. Et depuis Android 14 un service de premier plan sans
+   `foregroundServiceType` refuse de démarrer — d'où `specialUse` et sa
+   propriété dans le manifeste.
+2. **`FLAG_NOT_FOCUSABLE`.** Sans lui, la bulle vole le clavier : taper un
+   message dans WhatsApp devient impossible tant qu'elle est affichée.
+3. **L'état vient du SYSTÈME, jamais du réglage.** L'autorisation « afficher
+   par-dessus les autres applications » se retire depuis Android sans que
+   l'app en sache rien, et un appui long sur la bulle la range sans passer par
+   Paramètres. Un interrupteur qui affiche ce que le réglage prétend dirait
+   « Activé » au-dessus d'un écran vide.
+4. **Il n'y a PAS d'interrupteur pour l'appui long à côté, et ce n'est pas un
+   oubli.** C'est le rôle `android.app.role.ASSISTANT`, déclaré
+   `requestable="false"` dans le `roles.xml` d'AOSP : une application ne peut
+   ni se l'attribuer ni se le retirer, et l'écran qui y mène directement est
+   protégé par une permission de signature. Un interrupteur y serait soit
+   décoratif, soit menteur. Sa carte à lui (« L'appui long sur la touche
+   latérale ») lit l'état réel par `RoleManager` et ouvre le meilleur écran
+   système atteignable.
+
+## Une commande mal entendue reste rattrapable, sans jamais poser de question
+
+`src/lib/actionsTelephoneFenetre.ts` (pur) + `actionsTelephoneToast.ts` (le
+bandeau). Raphaël a ÉCARTÉ la confirmation que je proposais, le 5 sept. :
+« aucune limite dans le sens où il doit faire tout ce que je demande sans
+limite ». Ce module ne la réintroduit pas : rien n'attend son accord, le
+décompte fini l'action part toute seule.
+
+Ce qui reste vrai malgré sa décision : une commande MAL ENTENDUE n'est pas une
+commande demandée — le 5 sept. entre 17 h 59 et 18 h 20, quatre tentatives ont
+ouvert deux fois l'application מכבי. Jarvis annonce donc ce qu'il fait, en
+NOMMANT la cible (c'est le seul mot qui permet de repérer l'erreur), et laisse
+quelques secondes. Seules les actions qui SORTENT vers une autre application y
+passent ; `media_control` et `set_alarm` non, sans quoi Jarvis serait lent
+partout. Le délai est un réglage, et « Immédiat » est disponible en un appui.
+
 ## Supprimer demande toujours, partout dans l'app
 
 `src/components/ConfirmerAction.tsx` : la fenêtre qui pose la question avant
@@ -1044,6 +1096,7 @@ node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton �
 node --experimental-strip-types scripts/verifier-musique.ts       # « je lance » n'est dit que si ça joue vraiment, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
+node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
