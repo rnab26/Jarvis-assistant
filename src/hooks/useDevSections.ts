@@ -138,11 +138,18 @@ export function useDevSections(userId: string | undefined, rafraichirChantiers?:
   async function reorderSections(ids: string[]) {
     // Affichage optimiste : sur un téléphone, une flèche qui met une seconde
     // à bouger donne l'impression que l'appui n'a pas été pris.
+    //
+    // Sauf si la liste reçue ne couvre pas ce qu'on affiche — une section
+    // créée sur un autre appareil, arrivée entre-temps par le temps réel :
+    // elle serait absente du tableau, `indexOf` rendrait -1, et elle
+    // remonterait en tête sous ses yeux avant que la base ne le démente.
+    // Dans ce cas on laisse simplement la base répondre.
     setSections((actuelles) =>
-      [...actuelles].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)).map((s, i) => ({
-        ...s,
-        position: i + 1,
-      })),
+      actuelles.length !== ids.length || actuelles.some((s) => !ids.includes(s.id))
+        ? actuelles
+        : [...actuelles]
+            .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
+            .map((s, i) => ({ ...s, position: i + 1 })),
     )
     await withErrorToast("Impossible de réordonner les sections", async () => {
       const { error } = await supabase.rpc("reordonner_sections", { p_ids: ids })
