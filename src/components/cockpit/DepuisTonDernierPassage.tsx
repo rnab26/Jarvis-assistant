@@ -47,18 +47,7 @@ export function DepuisTonDernierPassage({ devItems, messages }: DepuisTonDernier
   // Au montage seulement : la date lue est celle du passage PRÉCÉDENT, et elle
   // ne doit pas bouger pendant qu'il regarde.
   useEffect(() => {
-    const existant = lire()
-    if (existant) {
-      setVuLe(existant)
-    } else {
-      // Première ouverture sur cet écran : on pose le repère sans rien
-      // annoncer, pour que la prochaine visite ait de quoi comparer.
-      try {
-        localStorage.setItem(CLE, new Date().toISOString())
-      } catch {
-        // Sans stockage, la carte ne s'affichera jamais : c'est acceptable.
-      }
-    }
+    setVuLe(lire())
   }, [])
 
   const bilan = useMemo(
@@ -66,7 +55,7 @@ export function DepuisTonDernierPassage({ devItems, messages }: DepuisTonDernier
     [devItems, messages, vuLe],
   )
 
-  if (masque || !vuLe || !bilan.quelqueChose) return null
+  if (masque || !bilan.quelqueChose || !bilan.depuis) return null
 
   function marquerVu() {
     try {
@@ -83,7 +72,9 @@ export function DepuisTonDernierPassage({ devItems, messages }: DepuisTonDernier
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 shrink-0 text-muted-foreground" />
           <p className="min-w-0 flex-1 text-sm font-medium">
-            Depuis ton dernier passage, {depuisQuand(vuLe)}
+            {bilan.origine === "passage"
+              ? `Depuis ton dernier passage, ${depuisQuand(bilan.depuis)}`
+              : `Depuis ton dernier message, ${depuisQuand(bilan.depuis)}`}
           </p>
           <Button variant="ghost" size="sm" onClick={marquerVu}>
             <Check className="size-3.5" />

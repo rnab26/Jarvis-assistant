@@ -19,6 +19,11 @@ import type { DevItem, DevLogEntry } from "@/types/database"
  */
 
 export interface DepuisDerniereVisite {
+  /** D'où on compte, et comment le dire : « ton dernier passage » quand le
+   * repère vient de cet écran, « ton dernier message » quand il est déduit du
+   * journal faute de repère. */
+  origine: "passage" | "message"
+  depuis: string | null
   /** Chantiers archivés depuis la dernière visite : le travail rendu. */
   livres: DevItem[]
   /** Chantiers créés depuis : ce qu'une session a ouvert en travaillant. */
@@ -29,18 +34,52 @@ export interface DepuisDerniereVisite {
   quelqueChose: boolean
 }
 
-/** Ce que Raphaël écrit lui-même ne compte pas comme du nouveau pour lui. */
-const AUTEUR_RAPHAEL = "Raphaël"
+/**
+ * Ce que Raphaël écrit lui-même ne compte pas comme du nouveau pour lui — et
+ * ses messages sont signés de deux façons : « Raphaël » quand il écrit depuis
+ * l'app, « raphael (via claude/… ) » quand une session relaie ses mots. Les
+ * deux sont de lui ; ne reconnaître que le premier ferait passer sa propre
+ * consigne pour un message d'une session, et raterait le repère le plus utile.
+ */
+function estDeRaphael(auteur: string): boolean {
+  return auteur
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .startsWith("raphael")
+}
 
 export function depuisDerniereVisite(
   items: DevItem[],
   messages: DevLogEntry[],
   depuisISO: string | null,
 ): DepuisDerniereVisite {
-  const vide = { livres: [], nouveaux: [], messages: [], quelqueChose: false }
-  if (!depuisISO) return vide
+  const vide: DepuisDerniereVisite = {
+    origine: "passage",
+    depuis: null,
+    livres: [],
+    nouveaux: [],
+    messages: [],
+    quelqueChose: false,
+  }
 
-  const depuis = new Date(depuisISO).getTime()
+  // Aucun repère sur cet écran — première ouverture, ou stockage effacé. Son
+  // dernier message dans le journal en est un, et c'en est même un bon : il
+  // date d'un moment où il regardait le cockpit. Sans ce rattrapage, la
+  // première ouverture n'annonce jamais rien, et c'est justement l'ouverture
+  // qui suit une absence.
+  const origine: "passage" | "message" = depuisISO ? "passage" : "message"
+  const repere =
+    depuisISO ??
+    messages
+      .filter((m) => estDeRaphael(m.author))
+      .map((m) => m.created_at)
+      .sort()
+      .at(-1) ??
+    null
+  if (!repere) return vide
+
+  const depuis = new Date(repere).getTime()
   // Une date illisible ne doit pas faire passer TOUT le cockpit pour nouveau.
   if (Number.isNaN(depuis)) return vide
 
@@ -48,11 +87,11 @@ export function depuisDerniereVisite(
 
   const livres = items.filter((i) => apres(i.archived_at))
   const nouveaux = items.filter((i) => !i.archived_at && apres(i.created_at))
-  const nouveauxMessages = messages.filter(
-    (m) => apres(m.created_at) && m.author !== AUTEUR_RAPHAEL,
-  )
+  const nouveauxMessages = messages.filter((m) => apres(m.created_at) && !estDeRaphael(m.author))
 
   return {
+    origine,
+    depuis: repere,
     livres,
     nouveaux,
     messages: nouveauxMessages,
