@@ -1335,6 +1335,24 @@ s'applique tant qu'on n'ouvre pas cet onglet.
 la WebView sur le dossier téléchargé. La CI prouve que ça compile, pas que ça
 tourne.
 
+**Et ça n'a effectivement jamais tourné, du 4 au 5 sept.** Raphaël a reçu
+`open failed: ENOENT` sur `bundles/165.zip` : `downloadFile` est le chemin
+DÉPRÉCIÉ de `@capacitor/filesystem`, sa mise en œuvre ouvre un
+`FileOutputStream` sur le chemin demandé et **ne lit jamais son option
+`recursive`** (seul `writeFile` l'honore). Personne ne créait `bundles/`, donc
+le premier téléchargement mourait — chez tout le monde, à chaque fois.
+Corrigé par `creerRacineBundles()` (commit `b538cb4`).
+
+Deux leçons, et la seconde vaut au-delà de ce chantier. **Un « mesuré » qui ne
+mesure pas la même chose que ce qu'on affirme ne vaut rien** : le « 1,2 Mo
+mesuré » pesait le fichier publié, pas une installation réussie, et il a servi
+de preuve à un chantier qui ne marchait pas. Et **un contrôle doit être essayé
+à l'envers avant d'être cru** : la première version de celui-ci cherchait
+`Filesystem.mkdir` n'importe où dans `majWeb.ts` et restait verte quand on
+supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle lit
+maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
+Playwright du 4 sept.
+
 ## Le web se met à jour tout seul, l'app Android jamais
 
 Piège découvert le 3 sept. 2026 : Raphaël pensait suivre les nouveautés en
