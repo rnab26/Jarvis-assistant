@@ -218,6 +218,50 @@ premier écran :
   chantiers et se casse sur quatre-vingts. C'est ce banc-là qui a trouvé les
   1 632 points ; ne le retire pas en ajoutant une carte au cockpit.
 
+### « Où j'en suis » : quatre nombres par section, en tête du cockpit
+
+Chantier `18a0aff1`, 5 sept. 2026. Ses mots : « je ne sais plus où mettre le
+nez. Je travaille de tous les côtés et toi aussi et il y a des chantiers
+ouverts de partout, mais je ne sais pas ce qui avance, ce qui n'avance pas. »
+
+**Ce n'était pas un manque d'information.** Tout était déjà en base — la
+réservation, `archived_at`, les marqueurs, les questions de `dev_log`. Le
+cockpit montrait TOUT et ne répondait à RIEN. `src/lib/ouJenSuis.ts` (pur,
+`scripts/verifier-ou-jen-suis.ts`) en tire quatre nombres par section :
+
+- **bouge** — réservation en cours, non expirée ;
+- **livré** — archivé dans la fenêtre choisie (réglage, plus bas) ;
+- **pour toi** — marqueur `[À CADRER]` / `[A FAIRE PAR RAPHAEL]`, ou une
+  question de session sans `answered_at` ;
+- **dort** — ouvert, personne dessus, aucun marqueur bloquant.
+
+**Les quatre ne forment pas une partition, et c'est voulu.** Un `[BLOQUÉ PAR]`,
+un `[REPORTÉ]`, un `[DOUBLON]` n'est ni endormi ni en attente de lui : il n'est
+compté nulle part. Et une **réservation expirée** n'est comptée ni dans
+« bouge » (personne n'est dessus) ni dans « dort » (le chantier affiche encore
+« Prise par… », donc aucune session ne le prendra) : elle ressort à part, avec
+le bouton pour la libérer. **N'ajoute pas une cinquième colonne** — on
+relirait un tableau au lieu de lire une réponse.
+
+**Ce bloc a un BUDGET DE HAUTEUR, et il est mesuré.** Le résumé par section
+commençait à 482 points du haut (390 × 844, un jour ordinaire). Il n'a pas
+bougé : `verifier-cockpit-web.mjs` refuse qu'il descende plus bas. La place a
+été **prise à ce qui faisait doublon**, pas ajoutée en bas de la pile — la
+fenêtre d'envoi est devenue repliable (222 → 56 points), la carte « Qui
+travaille en ce moment » a été absorbée (`SessionsAuTravail.tsx` supprimé), et
+le journal de bord ne s'ouvre plus tout seul quand une question attend (elle
+est comptée dans « pour toi », qui dit sur quel chantier elle porte). Un jour
+chargé, le tableau est passé de 850 à 502 points. **Si tu ajoutes une carte au
+cockpit, prends sa place quelque part.**
+
+Le seul réglage introduit est la fenêtre de la colonne « livré » (Paramètres ›
+Le cockpit, `jarvis_cockpit_fenetre`, défaut « aujourd'hui ») : « aujourd'hui »
+veut dire depuis minuit LOCAL, et à une heure du matin le travail de la soirée
+tomberait à zéro au moment précis où il vient voir ce qui s'est passé.
+
+Le filtre du tableau vit désormais dans `CockpitPage`, pas dans
+`CockpitBoard` : une ligne de « Où j'en suis » doit pouvoir l'imposer.
+
 ### Les marqueurs des notes sont visibles dans l'app (`src/lib/marqueurChantier.ts`)
 
 `[À CADRER AVEC RAPHAËL]`, `[LIBRE]`, `[BLOQUÉ PAR : …]`, `[DOUBLON — …]`,

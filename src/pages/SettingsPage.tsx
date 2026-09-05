@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { Cockpit } from "@/components/settings/Cockpit"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
@@ -82,6 +83,13 @@ const SECTIONS = {
     resume: "Applications par défaut, canal des messages",
     motsCles:
       "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia",
+  },
+  cockpit: {
+    cle: "cockpit",
+    titre: "Le cockpit",
+    resume: "Ce qui compte comme « livré » dans « Où j'en suis »",
+    motsCles:
+      "cockpit chantier section où j'en suis livré aujourd'hui 24 heures 7 jours semaine bilan avancement bouge dort pour toi",
   },
   apparence: {
     cle: "apparence",
@@ -896,6 +904,10 @@ export function SettingsPage() {
 
       <Section {...SECTIONS.apps} filtre={recherche}>
         <AppsParDefaut />
+      </Section>
+
+      <Section {...SECTIONS.cockpit} filtre={recherche}>
+        <Cockpit />
       </Section>
 
       <Section {...SECTIONS.apparence} filtre={recherche}>

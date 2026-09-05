@@ -121,6 +121,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/Notifications.tsx",
   },
   {
+    cle: "jarvis_cockpit_fenetre",
+    ou: "Paramètres › Le cockpit › Ce qui compte comme « livré »",
+    fichier: "src/components/settings/Cockpit.tsx",
+  },
+  {
     cle: "jarvis_maj_auto",
     ou: "Paramètres › L'application › Mettre à jour l'application",
     fichier: "src/pages/SettingsPage.tsx",

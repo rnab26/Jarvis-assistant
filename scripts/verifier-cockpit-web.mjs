@@ -91,7 +91,7 @@ try {
 
   const visible = (texte) => page.locator(`text=${texte}`).first().isVisible()
   // Le tableau des chantiers, et rien d'autre : un titre de chantier apparaît
-  // aussi dans la carte « Qui travaille en ce moment ».
+  // aussi dans « Où j'en suis », en tête de page.
   const tableau = page.getByRole("region", { name: "Chantiers" })
   const dansLeTableau = (texte) => tableau.getByText(texte).first().isVisible()
 
@@ -117,8 +117,78 @@ try {
     !(await page.getByText("Depuis ton dernier passage").isVisible()),
   )
 
+  // ── « Où j'en suis » : la réponse en un écran ──
+  // C'est la première chose de la page, et c'est la question qu'il pose en
+  // ouvrant : « je ne sais plus où mettre le nez ».
+  verifier(
+    "en ouvrant, le cockpit dit où on en est, section par section",
+    await visible("Où j'en suis"),
+    "il montrait tout et ne répondait à rien",
+  )
+  verifier(
+    "avec les quatre colonnes, et pas une de plus",
+    (await visible("bouge")) &&
+      (await visible("livré")) &&
+      (await visible("pour toi")) &&
+      (await visible("dort")),
+  )
+  verifier(
+    "il annonce d'abord ce qui l'attend, LUI",
+    await visible("2 pour toi"),
+    (await page.locator("body").innerText()).slice(0, 300),
+  )
+  verifier(
+    "une réservation qu'une session a laissée derrière elle est signalée",
+    await visible("porte encore le nom d'une session arrêtée"),
+    "un chantier que personne ne traite continuerait d'afficher « Prise par… » sans que rien ne le dise",
+  )
+
+  const ligne = (nom) => page.getByRole("button", { name: `Où en est ${nom}` })
+  await ligne("Voix et écoute").click()
+  await pause(250)
+  verifier(
+    "ouvrir une ligne dit QUELLE session travaille, et sur quoi",
+    (await visible("Le micro se coupe en pleine phrase")) && (await visible("voix-et-ecoute")),
+    "il faudrait déplier chaque section et lire les « Prise par… » un par un",
+  )
+  verifier(
+    "et pourquoi un chantier l'attend",
+    await visible("question de voix-et-ecoute"),
+  )
+  await ligne("Voix et écoute").click()
+  await pause(200)
+
+  await ligne("Le téléphone").click()
+  await pause(250)
+  verifier(
+    "la colonne « livré » compte ce qui a été rendu aujourd'hui",
+    await visible("Le badge de version, livré"),
+    "le cockpit ne comptait que ce qui reste, jamais ce qui a avancé aujourd'hui",
+  )
+  await page.getByRole("button", { name: "Libérer" }).first().click()
+  await pause(250)
+  verifier("libérer demande confirmation", await visible("Libérer ce chantier ?"))
+  await page.getByRole("button", { name: "Libérer", exact: true }).last().click()
+  await pause(400)
+  verifier(
+    "et le chantier redevient libre",
+    !(await page.getByText("s'est arrêtée sans le libérer").isVisible()),
+  )
+  await ligne("Le téléphone").click()
+  await pause(200)
+
   // ── La fenêtre d'envoi : ce qui existe déjà, et la section suggérée ──
+  // Repliée par défaut depuis que « Où j'en suis » occupe le haut de la page :
+  // le cockpit s'ouvre pour lire, écrire est un geste délibéré.
+  verifier(
+    "la fenêtre d'envoi est repliée à l'arrivée",
+    !(await page.getByLabel("Ce qu'il faut faire").isVisible()),
+    "elle coûtait 222 points en haut de l'écran, qu'on lise ou qu'on écrive",
+  )
+  await page.getByRole("button", { name: "Envoyer à Claude Code" }).first().click()
+  await pause(250)
   const quoiFaire = page.getByLabel("Ce qu'il faut faire")
+  verifier("et s'ouvre d'un appui", await quoiFaire.isVisible())
   await quoiFaire.fill("Le micro se coupe en pleine phrase quand je dicte longtemps")
   await pause(400)
   verifier(
@@ -150,27 +220,6 @@ try {
   await quoiFaire.fill("")
   await pause(250)
 
-  // ── Qui travaille en ce moment ──
-  verifier(
-    "la carte dit quelle session travaille, et sur quoi",
-    (await visible("claude/voix-et-ecoute".replace("claude/", ""))) &&
-      (await visible("Le micro se coupe en pleine phrase")),
-    "il faudrait déplier chaque section et lire les « Prise par… » un par un",
-  )
-  verifier(
-    "une réservation expirée est signalée à part, pas comptée comme du travail",
-    (await visible("1 à libérer")) && (await visible("sans le libérer")),
-    "un chantier que personne ne traite continuerait d'afficher « Prise par… »",
-  )
-  await page.getByRole("button", { name: "Libérer" }).first().click()
-  await pause(250)
-  verifier("libérer demande confirmation", await visible("Libérer ce chantier ?"))
-  await page.getByRole("button", { name: "Libérer", exact: true }).last().click()
-  await pause(400)
-  verifier(
-    "et le chantier redevient libre",
-    !(await page.getByText("sans le libérer").isVisible()),
-  )
 
   // ── Le résumé d'abord, le détail à la demande ──
   verifier(
@@ -572,6 +621,60 @@ try {
     hautDuResume > 0 && hautDuResume < 844,
     `il commence à ${hautDuResume} points : il faudrait faire défiler avant de voir quoi que ce soit du tableau`,
   )
+  // LE BUDGET DE HAUTEUR, et c'est le contrôle qui compte le plus ici.
+  // « Où j'en suis » a été ajouté EN TÊTE du cockpit : sans cette limite, la
+  // carte suivante repousserait le tableau hors de l'écran, et on serait
+  // revenu au point de départ — un cockpit qui montre tout et ne répond à
+  // rien. 482 points est la mesure d'avant l'ajout : la place a été prise à
+  // la fenêtre d'envoi (repliée) et à la carte « Qui travaille en ce moment »
+  // (absorbée), pas ajoutée en bas de la pile.
+  verifier(
+    "et le nouveau bloc ne l'a pas repoussé plus bas qu'avant",
+    hautDuResume > 0 && hautDuResume <= 482,
+    `${hautDuResume} points contre 482 avant « Où j'en suis » : reprends la place à une carte qui fait doublon, n'en empile pas une de plus`,
+  )
+  // « Où j'en suis » doit tenir en ENTIER dans le premier écran, sinon il
+  // faut faire défiler pour lire la réponse à « où j'en suis ».
+  const basDuBloc = await calme.evaluate(() => {
+    const titre = [...document.querySelectorAll("p")].find(
+      (p) => p.textContent?.trim() === "Où j'en suis",
+    )
+    const carte = titre?.closest('[data-slot="card"]') ?? titre?.parentElement?.parentElement
+    return carte ? Math.round(carte.getBoundingClientRect().bottom) : -1
+  })
+  verifier(
+    "« Où j'en suis » tient en entier dans le premier écran",
+    basDuBloc > 0 && basDuBloc <= 844,
+    `il se termine à ${basDuBloc} points sur 844`,
+  )
+
+  // Neuf sections, quatre en tête : le reste est à un appui, pas caché.
+  verifier(
+    "à neuf sections, le bloc en montre quatre et propose les autres",
+    await calme.getByRole("button", { name: /Voir les \d+ autres sections/ }).isVisible(),
+    "les neuf lignes feraient revenir le mur qu'on essaie de supprimer",
+  )
+  await calme.getByRole("button", { name: /Voir les \d+ autres sections/ }).click()
+  await pause(300)
+  verifier(
+    "et elles s'affichent alors toutes",
+    (await calme.getByRole("button", { name: /^Où en est / }).count()) === 9,
+    `${await calme.getByRole("button", { name: /^Où en est / }).count()} lignes au lieu de 9`,
+  )
+
+  // Depuis une ligne, on va au tableau : c'est la réponse à « où mettre le
+  // nez » qui doit mener quelque part.
+  await calme.getByRole("button", { name: "Où en est Le téléphone" }).click()
+  await pause(250)
+  await calme.getByRole("button", { name: /Voir « Le téléphone » dans le tableau/ }).click()
+  await pause(400)
+  const tableauCalme = calme.getByRole("region", { name: "Chantiers" })
+  verifier(
+    "appuyer sur « voir dans le tableau » ne laisse que cette section",
+    (await tableauCalme.getByText(/sur le téléphone/).count()) > 0 &&
+      (await tableauCalme.getByText(/sur voix et écoute/).count()) === 0,
+    "la ligne dirait où regarder sans y emmener",
+  )
   await calme.close()
 
   // ── Un chantier déjà archivé ne doit pas pouvoir être ré-archivé ──
@@ -611,9 +714,9 @@ try {
   )
   verifier(
     "et propose de voir les autres",
-    await gros.getByRole("button", { name: /Voir les \d+ autres/ }).isVisible(),
+    await gros.getByRole("button", { name: /^Voir les \d+ autres$/ }).isVisible(),
   )
-  await gros.getByRole("button", { name: /Voir les \d+ autres/ }).click()
+  await gros.getByRole("button", { name: /^Voir les \d+ autres$/ }).click()
   await pause(400)
   verifier(
     "qui s'affichent alors toutes",

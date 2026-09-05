@@ -384,8 +384,8 @@ try {
     })
 
     verifier(
-      "les six autres sections sont bien repliées",
-      mesures.nbBarres === 6,
+      "les sept autres sections sont bien repliées",
+      mesures.nbBarres === 7,
       `${mesures.nbBarres} barres repliées trouvées`,
     )
     verifier(

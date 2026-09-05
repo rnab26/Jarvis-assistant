@@ -255,6 +255,7 @@ function BancDesReglages() {
           ["Tâches et organisation", "Widget d'écran d'accueil, rappels de lieu"],
           ["Notifications", "Ce que Jarvis a le droit de faire sonner"],
           ["Ce que Jarvis utilise", "Applications par défaut, canal des messages"],
+          ["Le cockpit", "Ce qui compte comme « livré » dans « Où j'en suis »"],
           ["Apparence", "Thème clair ou sombre, image du cœur"],
           ["Comptes et connexions", "Google"],
         ].map(([titre, resume], i) => (

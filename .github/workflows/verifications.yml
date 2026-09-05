@@ -78,6 +78,13 @@ jobs:
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
 
+      # Les quatre nombres par section de « Où j'en suis ». Ce qui se joue là
+      # est faux EN SILENCE : un chantier compté comme avançant alors que la
+      # session qui l'avait pris s'est arrêtée, une question sans réponse qui
+      # n'apparaît nulle part. On lit la réponse, et on la croit.
+      - name: « Où j'en suis », en tête du cockpit
+        run: node --experimental-strip-types scripts/verifier-ou-jen-suis.ts
+
       - name: La section suggérée à la saisie
         run: node --experimental-strip-types scripts/verifier-suggestion-theme.ts
 

@@ -9,7 +9,8 @@ import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPa
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
-import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
+import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
+import { FILTRE_VIDE, type FiltreCockpit } from "@/lib/sections"
 import type {
   DevItem,
   DevLogEntry,
@@ -93,8 +94,15 @@ const SECTIONS = [
   section("Entraînement", 3),
 ]
 
-/** Une réservation en cours, et une qui a expiré : les deux cas de la carte
- * « Qui travaille en ce moment ». */
+/** Minuit ce matin, sur l'heure du navigateur qui fait tourner le banc. */
+function minuitLocal(): Date {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+/** Une réservation en cours, et une qui a expiré : les deux cas que
+ * « Où j'en suis » distingue — ça bouge, et ça ne bouge plus. */
 function reserve(item: DevItem, session: string, minutes: number): DevItem {
   return {
     ...item,
@@ -112,11 +120,14 @@ const CHANTIERS = [
   ),
   chantier("Réveil vocal en arrière-plan", "Voix et écoute"),
   reserve(chantier("Widget d'écran d'accueil", "Le téléphone"), "claude/telephone-arretee", -120),
-  // Une archive récente : la liste des archivées et le compte « livrés cette
-  // semaine » n'étaient couverts par rien.
+  // Une archive du jour : la liste des archivées, le compte « livrés cette
+  // semaine », et la colonne « livré » de « Où j'en suis ». Datée à minuit
+  // LOCAL plutôt qu'à « il y a deux jours » — la colonne « livré » compte par
+  // défaut depuis minuit, et un banc qui ne tomberait dans la fenêtre qu'à
+  // certaines heures du jour serait vert le matin et rouge le soir.
   {
     ...chantier("Le badge de version, livré", "Le téléphone", "done"),
-    archived_at: new Date(Date.now() - 2 * 24 * 3600_000).toISOString(),
+    archived_at: minuitLocal().toISOString(),
   },
   {
     // Un marqueur en tête des notes, comme les sessions en écrivent : il doit
@@ -252,6 +263,7 @@ function BancDuCockpit() {
   const [messages, setMessages] = useState<DevLogEntry[]>(
     REELLES?.messages ?? (CALME ? [] : MESSAGES),
   )
+  const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
 
   const sectionsState = {
     sections: PANNE ? [] : sections,
@@ -286,14 +298,10 @@ function BancDuCockpit() {
           l'action réussir et manquerait la moitié qui compte. */}
       <Toaster />
       <DepuisTonDernierPassage devItems={devItems} messages={messages} />
-      <EnvoyerAClaudeCode
+      <OuJenSuis
         devItems={devItems}
         sections={sections}
-        themes={sections.map((s) => s.nom)}
-        onSend={async () => {}}
-      />
-      <SessionsAuTravail
-        devItems={devItems}
+        messages={messages}
         onLiberer={async (id) => {
           setDevItems((items) =>
             items.map((i) =>
@@ -301,7 +309,15 @@ function BancDuCockpit() {
             ),
           )
         }}
+        onVoirSection={(nom) => setFiltre({ ...FILTRE_VIDE, section: nom })}
       />
+      <EnvoyerAClaudeCode
+        devItems={devItems}
+        sections={sections}
+        themes={sections.map((s) => s.nom)}
+        onSend={async () => {}}
+      />
+
       {/* Le journal, à sa place réelle dans la page : sans lui, la mesure de
           ce qu'on voit en arrivant serait fausse de deux cents points. */}
       <DevLogFeed
@@ -322,6 +338,8 @@ function BancDuCockpit() {
       <CockpitBoard
         devItems={devItems}
         sectionsState={sectionsState}
+        filtre={filtre}
+        onFiltre={setFiltre}
         onUpdate={async (id, patch) => {
           setDevItems((items) => items.map((i) => (i.id === id ? { ...i, ...patch } : i)))
         }}
