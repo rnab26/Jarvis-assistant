@@ -329,10 +329,19 @@ verifier(
   sante && sante.dernier_souvenir !== null,
   "dernier_souvenir vide alors que des souvenirs viennent d'être écrits",
 )
+// Compté en base plutôt que déduit : le nombre de souvenirs retenus dépend de
+// ce que le modèle a jugé digne d'être gardé, et il varie d'un passage à
+// l'autre. Ce qu'on vérifie ici, c'est que le témoin EXCLUT les périmés — pas
+// qu'il tombe sur un chiffre qu'on aurait deviné.
+const compte = sql(
+  `select count(*) filter (where perime_at is null)::int as vivants,
+          count(*) filter (where perime_at is not null)::int as perimes
+   from souvenirs where user_id = '${userId}'`,
+)[0]
 verifier(
   "il compte les souvenirs vivants, pas les périmés",
-  sante && sante.souvenirs_vivants === vivants.length + 1,
-  `${sante?.souvenirs_vivants} contre ${vivants.length + 1} attendus (le loyer à 4500 s'est ajouté)`,
+  sante && sante.souvenirs_vivants === compte.vivants && compte.perimes > 0,
+  `témoin ${sante?.souvenirs_vivants}, base ${compte.vivants} vivants et ${compte.perimes} périmé(s)`,
 )
 verifier(
   "il ne crie pas au loup quand tout va bien",
@@ -395,6 +404,85 @@ verifier(
     vuParUnAnonyme.length === 0 ||
     (vuParUnAnonyme[0]?.dernier_souvenir == null && vuParUnAnonyme[0]?.souvenirs_vivants === 0),
   `réponse : ${JSON.stringify(vuParUnAnonyme).slice(0, 200)}`,
+)
+
+// ---------------------------------------------------------------------------
+// Ce que Raphaël reprend à Jarvis lui revient (chantier 057fbe10).
+//
+// Le registre des erreurs lui fait écrire « ce qu'il aurait fallu faire ».
+// Jusqu'ici ça ne servait qu'aux sessions Claude Code : Jarvis refaisait la
+// même erreur le lendemain alors que la réponse était en base.
+//
+// La correction utilisée ici contient un fait que le modèle NE PEUT PAS
+// deviner. S'il ressort, c'est qu'il a bien lu la correction — pas qu'il a eu
+// de la chance.
+// ---------------------------------------------------------------------------
+
+const avantCorrection = await dire("Ajoute une tâche pour le grand chantier : commander les poignées.")
+const titreAvant = (avantCorrection.actions ?? [])
+  .filter((a) => a.action === "add_task")
+  .map((a) => `${a.title ?? ""} ${a.notes ?? ""}`)
+  .join(" ")
+console.log(`\nAvant la correction, la tâche créée dit : « ${titreAvant.trim()} »`)
+verifier(
+  "sans correction, Jarvis ne peut pas savoir ce qu'est « le grand chantier »",
+  !/kerouan/i.test(titreAvant),
+  "le test ne prouverait rien : le modèle sort le mot sans avoir lu la correction",
+)
+
+await rpc("signaler_erreur", {
+  p_categorie: "comprehension",
+  p_titre: "« le grand chantier » pris au pied de la lettre",
+  p_detail: "Contrôle automatique.",
+  p_contexte: "Ajoute une tâche pour le grand chantier.",
+  p_source: "manuel",
+})
+// La correction, c'est Raphaël qui l'écrit depuis le cockpit : on fait pareil.
+await fetch(`${URL_PROJET}/rest/v1/jarvis_erreurs?user_id=eq.${userId}&categorie=eq.comprehension`, {
+  method: "PATCH",
+  headers: {
+    apikey: ANON,
+    Authorization: `Bearer ${jeton}`,
+    "Content-Type": "application/json",
+    Prefer: "return=minimal",
+  },
+  body: JSON.stringify({
+    correction: "Quand je dis « le grand chantier », je parle toujours de la villa Kerouan.",
+  }),
+})
+
+await new Promise((r) => setTimeout(r, 3000))
+const apres = await dire("Ajoute une tâche pour le grand chantier : commander les poignées.")
+const titreApres = (apres.actions ?? [])
+  .filter((a) => a.action === "add_task")
+  .map((a) => `${a.title ?? ""} ${a.notes ?? ""}`)
+  .join(" ")
+console.log(`Après la correction, la tâche créée dit : « ${titreApres.trim()} »`)
+verifier(
+  "une correction écrite par Raphaël change ce que Jarvis fait, dès la phrase suivante",
+  /kerouan/i.test(titreApres),
+  "la correction n'atteint pas le modèle : elle ne sert toujours qu'aux sessions Claude Code",
+)
+
+// Et ce qui n'apprend rien au modèle ne doit pas lui coûter de contexte.
+await rpc("signaler_erreur", {
+  p_categorie: "serveur",
+  p_titre: "Le modèle a refusé de répondre",
+  p_detail: "Contrôle automatique.",
+  p_source: "memoire",
+})
+await fetch(`${URL_PROJET}/rest/v1/jarvis_erreurs?user_id=eq.${userId}&categorie=eq.serveur`, {
+  method: "PATCH",
+  headers: { apikey: ANON, Authorization: `Bearer ${jeton}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+  body: JSON.stringify({ correction: "Redémarrer la fonction et repasser sur le modèle de secours." }),
+})
+await new Promise((r) => setTimeout(r, 3000))
+const serveur = await dire("Ajoute une tâche : acheter du café.")
+const toutLeTexte = JSON.stringify(serveur)
+verifier(
+  "une correction d'erreur serveur ne part PAS au modèle",
+  !/red[eé]marrer la fonction/i.test(toutLeTexte) && (serveur.actions ?? []).some((a) => a.action === "add_task"),
+  "elle n'apprend rien à un modèle de langue et coûte du quota à chaque phrase",
 )
 
 await admin(`/auth/v1/admin/users/${userId}`, { method: "DELETE" })

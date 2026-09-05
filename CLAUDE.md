@@ -745,6 +745,32 @@ raison qu'au-dessus. La purge à sept jours ne bouge pas, c'est le choix de
 Raphaël. Les échanges antérieurs reçoivent leur empreinte tout seuls, quelques
 lignes à chaque phrase (`rattraperEmpreintes`) — pas de script à lancer.
 
+## Ce que Raphaël reprend à Jarvis lui revient
+
+`supabase/functions/_shared/corrections.ts` — **une seule source**, importée
+par `voice-command` ET `live-jeton`, comme `environnement.ts`.
+
+Le registre des erreurs lui fait écrire « ce qu'il aurait fallu faire ». Ces
+corrections remontaient dans le bloc injecté au démarrage des sessions Claude
+Code, mais pas dans le contexte de Jarvis : il refaisait donc la même erreur le
+lendemain alors que la réponse était en base (chantier 057fbe10).
+
+**Deux familles seulement partent au modèle : `comprehension` et `action`.**
+Une erreur `serveur` ou `systeme` — un modèle qui refuse, une écriture qui
+échoue — n'apprend rien à un modèle de langue ; l'envoyer ne fait que gonfler
+un contexte déjà à ~45 000 caractères par phrase. Plafond à 10 corrections,
+champs tronqués, et **aucun bloc du tout quand il n'y a rien** — un titre suivi
+de rien coûte des jetons pour ne rien dire.
+
+**`ignore` est le seul statut exclu**, et c'est voulu : il veut dire que
+Raphaël a regardé et décidé que ce n'en était pas une. La renvoyer comme
+consigne prendrait le contre-pied de sa décision. Une erreur `corrige` reste
+envoyée : le correctif est peut-être dans le code, la consigne reste vraie.
+
+`scripts/verifier-corrections.ts` (dans la CI) tient le tri, et
+`verifier-memoire.mjs` prouve la chaîne entière : une correction écrite change
+ce que Jarvis fait dès la phrase suivante.
+
 ## Ce que Jarvis sait de sa propre application
 
 `supabase/functions/_shared/environnement.ts` — **une seule source**, importée
@@ -774,6 +800,7 @@ node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
+node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
 node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau

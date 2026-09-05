@@ -63,6 +63,12 @@ jobs:
       - name: La mémoire ne redit pas trois fois la même chose
         run: node --experimental-strip-types scripts/verifier-dedoublonnage.ts
 
+      # Ce que Raphaël reprend à Jarvis doit lui revenir — et rien d'autre :
+      # une erreur « serveur » n'apprend rien à un modèle de langue et coûte
+      # du quota à chaque phrase.
+      - name: Les corrections de Raphaël arrivent jusqu'au modèle
+        run: node --experimental-strip-types scripts/verifier-corrections.ts
+
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
 

@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
 import { memoriser, rappelerSouvenirs } from "./memoire.ts"
 import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
+import { rappelerCorrections } from "../_shared/corrections.ts"
 import { appelerGemini, phrasePourEchec } from "../_shared/gemini.ts"
 
 const corsHeaders = {
@@ -647,7 +648,7 @@ Documents existants de l'utilisateur : ${JSON.stringify(documents)}.
 Contacts existants de l'utilisateur : ${JSON.stringify(contacts)}.
 Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
 Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?? [])}.
-Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerSouvenirs(supabase, transcript)}`
+Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerCorrections(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
 
     const {
       args,

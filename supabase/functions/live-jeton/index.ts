@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { type SupabaseClient, createClient } from "jsr:@supabase/supabase-js@2"
 import { GoogleGenAI, Modality, Type } from "npm:@google/genai"
+import { rappelerCorrections } from "../_shared/corrections.ts"
 import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
 
 /**
@@ -153,7 +154,10 @@ Deno.serve(async (req) => {
     // déjà volumineux, l'app n'a pas besoin de charger les souvenirs pour
     // parler, et surtout ça reste vrai même si une autre session change
     // contexteLive() dans MicButton.
-    contexte = `${contexte}\n${await souvenirsDeLUtilisateur(supabase)}`.trim()
+    // Les corrections que Raphaël a écrites suivent aussi : se faire reprendre
+    // deux fois sur la même chose est ce qui l'agace le plus, et ça ne doit pas
+    // dépendre du mode dans lequel il parle.
+    contexte = `${contexte}\n${await souvenirsDeLUtilisateur(supabase)}\n${await rappelerCorrections(supabase)}`.trim()
 
     // Les jetons éphémères ne vivent que dans la version v1alpha de l'API.
     const ai = new GoogleGenAI({ apiKey: cle, httpOptions: { apiVersion: "v1alpha" } })
