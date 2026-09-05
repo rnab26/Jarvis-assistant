@@ -4,6 +4,7 @@ import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecisio
 import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
+import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
@@ -127,6 +128,10 @@ export function CockpitPage() {
         onAdd={devLog.addEntry}
         onMarkAnswered={devLog.markAnswered}
       />
+
+      {/* Silencieuse quand il n'y a rien à dire. Placée avant le journal :
+          un doublon coûte une session entière, il vaut d'être vu tôt. */}
+      <DoublonsTrouves devItems={devItems} onArchive={archiveDevItem} onRestore={restoreDevItems} />
 
       <ErreursJarvis
         erreursState={erreursState}

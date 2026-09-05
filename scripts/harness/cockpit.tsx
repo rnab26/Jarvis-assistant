@@ -8,6 +8,7 @@ import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
+import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
@@ -254,10 +255,63 @@ function volumeReel(): { chantiers: DevItem[]; sections: DevSection[] } {
   // reste repliée, comme un jour ordinaire.
   const sections = SECTIONS_REELLES.map((nom, i) => section(nom, i + 1))
   const chantiers: DevItem[] = []
+  // Des titres VRAIMENT différents les uns des autres, et pas seulement par
+  // un numéro : la comparaison de mots retire les chiffres. Trois listes de
+  // longueurs premières entre elles (11, 12, 13) : deux titres ne peuvent pas
+  // partager à la fois leur début et leur fin avant le 143e, donc jamais sur
+  // 83. Vérifié : 83 titres, aucune paire signalée — comme sur les 192
+  // chantiers réels de Raphaël, où la mesure n'en sort qu'une, la vraie.
+  //
+  // Un banc qui fabrique ses propres doublons ferait mesurer un artefact du
+  // banc au lieu du cockpit : la première version croisait 12 sujets et
+  // 7 nuances, donc deux titres partageaient tout leur sujet, et la carte
+  // « Ça existe déjà » en annonçait cinq qui n'existaient nulle part ailleurs.
+  const DEBUTS = [
+    "Corriger",
+    "Comprendre pourquoi",
+    "Mesurer",
+    "Rendre réglable",
+    "Documenter",
+    "Supprimer",
+    "Accélérer",
+    "Simplifier",
+    "Retrouver",
+    "Fiabiliser",
+    "Annuler",
+  ]
+  const QUOI = [
+    "le micro",
+    "la lecture des reçus",
+    "le widget d'accueil",
+    "les rappels de lieu",
+    "la voix dictée",
+    "l'agenda partagé",
+    "les pièces jointes",
+    "le tri des tâches",
+    "la recherche",
+    "les brouillons",
+    "l'export PDF",
+    "le thème sombre",
+  ]
+  const QUAND = [
+    "quand le réseau tombe",
+    "au premier lancement",
+    "pendant une dictée longue",
+    "après une mise à jour",
+    "avec plusieurs comptes ouverts",
+    "sur un écran de téléphone",
+    "une fois l'app fermée",
+    "hors ligne",
+    "en pleine nuit",
+    "depuis le widget",
+    "à la reconnexion",
+    "quand la batterie est faible",
+    "sous Android 15",
+  ]
   for (let i = 0; i < 83; i++) {
     const theme = SECTIONS_REELLES[i % SECTIONS_REELLES.length]
     const c = chantier(
-      `Chantier numéro ${i + 1} sur ${theme.toLowerCase()}, avec un titre assez long pour déborder`,
+      `${DEBUTS[i % 11]} ${QUOI[i % 12]} ${QUAND[i % 13]}`,
       theme,
       i % 7 === 0 ? "in_progress" : "todo",
     )
@@ -286,6 +340,11 @@ interface FixtureReelle {
 }
 const REELLES = (window as unknown as { __FIXTURE_REELLE?: FixtureReelle }).__FIXTURE_REELLE
 
+/** `?doublons=1` : deux chantiers strictement identiques, plus un ouvert qui
+ * redit un chantier déjà archivé. Le cas réel du 5 sept. 2026, où deux
+ * « Sous-sections pour sessions multiples Claude Code » cohabitaient. */
+const DOUBLONS = new URLSearchParams(location.search).has("doublons")
+
 const VOLUME = new URLSearchParams(location.search).has("volume")
 /** Le cockpit un jour ordinaire : rien qui appelle une action — pas de
  * question en attente, pas de réservation abandonnée. C'est l'état dans lequel
@@ -299,7 +358,18 @@ const REEL = VOLUME ? volumeReel() : null
 
 function BancDuCockpit() {
   const [devItems, setDevItems] = useState<DevItem[]>(
-    REELLES?.chantiers ?? REEL?.chantiers ?? CHANTIERS,
+    DOUBLONS
+      ? [
+          chantier("Sous-sections pour sessions multiples Claude Code", "Le cockpit"),
+          chantier("Sous-sections pour sessions multiples Claude Code", "Le cockpit"),
+          {
+            ...chantier("Retrouver une conversation passée", "Mémoire et apprentissage"),
+            archived_at: new Date(Date.now() - 86400_000).toISOString(),
+          },
+          chantier("Retrouver une conversation passée", "Mémoire et apprentissage"),
+          chantier("Le micro se coupe entre deux phrases", "Voix et écoute"),
+        ]
+      : (REELLES?.chantiers ?? REEL?.chantiers ?? CHANTIERS),
   )
   const [sections] = useState<DevSection[]>(REELLES?.sections ?? REEL?.sections ?? SECTIONS)
   const [erreurs, setErreurs] = useState<JarvisErreur[]>(VOLUME ? erreursEnVolume() : ERREURS)
@@ -402,6 +472,18 @@ function BancDuCockpit() {
         onAdd={async () => {}}
         onMarkAnswered={async () => {}}
       />
+      <div id="doublons">
+        <DoublonsTrouves
+          devItems={devItems}
+          onArchive={async (id) =>
+            setDevItems((liste) =>
+              liste.map((i) => (i.id === id ? { ...i, archived_at: new Date().toISOString() } : i)),
+            )
+          }
+          onRestore={async () => {}}
+        />
+      </div>
+
       <ErreursJarvis
         erreursState={erreursState}
         devItems={devItems}
