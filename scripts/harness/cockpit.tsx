@@ -472,7 +472,12 @@ function BancDuCockpit() {
         onAdd={async () => {}}
         onMarkAnswered={async () => {}}
       />
-      <div id="doublons">
+      {/* `display: contents` : le div n'existe que pour servir de repère aux
+          contrôles. Sans lui, la carte silencieuse laissait quand même un
+          écart de 16 points dans la colonne, et la mesure de hauteur du
+          cockpit était fausse de 16 points — dans le mauvais sens, celui qui
+          fait échouer un banc pour un défaut que Raphaël ne voit pas. */}
+      <div id="doublons" className="contents">
         <DoublonsTrouves
           devItems={devItems}
           onArchive={async (id) =>

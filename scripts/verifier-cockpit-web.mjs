@@ -776,11 +776,16 @@ try {
   await calme.getByRole("button", { name: /Voir « Le téléphone » dans le tableau/ }).click()
   await pause(400)
   const tableauCalme = calme.getByRole("region", { name: "Chantiers" })
+  // On vise les EN-TÊTES de section (« Nom — N restants »), pas les titres des
+  // chantiers : ceux-là viennent d'un jeu d'essai que d'autres sessions font
+  // évoluer, et un contrôle accroché à leur texte casse sans qu'aucun défaut
+  // n'existe (arrivé le 5 sept.).
+  const enTetes = await tableauCalme.getByRole("button", { name: /—\s*\d+ restants?/ }).count()
   verifier(
     "appuyer sur « voir dans le tableau » ne laisse que cette section",
-    (await tableauCalme.getByText(/sur le téléphone/).count()) > 0 &&
-      (await tableauCalme.getByText(/sur voix et écoute/).count()) === 0,
-    "la ligne dirait où regarder sans y emmener",
+    enTetes === 1 &&
+      (await tableauCalme.getByRole("button", { name: /^Le téléphone —/ }).count()) === 1,
+    `${enTetes} sections affichées au lieu d'une : la ligne dirait où regarder sans y emmener`,
   )
   await calme.close()
 
