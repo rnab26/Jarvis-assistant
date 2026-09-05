@@ -206,29 +206,49 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
     <Card>
       <CardHeader>
         <CardTitle>Mettre à jour l'application</CardTitle>
-        <CardDescription>
-          {isNative
-            ? "La plupart des mises à jour s'appliquent en quelques secondes, sans réinstaller l'app. Seules celles qui touchent le cœur de l'application demandent d'installer une nouvelle APK."
-            : "Le site est republié à chaque changement, cette page est donc toujours à jour. Le bouton télécharge l'APK Android."}
-        </CardDescription>
+        {/* L'explication ne s'affiche QUE quand elle sert à décider, c'est-à-dire
+            quand une version attend. Le reste du temps, elle prenait six lignes
+            pour ne rien apprendre — et depuis que cette carte est en tête de
+            Paramètres, ces six lignes repoussaient tout le reste vers le bas.
+            Demande de Raphaël, 5 sept. : « rehausser, mais en compactant ». */}
+        {status === "update-available" && (
+          <CardDescription>
+            {isNative
+              ? "La plupart des mises à jour s'appliquent en quelques secondes, sans réinstaller. Seules celles qui touchent le cœur de l'application demandent une nouvelle APK."
+              : "Le site est republié à chaque changement : cette page est déjà à jour. Le bouton télécharge l'APK Android."}
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col items-start gap-3">
-        <div className="flex w-full flex-col gap-1 rounded-lg border p-3">
-          <LigneVersion
-            label={isNative ? "Interface en cours" : "Version de cette page"}
-            value={
-              versionInstallee() +
-              (isNative ? (etat.actif ? " · mise à jour rapide" : " · livrée avec l'app") : "")
-            }
-          />
-          {isNative && etat.identiteApk?.build !== null && etat.identiteApk?.build !== undefined && (
+        {/* Trois numéros de version tenaient un pavé bordé en permanence. Ils
+            ne servent qu'à comprendre un DÉSACCORD entre ce qui tourne et ce
+            qui est publié : dépliés quand une version attend, repliés sinon —
+            mais toujours atteignables en un appui, jamais supprimés. */}
+        <details className="w-full" open={status === "update-available"}>
+          <summary className="cursor-pointer list-none text-sm text-muted-foreground">
+            <span className="underline decoration-dotted underline-offset-4">
+              Versions ({versionInstallee()})
+            </span>
+          </summary>
+          <div className="mt-2 flex w-full flex-col gap-0.5 rounded-lg border px-3 py-2">
             <LigneVersion
-              label="Application installée"
-              value={`build ${etat.identiteApk.build}`}
+              label={isNative ? "Interface en cours" : "Version de cette page"}
+              value={
+                versionInstallee() +
+                (isNative ? (etat.actif ? " · mise à jour rapide" : " · livrée avec l'app") : "")
+              }
             />
-          )}
-          <LigneVersion label="Dernière version publiée" value={libellePubliee(published)} />
-        </div>
+            {isNative &&
+              etat.identiteApk?.build !== null &&
+              etat.identiteApk?.build !== undefined && (
+                <LigneVersion
+                  label="Application installée"
+                  value={`build ${etat.identiteApk.build}`}
+                />
+              )}
+            <LigneVersion label="Dernière version publiée" value={libellePubliee(published)} />
+          </div>
+        </details>
 
         <div className="flex flex-wrap items-center gap-3">
           {isNative && majRapidePossible ? (

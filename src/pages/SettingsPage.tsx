@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import type { UpdateStatus } from "@/hooks/useUpdateCheck"
 import { useSpeechSynthesis, type SpeechSynthesisVoice } from "@/hooks/useSpeechSynthesis"
 import {
   PAUSE_MAX_MS,
@@ -44,6 +45,16 @@ const isNative = Capacitor.isNativePlatform()
  * de la section auraient divergé au premier ajout, et la recherche aurait
  * compté des résultats qu'elle n'affiche pas. */
 const SECTIONS = {
+  // EN PREMIER, et c'est une demande de Raphaël du 5 sept. 2026 : « pour la
+  // mise à jour, il faut que je descende tout en bas, essaye de la rehausser ».
+  // C'est la section qu'il ouvre le plus souvent, et c'était la septième.
+  app: {
+    cle: "app",
+    titre: "L'application",
+    resume: "Version, mise à jour, nouveautés",
+    motsCles:
+      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
+  },
   voix: {
     cle: "voix",
     titre: "Voix et écoute",
@@ -84,16 +95,34 @@ const SECTIONS = {
     resume: "Google",
     motsCles: "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation",
   },
-  app: {
-    cle: "app",
-    titre: "L'application",
-    resume: "Version, mise à jour, nouveautés",
-    motsCles:
-      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
-  },
 } as const
 
 const LISTE_SECTIONS = Object.values(SECTIONS)
+
+/**
+ * Ce que la barre « L'application » dit sans qu'on l'ouvre.
+ *
+ * Sa consigne du 3 sept. : le badge « À jour / Nouvelle version » est fait
+ * pour qu'il puisse vérifier lui-même à tout moment. Enfoui dans une section
+ * repliée, en bas de page, il ne remplissait plus ce rôle.
+ *
+ * Rien pendant la vérification ni quand elle échoue : un badge qui clignote à
+ * chaque ouverture, ou qui affiche « inconnu », use l'attention sans rien
+ * apprendre. Seul « à jour » et « nouvelle version » disent quelque chose.
+ */
+function BadgeMaj({ status }: { status: UpdateStatus }) {
+  if (status === "update-available") {
+    return (
+      <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+        Nouvelle version
+      </span>
+    )
+  }
+  if (status === "up-to-date") {
+    return <span className="shrink-0 text-xs text-muted-foreground">À jour</span>
+  }
+  return null
+}
 
 /** Active/désactive le déclenchement des rappels de lieu par
  * géolocalisation réelle (Geofencing Android) — demande les permissions
@@ -531,6 +560,24 @@ export function SettingsPage() {
         )}
       </div>
 
+      {/* Remontée en tête le 5 sept. 2026 : elle fermait la page, et c'est
+          celle qu'il ouvre le plus. Son badge est sur la barre, pour qu'il
+          sache s'il a une version en retard SANS ouvrir ni faire défiler. */}
+      <Section
+        {...SECTIONS.app}
+        filtre={recherche}
+        ouverteParDefaut
+        badge={<BadgeMaj status={updateState.status} />}
+      >
+        <MettreAJour update={updateState} majWeb={majWebState} />
+
+        <Nouveautes items={recentChanges} />
+
+        <Reinitialiser />
+
+        <Confidentialite />
+      </Section>
+
       <Section {...SECTIONS.voix} filtre={recherche}>
         <Card>
           <CardHeader>
@@ -860,15 +907,6 @@ export function SettingsPage() {
         <CompteGoogle />
       </Section>
 
-      <Section {...SECTIONS.app} filtre={recherche} ouverteParDefaut>
-        <MettreAJour update={updateState} majWeb={majWebState} />
-
-        <Nouveautes items={recentChanges} />
-
-        <Reinitialiser />
-
-        <Confidentialite />
-      </Section>
     </div>
   )
 }

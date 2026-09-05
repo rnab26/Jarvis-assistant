@@ -49,6 +49,14 @@ interface SectionProps {
   motsCles?: string
   /** Ce que Raphaël a tapé dans la recherche. Vide = affichage normal. */
   filtre?: string
+  /**
+   * Ce que la section a à dire SANS qu'on l'ouvre : « Nouvelle version »,
+   * « 3 en attente ». Même principe que `CarteRepliable` du cockpit — replier
+   * ne doit pas cacher ce qui appelle une action, sinon il faut tout déplier
+   * pour savoir s'il y a quelque chose à faire, et replier ne sert plus à
+   * rien.
+   */
+  badge?: ReactNode
   children: ReactNode
 }
 
@@ -73,6 +81,7 @@ export function Section({
   ouverteParDefaut = false,
   motsCles,
   filtre = "",
+  badge,
   children,
 }: SectionProps) {
   const [ouverte, setOuverte] = useState(() => lireOuvert(cle, ouverteParDefaut))
@@ -97,9 +106,12 @@ export function Section({
     if (!sectionCorrespond({ titre, resume, motsCles }, filtre)) return null
     return (
       <div className="flex flex-col gap-2">
-        <div className="rounded-lg border px-3 py-2.5">
-          <span className="block text-sm font-semibold">{titre}</span>
-          {resume && <span className="block text-xs text-muted-foreground">{resume}</span>}
+        <div className="flex items-center gap-2 rounded-lg border px-3 py-2">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold">{titre}</span>
+            {resume && <span className="block text-xs text-muted-foreground">{resume}</span>}
+          </span>
+          {badge}
         </div>
         <div className="flex flex-col gap-3">{children}</div>
       </div>
@@ -115,7 +127,7 @@ export function Section({
         type="button"
         aria-expanded={ouverte}
         onClick={() => setOuverte(!ouverte)}
-        className="flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left"
+        className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left"
       >
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">{titre}</span>
@@ -123,6 +135,7 @@ export function Section({
             <span className="block truncate text-xs text-muted-foreground">{resume}</span>
           )}
         </span>
+        {badge}
         <ChevronDown
           className={`size-4 shrink-0 text-muted-foreground transition-transform ${
             ouverte ? "rotate-180" : ""
