@@ -214,6 +214,22 @@ export function verdictMaj(
 /** Une étape de l'application d'un paquet, telle qu'elle s'affiche. */
 export type EtapeMaj = "telechargement" | "installation" | "redemarrage"
 
+/** Crée `bundles/` s'il manque. Idempotent : un dossier déjà là n'est pas une
+ * erreur, et le plugin le signale par une exception qu'on avale exprès. */
+async function creerRacineBundles() {
+  try {
+    await Filesystem.mkdir({
+      directory: Directory.Data,
+      path: RACINE_BUNDLES,
+      recursive: true,
+    })
+  } catch {
+    // Déjà présent : c'est le résultat voulu. Une vraie impossibilité d'écrire
+    // se reverra tout de suite après, sur le téléchargement lui-même, avec un
+    // message qui parle du disque plutôt que d'un dossier.
+  }
+}
+
 async function supprimerDossier(build: number | null) {
   if (build === null) return
   try {
@@ -276,6 +292,16 @@ export async function appliquerBundle(
   // fichier de la release, et le fichier arrive directement sur le disque au
   // lieu de transiter par la mémoire de la WebView.
   await supprimerDossier(build)
+  // INDISPENSABLE, et ça a coûté cher : `downloadFile` du plugin Filesystem
+  // ouvre directement un FileOutputStream sur le chemin demandé et NE LIT PAS
+  // son option `recursive` (chemin déprécié, vérifié dans le code Kotlin de
+  // @capacitor/filesystem 8.1.3). Sans ce mkdir, le dossier `bundles/`
+  // n'existe jamais au premier usage et le téléchargement meurt sur
+  // « open failed: ENOENT » — c'est-à-dire que la mise à jour rapide échouait
+  // TOUJOURS la première fois, chez tout le monde. Signalé par Raphaël le
+  // 5 sept. 2026. `writeFile`, lui, honore bien `recursive` : seul ce
+  // téléchargement-ci a besoin du dossier à l'avance.
+  await creerRacineBundles()
   const poignee = await Filesystem.addListener("progress", (p) =>
     surProgression({ recus: p.bytes, total: p.contentLength }),
   ).catch(() => null)
