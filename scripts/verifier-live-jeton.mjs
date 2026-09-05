@@ -34,7 +34,7 @@ async function admin(chemin, options = {}) {
 async function appeler(jeton) {
   const r = await fetch(`${URL_PROJET}/functions/v1/live-jeton`, {
     method: "POST",
-    headers: { apikey: ANON, Authorization: `Bearer ${jeton ?? ANON}`, "Content-Type": "application/json" },
+    headers: { apikey: ANON, Authorization: `Bearer ${jeton ?? ANON}`, "Content-Type": "application/json", "x-jarvis-essai": "1" },
     body: "{}",
   })
   return { statut: r.status, corps: await r.json().catch(() => null) }

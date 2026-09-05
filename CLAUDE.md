@@ -367,6 +367,109 @@ retirés (commits `8d5441c`, `24185f7`).
 La table `contacts` n'est pas supprimée (vide, sans coût, et une suppression de
 table ne se défait pas) : à faire seulement sur sa demande explicite.
 
+## Les autorisations du téléphone : un seul écran, jamais par surprise
+
+Livré le 5 sept. 2026 (chantier `e399b670`). Sa demande : « quand on installe
+l'application, on fait une sélection directement des autorisations via le
+téléphone directement ». Et la moitié qu'on oublie en la lisant vite : il
+REFUSE qu'on recopie ses données (contacts, applications) dans l'environnement
+de Jarvis. Une autorisation de LECTURE, donnée une fois ; rien n'est importé.
+
+Trois pièces, et la frontière entre elles compte :
+
+- `src/lib/autorisationsTelephone.ts` — le catalogue, dit **par l'usage**
+  (« appeler et écrire à tes contacts », pas READ_CONTACTS), et les décisions
+  pures : que demander, quel bouton afficher, quoi écrire. Vérifiable sans
+  téléphone.
+- `android/.../AutorisationsPlugin.java` — l'état réel, la demande groupée,
+  et l'ouverture du bon écran d'Android.
+- `src/components/settings/Autorisations.tsx` — la liste, **partagée** entre
+  l'écran de premier lancement (`src/components/PremierLancement.tsx`, monté
+  dans `ProtectedShell`) et la carte de Paramètres. Deux écrans qui diraient
+  la même chose autrement finiraient par ne plus la dire pareil.
+
+Quatre choses à ne pas défaire :
+
+1. **Un refus définitif n'affiche jamais « Autoriser ».** Android ne
+   réaffiche plus la fenêtre après un refus — le bouton serait mort, et rien
+   ne le dirait. C'est le piège déjà vécu avec les notifications. La ligne
+   envoie vers les réglages système, et dit pourquoi.
+2. **La position en arrière-plan ne part JAMAIS dans le même lot que la
+   position.** À partir d'Android 11 le système rejette le lot entier, sans
+   afficher la moindre fenêtre : sur le téléphone ça se lit comme un refus de
+   Raphaël. Elle se demande seule, après.
+3. **L'état des notifications se lit avec `areNotificationsEnabled()`**, pas
+   avec `checkSelfPermission` : avant Android 13 la permission n'existe pas,
+   et il peut couper les notifications depuis les réglages sans qu'elle
+   change.
+4. **Quand Android ne dit pas l'état, on le dit** (« Non vérifiable »,
+   `connue: false`) au lieu d'annoncer un refus qui n'en est peut-être pas
+   un — certaines surcouches constructeur répondent de travers sur les accès
+   spéciaux.
+
+L'ASSISTANT DU TÉLÉPHONE n'est PAS dans cette liste, et il ne faut pas l'y
+remettre : c'est un rôle Android, pas une autorisation, et une application ne
+peut ni se l'attribuer ni se le retirer. Il a sa carte à lui, qui lit l'état
+réel par `RoleManager` — Paramètres › Ce que Jarvis utilise › « L'appui long
+sur la touche latérale ».
+
+Pas d'autorisation par application tierce, et c'est explicite dans sa
+demande : ouvrir une app et lui passer un texte marche déjà sans permission,
+pour n'importe laquelle, sans code par app.
+
+
+## La bulle flottante, et pourquoi il n'y a PAS d'interrupteur pour l'appui long
+
+Livrée le 5 sept. 2026 (chantier `f5621562`, partie b). Sa demande, quand je
+lui proposais de CHOISIR entre l'appui long et la bulle : « oui et aussi
+l'option bulle flottante, les deux doivent être disponibles tant que ce n'est
+pas fonctionnel à 100 %, et simplement par possibilité de changer à tout
+moment. » Les deux coexistent donc, et l'un ne remplace pas l'autre.
+
+`BulleService.java` (la pastille, posée par WindowManager), `BullePlugin.java`
+(l'état réel et le démarrage), `src/lib/bulleFlottante.ts` (le pont et les
+décisions pures), `src/components/settings/BulleFlottante.tsx`.
+
+Quatre choses à ne pas défaire :
+
+1. **Un service de PREMIER PLAN, pas un service ordinaire.** Une vue posée par
+   WindowManager vit dans le processus de l'app ; sans lui, Android tue ce
+   processus en arrière-plan et la bulle disparaît au bout de quelques
+   minutes, en silence. Et depuis Android 14 un service de premier plan sans
+   `foregroundServiceType` refuse de démarrer — d'où `specialUse` et sa
+   propriété dans le manifeste.
+2. **`FLAG_NOT_FOCUSABLE`.** Sans lui, la bulle vole le clavier : taper un
+   message dans WhatsApp devient impossible tant qu'elle est affichée.
+3. **L'état vient du SYSTÈME, jamais du réglage.** L'autorisation « afficher
+   par-dessus les autres applications » se retire depuis Android sans que
+   l'app en sache rien, et un appui long sur la bulle la range sans passer par
+   Paramètres. Un interrupteur qui affiche ce que le réglage prétend dirait
+   « Activé » au-dessus d'un écran vide.
+4. **Il n'y a PAS d'interrupteur pour l'appui long à côté, et ce n'est pas un
+   oubli.** C'est le rôle `android.app.role.ASSISTANT`, déclaré
+   `requestable="false"` dans le `roles.xml` d'AOSP : une application ne peut
+   ni se l'attribuer ni se le retirer, et l'écran qui y mène directement est
+   protégé par une permission de signature. Un interrupteur y serait soit
+   décoratif, soit menteur. Sa carte à lui (« L'appui long sur la touche
+   latérale ») lit l'état réel par `RoleManager` et ouvre le meilleur écran
+   système atteignable.
+
+## Une commande mal entendue reste rattrapable, sans jamais poser de question
+
+`src/lib/actionsTelephoneFenetre.ts` (pur) + `actionsTelephoneToast.ts` (le
+bandeau). Raphaël a ÉCARTÉ la confirmation que je proposais, le 5 sept. :
+« aucune limite dans le sens où il doit faire tout ce que je demande sans
+limite ». Ce module ne la réintroduit pas : rien n'attend son accord, le
+décompte fini l'action part toute seule.
+
+Ce qui reste vrai malgré sa décision : une commande MAL ENTENDUE n'est pas une
+commande demandée — le 5 sept. entre 17 h 59 et 18 h 20, quatre tentatives ont
+ouvert deux fois l'application מכבי. Jarvis annonce donc ce qu'il fait, en
+NOMMANT la cible (c'est le seul mot qui permet de repérer l'erreur), et laisse
+quelques secondes. Seules les actions qui SORTENT vers une autre application y
+passent ; `media_control` et `set_alarm` non, sans quoi Jarvis serait lent
+partout. Le délai est un réglage, et « Immédiat » est disponible en un appui.
+
 ## Supprimer demande toujours, partout dans l'app
 
 `src/components/ConfirmerAction.tsx` : la fenêtre qui pose la question avant
@@ -839,7 +942,16 @@ tout seul les fichiers voisins (`memoire.ts`) et le dossier `_shared/` quand
 la fonction s'en sert, et il relit puis **conserve le réglage `verify_jwt`
 existant** — `google-oauth` doit rester ouvert pour recevoir la redirection de
 Google, qui ne porte aucun jeton ; le refermer casserait la connexion du
-compte Google. **Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
+compte Google. **`git fetch && git merge` AVANT de déployer, toujours.** Le script envoie ce
+qui est SUR LE DISQUE, pas ce qui est sur la branche. Le 5 sept., un
+déploiement fait pour une raison sans rapport (une phrase de
+`_shared/environnement.ts`) a remis en ligne l'`index.ts` d'avant le correctif
+qu'une autre session venait de pousser — le rouge est tombé une demi-heure
+plus tard sur `verifier-commande-vocale.mjs`, chez celui qui n'y était pour
+rien. Plusieurs sessions déploient la MÊME fonction ; l'état du disque n'est à
+jour que si on vient de le mettre à jour.
+
+**Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
 à mettre dans les variables d'environnement de l'environnement cloud — jamais
 dans le dépôt). Tant qu'elle manque, le script le dit et s'arrête.
 
@@ -1084,6 +1196,12 @@ node scripts/verifier-memoire-web.mjs                    # « Vos conversations 
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
 node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
+node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton « Autoriser » n'est jamais mort, sans réseau
+node --experimental-strip-types scripts/verifier-musique.ts       # « je lance » n'est dit que si ça joue vraiment, sans réseau
+node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
+node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
+node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
+node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
@@ -1489,6 +1607,43 @@ de preuve à un chantier qui ne marchait pas. Et **un contrôle doit être essay
 supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle lit
 maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
 Playwright du 4 sept.
+
+## L'assistant du téléphone : ce qui qualifie Jarvis, et ce qui ne se peut pas
+
+Raphaël, 5 sept. 2026, captures à l'appui : « voici le vrai paramétrage à
+faire pour activer Jarvis dans le téléphone ». Son chemin Samsung : Paramètres
+› Fonctions avancées › Touche latérale › Appuyer longuement › « Application
+d'assistant numérique par défaut » › Autres applications.
+
+**Le critère est celui d'AOSP, et il a été lu dans la source, pas cité de
+mémoire** (`PermissionController`,
+`AssistantRoleBehavior.getQualifyingPackagesInternal`, téléchargée depuis
+android.googlesource.com). Deux branches, l'une OU l'autre suffit : un
+`VoiceInteractionService` protégé par `BIND_VOICE_INTERACTION` (avec
+`sessionService`, `recognitionService`, `supportsAssist`), **ou** une simple
+activité EXPORTÉE répondant à `ACTION_ASSIST` avec `MATCH_DEFAULT_ONLY`.
+`AssistOverlayActivity` remplit la seconde depuis le 4 sept., et l'APK publiée
+la porte bien — vérifié en téléchargeant la release et en lisant son manifeste
+binaire.
+
+**Donc quand la liste d'Android ne montre pas Jarvis, ne cherche pas dans le
+code : c'est l'APK INSTALLÉE qui est trop ancienne.** Le piège est neuf depuis
+la mise à jour rapide, et il trompe : l'interface est à jour, ce qui donne
+toutes les raisons de croire l'app à jour, alors que le manifeste vit dans la
+coquille Android, que seule une vraie installation remplace. La carte
+« L'appui long sur la touche latérale » (Paramètres › Ce que Jarvis utilise)
+interroge le système sur notre propre paquet, sur l'appareil, et le dit —
+plutôt que de le laisser deviner.
+
+**Deux chemins qui n'existent pas, vérifiés : ne les retente pas.** L'action
+qui mène pile sur l'écran du choix (`MANAGE_DEFAULT_APP` + `EXTRA_ROLE_NAME`)
+est protégée par la permission de signature `MANAGE_ROLE_HOLDERS` ; et le rôle
+assistant est `requestable="false"` dans `roles.xml`, ce qui ferme aussi
+`RoleManager.createRequestRoleIntent`. On ouvre donc `VOICE_INPUT_SETTINGS`,
+puis à défaut la liste des applications par défaut, et les derniers pas restent
+écrits sous le bouton. Corollaire pour le chantier f5621562 : **l'appui long ne
+peut pas avoir d'interrupteur dans l'app**, c'est un rôle exclusif d'Android
+qu'une application ne peut ni s'attribuer ni se retirer.
 
 ## Le web se met à jour tout seul, l'app Android jamais
 

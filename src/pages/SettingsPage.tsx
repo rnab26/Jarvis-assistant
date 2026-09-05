@@ -4,9 +4,13 @@ import { useEffect, useRef, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
+import { CarteAutorisations } from "@/components/settings/Autorisations"
+import { BulleFlottante } from "@/components/settings/BulleFlottante"
 import { Cockpit } from "@/components/settings/Cockpit"
 import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
 import { Confidentialite } from "@/components/settings/Confidentialite"
+import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
@@ -57,6 +61,17 @@ const SECTIONS = {
     motsCles:
       "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
   },
+  // Les autorisations Android, dites par ce qu'elles permettent. Haut de
+  // page volontairement : c'est le premier écran d'un téléphone neuf, et le
+  // seul recours quand une autorisation a été refusée une fois — Android ne
+  // la redemande alors plus jamais tout seul.
+  autorisations: {
+    cle: "autorisations",
+    titre: "Autorisations du téléphone",
+    resume: "Ce que Jarvis a le droit de faire",
+    motsCles:
+      "autorisation permission accès micro enregistrement contacts répertoire numéro téléphone appel appeler notification position gps localisation arrière-plan installer mise à jour assistant appui long bouton refusée bloquée accorder android réglages système premier lancement",
+  },
   voix: {
     cle: "voix",
     titre: "Voix et écoute",
@@ -81,9 +96,9 @@ const SECTIONS = {
   apps: {
     cle: "apps",
     titre: "Ce que Jarvis utilise",
-    resume: "Applications par défaut, canal des messages",
+    resume: "Applications par défaut, appui long sur le bouton",
     motsCles:
-      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia",
+      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android bulle flottante pastille par-dessus superposition délai annuler arrêter avant d'agir mal entendu",
   },
   memoire: {
     cle: "memoire",
@@ -597,6 +612,10 @@ export function SettingsPage() {
         <Confidentialite />
       </Section>
 
+      <Section {...SECTIONS.autorisations} filtre={recherche}>
+        <CarteAutorisations />
+      </Section>
+
       <Section {...SECTIONS.voix} filtre={recherche}>
         <Card>
           <CardHeader>
@@ -914,7 +933,10 @@ export function SettingsPage() {
       </Section>
 
       <Section {...SECTIONS.apps} filtre={recherche}>
+        <AssistantTelephone />
+        <BulleFlottante />
         <AppsParDefaut />
+        <FenetreAnnulation />
       </Section>
 
       <Section {...SECTIONS.memoire} filtre={recherche}>

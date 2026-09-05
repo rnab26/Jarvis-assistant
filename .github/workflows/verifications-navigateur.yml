@@ -61,6 +61,12 @@ jobs:
           VITE_SUPABASE_URL: https://banc-d-essai.invalid
           VITE_SUPABASE_ANON_KEY: banc-d-essai
 
+      - name: Les autorisations du téléphone, sur un écran de téléphone
+        run: node scripts/verifier-autorisations-web.mjs
+        env:
+          VITE_SUPABASE_URL: https://banc-d-essai.invalid
+          VITE_SUPABASE_ANON_KEY: banc-d-essai
+
       - name: Le moteur d'écoute et le banc du cœur
         run: node scripts/verifier-ecoute-web.mjs
         env:

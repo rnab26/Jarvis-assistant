@@ -379,14 +379,25 @@ cas.push(
     },
   },
   {
-    nom: "retenir le numéro dicté d'un contact existant",
+    // Réécrit le 5 sept. 2026, après le retrait des fiches contacts. Il
+    // vérifiait update_contact, une action qui n'existe plus : les numéros
+    // viennent du répertoire du téléphone. Ce qui compte maintenant, c'est que
+    // Jarvis NE MENTE PAS — sa première réponse après le retrait était « j'ai
+    // ajouté le numéro de Dylan à sa fiche contact », alors qu'il n'avait rien
+    // fait et qu'aucune fiche n'existe. Prétendre avoir enregistré quelque
+    // chose est pire que de ne rien enregistrer : Raphaël s'y fie.
+    nom: "un numéro dicté : il le retient sans prétendre l'avoir fiché",
     phrase: "Le numéro de Dylan c'est le 07 88 99 00 11.",
     controle: (r) => {
-      const a = (r.actions ?? []).find((x) => x.action === "update_contact")
-      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
-      if (a.contact_id !== "ct-dylan") return [false, `contact_id = ${a.contact_id}`]
-      const tel = (a.changes?.phone ?? "").replace(/\D/g, "")
-      if (tel !== "0788990011") return [false, `changes = ${JSON.stringify(a.changes)}`]
+      const actions = (r.actions ?? []).map((x) => x.action)
+      const interdites = actions.filter((a) => /contact/.test(a) && a !== "call_contact")
+      if (interdites.length > 0) {
+        return [false, `action de fiche contact renvoyée : ${JSON.stringify(interdites)}`]
+      }
+      const dit = (r.message ?? "").toLowerCase()
+      if (/fiche|dans (?:tes|ses) contacts|carnet/.test(dit)) {
+        return [false, `il prétend avoir fiché le numéro : « ${r.message} »`]
+      }
       return [true]
     },
   },
@@ -660,6 +671,35 @@ cas.push(
     },
   },
   {
+    // SA PHRASE EXACTE du 5 sept. à 19 h 34. Résultat à l'époque : un
+    // chantier « Lancer une nouvelle session pour l'intégration IA » avec le
+    // thème « Intégration IA », et AUCUNE ligne dans dev_sections. La section
+    // n'existait donc que comme texte libre porté par un chantier, et elle
+    // aurait disparu du cockpit le jour où ce chantier serait archivé.
+    nom: "« ouvre une section pour X et lance une session » crée bien la SECTION",
+    phrase:
+      "Ouvrir une nouvelle section de chantier pour l'intégration d'application IA et lancer une nouvelle session.",
+    controle: (r) => {
+      const actions = r.actions ?? []
+      const a = actions.find((x) => x.action === "add_dev_section")
+      if (!a) return [false, `aucune section créée : ${JSON.stringify(actions.map((x) => x.action))}`]
+      if (!/ia|intelligence/i.test(a.section_nom ?? "")) return [false, `section_nom = ${a.section_nom}`]
+      return [true]
+    },
+  },
+  {
+    // Jarvis ne peut pas lancer une session Claude Code. L'ignorer laissait
+    // croire que c'était fait ; en faire un chantier ajoutait du bruit.
+    nom: "et il dit qu'il ne sait pas lancer une session Claude Code",
+    phrase:
+      "Ouvrir une nouvelle section de chantier pour l'intégration d'application IA et lancer une nouvelle session.",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (!/session/i.test(message)) return [false, `il n'en dit rien : "${message}"`]
+      return [true]
+    },
+  },
+  {
     // Supprimer une section déplace TOUS ses chantiers. À la voix il n'y a ni
     // confirmation ni bouton Annuler ; le cockpit a les deux. Jarvis doit donc
     // y renvoyer, pas le faire.
@@ -677,6 +717,37 @@ cas.push(
   },
 )
 
+// « envoie un message à Mel » (sa femme) compris comme une demande Gmail, le
+// 4 sept. : « Mel » sonne comme « mail ». Sa consigne est explicite — ne pas
+// coder en dur « Mel n'est pas mail », c'est une CLASSE de bug (Sam/SMS,
+// Al/appel), pas un cas particulier. On vérifie donc la règle générale sur
+// deux prénoms différents, dont un qui n'est dans aucune liste de contacts.
+cas.push(
+  {
+    nom: "« envoie un message à Mel » va aux messages, pas à Gmail",
+    phrase: "Envoie un message à Mel.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.some((t) => `${t}`.includes("email"))) {
+        return [false, `il est parti sur Gmail : ${JSON.stringify(types)}`]
+      }
+      if (!types.includes("send_message") && !types.includes("clarify")) {
+        return [false, `ni message ni clarification : ${JSON.stringify(types)}`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "et « appelle Al » reste un appel",
+    phrase: "Appelle Al.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "call_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      return [true]
+    },
+  },
+)
+
 // Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
 // au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
 // répond « J'ai atteint la limite de l'offre gratuite », ou meurt en
@@ -686,8 +757,23 @@ cas.push(
 const SIGNATURE_QUOTA = /IDLE_TIMEOUT|limite de l'offre gratuite|quota|RESOURCE_EXHAUSTED|429/i
 const suspectsQuota = []
 
+// Rejouer UN sous-ensemble sans redérouler les 46 appels : chaque appel coûte
+// du quota sur la clé de test, et une passe complète pour vérifier un seul
+// correctif en gaspille l'essentiel. FILTRE=section,mel garde les cas dont le
+// nom contient l'un de ces mots.
+const FILTRE = (process.env.FILTRE ?? "")
+  .split(",")
+  .map((m) => m.trim().toLowerCase())
+  .filter(Boolean)
+const aJouer = FILTRE.length
+  ? cas.filter((c) => FILTRE.some((m) => c.nom.toLowerCase().includes(m)))
+  : cas
+if (FILTRE.length) {
+  console.log(`FILTRE actif : ${aJouer.length} cas sur ${cas.length}\n`)
+}
+
 let premier = true
-for (const c of cas) {
+for (const c of aJouer) {
   // Rien à attendre avant le tout premier appel : la pause ne sert qu'à
   // espacer deux requêtes déjà envoyées.
   if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))

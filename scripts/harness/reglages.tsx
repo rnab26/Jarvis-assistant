@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
+import { AssistantTelephone, type PontAssistant } from "@/components/settings/AssistantTelephone"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
@@ -48,6 +49,21 @@ const rien = async () => {}
 const DATES_ECHANGES = [1, 10, 40, 200].map((j) =>
   new Date(Date.now() - j * 24 * 3600_000).toISOString(),
 )
+
+/** Le pont vers Android, en factice : le banc tourne dans un vrai navigateur,
+ * où le plugin n'existe pas. Les trois états qui comptent (APK trop ancienne,
+ * candidat mais pas choisi, choisi) se parcourent ainsi à 390 points de large,
+ * comme Raphaël les verra. */
+function pontFactice(assistant: { candidat: boolean; role: "actif" | "inactif" | "inconnu" } | null): PontAssistant {
+  return {
+    natif: true,
+    lire: async () => {
+      if (assistant === null) throw new Error("plugin absent de cette APK")
+      return assistant
+    },
+    ouvrir: async () => ({ ecran: "assistant" }),
+  }
+}
 
 const ETAT_AUTORISE: EtatNotifications = {
   disponible: true,
@@ -193,6 +209,27 @@ function BancDesReglages() {
         </Section>
       </div>
 
+      {/* L'assistant du téléphone : la carte doit dire POURQUOI Jarvis
+          n'apparaît pas dans la liste d'Android — une APK trop ancienne — au
+          lieu de laisser chercher. */}
+      <div id="assistant-ancien">
+        <Section titre="Assistant (APK trop ancienne)" cle="banc-assist-vieux" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice(null)} />
+        </Section>
+      </div>
+
+      <div id="assistant-candidat">
+        <Section titre="Assistant (choisissable)" cle="banc-assist-candidat" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice({ candidat: true, role: "inactif" })} />
+        </Section>
+      </div>
+
+      <div id="assistant-actif">
+        <Section titre="Assistant (actif)" cle="banc-assist-actif" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice({ candidat: true, role: "actif" })} />
+        </Section>
+      </div>
+
       <div id="maj-rapide">
         <Section titre="Mise à jour rapide possible" cle="banc-maj-rapide" ouverteParDefaut>
           <MettreAJour update={updateFactice("update-available")} majWeb={majFactice(true)} />
@@ -273,10 +310,11 @@ function BancDesReglages() {
           <MettreAJour update={updateFactice("up-to-date")} majWeb={majFactice(true)} />
         </Section>
         {[
+          ["Autorisations du téléphone", "Ce que Jarvis a le droit de faire"],
           ["Voix et écoute", "Sa voix, le rythme, le mot-clé de réveil"],
           ["Tâches et organisation", "Widget d'écran d'accueil, rappels de lieu"],
           ["Notifications", "Ce que Jarvis a le droit de faire sonner"],
-          ["Ce que Jarvis utilise", "Applications par défaut, canal des messages"],
+          ["Ce que Jarvis utilise", "Applications par défaut, appui long sur le bouton"],
           ["Mémoire", "Combien de temps il garde tes conversations"],
           ["Le cockpit", "Ce qui compte comme « livré » dans « Où j'en suis »"],
           ["Apparence", "Thème clair ou sombre, image du cœur"],

@@ -66,7 +66,7 @@ const MAX_SOUVENIRS_LIVE = 40
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-jarvis-essai",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 }
 
@@ -134,8 +134,24 @@ Deno.serve(async (req) => {
     } = await supabase.auth.getUser()
     if (!user) return json({ error: "Non authentifié." }, 401)
 
-    const cle = Deno.env.get("GEMINI_API_KEY")
+    // NOS VÉRIFICATIONS NE DOIVENT PLUS VIDER LE QUOTA DE RAPHAËL. Même motif
+    // que voice-command depuis le chantier 4eaf9c1d : l'en-tête « x-jarvis-essai »
+    // fait basculer sur GEMINI_API_KEY_TEST, la clé d'un SECOND projet Google
+    // AI Studio — le plafond de l'offre gratuite se compte PAR PROJET.
+    // verifier-live-jeton.mjs et surtout verifier-live-contexte.mjs ouvrent de
+    // VRAIES sessions Live : c'est par ce trou-là que quatre sessions l'ont
+    // laissé sans Jarvis le 3 sept. à 21h28.
+    //
+    // L'en-tête n'ouvre aucun accès : la fonction exige déjà d'être connecté
+    // (verify_jwt reste à true), et les deux clés sont également gratuites.
+    const essai = req.headers.get("x-jarvis-essai") === "1"
+    const cleEssai = Deno.env.get("GEMINI_API_KEY_TEST")
+    const cle = (essai && cleEssai) || Deno.env.get("GEMINI_API_KEY")
     if (!cle) return json({ error: "GEMINI_API_KEY non configurée côté serveur." }, 500)
+
+    // Sans cette trace, une clé de test absente est invisible : le contrôle
+    // passe au vert en vidant quand même le quota du jour.
+    if (essai) console.log("clé", cleEssai ? "test" : "normale (GEMINI_API_KEY_TEST absente)")
 
     const modele = Deno.env.get("GEMINI_MODELE_LIVE") || MODELE_LIVE_PAR_DEFAUT
     const maintenant = Date.now()

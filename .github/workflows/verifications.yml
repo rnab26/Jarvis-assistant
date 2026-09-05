@@ -47,6 +47,20 @@ jobs:
       - name: La clôture de la conversation à la voix
         run: node --experimental-strip-types scripts/verifier-fin-conversation.ts
 
+      # Le registre des erreurs n'avait qu'une ligne ouverte, et c'était une
+      # fausse alerte : 363 rafales de veille dans une pièce calme signalées
+      # comme des pannes. Ce contrôle garde la frontière dans les DEUX sens —
+      # ne plus crier sur un silence, ne jamais se taire sur une vraie panne.
+      - name: Ce qui finit dans le registre des erreurs, et ce qui n'y finit pas
+        run: node --experimental-strip-types scripts/verifier-raison-ecoute.ts
+
+      # Le cas qui compte : quand il NE répond PAS à « avec quelle
+      # application ? », sa phrase suivante ne doit surtout pas être
+      # enregistrée comme son application préférée — ce serait invisible et
+      # définitif.
+      - name: « Avec quelle application ? » en mode Live
+        run: node --experimental-strip-types scripts/verifier-question-app-live.ts
+
       - name: L'envoi d'un chantier à Claude Code
         run: node --experimental-strip-types scripts/verifier-envoi-chantier.ts
 
@@ -111,6 +125,35 @@ jobs:
 
       - name: L'aller-retour avec une IA installée sur le téléphone
         run: node --experimental-strip-types scripts/verifier-aller-retour-ia.ts
+
+      # Un bouton « Autoriser » sur une autorisation qu'Android ne
+      # redemandera plus jamais est un bouton mort, et rien à l'écran ne le
+      # dit. Ce contrôle lit aussi le plugin Android : une ligne du catalogue
+      # qu'il ne connaît pas afficherait « Pas encore » pour toujours.
+      # « je lance » suivi de rien : le repli silencieux sur l'ouverture nue
+      # de l'app faisait mentir Jarvis à chaque demande de musique.
+      - name: Lancer une musique dit ce qui s'est vraiment passé
+        run: node --experimental-strip-types scripts/verifier-musique.ts
+
+      # Une demande redite à la voix ne doit pas créer un second chantier —
+      # et une demande NEUVE ne doit jamais être refusée pour trois mots
+      # communs : la perdre en silence serait bien pire que le doublon.
+      - name: Dicter deux fois ne crée pas deux chantiers
+        run: node --experimental-strip-types scripts/verifier-doublon-vocal.ts
+
+      # Le garde-fou des commandes mal entendues ne doit jamais redevenir la
+      # confirmation bloquante que Raphaël a écartée.
+      - name: La fenêtre d'annulation des actions du téléphone
+        run: node --experimental-strip-types scripts/verifier-fenetre-annulation.ts
+
+      # La bulle : un interrupteur ne doit jamais dire « Activé » au-dessus
+      # d'un écran vide, et un service de premier plan sans type refuse de
+      # démarrer depuis Android 14, sans le moindre message.
+      - name: La bulle flottante
+        run: node --experimental-strip-types scripts/verifier-bulle.ts
+
+      - name: Les autorisations du téléphone
+        run: node --experimental-strip-types scripts/verifier-autorisations.ts
 
       - name: Retrouver quelqu'un dans le répertoire du téléphone
         run: node --experimental-strip-types scripts/verifier-contact-repertoire.ts

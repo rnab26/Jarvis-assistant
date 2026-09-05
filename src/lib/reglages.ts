@@ -116,6 +116,16 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/AppsParDefaut.tsx",
   },
   {
+    cle: "jarvis_bulle_flottante",
+    ou: "Paramètres › Ce que Jarvis utilise › La bulle Jarvis, par-dessus tout",
+    fichier: "src/components/settings/BulleFlottante.tsx",
+  },
+  {
+    cle: "jarvis_delai_annulation",
+    ou: "Paramètres › Ce que Jarvis utilise › Le temps de l'arrêter",
+    fichier: "src/components/settings/FenetreAnnulation.tsx",
+  },
+  {
     cle: "jarvis_notifications",
     ou: "Paramètres › Notifications › Quand Jarvis te dérange",
     fichier: "src/components/settings/Notifications.tsx",
@@ -162,6 +172,11 @@ export const STOCKAGE_LOCAL_ASSUME: { prefixe: string; pourquoi: string }[] = [
     prefixe: "jarvis_question_ia",
     pourquoi:
       "La question envoyée à une IA installée, en attendant que Raphaël en partage la réponse. Un aller-retour en cours sur CET appareil, qui vit une demi-heure : la réponse se partage depuis le téléphone d'où la question est partie, pas depuis un autre.",
+  },
+  {
+    prefixe: "jarvis_autorisations_vues",
+    pourquoi:
+      "L'écran des autorisations a déjà été présenté sur CET appareil. Les autorisations Android sont propres au téléphone : recopier ce repère en base ferait sauter l'écran sur un appareil neuf, qui n'a justement rien d'accordé.",
   },
   {
     prefixe: "jarvis_cockpit_vu",

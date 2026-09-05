@@ -1,6 +1,11 @@
 import { registerPlugin } from "@capacitor/core"
+import type { ResultatOuverture } from "@/lib/actionsTelephoneMusique"
 
 export type CommandeMedia = "play_pause" | "lecture" | "pause" | "suivant" | "precedent" | "stop"
+
+// Le type et la phrase vivent dans un module pur, vérifiable sans
+// téléphone : voir src/lib/actionsTelephoneMusique.ts.
+export type { ResultatOuverture } from "@/lib/actionsTelephoneMusique"
 
 export interface ApplicationInstallee {
   nom: string
@@ -19,7 +24,10 @@ export interface ContactTelephone {
 interface ActionsTelephonePlugin {
   listerApplications(): Promise<{ applications: ApplicationInstallee[] }>
   lireContacts(): Promise<{ contacts: ContactTelephone[] }>
-  ouvrirApplication(options: { paquet?: string; recherche?: string }): Promise<void>
+  ouvrirApplication(options: {
+    paquet?: string
+    recherche?: string
+  }): Promise<{ resultat?: ResultatOuverture }>
   preparerWhatsApp(options: { texte: string; numero?: string }): Promise<void>
   preparerSms(options: { texte: string; numero?: string }): Promise<void>
   envoyerTexte(options: { paquet: string; texte: string }): Promise<void>

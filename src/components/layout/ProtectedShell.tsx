@@ -1,4 +1,5 @@
 import { Navigate, Outlet } from "react-router-dom"
+import { PremierLancement } from "@/components/PremierLancement"
 import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { MicButton } from "@/components/voice/MicButton"
 import { JarvisDataProvider, useJarvisData } from "@/contexts/JarvisDataContext"
@@ -44,6 +45,7 @@ function ShellContent() {
         suiteMs={dialogueState.suiteMs}
       />
       <Outlet />
+      <PremierLancement />
     </DashboardLayout>
   )
 }
