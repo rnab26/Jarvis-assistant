@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client"
 import "@/index.css"
 import { Toaster } from "@/components/ui/sonner"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
+import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
@@ -207,6 +208,21 @@ function volumeReel(): { chantiers: DevItem[]; sections: DevSection[] } {
   return { chantiers, sections }
 }
 
+/**
+ * `?reel=1` : le banc monte les VRAIES données du cockpit, injectées par le
+ * script qui pilote le navigateur (jamais commitées ici — elles vieilliraient
+ * en une journée). Sert à voir ce que donnent les vrais titres, les vraies
+ * notes et les vraies réservations, que des données inventées ne reproduisent
+ * pas : titres de deux cents caractères, notes qui citent d'autres chantiers,
+ * thèmes sans section, réservations expirées depuis trois jours.
+ */
+interface FixtureReelle {
+  chantiers: DevItem[]
+  sections: DevSection[]
+  messages: DevLogEntry[]
+}
+const REELLES = (window as unknown as { __FIXTURE_REELLE?: FixtureReelle }).__FIXTURE_REELLE
+
 const VOLUME = new URLSearchParams(location.search).has("volume")
 /** Le cockpit un jour ordinaire : rien qui appelle une action — pas de
  * question en attente, pas de réservation abandonnée. C'est l'état dans lequel
@@ -215,10 +231,14 @@ const CALME = new URLSearchParams(location.search).has("calme")
 const REEL = VOLUME ? volumeReel() : null
 
 function BancDuCockpit() {
-  const [devItems, setDevItems] = useState<DevItem[]>(REEL?.chantiers ?? CHANTIERS)
-  const [sections] = useState<DevSection[]>(REEL?.sections ?? SECTIONS)
+  const [devItems, setDevItems] = useState<DevItem[]>(
+    REELLES?.chantiers ?? REEL?.chantiers ?? CHANTIERS,
+  )
+  const [sections] = useState<DevSection[]>(REELLES?.sections ?? REEL?.sections ?? SECTIONS)
   const [erreurs, setErreurs] = useState<JarvisErreur[]>(ERREURS)
-  const [messages, setMessages] = useState<DevLogEntry[]>(CALME ? [] : MESSAGES)
+  const [messages, setMessages] = useState<DevLogEntry[]>(
+    REELLES?.messages ?? (CALME ? [] : MESSAGES),
+  )
 
   const sectionsState = {
     sections,
@@ -252,6 +272,7 @@ function BancDuCockpit() {
           « Annuler » après une action groupée. Sans lui, le banc verrait
           l'action réussir et manquerait la moitié qui compte. */}
       <Toaster />
+      <DepuisTonDernierPassage devItems={devItems} messages={messages} />
       <EnvoyerAClaudeCode
         devItems={devItems}
         sections={sections}

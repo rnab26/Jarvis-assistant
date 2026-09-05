@@ -148,6 +148,11 @@ export const STOCKAGE_LOCAL_ASSUME: { prefixe: string; pourquoi: string }[] = [
     pourquoi:
       "Dernière version déjà annoncée sur CE téléphone : un aide-mémoire pour ne pas notifier deux fois, pas un choix de Raphaël.",
   },
+  {
+    prefixe: "jarvis_cockpit_vu",
+    pourquoi:
+      "Date de la dernière visite du cockpit sur CET écran, pour dire ce qui a bougé depuis. Un repère de lecture, pas une préférence : la retrouver sur un autre appareil n'aurait aucun sens.",
+  },
 ]
 
 /** Émis après une écriture locale : la synchro sait qu'elle a à pousser. */

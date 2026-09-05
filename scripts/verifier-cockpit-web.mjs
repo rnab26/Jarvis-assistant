@@ -77,6 +77,15 @@ try {
     echecs++
     console.log("ERREUR DE PAGE:", e.message)
   })
+  // Un repère de visite déjà posé : c'est ainsi que le cockpit se présente
+  // quand il revient après une absence.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("jarvis_cockpit_vu", "2026-09-01T00:00:00.000Z")
+    } catch {
+      /* le banc ne dépend pas du stockage */
+    }
+  })
   await page.goto(`${BASE}/scripts/harness/cockpit.html`)
   await page.waitForSelector("text=Voix et écoute")
 
@@ -85,6 +94,28 @@ try {
   // aussi dans la carte « Qui travaille en ce moment ».
   const tableau = page.getByRole("region", { name: "Chantiers" })
   const dansLeTableau = (texte) => tableau.getByText(texte).first().isVisible()
+
+  // ── Ce qui a bougé pendant son absence ──
+  verifier(
+    "en revenant, le cockpit dit d'abord ce qui a bougé",
+    await visible("Depuis ton dernier passage"),
+    "il faudrait comparer de tête avec ce qu'il avait vu la veille",
+  )
+  verifier(
+    "avec le compte de ce qui a été livré, ouvert et écrit",
+    (await visible("1 livré")) && (await visible("4 nouveaux")) && (await visible("2 messages")),
+    (await page.locator("body").innerText()).slice(0, 200),
+  )
+  verifier(
+    "et le détail, pas seulement des chiffres",
+    await visible("Le badge de version, livré"),
+  )
+  await page.getByRole("button", { name: "Vu" }).first().click()
+  await pause(300)
+  verifier(
+    "« Vu » le referme, et il ne réapparaîtra pas au prochain passage",
+    !(await page.getByText("Depuis ton dernier passage").isVisible()),
+  )
 
   // ── La fenêtre d'envoi : ce qui existe déjà, et la section suggérée ──
   const quoiFaire = page.getByLabel("Ce qu'il faut faire")
