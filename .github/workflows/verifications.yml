@@ -69,6 +69,12 @@ jobs:
       - name: Les corrections de Raphaël arrivent jusqu'au modèle
         run: node --experimental-strip-types scripts/verifier-corrections.ts
 
+      # « Une panne qui se lit comme une absence » : un rappel de mémoire qui
+      # échoue rendait le même résultat qu'un rappel qui n'a rien trouvé. Ce
+      # contrôle lit le code, parce que la règle porte sur sa forme.
+      - name: Une panne de la mémoire ne se lit pas comme une absence
+        run: node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts
+
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
 

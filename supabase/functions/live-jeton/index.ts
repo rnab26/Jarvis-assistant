@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { type SupabaseClient, createClient } from "jsr:@supabase/supabase-js@2"
 import { GoogleGenAI, Modality, Type } from "npm:@google/genai"
 import { rappelerCorrections } from "../_shared/corrections.ts"
+import { signalerPanne } from "../_shared/pannes.ts"
 import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
 
 /**
@@ -102,12 +103,19 @@ async function souvenirsDeLUtilisateur(supabase: SupabaseClient): Promise<string
       .is("perime_at", null)
       .order("created_at", { ascending: false })
       .limit(MAX_SOUVENIRS_LIVE)
-    if (error || !data?.length) return ""
+    if (error) {
+      // En Live le contexte est scellé UNE fois : une lecture ratée rend Jarvis
+      // amnésique pour toute la conversation, sans que rien ne le dise.
+      await signalerPanne(supabase, "Jarvis n'a pas pu relire ses souvenirs pour le mode Live", error)
+      return ""
+    }
+    if (!data?.length) return ""
     const lignes = (data as { contenu: string; categorie: string }[]).map(
       (s) => `- (${s.categorie}) ${s.contenu}`,
     )
     return `Ce que tu sais déjà de Raphaël, retenu au fil de vos échanges :\n${lignes.join("\n")}\nSers-t'en naturellement, sans annoncer que tu t'en souviens.`
-  } catch {
+  } catch (err) {
+    await signalerPanne(supabase, "Jarvis n'a pas pu relire ses souvenirs pour le mode Live", err)
     return ""
   }
 }

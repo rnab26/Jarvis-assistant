@@ -758,6 +758,18 @@ POURQUOI ; et `sante_memoire()` (migration 0020) compte les échanges depuis la
 dernière chose retenue — c'est le filet pour les pannes qu'elle n'a même pas pu
 signaler. Le témoin s'affiche en tête de l'onglet Mémoire, il ne notifie rien.
 
+**Une panne de LECTURE ne se voit pas dans le témoin, d'où `_shared/pannes.ts`.**
+Le témoin compte les écritures ; un rappel qui échoue, lui, rend exactement le
+même résultat qu'un rappel qui n'a rien trouvé — la chaîne vide. Jarvis
+devenait amnésique et tout avait l'air normal. Les trois fonctions qui
+construisent le contexte (`rappelerSouvenirs`, `rappelerCorrections`,
+`souvenirsDeLUtilisateur` côté Live) signalent donc leurs échecs par
+`signalerPanne`, et `scripts/verifier-pannes-silencieuses.ts` — qui LIT le
+code, comme `verifier-reglages.ts` — refuse qu'on réintroduise un avalement.
+Ailleurs dans ces fichiers un `catch {}` reste légitime et voulu : le contrôle
+ne vise que les trois fonctions de rappel, pour ne pas faire ajouter des
+liaisons d'erreur inutiles.
+
 **`updated_at` ne peut pas servir de témoin, et `created_at` non plus.** Le
 premier bouge aussi quand Raphaël corrige un souvenir à la main — le témoin
 repasserait au vert au pire moment. Le second rate les fusions, qui sont
@@ -829,6 +841,7 @@ node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
+node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
 node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau

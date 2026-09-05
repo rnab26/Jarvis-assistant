@@ -90,6 +90,8 @@ export function formaterCorrections(erreurs: ErreurCorrigee[]): string {
   )
 }
 
+import { signalerPanne } from "./pannes.ts"
+
 /** Le client Supabase, réduit à ce qu'on utilise ici : pas d'import Deno. */
 interface ClientLecture {
   from: (table: string) => {
@@ -111,7 +113,9 @@ interface ClientLecture {
  * Ne lève jamais et ne bloque jamais : une erreur ici priverait Jarvis de ses
  * corrections, elle ne doit pas le priver de sa réponse.
  */
-export async function rappelerCorrections(supabase: ClientLecture): Promise<string> {
+export async function rappelerCorrections(
+  supabase: ClientLecture & Parameters<typeof signalerPanne>[0],
+): Promise<string> {
   try {
     const { data, error } = await supabase
       .from("jarvis_erreurs")
@@ -120,9 +124,17 @@ export async function rappelerCorrections(supabase: ClientLecture): Promise<stri
       .not("correction", "is", null)
       .order("last_seen", { ascending: false })
       .limit(MAX_CORRECTIONS * 2)
-    if (error || !Array.isArray(data)) return ""
+    if (error) {
+      // Même famille que le rappel des souvenirs : sans ce signalement, une
+      // lecture cassée se lirait comme « Raphaël ne m'a jamais rien repris »,
+      // et il se ferait reprendre deux fois sur la même chose sans comprendre.
+      await signalerPanne(supabase, "Jarvis n'a pas pu relire les corrections de Raphaël", error)
+      return ""
+    }
+    if (!Array.isArray(data)) return ""
     return formaterCorrections(data as ErreurCorrigee[])
-  } catch {
+  } catch (err) {
+    await signalerPanne(supabase, "Jarvis n'a pas pu relire les corrections de Raphaël", err)
     return ""
   }
 }

@@ -10,6 +10,7 @@
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2"
 import { appelerGemini } from "../_shared/gemini.ts"
+import { signalerPanne } from "../_shared/pannes.ts"
 import {
   type CandidatSouvenir,
   PROXIMITE_CANDIDATS,
@@ -181,7 +182,18 @@ export async function rappelerSouvenirs(
 ): Promise<string> {
   try {
     const vecteur = await empreinte(transcript)
-    if (!vecteur) return ""
+    if (!vecteur) {
+      // Sans empreinte, AUCUN rappel n'est possible — ni les faits, ni les
+      // conversations. Jarvis répond comme s'il ne savait rien de Raphaël, et
+      // rien ailleurs ne le dirait : le témoin de santé mesure les ÉCRITURES.
+      await signalerPanne(
+        supabase,
+        "La mémoire n'a pas pu se relire : le modèle d'empreinte est indisponible",
+        "Supabase.ai n'a rendu aucune empreinte pour la phrase en cours.",
+        transcript.slice(0, 300),
+      )
+      return ""
+    }
     const empreinteJson = JSON.stringify(vecteur)
 
     const [faits, echanges] = await Promise.all([
@@ -196,6 +208,27 @@ export async function rappelerSouvenirs(
     ])
 
     let bloc = ""
+
+    // Une recherche EN ÉCHEC rend exactement le même résultat qu'une recherche
+    // qui n'a rien trouvé : la chaîne vide. Sans ces deux signalements, une
+    // panne de lecture rendrait Jarvis amnésique en silence — « une panne qui
+    // se lit comme une absence ».
+    if (faits.error) {
+      await signalerPanne(
+        supabase,
+        "La mémoire n'a pas pu relire ce qu'elle sait de Raphaël",
+        faits.error,
+        transcript.slice(0, 300),
+      )
+    }
+    if (echanges.error) {
+      await signalerPanne(
+        supabase,
+        "La mémoire n'a pas pu relire vos conversations passées",
+        echanges.error,
+        transcript.slice(0, 300),
+      )
+    }
 
     if (!faits.error && faits.data?.length) {
       const lignes = (faits.data as Souvenir[]).map((s) => `- (${s.categorie}) ${s.contenu}`)
@@ -212,7 +245,8 @@ export async function rappelerSouvenirs(
     }
 
     return bloc
-  } catch {
+  } catch (err) {
+    await signalerPanne(supabase, "Le rappel de la mémoire a échoué", err, transcript.slice(0, 300))
     return ""
   }
 }
@@ -285,19 +319,12 @@ async function signalerPanneMemoire(
   erreur: unknown,
   transcript: string,
 ): Promise<void> {
-  try {
-    await supabase.rpc("signaler_erreur", {
-      p_categorie: "serveur",
-      p_titre: titre,
-      p_detail: String(erreur instanceof Error ? erreur.message : erreur).slice(0, 2000),
-      p_contexte: `Phrase en cours de mémorisation : « ${transcript.slice(0, 300)} »`,
-      // `source` est du texte libre, affiché tel quel dans le cockpit : elle
-      // dit d'où vient la panne, et c'est aussi ce que lit sante_memoire().
-      p_source: "memoire",
-    })
-  } catch {
-    // Rien à faire de plus : on ne va pas signaler l'échec du signalement.
-  }
+  await signalerPanne(
+    supabase,
+    titre,
+    erreur,
+    `Phrase en cours de mémorisation : « ${transcript.slice(0, 300)} »`,
+  )
 }
 
 /**
