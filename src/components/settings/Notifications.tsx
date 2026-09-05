@@ -294,6 +294,19 @@ export function Notifications({ api }: { api: NotificationsApi }) {
               onChange={(actif) => setPrefs({ bloque: actif })}
             />
 
+            {/* Sa demande d'origine allait plus loin que la notification :
+                « Jarvis doit pouvoir intervenir à l'oral pour donner une
+                information tel un rappel » (chantier 7567cd47). Il le fait
+                quand l'app est ouverte ou qu'il vient d'appuyer dessus ;
+                parler app fermée demanderait un service Android permanent,
+                qui reste à cadrer avec lui. */}
+            <Interrupteur
+              titre="Dire les rappels à voix haute"
+              description="Quand l'app est ouverte, ou quand tu appuies sur la notification, Jarvis la dit au lieu de seulement l'afficher. Jamais pendant les heures de silence, ni si sa voix est coupée."
+              actif={prefs.direAVoixHaute}
+              onChange={(actif) => setPrefs({ direAVoixHaute: actif })}
+            />
+
             <Interrupteur
               titre="Ne rien faire sonner la nuit"
               description="Les rappels s'affichent quand même, sans bruit : ils sont là au réveil, ils n'ont réveillé personne."

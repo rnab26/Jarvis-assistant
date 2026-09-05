@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { LocalNotifications } from "@capacitor/local-notifications"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
+import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
+import { phraseAnnonce } from "@/lib/notifications/annonceVocale"
+import { readVoicePrefs } from "@/lib/voicePrefs"
 import {
   construirePlan,
   corpsChantiersLivres,
@@ -103,21 +106,52 @@ export function useNotifications(
     void rafraichir()
   }, [rafraichir])
 
+  // Ce que Jarvis DIT quand une de ses notifications arrive. La décision
+  // vit dans annonceVocale.ts, qui se vérifie sans téléphone ; ici on ne fait
+  // que la brancher. Passe par une ref : ces écouteurs sont montés une seule
+  // fois, et sans elle ils garderaient les réglages du premier rendu — le
+  // piège déjà payé dans MicButton le 4 sept.
+  const { speak } = useSpeechSynthesis()
+  const direRef = useRef<(notification: { title?: string | null; body?: string | null }) => void>(
+    () => {},
+  )
+  useEffect(() => {
+    direRef.current = (notification) => {
+      const phrase = phraseAnnonce(notification, {
+        prefs,
+        voixCoupee: readVoicePrefs().muted,
+        maintenant: new Date(),
+      })
+      // Sans attendre, et sans faire échouer quoi que ce soit : une voix qui
+      // ne part pas ne doit pas empêcher la notification de s'afficher.
+      if (phrase) void speak(phrase).catch(() => {})
+    }
+  })
+
   // Appuyer sur une notification doit emmener là où se trouve la chose dont
   // elle parle. Sans ça, on retombe sur la dernière page ouverte et il faut
   // refaire le chemin à la main — ce qui, sur un rappel, revient à l'ignorer.
   useEffect(() => {
     if (!notificationsDisponibles()) return
-    const poignee = LocalNotifications.addListener(
-      "localNotificationActionPerformed",
-      ({ notification }) => {
-        const route = (notification.extra as { route?: string } | undefined)?.route
-        if (route) navigate(route)
-        void rafraichir()
-      },
-    )
+    const poignees = [
+      LocalNotifications.addListener(
+        "localNotificationActionPerformed",
+        ({ notification }) => {
+          const route = (notification.extra as { route?: string } | undefined)?.route
+          if (route) navigate(route)
+          direRef.current(notification)
+          void rafraichir()
+        },
+      ),
+      // Reçue pendant que l'app est OUVERTE : Android ne l'affiche alors
+      // parfois même pas dans le volet, et rien n'était dit. C'est le cas où
+      // parler coûte le moins et sert le plus — il a le téléphone en main.
+      LocalNotifications.addListener("localNotificationReceived", (notification) => {
+        direRef.current(notification)
+      }),
+    ]
     return () => {
-      poignee.then((h) => h.remove()).catch(() => {})
+      for (const poignee of poignees) poignee.then((h) => h.remove()).catch(() => {})
     }
   }, [navigate, rafraichir])
 
