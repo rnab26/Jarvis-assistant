@@ -166,6 +166,20 @@ Deux règles à ne pas défaire :
 Les corrections écrites dans le registre remontent dans le bloc injecté au
 démarrage de chaque session : c'est par là qu'elles servent à corriger.
 
+### « Depuis ton dernier passage »
+
+Raphaël lance plusieurs sessions et s'absente une nuit ou une journée. Le
+bandeau en tête du cockpit dit ce qui a bougé pendant ce temps : chantiers
+livrés, chantiers ouverts, messages des sessions (les siens ne comptent pas).
+
+Deux choix à ne pas défaire : la date de visite n'est enregistrée QUE quand il
+appuie sur « Vu » — mise à jour toute seule à l'affichage, le bandeau
+disparaîtrait avant d'avoir été lu ; et la première ouverture n'annonce rien,
+faute de repère, plutôt que de présenter tout le cockpit comme nouveau. La clé
+`jarvis_cockpit_vu` est volontairement locale (déclarée dans
+`STOCKAGE_LOCAL_ASSUME`) : c'est un repère de lecture propre à l'écran, pas
+une préférence.
+
 ### Ce qu'on voit en ouvrant le cockpit, mesuré et pas supposé
 
 Sur un écran de téléphone (390 × 844), les cartes empilées au-dessus du
@@ -809,6 +823,7 @@ node --experimental-strip-types scripts/verifier-reglages.ts     # toute préfé
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
+node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
