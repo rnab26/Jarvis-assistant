@@ -91,7 +91,7 @@ try {
 
   const visible = (texte) => page.locator(`text=${texte}`).first().isVisible()
   // Le tableau des chantiers, et rien d'autre : un titre de chantier apparaît
-  // aussi dans la carte « Qui travaille en ce moment ».
+  // aussi dans « Où j'en suis », en tête de page.
   const tableau = page.getByRole("region", { name: "Chantiers" })
   const dansLeTableau = (texte) => tableau.getByText(texte).first().isVisible()
 
@@ -103,7 +103,7 @@ try {
   )
   verifier(
     "avec le compte de ce qui a été livré, ouvert et écrit",
-    (await visible("1 livré")) && (await visible("4 nouveaux")) && (await visible("2 messages")),
+    (await visible("1 livré")) && (await visible("4 nouveaux")) && (await visible("4 messages")),
     (await page.locator("body").innerText()).slice(0, 200),
   )
   verifier(
@@ -117,8 +117,152 @@ try {
     !(await page.getByText("Depuis ton dernier passage").isVisible()),
   )
 
+  // ── « Où j'en suis » : la réponse en un écran ──
+  // C'est la première chose de la page, et c'est la question qu'il pose en
+  // ouvrant : « je ne sais plus où mettre le nez ».
+  verifier(
+    "en ouvrant, le cockpit dit où on en est, section par section",
+    await visible("Où j'en suis"),
+    "il montrait tout et ne répondait à rien",
+  )
+  verifier(
+    "avec les quatre colonnes, et pas une de plus",
+    (await visible("bouge")) &&
+      (await visible("livré")) &&
+      (await visible("pour toi")) &&
+      (await visible("dort")),
+  )
+  verifier(
+    "il annonce d'abord ce qui l'attend, LUI",
+    await visible("3 pour toi"),
+    (await page.locator("body").innerText()).slice(0, 300),
+  )
+  verifier(
+    "une réservation qu'une session a laissée derrière elle est signalée",
+    await visible("porte encore le nom d'une session arrêtée"),
+    "un chantier que personne ne traite continuerait d'afficher « Prise par… » sans que rien ne le dise",
+  )
+
+  const ligne = (nom) => page.getByRole("button", { name: `Où en est ${nom}` })
+  await ligne("Voix et écoute").click()
+  await pause(250)
+  verifier(
+    "ouvrir une ligne dit QUELLE session travaille, et sur quoi",
+    (await visible("Le micro se coupe en pleine phrase")) && (await visible("voix-et-ecoute")),
+    "il faudrait déplier chaque section et lire les « Prise par… » un par un",
+  )
+  verifier(
+    "et pourquoi un chantier l'attend — la plus ancienne question d'abord",
+    await visible("question de memoire"),
+    "c'est celle qui attend depuis le plus longtemps",
+  )
+  await ligne("Voix et écoute").click()
+  await pause(200)
+
+  await ligne("Le téléphone").click()
+  await pause(250)
+  verifier(
+    "la colonne « livré » compte ce qui a été rendu aujourd'hui",
+    await visible("Le badge de version, livré"),
+    "le cockpit ne comptait que ce qui reste, jamais ce qui a avancé aujourd'hui",
+  )
+  await page.getByRole("button", { name: "Libérer" }).first().click()
+  await pause(250)
+  verifier("libérer demande confirmation", await visible("Libérer ce chantier ?"))
+  await page.getByRole("button", { name: "Libérer", exact: true }).last().click()
+  await pause(400)
+  verifier(
+    "et le chantier redevient libre",
+    !(await page.getByText("s'est arrêtée sans le libérer").isVisible()),
+  )
+  await ligne("Le téléphone").click()
+  await pause(200)
+
+  // ── « Ce qui attend ta décision » : la fin des fiches hors du dépôt ──
+  // Chantier 85ae62b5. Ses mots : « j'ai répondu à ton artefact mais j'ai
+  // l'impression qu'il n'enregistre pas mes réponses ».
+  verifier(
+    "les questions des sessions s'affichent DANS l'app, pas dans une fiche",
+    await visible("Ce qui attend ta décision"),
+    "une fiche vit hors du dépôt et hors de la base : la session suivante ne sait pas qu'elle existe",
+  )
+  verifier(
+    "ce qu'il doit FAIRE est distingué de ce qu'il doit DÉCIDER",
+    (await visible("À faire par toi")) && (await visible("Tu décides")),
+    "c'est sa demande depuis la première fiche : pour une action il ne choisit pas, il dit où il en est",
+  )
+  verifier(
+    "chaque question dit POURQUOI on la pose",
+    await visible("Supprimer est irréversible"),
+    "une question dont on ne voit pas l'enjeu reste sans réponse",
+  )
+  verifier(
+    "et propose la recommandation de la session",
+    await visible("Ce qu'on te recommande"),
+  )
+  verifier(
+    "une ACTION propose fait / pas encore / ça bloque",
+    (await page.getByRole("button", { name: /^Fait — Dépose/ }).isVisible()) &&
+      (await page.getByRole("button", { name: /^Ça bloque — Dépose/ }).isVisible()),
+    "« il me demande de créer des clés, mais je ne peux pas écrire si ça bloque »",
+  )
+  verifier(
+    "chaque point porte SON champ de commentaire",
+    (await page.getByLabel(/^Ton commentaire sur : /).count()) === 3,
+    `${await page.getByLabel(/^Ton commentaire sur : /).count()} champs pour 3 points — un champ unique en bas de page ne dit plus à quoi il répond`,
+  )
+  verifier(
+    "et SON bouton pour joindre une capture",
+    (await page.getByLabel(/^Joindre une photo à : /).count()) === 3,
+  )
+
+  // « Ça bloque » : l'état s'enregistre, et la ligne reste ouverte — c'est
+  // exactement ce qu'une fiche ne savait pas porter.
+  await page.getByRole("button", { name: /^Ça bloque — Dépose/ }).click()
+  await pause(400)
+  verifier(
+    "dire que ça bloque garde le point ouvert et demande où ça coince",
+    (await visible("Dis en deux mots où ça coince")) &&
+      (await page.getByRole("button", { name: /^Ça bloque — Dépose/ }).getAttribute("aria-pressed")) ===
+        "true",
+    "l'état ne serait pas enregistré, ou la ligne disparaîtrait sans qu'on sache pourquoi",
+  )
+
+  // Une décision : il choisit une option, écrit à côté, et voit ce qui partira.
+  const commentaire = page.getByLabel(/^Ton commentaire sur : On garde le mot/)
+  await page.getByRole("button", { name: "Sans limite" }).click()
+  await commentaire.fill("Illimité mais ultra compacter")
+  await pause(300)
+  verifier(
+    "il voit ce qui partira, mot pour mot, avant d'envoyer",
+    await visible("Sans limite — Illimité mais ultra compacter"),
+    "la fiche du 5 sept. affichait « 0 / 14 » pendant qu'il répondait, et personne ne l'a vu",
+  )
+  await page.getByRole("button", { name: /^Répondre à : On garde le mot/ }).click()
+  await pause(500)
+  verifier(
+    "sa réponse referme le point : il ne peut pas y répondre deux fois",
+    !(await page.getByText("On garde le mot-à-mot des conversations").isVisible()),
+    "deux fiches lui ont posé la même question le même soir, et il a répondu deux choses différentes",
+  )
+  verifier(
+    "et le compteur de ce qui l'attend redescend",
+    await visible("2 dont 1 à faire"),
+    (await page.locator("body").innerText()).match(/\d+ dont \d+ à faire/)?.[0] ?? "aucun compte",
+  )
+
   // ── La fenêtre d'envoi : ce qui existe déjà, et la section suggérée ──
+  // Repliée par défaut depuis que « Où j'en suis » occupe le haut de la page :
+  // le cockpit s'ouvre pour lire, écrire est un geste délibéré.
+  verifier(
+    "la fenêtre d'envoi est repliée à l'arrivée",
+    !(await page.getByLabel("Ce qu'il faut faire").isVisible()),
+    "elle coûtait 222 points en haut de l'écran, qu'on lise ou qu'on écrive",
+  )
+  await page.getByRole("button", { name: "Envoyer à Claude Code" }).first().click()
+  await pause(250)
   const quoiFaire = page.getByLabel("Ce qu'il faut faire")
+  verifier("et s'ouvre d'un appui", await quoiFaire.isVisible())
   await quoiFaire.fill("Le micro se coupe en pleine phrase quand je dicte longtemps")
   await pause(400)
   verifier(
@@ -150,27 +294,6 @@ try {
   await quoiFaire.fill("")
   await pause(250)
 
-  // ── Qui travaille en ce moment ──
-  verifier(
-    "la carte dit quelle session travaille, et sur quoi",
-    (await visible("claude/voix-et-ecoute".replace("claude/", ""))) &&
-      (await visible("Le micro se coupe en pleine phrase")),
-    "il faudrait déplier chaque section et lire les « Prise par… » un par un",
-  )
-  verifier(
-    "une réservation expirée est signalée à part, pas comptée comme du travail",
-    (await visible("1 à libérer")) && (await visible("sans le libérer")),
-    "un chantier que personne ne traite continuerait d'afficher « Prise par… »",
-  )
-  await page.getByRole("button", { name: "Libérer" }).first().click()
-  await pause(250)
-  verifier("libérer demande confirmation", await visible("Libérer ce chantier ?"))
-  await page.getByRole("button", { name: "Libérer", exact: true }).last().click()
-  await pause(400)
-  verifier(
-    "et le chantier redevient libre",
-    !(await page.getByText("sans le libérer").isVisible()),
-  )
 
   // ── Le résumé d'abord, le détail à la demande ──
   verifier(
@@ -510,7 +633,12 @@ try {
 
   // Chercher dans 83 chantiers doit rendre la main tout de suite.
   const avant = Date.now()
-  await gros.getByLabel("Chercher un chantier").fill("numéro 42")
+  // Ce terme ne désigne qu'un seul des 83 chantiers du banc. Il a changé le
+  // 5 sept. avec le jeu d'essai : les titres ne variaient que par un numéro,
+  // or la comparaison de mots retire les chiffres — ils passaient donc tous
+  // pour des doublons les uns des autres, et la carte « Ça existe déjà » en
+  // signalait cinq qui n'existaient que dans le banc.
+  await gros.getByLabel("Chercher un chantier").fill("brouillons hors ligne")
   await gros.waitForFunction(
     () => !!document.body.innerText.match(/1 chantier affiché/),
     null,
@@ -572,6 +700,60 @@ try {
     hautDuResume > 0 && hautDuResume < 844,
     `il commence à ${hautDuResume} points : il faudrait faire défiler avant de voir quoi que ce soit du tableau`,
   )
+  // LE BUDGET DE HAUTEUR, et c'est le contrôle qui compte le plus ici.
+  // « Où j'en suis » a été ajouté EN TÊTE du cockpit : sans cette limite, la
+  // carte suivante repousserait le tableau hors de l'écran, et on serait
+  // revenu au point de départ — un cockpit qui montre tout et ne répond à
+  // rien. 482 points est la mesure d'avant l'ajout : la place a été prise à
+  // la fenêtre d'envoi (repliée) et à la carte « Qui travaille en ce moment »
+  // (absorbée), pas ajoutée en bas de la pile.
+  verifier(
+    "et le nouveau bloc ne l'a pas repoussé plus bas qu'avant",
+    hautDuResume > 0 && hautDuResume <= 482,
+    `${hautDuResume} points contre 482 avant « Où j'en suis » : reprends la place à une carte qui fait doublon, n'en empile pas une de plus`,
+  )
+  // « Où j'en suis » doit tenir en ENTIER dans le premier écran, sinon il
+  // faut faire défiler pour lire la réponse à « où j'en suis ».
+  const basDuBloc = await calme.evaluate(() => {
+    const titre = [...document.querySelectorAll("p")].find(
+      (p) => p.textContent?.trim() === "Où j'en suis",
+    )
+    const carte = titre?.closest('[data-slot="card"]') ?? titre?.parentElement?.parentElement
+    return carte ? Math.round(carte.getBoundingClientRect().bottom) : -1
+  })
+  verifier(
+    "« Où j'en suis » tient en entier dans le premier écran",
+    basDuBloc > 0 && basDuBloc <= 844,
+    `il se termine à ${basDuBloc} points sur 844`,
+  )
+
+  // Neuf sections, quatre en tête : le reste est à un appui, pas caché.
+  verifier(
+    "à neuf sections, le bloc en montre quatre et propose les autres",
+    await calme.getByRole("button", { name: /Voir les \d+ autres sections/ }).isVisible(),
+    "les neuf lignes feraient revenir le mur qu'on essaie de supprimer",
+  )
+  await calme.getByRole("button", { name: /Voir les \d+ autres sections/ }).click()
+  await pause(300)
+  verifier(
+    "et elles s'affichent alors toutes",
+    (await calme.getByRole("button", { name: /^Où en est / }).count()) === 9,
+    `${await calme.getByRole("button", { name: /^Où en est / }).count()} lignes au lieu de 9`,
+  )
+
+  // Depuis une ligne, on va au tableau : c'est la réponse à « où mettre le
+  // nez » qui doit mener quelque part.
+  await calme.getByRole("button", { name: "Où en est Le téléphone" }).click()
+  await pause(250)
+  await calme.getByRole("button", { name: /Voir « Le téléphone » dans le tableau/ }).click()
+  await pause(400)
+  const tableauCalme = calme.getByRole("region", { name: "Chantiers" })
+  verifier(
+    "appuyer sur « voir dans le tableau » ne laisse que cette section",
+    (await tableauCalme.getByText(/sur le téléphone/).count()) > 0 &&
+      (await tableauCalme.getByText(/sur voix et écoute/).count()) === 0,
+    "la ligne dirait où regarder sans y emmener",
+  )
   await calme.close()
 
   // ── Un chantier déjà archivé ne doit pas pouvoir être ré-archivé ──
@@ -611,9 +793,9 @@ try {
   )
   verifier(
     "et propose de voir les autres",
-    await gros.getByRole("button", { name: /Voir les \d+ autres/ }).isVisible(),
+    await gros.getByRole("button", { name: /^Voir les \d+ autres$/ }).isVisible(),
   )
-  await gros.getByRole("button", { name: /Voir les \d+ autres/ }).click()
+  await gros.getByRole("button", { name: /^Voir les \d+ autres$/ }).click()
   await pause(400)
   verifier(
     "qui s'affichent alors toutes",
@@ -657,6 +839,63 @@ try {
     "une panne des sections ne doit pas emporter le tableau avec elle",
   )
   await panne.close()
+
+  // ── « Ça existe déjà » : les doublons DÉJÀ en base ──
+  // Le 5 sept. 2026, deux chantiers strictement identiques cohabitaient dans
+  // le cockpit sans que personne les voie : un chantier dicté à la voix
+  // n'entre pas par la fenêtre d'envoi, donc l'avertissement de saisie ne le
+  // voit jamais.
+  const dbl = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  dbl.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (doublons):", e.message)
+  })
+  await dbl.goto(`${BASE}/scripts/harness/cockpit.html?doublons=1`)
+  await dbl.waitForSelector('[aria-label="Chantiers"]')
+  await pause(400)
+
+  // Repérée par son titre : la carte n'a pas de conteneur à elle, exprès —
+  // un div vide consommerait un `gap` de la colonne même quand elle se tait.
+  const carteDoublons = dbl
+  verifier(
+    "deux chantiers identiques sont signalés",
+    await carteDoublons.getByText("Ça existe déjà").isVisible(),
+    "sans ça, deux sessions peuvent prendre chacune un jumeau",
+  )
+  verifier(
+    "et le cas coûteux — redire du déjà livré — est nommé comme tel",
+    await carteDoublons.getByText("déjà livré").first().isVisible(),
+    "une session le reprendrait de zéro et défairait ce qui marchait",
+  )
+  verifier(
+    "archiver un doublon DEMANDE avant",
+    await carteDoublons.getByRole("button", { name: "Archiver ce doublon" }).first().isVisible(),
+  )
+  await carteDoublons.getByRole("button", { name: "Archiver ce doublon" }).first().click()
+  await pause(300)
+  verifier(
+    "la fenêtre de confirmation nomme ce qui va disparaître",
+    await dbl.getByText("Archiver ce doublon ?").isVisible(),
+    "un archivage silencieux sur un cockpit à 60 chantiers ne se remarque pas",
+  )
+  await dbl.getByRole("button", { name: "Archiver", exact: true }).click()
+  await pause(500)
+  verifier(
+    "et « Annuler » est proposé juste après",
+    await dbl.locator("[data-sonner-toast]").getByRole("button", { name: "Annuler" }).isVisible(),
+    "archiver le mauvais des deux jumeaux doit se défaire d'un appui",
+  )
+
+  await dbl.close()
+
+  // La carte doit se TAIRE quand il n'y a rien : une barre « 0 doublon » de
+  // plus dans un cockpit qui en a déjà beaucoup n'apprendrait rien. Vérifié
+  // sur le cockpit à sa vraie taille, 83 chantiers aux titres tous distincts.
+  verifier(
+    "aucun doublon : la carte ne s'affiche pas du tout",
+    (await gros.getByText("Ça existe déjà").count()) === 0,
+    "elle occuperait une ligne pour ne rien dire",
+  )
 
   await gros.close()
 

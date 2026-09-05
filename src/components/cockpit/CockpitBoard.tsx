@@ -66,6 +66,11 @@ interface CockpitBoardProps {
   onDeleteMany: (ids: string[]) => Promise<void>
   /** Le retour en arrière proposé après chaque action groupée. */
   onRestore: (etats: EtatChantier[]) => Promise<void>
+  /** Le filtre, tenu par la page : « Où j'en suis » doit pouvoir l'imposer
+   * quand Raphaël appuie sur une section. Deux états séparés diraient deux
+   * choses différentes du même filtre. */
+  filtre: FiltreCockpit
+  onFiltre: (filtre: FiltreCockpit) => void
   /** Le journal de bord, pour que chaque chantier porte ses messages. */
   messages?: DevLogEntry[]
   onRepondre?: (itemId: string, body: string) => Promise<void>
@@ -91,6 +96,8 @@ interface CockpitBoardProps {
 export function CockpitBoard({
   devItems,
   sectionsState,
+  filtre,
+  onFiltre,
   onUpdate,
   onDelete,
   onArchive,
@@ -103,7 +110,7 @@ export function CockpitBoard({
   onRepondre,
   onMarquerTraite,
 }: CockpitBoardProps) {
-  const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
+  const setFiltre = onFiltre
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set())
   const [archivesOuvertes, setArchivesOuvertes] = useState(false)
   // null = pas en mode sélection. Un Set vide veut dire « en mode sélection,

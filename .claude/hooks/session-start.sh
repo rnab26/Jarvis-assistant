@@ -49,6 +49,19 @@ chantiers=$(interroger "select coalesce(string_agg(bloc, chr(10) || chr(10) orde
 # remonte jusqu'à personne ne corrige rien (chantier f2f6667f).
 erreurs=$(interroger "select coalesce(string_agg(format('- [%s] %s (vue %s fois, %s)%s%s', categorie, titre, occurrences, to_char(last_seen, 'DD/MM HH24:MI'), case when coalesce(correction, '') <> '' then chr(10) || '    correction attendue : ' || left(replace(correction, chr(10), ' '), 200) else '' end, case when reapparue_at is not null then chr(10) || '    REVENUE APRES CORRECTION' else '' end), chr(10) order by occurrences desc, last_seen desc), '(aucune)') as t from (select * from jarvis_erreurs where statut in ('nouveau', 'en_cours') order by occurrences desc, last_seen desc limit 8) e")
 
+# CE QUI ATTEND UNE DÉCISION DE RAPHAËL — le remplacement des fiches publiées
+# hors du dépôt (chantier 85ae62b5). Une question posée avec
+# scripts/demander.sh vit dans dev_log, s'affiche en tête de son cockpit, et
+# revient ici tant qu'il n'y a pas répondu : aucune session ne peut la reposer
+# sans le savoir, et aucune ne peut avancer en croyant qu'elle est tranchée.
+attentes=$(interroger "select coalesce(string_agg(format('- %s | %s | pose le %s%s%s%s%s%s', case when kind = 'action' then 'IL DOIT LE FAIRE' else 'IL DOIT DECIDER' end, author, to_char(created_at, 'DD/MM HH24:MI'), case when item_id is not null then ' | chantier ' || item_id else '' end, chr(10) || '    ' || left(replace(body, chr(10), ' '), 300), case when coalesce(pourquoi, '') <> '' then chr(10) || '    pourquoi : ' || left(replace(pourquoi, chr(10), ' '), 200) else '' end, case when jsonb_typeof(options) = 'array' then chr(10) || '    options proposees : ' || (select string_agg(o->>'libelle' || case when o->>'recommande' = 'true' then ' (recommandee)' else '' end, ' | ') from jsonb_array_elements(options) o) else '' end, case when coalesce(etat, '') <> '' then chr(10) || '    ou il en est : ' || etat else '' end), chr(10) order by case when kind = 'action' then 0 else 1 end, created_at), '(rien)') as t from dev_log where answered_at is null and kind in ('question', 'action')")
+
+# SES RÉPONSES, à part et sur une fenêtre plus large que le journal : c'est ce
+# qu'on lui a fait répéter trois fois. Le journal n'en injecte que douze
+# entrées, toutes familles confondues — une réponse donnée avant-hier en
+# sortait, et la question se reposait.
+reponses=$(interroger "select coalesce(string_agg(format('- %s%s%s', to_char(created_at, 'DD/MM HH24:MI'), case when item_id is not null then ' | chantier ' || item_id else '' end, chr(10) || '    ' || left(replace(body, chr(10), ' '), 400) || case when photo_chemin is not null then chr(10) || '    capture jointe : ' || photo_chemin || ' (scripts/photo.sh pour la recuperer)' else '' end), chr(10) order by created_at desc), '(aucune)') as t from (select * from dev_log where kind = 'reponse' and author ilike 'rapha%' order by created_at desc limit 12) r")
+
 journal=$(interroger "select coalesce(string_agg(format('- %s | %s | %s%s%s', to_char(created_at, 'DD/MM HH24:MI'), author, kind, case when answered_at is not null then ' (repondu)' else '' end, chr(10) || '    ' || left(replace(body, chr(10), ' '), 300)), chr(10) order by created_at desc), '(vide)') as t from (select * from dev_log order by created_at desc limit 12) d")
 
 livres=$(interroger "select coalesce(string_agg(format('- %s (%s)', title, to_char(archived_at, 'DD/MM')), chr(10) order by archived_at desc), '(aucun)') as t from (select * from dev_items where archived_at is not null order by archived_at desc limit 8) a")
@@ -75,6 +88,25 @@ qui en a assez des correctifs ponctuels posés en pansement. Les chantiers d'un
 même thème partagent presque toujours la même cause racine.
 
 ${chantiers:-(non chargé)}
+
+## Ce qui attend une DÉCISION de Raphaël
+Posé par une session avec \`scripts/demander.sh\`, affiché en tête de son
+cockpit. Tant que c'est là, il n'a pas répondu : **ne repose aucune de ces
+questions ailleurs**, et ne code pas ce qui en dépend en supposant la réponse.
+Si tu as toi-même besoin d'un arbitrage, pose-le avec \`scripts/demander.sh\` —
+**plus jamais un artefact**, qui vit hors du dépôt et se perd.
+
+\`IL DOIT DECIDER\` = il choisit. \`IL DOIT LE FAIRE\` = c'est une action de son
+côté (déposer une clé, installer l'APK) ; « ou il en est » dit fait / pas
+encore / ça bloque.
+
+${attentes:-(non chargé)}
+
+## Ce que Raphaël a répondu (ses 12 dernières réponses)
+Ses mots, tels qu'il les a écrits dans le cockpit. **Traite-les comme
+acquis** : une question déjà tranchée qu'on repose est ce qui l'épuise le plus.
+
+${reponses:-(non chargé)}
 
 ## Erreurs de Jarvis encore ouvertes (les 8 plus fréquentes)
 Le registre du cockpit (table \`jarvis_erreurs\`) : ce qu'il a raté, regroupé par

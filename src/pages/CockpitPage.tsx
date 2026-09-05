@@ -1,22 +1,36 @@
+import { useRef, useState } from "react"
 import { LoadError } from "@/components/LoadError"
+import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
 import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
+import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
-import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
+import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDevLog } from "@/hooks/useDevLog"
+import { FILTRE_VIDE, type FiltreCockpit } from "@/lib/sections"
 import { cleTheme } from "@/lib/themeChantier"
 
 /**
- * Le cockpit, de haut en bas : ce qu'on envoie, ce qu'on se dit entre
- * sessions, ce que Jarvis rate, ce qui est en cours. Le journal est collé à la
- * fenêtre d'envoi — les deux servent à PILOTER les sessions, pas à consulter
- * la liste des chantiers — plutôt que séparé d'elle par tout le tableau
- * (Raphaël, 3 sept. : « cette fenêtre est complètement perdue, autant la
- * rapprocher de la fenêtre qui crée les chantiers »).
+ * Le cockpit, de haut en bas : où on en est, ce qu'on envoie, ce qu'on se dit
+ * entre sessions, ce que Jarvis rate, ce qui est en cours.
+ *
+ * « OÙ J'EN SUIS » EST EN PREMIER, et c'est le point du chantier 18a0aff1.
+ * Ses mots du 5 sept. : « je ne sais plus où mettre le nez ». Tout le reste
+ * de cette page sert à AGIR ; ce bloc-là sert à comprendre, et c'est ce qu'on
+ * fait en ouvrant. La carte « Qui travaille en ce moment » a disparu : elle
+ * disait la même chose en moins bien (qui travaille, oui — mais pas sur
+ * quelle section, ni ce qui l'attend lui, ni ce qui vient d'être livré), et
+ * garder les deux aurait repoussé le tableau des chantiers hors du premier
+ * écran.
+ *
+ * Le journal est collé à la fenêtre d'envoi — les deux servent à PILOTER les
+ * sessions, pas à consulter la liste des chantiers — plutôt que séparé d'elle
+ * par tout le tableau (Raphaël, 3 sept. : « cette fenêtre est complètement
+ * perdue, autant la rapprocher de la fenêtre qui crée les chantiers »).
  *
  * Le registre des erreurs est au-dessus du tableau et replié : c'est une liste
  * qu'on vient consulter ou alimenter, pas celle qu'on lit tous les jours.
@@ -31,6 +45,10 @@ export function CockpitPage() {
   const { devItemsState, devSectionsState, erreursState } = useJarvisData()
   const { session } = useAuth()
   const devLog = useDevLog(session?.user.id)
+  // Le filtre du tableau vit ici, pas dans le tableau : « Où j'en suis » doit
+  // pouvoir l'imposer quand Raphaël appuie sur une section.
+  const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
+  const tableauRef = useRef<HTMLDivElement>(null)
   const {
     devItems,
     loading,
@@ -59,6 +77,14 @@ export function CockpitPage() {
     ),
   ]
 
+  /** Depuis « Où j'en suis » : le tableau ne garde que cette section, et on
+   * l'amène sous les yeux — filtrer sans faire défiler laisserait croire qu'il
+   * ne s'est rien passé. */
+  function voirSection(nom: string) {
+    setFiltre({ ...FILTRE_VIDE, section: nom })
+    tableauRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Tout en haut, et seulement quand il y a quelque chose à dire : c'est
@@ -66,14 +92,32 @@ export function CockpitPage() {
           ce soit. */}
       <DepuisTonDernierPassage devItems={devItems} messages={devLog.entries} />
 
+      <OuJenSuis
+        devItems={devItems}
+        sections={devSectionsState.sections}
+        messages={devLog.entries}
+        loading={loading}
+        error={error}
+        onLiberer={libererReservation}
+        onVoirSection={voirSection}
+      />
+
+      {/* Juste sous « Où j'en suis », qui vient de compter ces questions-là
+          dans sa colonne « pour toi » : c'est ici qu'on y répond. La carte
+          n'existe pas quand rien n'attend. */}
+      <CeQuiAttendTaDecision
+        messages={devLog.entries}
+        devItems={devItems}
+        onRepondre={devLog.repondreAQuestion}
+        onEtat={devLog.changerEtatAction}
+      />
+
       <EnvoyerAClaudeCode
         devItems={devItems}
         sections={devSectionsState.sections}
         themes={themes}
         onSend={addDevItem}
       />
-
-      <SessionsAuTravail devItems={devItems} onLiberer={libererReservation} />
 
       <DevLogFeed
         entries={devLog.entries}
@@ -85,6 +129,10 @@ export function CockpitPage() {
         onMarkAnswered={devLog.markAnswered}
       />
 
+      {/* Silencieuse quand il n'y a rien à dire. Placée avant le journal :
+          un doublon coûte une session entière, il vaut d'être vu tôt. */}
+      <DoublonsTrouves devItems={devItems} onArchive={archiveDevItem} onRestore={restoreDevItems} />
+
       <ErreursJarvis
         erreursState={erreursState}
         devItems={devItems}
@@ -92,27 +140,31 @@ export function CockpitPage() {
         onCreerChantier={addDevItem}
       />
 
-      {loading ? (
-        <p className="py-8 text-center text-muted-foreground">Chargement...</p>
-      ) : error ? (
-        <LoadError message={error} onRetry={refresh} />
-      ) : (
-        <CockpitBoard
-          devItems={devItems}
-          sectionsState={devSectionsState}
-          onUpdate={updateDevItem}
-          onDelete={deleteDevItem}
-          onArchive={archiveDevItem}
-          onUnarchive={unarchiveDevItem}
-          onUpdateMany={updateManyDevItems}
-          onArchiveMany={archiveManyDevItems}
-          onDeleteMany={deleteManyDevItems}
-          onRestore={restoreDevItems}
-          messages={devLog.entries}
-          onRepondre={(itemId, body) => devLog.addEntry(body, "reponse", itemId)}
-          onMarquerTraite={devLog.markAnswered}
-        />
-      )}
+      <div ref={tableauRef}>
+        {loading ? (
+          <p className="py-8 text-center text-muted-foreground">Chargement...</p>
+        ) : error ? (
+          <LoadError message={error} onRetry={refresh} />
+        ) : (
+          <CockpitBoard
+            devItems={devItems}
+            sectionsState={devSectionsState}
+            filtre={filtre}
+            onFiltre={setFiltre}
+            onUpdate={updateDevItem}
+            onDelete={deleteDevItem}
+            onArchive={archiveDevItem}
+            onUnarchive={unarchiveDevItem}
+            onUpdateMany={updateManyDevItems}
+            onArchiveMany={archiveManyDevItems}
+            onDeleteMany={deleteManyDevItems}
+            onRestore={restoreDevItems}
+            messages={devLog.entries}
+            onRepondre={(itemId, body) => devLog.addEntry(body, "reponse", itemId)}
+            onMarquerTraite={devLog.markAnswered}
+          />
+        )}
+      </div>
     </div>
   )
 }

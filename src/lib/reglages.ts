@@ -136,6 +136,16 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/Notifications.tsx",
   },
   {
+    cle: "jarvis_memoire_retention",
+    ou: "Paramètres › Mémoire › Combien de temps Jarvis garde tes conversations",
+    fichier: "src/components/settings/Memoire.tsx",
+  },
+  {
+    cle: "jarvis_cockpit_fenetre",
+    ou: "Paramètres › Le cockpit › Ce qui compte comme « livré »",
+    fichier: "src/components/settings/Cockpit.tsx",
+  },
+  {
     cle: "jarvis_maj_auto",
     ou: "Paramètres › L'application › Mettre à jour l'application",
     fichier: "src/pages/SettingsPage.tsx",

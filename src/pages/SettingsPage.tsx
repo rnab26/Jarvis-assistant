@@ -7,6 +7,8 @@ import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
 import { CarteAutorisations } from "@/components/settings/Autorisations"
 import { BulleFlottante } from "@/components/settings/BulleFlottante"
+import { Cockpit } from "@/components/settings/Cockpit"
+import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
 import { MettreAJour } from "@/components/settings/MettreAJour"
@@ -97,6 +99,20 @@ const SECTIONS = {
     resume: "Applications par défaut, appui long sur le bouton",
     motsCles:
       "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android bulle flottante pastille par-dessus superposition délai annuler arrêter avant d'agir mal entendu",
+  },
+  memoire: {
+    cle: "memoire",
+    titre: "Mémoire",
+    resume: "Combien de temps il garde tes conversations",
+    motsCles:
+      "mémoire conversation mot-à-mot historique échanges garder conserver effacer purge durée 7 30 90 jours sans limite souvenirs oubli",
+  },
+  cockpit: {
+    cle: "cockpit",
+    titre: "Le cockpit",
+    resume: "Ce qui compte comme « livré » dans « Où j'en suis »",
+    motsCles:
+      "cockpit chantier section où j'en suis livré aujourd'hui 24 heures 7 jours semaine bilan avancement bouge dort pour toi",
   },
   apparence: {
     cle: "apparence",
@@ -451,6 +467,9 @@ function CoeurDeJarvis() {
 }
 
 export function SettingsPage() {
+  // Les dates des conversations gardées : la carte « Mémoire » en a besoin
+  // pour annoncer combien une purge effacerait, avant qu'il confirme.
+  const datesEchanges = useDatesEchanges()
   const {
     wakeWordState,
     dialogueState,
@@ -918,6 +937,14 @@ export function SettingsPage() {
         <BulleFlottante />
         <AppsParDefaut />
         <FenetreAnnulation />
+      </Section>
+
+      <Section {...SECTIONS.memoire} filtre={recherche}>
+        <Memoire api={datesEchanges} />
+      </Section>
+
+      <Section {...SECTIONS.cockpit} filtre={recherche}>
+        <Cockpit />
       </Section>
 
       <Section {...SECTIONS.apparence} filtre={recherche}>

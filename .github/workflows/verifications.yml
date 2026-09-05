@@ -89,14 +89,39 @@ jobs:
       - name: Une panne de la mémoire ne se lit pas comme une absence
         run: node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts
 
+      # Ce réglage commande une SUPPRESSION sans corbeille, à chaque phrase.
+      # Le contrôle lit LES DEUX moitiés — le bouton de Paramètres et la
+      # fonction SQL — et refuse qu'elles divergent : une valeur que l'app
+      # écrit et que le SQL ne comprend pas vaudrait « sans limite » en
+      # silence, et le réglage ne servirait plus à rien.
+      - name: La durée de conservation des conversations
+        run: node --experimental-strip-types scripts/verifier-retention.ts
+
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
+
+      # Les quatre nombres par section de « Où j'en suis ». Ce qui se joue là
+      # est faux EN SILENCE : un chantier compté comme avançant alors que la
+      # session qui l'avait pris s'est arrêtée, une question sans réponse qui
+      # n'apparaît nulle part. On lit la réponse, et on la croit.
+      - name: « Où j'en suis », en tête du cockpit
+        run: node --experimental-strip-types scripts/verifier-ou-jen-suis.ts
+
+      # Une question posée par une session doit REVENIR à Raphaël, et sa
+      # réponse repartir vers les sessions sous une forme lisible des années
+      # après. La fiche du 5 sept. n'enregistrait que les champs de texte, et
+      # affichait « 0 / 14 » pendant qu'il répondait : personne ne l'a vu.
+      - name: Ce qui attend sa décision, et ce qu'il répond
+        run: node --experimental-strip-types scripts/verifier-decisions.ts
 
       - name: La section suggérée à la saisie
         run: node --experimental-strip-types scripts/verifier-suggestion-theme.ts
 
       - name: « Ça existe déjà » à la saisie d'un chantier
         run: node --experimental-strip-types scripts/verifier-doublon-chantier.ts
+
+      - name: Les doublons déjà en base
+        run: node --experimental-strip-types scripts/verifier-doublons-existants.ts
 
       - name: Ce qui a bougé depuis le dernier passage
         run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts

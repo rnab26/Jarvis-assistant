@@ -16,6 +16,9 @@ export const KIND_LABEL: Record<DevLogKind, string> = {
   reponse: "Réponse",
   info: "Info",
   blocage: "Blocage",
+  // Ce que RAPHAËL doit faire, par opposition à « question » où il décide.
+  // Voir src/lib/decisions.ts.
+  action: "À faire par toi",
 }
 
 export const KIND_VARIANT: Record<DevLogKind, "default" | "secondary" | "destructive" | "outline"> =
@@ -24,6 +27,7 @@ export const KIND_VARIANT: Record<DevLogKind, "default" | "secondary" | "destruc
     reponse: "secondary",
     info: "outline",
     blocage: "destructive",
+    action: "destructive",
   }
 
 /** « il y a 3 h » plutôt qu'une date brute : on lit un fil, pas un registre. */

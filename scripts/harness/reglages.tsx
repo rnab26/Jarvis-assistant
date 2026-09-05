@@ -11,6 +11,7 @@ import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
 import { Section } from "@/components/settings/Section"
+import { Memoire } from "@/components/settings/Memoire"
 import { Theme } from "@/components/settings/Theme"
 import type { NotificationsApi } from "@/hooks/useNotifications"
 import type { MajWebApi } from "@/hooks/useMajWeb"
@@ -41,6 +42,13 @@ Capacitor.isNativePlatform = () => true
 const { MettreAJour } = await import("@/components/settings/MettreAJour")
 
 const rien = async () => {}
+
+/** Quatre conversations, d'âges connus : une d'hier, une de la semaine, une du
+ * mois dernier, une d'il y a six mois. De quoi vérifier que la fenêtre annonce
+ * le bon NOMBRE avant d'effacer, et pas seulement qu'elle demande. */
+const DATES_ECHANGES = [1, 10, 40, 200].map((j) =>
+  new Date(Date.now() - j * 24 * 3600_000).toISOString(),
+)
 
 /** Le pont vers Android, en factice : le banc tourne dans un vrai navigateur,
  * où le plugin n'existe pas. Les trois états qui comptent (APK trop ancienne,
@@ -259,6 +267,20 @@ function BancDesReglages() {
         <p>signaux : {signaux}</p>
       </div>
 
+      {/* La carte « Mémoire » dans ses trois états qui comptent : des
+          conversations à perdre, aucune, et une lecture en échec. Le dernier
+          est le piège — une panne qui se lirait comme « 0 seront effacées »
+          juste avant une purge qui en efface des centaines. */}
+      <div id="memoire">
+        <Memoire api={{ dates: DATES_ECHANGES, erreur: null }} />
+      </div>
+      <div id="memoire-vide">
+        <Memoire api={{ dates: [], erreur: null }} />
+      </div>
+      <div id="memoire-panne">
+        <Memoire api={{ dates: null, erreur: "Le serveur ne répond pas." }} />
+      </div>
+
       <div id="theme">
         <Theme />
       </div>
@@ -288,10 +310,13 @@ function BancDesReglages() {
           <MettreAJour update={updateFactice("up-to-date")} majWeb={majFactice(true)} />
         </Section>
         {[
+          ["Autorisations du téléphone", "Ce que Jarvis a le droit de faire"],
           ["Voix et écoute", "Sa voix, le rythme, le mot-clé de réveil"],
           ["Tâches et organisation", "Widget d'écran d'accueil, rappels de lieu"],
           ["Notifications", "Ce que Jarvis a le droit de faire sonner"],
-          ["Ce que Jarvis utilise", "Applications par défaut, canal des messages"],
+          ["Ce que Jarvis utilise", "Applications par défaut, appui long sur le bouton"],
+          ["Mémoire", "Combien de temps il garde tes conversations"],
+          ["Le cockpit", "Ce qui compte comme « livré » dans « Où j'en suis »"],
           ["Apparence", "Thème clair ou sombre, image du cœur"],
           ["Comptes et connexions", "Google"],
         ].map(([titre, resume], i) => (

@@ -73,12 +73,18 @@ export function DevLogFeed({
   }
 
   return (
-    // Repliée par défaut, mais son badge reste sur la barre de titre : une
+    // Repliée, TOUJOURS, mais son badge reste sur la barre de titre : une
     // question qui l'attend se voit sans ouvrir. Mesuré le 4 sept. : dépliée,
     // cette carte à elle seule repoussait le tableau des chantiers de 424
     // points sur un écran de téléphone.
+    //
+    // Elle s'ouvrait d'elle-même quand une question attendait ; ça n'a plus
+    // lieu d'être depuis « Où j'en suis », qui compte ces questions-là dans
+    // sa colonne « pour toi » et dit sur quel chantier elles portent — là où
+    // on y répond. S'ouvrir ici repoussait le tableau des chantiers à 898
+    // points, hors du premier écran, un jour où justement quelque chose
+    // l'attendait.
     <CarteRepliable
-      ouverteParDefaut={enAttente > 0}
       titre="Journal de bord"
       badge={
         enAttente > 0 ? (

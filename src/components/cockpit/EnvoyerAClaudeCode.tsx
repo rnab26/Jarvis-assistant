@@ -2,7 +2,8 @@ import { Send, Sparkles } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -131,10 +132,21 @@ export function EnvoyerAClaudeCode({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Envoyer à Claude Code</CardTitle>
-      </CardHeader>
+    // Repliée par défaut, et c'est un arbitrage assumé. Le cockpit s'ouvre
+    // d'abord pour LIRE — « où j'en suis ? » —, et cette fenêtre-ci coûtait
+    // 222 points en haut de l'écran, qu'on lise ou qu'on écrive. Écrire est
+    // un geste délibéré : il vaut bien un appui. Le badge dit ce qui est en
+    // cours de saisie, pour qu'un brouillon replié ne se perde pas.
+    <CarteRepliable
+      titre="Envoyer à Claude Code"
+      badge={
+        aEcrit ? (
+          <Badge variant="default" className="shrink-0">
+            brouillon
+          </Badge>
+        ) : undefined
+      }
+    >
       <CardContent className="flex flex-col gap-3">
         <Textarea
           value={texte}
@@ -321,15 +333,15 @@ export function EnvoyerAClaudeCode({
           </p>
         )}
 
-        {/* Ce bandeau ne dit plus QUI travaille — la carte « Qui travaille en
-            ce moment », juste en dessous, le dit mieux et en entier. Il garde
-            la seule chose que cette fenêtre-ci doit promettre : ce qu'on
-            envoie ne part pas vers une session en cours. */}
+        {/* Ce bandeau ne dit plus QUI travaille — « Où j'en suis », en tête du
+            cockpit, le dit mieux et section par section. Il garde la seule
+            chose que cette fenêtre-ci doit promettre : ce qu'on envoie ne part
+            pas vers une session en cours. */}
         <p className="text-xs text-muted-foreground">
           Un chantier envoyé d'ici n'est pas poussé vers une session : chaque session lit
           la base à son démarrage. L'effet est donc différé jusqu'à la prochaine.
         </p>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }
