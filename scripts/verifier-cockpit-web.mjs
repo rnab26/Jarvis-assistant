@@ -510,7 +510,12 @@ try {
 
   // Chercher dans 83 chantiers doit rendre la main tout de suite.
   const avant = Date.now()
-  await gros.getByLabel("Chercher un chantier").fill("numéro 42")
+  // Ce terme ne désigne qu'un seul des 83 chantiers du banc. Il a changé le
+  // 5 sept. avec le jeu d'essai : les titres ne variaient que par un numéro,
+  // or la comparaison de mots retire les chiffres — ils passaient donc tous
+  // pour des doublons les uns des autres, et la carte « Ça existe déjà » en
+  // signalait cinq qui n'existaient que dans le banc.
+  await gros.getByLabel("Chercher un chantier").fill("brouillons hors ligne")
   await gros.waitForFunction(
     () => !!document.body.innerText.match(/1 chantier affiché/),
     null,
@@ -657,6 +662,61 @@ try {
     "une panne des sections ne doit pas emporter le tableau avec elle",
   )
   await panne.close()
+
+  // ── « Ça existe déjà » : les doublons DÉJÀ en base ──
+  // Le 5 sept. 2026, deux chantiers strictement identiques cohabitaient dans
+  // le cockpit sans que personne les voie : un chantier dicté à la voix
+  // n'entre pas par la fenêtre d'envoi, donc l'avertissement de saisie ne le
+  // voit jamais.
+  const dbl = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  dbl.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (doublons):", e.message)
+  })
+  await dbl.goto(`${BASE}/scripts/harness/cockpit.html?doublons=1`)
+  await dbl.waitForSelector('[aria-label="Chantiers"]')
+  await pause(400)
+
+  const carteDoublons = dbl.locator("#doublons")
+  verifier(
+    "deux chantiers identiques sont signalés",
+    await carteDoublons.getByText("Ça existe déjà").isVisible(),
+    "sans ça, deux sessions peuvent prendre chacune un jumeau",
+  )
+  verifier(
+    "et le cas coûteux — redire du déjà livré — est nommé comme tel",
+    await carteDoublons.getByText("déjà livré").first().isVisible(),
+    "une session le reprendrait de zéro et défairait ce qui marchait",
+  )
+  verifier(
+    "archiver un doublon DEMANDE avant",
+    await carteDoublons.getByRole("button", { name: "Archiver ce doublon" }).first().isVisible(),
+  )
+  await carteDoublons.getByRole("button", { name: "Archiver ce doublon" }).first().click()
+  await pause(300)
+  verifier(
+    "la fenêtre de confirmation nomme ce qui va disparaître",
+    await dbl.getByText("Archiver ce doublon ?").isVisible(),
+    "un archivage silencieux sur un cockpit à 60 chantiers ne se remarque pas",
+  )
+  await dbl.getByRole("button", { name: "Archiver", exact: true }).click()
+  await pause(500)
+  verifier(
+    "et « Annuler » est proposé juste après",
+    await dbl.locator("[data-sonner-toast]").getByRole("button", { name: "Annuler" }).isVisible(),
+    "archiver le mauvais des deux jumeaux doit se défaire d'un appui",
+  )
+
+  await dbl.close()
+
+  // La carte doit se TAIRE quand il n'y a rien : une barre « 0 doublon » de
+  // plus dans un cockpit qui en a déjà beaucoup n'apprendrait rien. Vérifié
+  // sur le cockpit à sa vraie taille, 83 chantiers aux titres tous distincts.
+  verifier(
+    "aucun doublon : la carte ne s'affiche pas du tout",
+    (await gros.locator("#doublons").getByText("Ça existe déjà").count()) === 0,
+    "elle occuperait une ligne pour ne rien dire",
+  )
 
   await gros.close()
 

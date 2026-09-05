@@ -98,6 +98,9 @@ jobs:
       - name: « Ça existe déjà » à la saisie d'un chantier
         run: node --experimental-strip-types scripts/verifier-doublon-chantier.ts
 
+      - name: Les doublons déjà en base
+        run: node --experimental-strip-types scripts/verifier-doublons-existants.ts
+
       - name: Ce qui a bougé depuis le dernier passage
         run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
 
