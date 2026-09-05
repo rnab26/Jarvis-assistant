@@ -8,7 +8,6 @@ import { useAuth } from "@/hooks/useAuth"
 import { AssistOverlay } from "@/lib/assistOverlayPlugin"
 import { AssistantOverlayPage } from "@/pages/AssistantOverlayPage"
 import { CockpitPage } from "@/pages/CockpitPage"
-import { ContactsPage } from "@/pages/ContactsPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { DocumentsPage } from "@/pages/DocumentsPage"
 import { LoginPage } from "@/pages/LoginPage"
@@ -48,7 +47,6 @@ function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/cockpit" element={<CockpitPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
-        <Route path="/contacts" element={<ContactsPage />} />
         <Route path="/memoire" element={<MemoirePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

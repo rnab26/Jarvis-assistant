@@ -271,10 +271,18 @@ doitDonner("emmène-moi au 12 rue de la Paix", {
 
 console.log("\n— Ce qui ne doit JAMAIS déclencher une action dans une app —")
 
-doitLaisserPasser(
-  "appelle le truc bidule",
-  "aucun contact ne correspond, mieux vaut redemander que composer au hasard",
-)
+// Changé le 5 sept. 2026, et c'est une amélioration, pas un relâchement :
+// l'action part maintenant avec le nom dit, et c'est le TÉLÉPHONE qui cherche
+// dans le vrai répertoire. Rien n'est composé au hasard — chercherContact
+// refuse tout ce qui ne correspond pas franchement, et Jarvis répond alors
+// « je ne trouve personne à ce nom dans ton répertoire ». Avant, la phrase
+// partait au serveur, qui finissait par lui réclamer un numéro qu'il avait
+// déjà dans son téléphone.
+doitDonner("appelle le truc bidule", {
+  action: "call_contact",
+  contact_name: "Le truc bidule",
+})
+doitDonner("appelle Yoni", { action: "call_contact", contact_id: "ct-yoni" })
 doitDonner("ajoute une tâche : appeler le plombier", {
   action: "add_task",
   title: "Appeler le plombier",

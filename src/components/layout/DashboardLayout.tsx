@@ -12,7 +12,11 @@ const TABS = [
   { to: "/", label: "Tâches", end: true },
   { to: "/cockpit", label: "Cockpit dev", end: false },
   { to: "/documents", label: "Documents", end: false },
-  { to: "/contacts", label: "Contacts", end: false },
+  // Plus d'onglet Contacts depuis le 5 sept. 2026. Raphaël : « ça ne sert à
+  // rien, sachant que tu as déjà une mémoire active dans Jarvis qui retient
+  // tout ce qu'on dit. À partir du moment où il est connecté à mes contacts
+  // du téléphone, il sait tout. » Les numéros viennent du répertoire
+  // (READ_CONTACTS), ce qu'il dit des gens va dans la mémoire.
   { to: "/memoire", label: "Mémoire", end: false },
 ]
 

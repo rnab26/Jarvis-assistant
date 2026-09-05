@@ -451,8 +451,16 @@ export function interpreterLocalement(
   const appelContact = texte.match(/^(?:appelle|telephone a)\s+(.+)$/)
   if (appelContact) {
     const contact = meilleurContact(appelContact[1], ctx.contacts ?? [])
-    if (!contact) return null
-    return [{ action: "call_contact", contact_id: contact.id }]
+    if (contact) return [{ action: "call_contact", contact_id: contact.id }]
+    // Aucun contact enregistré ne correspond : on rend quand même l'action,
+    // avec le nom tel qu'il l'a dit. C'est le TÉLÉPHONE qui cherchera dans
+    // son vrai répertoire (chercherContact), et qui répondra « je ne trouve
+    // personne à ce nom » si rien ne colle. Avant le 5 sept. 2026 on rendait
+    // null, et la phrase partait au serveur pour finir par lui réclamer un
+    // numéro qu'il avait déjà dans son téléphone.
+    const nomDit = appelContact[1].trim()
+    if (nomDit.length < 2) return null
+    return [{ action: "call_contact", contact_name: majuscule(nomDit) }]
   }
 
   /* ---------- Préparer un message ---------- */
