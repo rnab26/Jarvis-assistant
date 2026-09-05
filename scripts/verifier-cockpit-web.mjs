@@ -574,6 +574,32 @@ try {
   )
   await calme.close()
 
+  // ── Un chantier déjà archivé ne doit pas pouvoir être ré-archivé ──
+  // Sa date de livraison serait réécrite à aujourd'hui : son histoire fausse,
+  // et « livrés cette semaine » avec elle. Le cas arrive dès qu'on coche une
+  // ligne dans le bloc des archivées.
+  await gros.getByRole("button", { name: "Terminer" }).first().click()
+  await pause(200)
+  await gros.getByRole("button", { name: /Archivées/ }).first().click()
+  await pause(400)
+  await gros.getByRole("button", { name: "Choisir" }).first().click()
+  await pause(300)
+  const caseArchivee = gros
+    .getByRole("region", { name: "Chantiers" })
+    .getByRole("checkbox")
+    .last()
+  await caseArchivee.click()
+  await pause(300)
+  verifier(
+    "cocher un chantier déjà archivé ne propose plus de l'archiver",
+    (await gros.getByRole("button", { name: /^Archiver/ }).count()) === 0,
+    "le bouton réécrirait sa date de livraison à aujourd'hui",
+  )
+  verifier(
+    "mais les autres actions groupées restent possibles sur lui",
+    await gros.getByRole("button", { name: "Supprimer" }).first().isVisible(),
+  )
+
   await gros.close()
 
 } finally {

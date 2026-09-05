@@ -201,18 +201,31 @@ export function CockpitBoard({
    * la base : on ne coche que ce qu'on a sous les yeux. */
   const toutSelectionner = () => setSelection(new Set(filtres.map((i) => i.id)))
 
-  /** Chaque action groupée mémorise l'état d'avant et propose de l'annuler. */
+  /**
+   * Chaque action groupée mémorise l'état d'avant et propose de l'annuler.
+   *
+   * `seulement` écarte les chantiers auxquels l'action ne s'applique pas : un
+   * chantier déjà archivé qu'on ré-archive verrait sa date de livraison
+   * réécrite à aujourd'hui — son histoire fausse, et « livrés cette semaine »
+   * avec elle. Le cas arrive dès qu'on coche une ligne dans le bloc des
+   * archivées.
+   */
   async function agirSurLeLot(
     message: (n: number) => string,
     action: (ids: string[]) => Promise<void>,
+    seulement?: (item: DevItem) => boolean,
   ) {
-    const etats = choisis.map(etatDe)
+    const cibles = seulement ? choisis.filter(seulement) : choisis
+    const etats = cibles.map(etatDe)
     const ids = etats.map((e) => e.id)
     if (ids.length === 0) return
     await action(ids)
     setSelection(new Set())
     proposerAnnulation(message(ids.length), etats, onRestore)
   }
+
+  /** Ce qui peut encore être archivé dans la sélection. */
+  const aArchiver = choisis.filter((i) => !i.archived_at)
 
   const boutonSections = (
     <SectionsDialog
@@ -525,19 +538,24 @@ export function CockpitBoard({
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                agirSurLeLot(
-                  (n) => `${n} chantier${n > 1 ? "s" : ""} archivé${n > 1 ? "s" : ""}`,
-                  onArchiveMany,
-                ).catch(alreadyNotified)
-              }
-            >
-              <Archive className="size-3.5" />
-              Archiver
-            </Button>
+            {/* Rien à archiver si tout ce qui est coché l'est déjà : proposer
+                le bouton laisserait croire qu'il fait quelque chose. */}
+            {aArchiver.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  agirSurLeLot(
+                    (n) => `${n} chantier${n > 1 ? "s" : ""} archivé${n > 1 ? "s" : ""}`,
+                    onArchiveMany,
+                    (i) => !i.archived_at,
+                  ).catch(alreadyNotified)
+                }
+              >
+                <Archive className="size-3.5" />
+                Archiver{aArchiver.length < choisis.length ? ` (${aArchiver.length})` : ""}
+              </Button>
+            )}
 
             <ConfirmerAction
               titre={`Supprimer ${choisis.length} chantier${choisis.length > 1 ? "s" : ""} ?`}
