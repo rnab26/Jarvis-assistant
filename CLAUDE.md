@@ -508,6 +508,38 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   de Mélissa. Ses réponses sont enregistrées : `action: "read_db"` sur l'URL.
   https://claude.ai/code/artifact/4e952f48-99a4-41de-9c67-44c24769bc17
 
+- **Le tableau de bord de Raphaël** (5 sept., soir) — **LA FICHE COURANTE, celle
+  à lire en premier.** Elle REMPLACE et refond les précédentes, qu'il jugeait
+  « désordonnées » : « il me demande de créer des clés, mais il ne me dit pas où
+  les déposer. Je ne peux pas écrire si je l'ai fait, si ça bloque. » Elle porte
+  donc, pour chacun des 3 gestes et des 11 décisions : la page exacte, le champ
+  exact, la valeur exacte à taper, un état **Fait / Pas encore / Ça bloque**, un
+  champ libre ET un bouton photo — par point, jamais un seul en bas de page.
+  https://claude.ai/code/artifact/a23fc9f6-99e1-4c70-90ee-03ab15ff82d9
+  Ses réponses : `action: "read_db"`, `db_op: "get"`, collection `fiche`,
+  doc_id `tableau-de-bord` ; ses photos : collection `photos` (une par
+  document, champ `item` = l'identifiant du point).
+
+  **Ce que cette fiche a établi, et qu'il ne faut plus lui redemander** (vérifié
+  le 5 sept. dans les secrets Supabase, pas supposé) : `GEMINI_API_KEY_TEST` est
+  DÉPOSÉE et fonctionne ; `FIREBASE_SERVICE_ACCOUNT` est DÉPOSÉ et
+  `android/app/google-services.json` est en place (projet `jarvis-507506`,
+  paquet `com.raphael.jarvis`) — les notifications app fermée n'attendent plus
+  que du code ; le compte Google est branché depuis le 3 sept. avec
+  `gmail.modify` + `calendar.events`. **Le SEUL secret manquant de tout le
+  projet est `GOOGLE_GEOCODING_API_KEY`**, et il ne sert qu'aux rappels de lieu,
+  dont il n'a aucun. Pour refaire ce constat sans rien lui demander :
+
+  ```bash
+  curl -sS https://api.supabase.com/v1/projects/bexiyvmdbxcwxasgslxp/secrets \
+    -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | python3 -c \
+    "import json,sys; print('\n'.join(sorted(s['name'] for s in json.load(sys.stdin))))"
+  grep -rhoP 'Deno\.env\.get\("\K[A-Z_0-9]+' supabase/functions/ | sort -u
+  ```
+
+  (la première liste ce qui EST déposé, la seconde ce que le code ATTEND ; la
+  différence est la seule chose à lui demander — jamais une liste devinée)
+
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
 le même commit — sinon elle sera perdue pour les sessions suivantes.
