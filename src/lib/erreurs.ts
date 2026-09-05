@@ -135,6 +135,21 @@ export function erreurDepuisEcoute(
     }
   }
 
+  // « depuis le début j'essaie de lancer une musique […] ça ne fonctionne
+  // pas » (5 sept. 2026). L'échec est SILENCIEUX par nature : l'app s'ouvre,
+  // rien ne joue, et journal_ecoute est purgé à sept jours et ne se lit qu'en
+  // SQL. Ici, il reste, se regroupe par empreinte, et se voit dans le
+  // cockpit — c'est ce qui permettra de savoir quelle application refuse,
+  // sans rien avoir à demander à Raphaël.
+  if (evenement === "musique_resultat" && texte("resultat") === "ouverture") {
+    return {
+      categorie: "action",
+      titre: "La musique demandée n'a pas été lancée, l'app s'est seulement ouverte",
+      detail: `${texte("app_choisie") ?? "application inconnue"} — « ${texte("requete") ?? ""} »`,
+      source: "app",
+    }
+  }
+
   if (evenement === "service_mort") {
     return {
       categorie: "ecoute",

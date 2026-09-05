@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core"
 import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/actionsTelephone"
+import { phraseMusique, type ResultatOuverture } from "@/lib/actionsTelephoneMusique"
 import { ecrireReglage } from "@/lib/reglages"
 import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
@@ -205,11 +206,28 @@ export async function executerActionTelephone(
           })
         }
 
-        await ActionsTelephone.ouvrirApplication({ paquet, recherche: action.music_query })
+        const retour = await ActionsTelephone.ouvrirApplication({
+          paquet,
+          recherche: action.music_query,
+        })
         if (action.music_query) {
-          return nomAffiche
-            ? `Je lance ${action.music_query} sur ${nomAffiche}.`
-            : `Je lance ${action.music_query}.`
+          // Le résultat réel part aussi dans le journal : c'est la seule
+          // façon de savoir, depuis ici, ce qui se passe sur SON téléphone
+          // sans avoir à le lui demander. Une APK antérieure à ce correctif
+          // ne renvoie rien : on le note tel quel plutôt que de supposer.
+          const resultat: ResultatOuverture | "inconnu" = retour?.resultat ?? "inconnu"
+          noterEcoute("musique_resultat", {
+            resultat,
+            requete: action.music_query,
+            app_choisie: nomAffiche || null,
+            paquet_trouve: paquet ?? null,
+          })
+          if (resultat === "inconnu") {
+            return nomAffiche
+              ? `Je lance ${action.music_query} sur ${nomAffiche}.`
+              : `Je lance ${action.music_query}.`
+          }
+          return phraseMusique(resultat, action.music_query, nomAffiche || null)
         }
         return `J'ouvre ${nomAffiche}.`
       }

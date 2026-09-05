@@ -94,31 +94,90 @@ public class ActionsTelephonePlugin extends Plugin {
     }
 
     /**
+     * Les liens de recherche des applications de musique courantes.
+     *
+     * Deuxième chance quand l'application ne déclare pas l'intent « joue ça »
+     * (MEDIA_PLAY_FROM_SEARCH). Ils n'ouvrent pas la lecture : ils ouvrent
+     * l'écran de recherche de l'app SUR la requête, ce qui laisse un seul
+     * appui à faire au lieu de tout retaper. C'est franchement moins bien que
+     * la lecture directe, et c'est pour ça qu'on le DIT à Raphaël au lieu de
+     * lui annoncer « je lance » comme avant.
+     */
+    private String lienRecherche(String paquet, String requete) {
+        String q = Uri.encode(requete);
+        switch (paquet) {
+            case "com.spotify.music":
+                return "spotify:search:" + q;
+            case "com.google.android.apps.youtube.music":
+                return "https://music.youtube.com/search?q=" + q;
+            case "com.apple.android.music":
+                return "https://music.apple.com/search?term=" + q;
+            case "deezer.android.app":
+                return "deezer://www.deezer.com/search/" + q;
+            case "com.google.android.youtube":
+                return "https://www.youtube.com/results?search_query=" + q;
+            default:
+                return null;
+        }
+    }
+
+    /**
      * Ouvre une application, et lui demande de jouer quelque chose si une
      * recherche est fournie.
      *
-     * L'intent « joue ça » (INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) est celui que
-     * les apps de musique déclarent pour l'assistant du téléphone : Spotify,
-     * YouTube Music et consorts démarrent directement la lecture. Si aucune ne
-     * le comprend, on se rabat sur l'ouverture simple plutôt que d'échouer.
+     * TROIS ISSUES POSSIBLES, ET ON DIT LAQUELLE. C'est tout l'objet du
+     * correctif du 5 sept. 2026 : Raphaël, « depuis le début j'essaie de
+     * lancer une musique avec un titre particulier […] ça ne fonctionne
+     * pas ». Le code se rabattait en SILENCE sur l'ouverture de l'app, et
+     * Jarvis répondait « je lance » pendant que rien ne jouait. Personne ne
+     * pouvait le voir d'ici : ni les journaux ni la réponse ne distinguaient
+     * les deux cas.
+     *
+     *   « lecture »   l'app a accepté « joue ça » — la lecture démarre.
+     *   « recherche » elle ne le déclare pas, on a ouvert sa recherche sur
+     *                 la requête : un appui reste à faire.
+     *   « ouverture » on n'a pu que l'ouvrir, rien n'est joué.
      */
     @PluginMethod
     public void ouvrirApplication(PluginCall call) {
         String paquet = call.getString("paquet");
         String recherche = call.getString("recherche");
         PackageManager pm = getContext().getPackageManager();
+        JSObject res = new JSObject();
 
         if (recherche != null && !recherche.isEmpty()) {
             Intent lecture = new Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH);
             lecture.putExtra(android.app.SearchManager.QUERY, recherche);
+            // Recherche libre (« mets du Miles Davis ») plutôt qu'un artiste
+            // ou un album identifié : c'est ce que la documentation d'Android
+            // demande de poser pour que l'app sache quoi faire de la requête.
+            lecture.putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*");
             if (paquet != null && !paquet.isEmpty()) lecture.setPackage(paquet);
             lecture.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
                 getContext().startActivity(lecture);
-                call.resolve();
+                res.put("resultat", "lecture");
+                call.resolve(res);
                 return;
             } catch (Exception ignore) {
-                // Aucune app de musique n'a déclaré cet intent : on ouvre l'app.
+                // Cette app ne déclare pas « joue ça » : on essaie sa recherche.
+            }
+
+            if (paquet != null && !paquet.isEmpty()) {
+                String lien = lienRecherche(paquet, recherche);
+                if (lien != null) {
+                    Intent vers = new Intent(Intent.ACTION_VIEW, Uri.parse(lien));
+                    vers.setPackage(paquet);
+                    vers.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        getContext().startActivity(vers);
+                        res.put("resultat", "recherche");
+                        call.resolve(res);
+                        return;
+                    } catch (Exception ignore) {
+                        // Lien refusé aussi : il reste l'ouverture nue.
+                    }
+                }
             }
         }
 
@@ -131,7 +190,10 @@ public class ActionsTelephonePlugin extends Plugin {
             call.reject("Cette application n'est pas installée sur le téléphone.");
             return;
         }
-        if (lancer(ouverture, call, "Impossible d'ouvrir cette application.")) call.resolve();
+        if (lancer(ouverture, call, "Impossible d'ouvrir cette application.")) {
+            res.put("resultat", "ouverture");
+            call.resolve(res);
+        }
     }
 
     /**

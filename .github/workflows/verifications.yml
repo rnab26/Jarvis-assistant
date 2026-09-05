@@ -94,6 +94,11 @@ jobs:
       # redemandera plus jamais est un bouton mort, et rien à l'écran ne le
       # dit. Ce contrôle lit aussi le plugin Android : une ligne du catalogue
       # qu'il ne connaît pas afficherait « Pas encore » pour toujours.
+      # « je lance » suivi de rien : le repli silencieux sur l'ouverture nue
+      # de l'app faisait mentir Jarvis à chaque demande de musique.
+      - name: Lancer une musique dit ce qui s'est vraiment passé
+        run: node --experimental-strip-types scripts/verifier-musique.ts
+
       - name: Les autorisations du téléphone
         run: node --experimental-strip-types scripts/verifier-autorisations.ts
 
