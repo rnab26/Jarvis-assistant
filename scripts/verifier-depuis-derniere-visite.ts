@@ -96,12 +96,81 @@ verifier(
 )
 verifier("et le bandeau s'affiche", bilan.quelqueChose)
 
-// Sans repère (première ouverture) : on n'annonce RIEN, plutôt que tout.
-const premiereFois = depuisDerniereVisite(ITEMS, MESSAGES, null)
+// Sans repère sur cet écran — première ouverture, ou stockage effacé — son
+// DERNIER MESSAGE dans le journal en est un, et un bon : il date d'un moment
+// où il regardait le cockpit. Sans ce rattrapage, l'ouverture qui suit une
+// absence, celle qui compte, n'annoncerait justement rien.
+// Son message le plus récent fait foi — ici celui d'hier soir, le dernier
+// moment où il regardait le cockpit.
+const parLeMessage = depuisDerniereVisite(
+  ITEMS,
+  [
+    ...MESSAGES.filter((m) => m.author !== "Raphaël"),
+    message("Raphaël", HIER, "Sa consigne d'hier soir."),
+    message("Raphaël", AVANT, "Un message plus ancien."),
+  ],
+  null,
+)
 verifier(
-  "à la première ouverture, rien n'est annoncé",
-  !premiereFois.quelqueChose && premiereFois.livres.length === 0,
+  "sans repère, son dernier message sert de point de départ",
+  parLeMessage.quelqueChose &&
+    parLeMessage.origine === "message" &&
+    parLeMessage.livres.length === 1 &&
+    parLeMessage.nouveaux.length === 1,
+  JSON.stringify({
+    origine: parLeMessage.origine,
+    livres: parLeMessage.livres.length,
+    nouveaux: parLeMessage.nouveaux.length,
+  }),
+)
+verifier(
+  "et c'est dit tel quel : « depuis ton dernier message », pas « passage »",
+  parLeMessage.origine === "message" && parLeMessage.depuis === HIER,
+  `${parLeMessage.origine} / ${parLeMessage.depuis}`,
+)
+
+// Ni repère, ni message de lui : là, on n'annonce vraiment rien.
+const rienDuTout = depuisDerniereVisite(
+  ITEMS,
+  MESSAGES.filter((m) => m.author !== "Raphaël"),
+  null,
+)
+verifier(
+  "sans repère NI message de lui, rien n'est annoncé",
+  !rienDuTout.quelqueChose,
   "tout le cockpit serait présenté comme nouveau",
+)
+
+// Ses messages sont signés de deux façons selon qu'il écrit depuis l'app ou
+// qu'une session relaie ses mots. Les deux sont de lui.
+const relaye = depuisDerniereVisite(
+  ITEMS,
+  [
+    ...MESSAGES.filter((m) => m.author !== "Raphaël"),
+    message("raphael (via claude/une-session)", HIER, "Sa consigne, relayée."),
+  ],
+  null,
+)
+verifier(
+  "un message relayé « raphael (via … ) » est bien reconnu comme sien",
+  relaye.origine === "message" && relaye.depuis === HIER && relaye.livres.length === 1,
+  JSON.stringify({ origine: relaye.origine, depuis: relaye.depuis, livres: relaye.livres.length }),
+)
+verifier(
+  "et il ne se compte pas lui-même comme un message reçu",
+  !relaye.messages.some((m) => m.author.toLowerCase().startsWith("raphael")),
+)
+
+// Le repère de l'écran l'emporte : c'est le plus récent des deux.
+const ecranDAbord = depuisDerniereVisite(
+  ITEMS,
+  [...MESSAGES, message("Raphaël", AVANT, "Vieux message.")],
+  HIER,
+)
+verifier(
+  "quand l'écran a son repère, c'est lui qui compte",
+  ecranDAbord.origine === "passage" && ecranDAbord.depuis === HIER,
+  `${ecranDAbord.origine} / ${ecranDAbord.depuis}`,
 )
 
 // Un repère illisible ne doit pas non plus tout faire passer pour nouveau.
