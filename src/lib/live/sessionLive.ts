@@ -95,6 +95,10 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     return { arreter: () => {}, finie: Promise.resolve({ raison, parRaphael: false }) }
   }
 
+  // Le jeton est obtenu : on retient QUAND, pour pouvoir séparer les trois
+  // temps d'une ouverture (voir live_debut plus bas).
+  const jetonObtenuAt = Date.now()
+
   const lecteur = new LecteurAudio()
   let capture: CaptureMicro | null = null
   let session: Session | null = null
@@ -209,13 +213,39 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       config: {},
     })
 
+    const connectee = Date.now()
+
     // 3. Le micro, en continu. Google décide du reste.
     capture = await capturerMicro((paquet) => {
       if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
     })
     // `contexte` : la taille de ce que Jarvis sait à l'ouverture. Zéro ou
     // presque = une conversation aveugle (bug du 4 sept.), à voir d'ici.
-    noterEcoute("live_debut", { modele: data.modele, delai_ms: Date.now() - debut, premier: ev.premierMessage ? 1 : 0, contexte: ev.contexte.length })
+    //
+    // LES TROIS TEMPS SÉPARÉMENT, et c'est le point (chantier ba140853).
+    // Raphaël dit le Live « beaucoup plus lent » dans l'app que sur le web,
+    // avec le début de phrase perdu. Or `delai_ms` seul ne permet PAS de le
+    // constater : mesuré le 5 sept. sur le journal réel, sa médiane est de
+    // 3370 ms dans l'app contre 3269 ms sur le web — la même. Le total ne
+    // dit pas OÙ le temps passe, et ces trois étapes n'ont aucune raison de
+    // se comporter pareil dans une WebView Android :
+    //   ms_jeton    — notre Edge Function (réseau, démarrage à froid) ;
+    //   ms_connexion — le WebSocket jusqu'à Google ;
+    //   ms_micro    — getUserMedia + AudioContext, le seul des trois qui
+    //                 dépend vraiment de la WebView, et le seul pendant
+    //                 lequel Jarvis a l'air ouvert sans rien capter — donc
+    //                 le suspect nº 1 pour le début de phrase perdu.
+    // Sans ces trois nombres, la prochaine session en serait réduite à
+    // deviner, comme celle-ci.
+    noterEcoute("live_debut", {
+      modele: data.modele,
+      delai_ms: Date.now() - debut,
+      ms_jeton: jetonObtenuAt - debut,
+      ms_connexion: connectee - jetonObtenuAt,
+      ms_micro: Date.now() - connectee,
+      premier: ev.premierMessage ? 1 : 0,
+      contexte: ev.contexte.length,
+    })
     ev.onEtat("ecoute")
     if (ev.premierMessage) {
       ev.onEntendu(ev.premierMessage, true)

@@ -28,6 +28,7 @@ import {
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
+import { consigneQuestionApp, suiteDeLaQuestion, type QuestionEnAttente } from "@/lib/questionAppLive"
 import { ecrireModeLive, lireModeLive } from "@/lib/livePrefs"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import type { DevItem } from "@/types/database"
@@ -191,6 +192,11 @@ export function MicButton({
   // (appui, mot-clé reconnu) prend la main. La veille compare avant/après sa
   // rafale : s'il a changé, elle ne touche plus à rien.
   const priseRef = useRef(0)
+  // En Live, « avec quelle application ? » est posée par le modèle et la
+  // réponse revient au tour suivant : on garde ici la demande à rejouer.
+  // Volontairement une ref et pas un état : personne ne l'affiche, et un
+  // rendu de plus pendant que Google tient le micro ne sert à rien.
+  const questionAppRef = useRef<QuestionEnAttente | null>(null)
 
   /**
    * Envoie un transcript à la Edge Function et renvoie les actions à exécuter.
@@ -471,13 +477,40 @@ export function MicButton({
       onReponse: (texte) => setLastReply(texte),
       onCommande: async (demande) => {
         setLastUserText(demande)
+
+        // Une question « avec quelle application ? » posée au tour précédent
+        // attend peut-être sa réponse ici (chantier d3b6eeb4).
+        const suite = suiteDeLaQuestion(questionAppRef.current, demande, Date.now())
+        let aRejouer = demande
+        if (suite.suite !== "normale") questionAppRef.current = null
+        if (suite.suite === "enregistrer") {
+          await executerActionTelephone(
+            { action: "set_app_preference", category: suite.categorie as CategorieAppTelephone, app_name: suite.app },
+            [],
+          )
+          // La préférence est connue : on rejoue la demande d'origine, qui
+          // ne sera plus ambiguë.
+          aRejouer = suite.demande
+          setLastUserText(aRejouer)
+        }
+
         // Le rendu courant, pas celui de l'ouverture : une tâche ajoutée
         // pendant la conversation doit se voir à la commande suivante.
-        const actions = await derniersRef.current.resolveTranscript(demande)
+        const actions = await derniersRef.current.resolveTranscript(aRejouer)
         // Une question de précision ne peut pas ouvrir un second micro : on
         // la rend au modèle, qui la posera de vive voix.
         if (actions[0]?.action === "clarify") return actions[0].message ?? "Peux-tu préciser ?"
-        return await derniersRef.current.executerActions(actions, demande)
+
+        // Même chose pour l'app du téléphone : sans la question, Android
+        // ouvrirait son sélecteur « Terminer l'action avec… ». On mémorise
+        // la demande pour la rejouer quand il aura répondu.
+        const question = actions.length === 1 ? questionAmbigueAppTelephone(actions[0]) : null
+        if (question) {
+          questionAppRef.current = { demande: aRejouer, categorie: question.category, poseeAt: Date.now() }
+          return consigneQuestionApp(question.message)
+        }
+
+        return await derniersRef.current.executerActions(actions, aRejouer)
       },
       onEtat: (etat, detail) => {
         if (etat === "connexion") setStatus("processing")

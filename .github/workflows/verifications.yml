@@ -54,6 +54,13 @@ jobs:
       - name: Ce qui finit dans le registre des erreurs, et ce qui n'y finit pas
         run: node --experimental-strip-types scripts/verifier-raison-ecoute.ts
 
+      # Le cas qui compte : quand il NE répond PAS à « avec quelle
+      # application ? », sa phrase suivante ne doit surtout pas être
+      # enregistrée comme son application préférée — ce serait invisible et
+      # définitif.
+      - name: « Avec quelle application ? » en mode Live
+        run: node --experimental-strip-types scripts/verifier-question-app-live.ts
+
       - name: L'envoi d'un chantier à Claude Code
         run: node --experimental-strip-types scripts/verifier-envoi-chantier.ts
 
