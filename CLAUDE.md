@@ -312,6 +312,31 @@ avertissement qui se déclenche à tort n'est plus lu du tout. Elle n'attrape
 que la redite littérale : deux demandes qui disent la même chose avec un autre
 vocabulaire ne se ressemblent pas pour elle, et c'est écrit dans son en-tête.
 
+### Et les doublons DÉJÀ en base (`src/lib/doublonsExistants.ts`)
+
+La fenêtre d'envoi ne voit que ce qu'on tape. Un chantier **dicté à la voix**
+n'entre pas par là : le 5 sept., deux « Sous-sections pour sessions multiples
+Claude Code » cohabitaient dans sa base, mot pour mot. La carte « Ça existe
+déjà » du cockpit les signale, propose d'archiver le plus récent (avec
+confirmation et « Annuler »), et **ne s'affiche pas du tout** quand il n'y a
+rien.
+
+**Les deux mesures ne sont pas la même, et il ne faut pas les confondre.** À la
+saisie, le recouvrement est rapporté au PLUS COURT des deux textes, exprès,
+pour attraper une phrase à peine commencée. Appliquée à des titres complets,
+cette mesure sort **14 paires sur les 192 chantiers réels, dont une seule
+vraie**. La mesure symétrique (Jaccard sur les deux titres) en sort 7 à 0,30,
+2 à 0,50, et exactement 1 à 0,60 — la bonne. D'où `SEUIL_DOUBLON = 0,60`, et
+la consigne de refaire la mesure sur des données réelles avant de le baisser.
+
+**Piège du banc d'essai, à connaître avant d'ajouter des données factices :**
+`motsUtiles()` retire les chiffres. Les 83 chantiers du mode `?volume=1` ne
+variaient que par un numéro — ils étaient donc tous identiques à la
+comparaison, et la carte en signalait cinq qui n'existaient que dans le banc.
+Un jeu d'essai doit être distinct **après normalisation**, pas seulement à
+l'œil : trois listes de longueurs premières entre elles (11, 12, 13) donnent
+83 titres dont aucune paire ne se ressemble.
+
 ### Les actions groupées et le « Annuler »
 
 Le bouton « Choisir » du cockpit passe le tableau en mode sélection : tout se
@@ -1213,6 +1238,7 @@ node scripts/verifier-autorisations-web.mjs              # l'écran des autorisa
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
+node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
