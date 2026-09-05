@@ -290,6 +290,50 @@ les mots sur lesquels elle s'appuie, et **elle se tait quand rien ne se
 détache** — une suggestion fausse est acceptée sans être relue, donc elle coûte
 plus cher qu'une absence de suggestion.
 
+## Les autorisations du téléphone : un seul écran, jamais par surprise
+
+Livré le 5 sept. 2026 (chantier `e399b670`). Sa demande : « quand on installe
+l'application, on fait une sélection directement des autorisations via le
+téléphone directement ». Et la moitié qu'on oublie en la lisant vite : il
+REFUSE qu'on recopie ses données (contacts, applications) dans l'environnement
+de Jarvis. Une autorisation de LECTURE, donnée une fois ; rien n'est importé.
+
+Trois pièces, et la frontière entre elles compte :
+
+- `src/lib/autorisationsTelephone.ts` — le catalogue, dit **par l'usage**
+  (« appeler et écrire à tes contacts », pas READ_CONTACTS), et les décisions
+  pures : que demander, quel bouton afficher, quoi écrire. Vérifiable sans
+  téléphone.
+- `android/.../AutorisationsPlugin.java` — l'état réel, la demande groupée,
+  et l'ouverture du bon écran d'Android.
+- `src/components/settings/Autorisations.tsx` — la liste, **partagée** entre
+  l'écran de premier lancement (`src/components/PremierLancement.tsx`, monté
+  dans `ProtectedShell`) et la carte de Paramètres. Deux écrans qui diraient
+  la même chose autrement finiraient par ne plus la dire pareil.
+
+Quatre choses à ne pas défaire :
+
+1. **Un refus définitif n'affiche jamais « Autoriser ».** Android ne
+   réaffiche plus la fenêtre après un refus — le bouton serait mort, et rien
+   ne le dirait. C'est le piège déjà vécu avec les notifications. La ligne
+   envoie vers les réglages système, et dit pourquoi.
+2. **La position en arrière-plan ne part JAMAIS dans le même lot que la
+   position.** À partir d'Android 11 le système rejette le lot entier, sans
+   afficher la moindre fenêtre : sur le téléphone ça se lit comme un refus de
+   Raphaël. Elle se demande seule, après.
+3. **L'état des notifications se lit avec `areNotificationsEnabled()`**, pas
+   avec `checkSelfPermission` : avant Android 13 la permission n'existe pas,
+   et il peut couper les notifications depuis les réglages sans qu'elle
+   change.
+4. **Quand Android ne dit pas l'état, on le dit** (« Non vérifiable »,
+   `connue: false`) au lieu d'annoncer un refus qui n'en est peut-être pas
+   un. C'est le cas de l'assistant par défaut, qu'aucune API publique
+   n'expose.
+
+Pas d'autorisation par application tierce, et c'est explicite dans sa
+demande : ouvrir une app et lui passer un texte marche déjà sans permission,
+pour n'importe laquelle, sans code par app.
+
 ## Supprimer demande toujours, partout dans l'app
 
 `src/components/ConfirmerAction.tsx` : la fenêtre qui pose la question avant
@@ -947,6 +991,8 @@ node scripts/verifier-memoire-web.mjs                    # « Vos conversations 
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
 node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
+node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton « Autoriser » n'est jamais mort, sans réseau
+node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau

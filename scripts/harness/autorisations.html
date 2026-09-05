@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Banc d'essai des autorisations</title>
+  </head>
+  <body>
+    <!-- Page servie uniquement par `vite` en dev, jamais incluse dans le
+         build : elle monte la VRAIE liste des autorisations avec des états
+         factices — dont ceux qu'on ne peut pas produire sur cette machine
+         (refus définitif, état illisible, plugin absent). Voir
+         scripts/verifier-autorisations-web.mjs. -->
+    <div id="root"></div>
+    <script type="module" src="/scripts/harness/autorisations.tsx"></script>
+  </body>
+</html>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { CarteAutorisations } from "@/components/settings/Autorisations"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
@@ -54,6 +55,17 @@ const SECTIONS = {
     resume: "Version, mise à jour, nouveautés",
     motsCles:
       "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
+  },
+  // Les autorisations Android, dites par ce qu'elles permettent. Haut de
+  // page volontairement : c'est le premier écran d'un téléphone neuf, et le
+  // seul recours quand une autorisation a été refusée une fois — Android ne
+  // la redemande alors plus jamais tout seul.
+  autorisations: {
+    cle: "autorisations",
+    titre: "Autorisations du téléphone",
+    resume: "Ce que Jarvis a le droit de faire",
+    motsCles:
+      "autorisation permission accès micro enregistrement contacts répertoire numéro téléphone appel appeler notification position gps localisation arrière-plan installer mise à jour assistant appui long bouton refusée bloquée accorder android réglages système premier lancement",
   },
   voix: {
     cle: "voix",
@@ -576,6 +588,10 @@ export function SettingsPage() {
         <Reinitialiser />
 
         <Confidentialite />
+      </Section>
+
+      <Section {...SECTIONS.autorisations} filtre={recherche}>
+        <CarteAutorisations />
       </Section>
 
       <Section {...SECTIONS.voix} filtre={recherche}>

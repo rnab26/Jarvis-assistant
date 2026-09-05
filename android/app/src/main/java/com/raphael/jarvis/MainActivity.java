@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ApkDownloaderPlugin.class);
         registerPlugin(ActionsTelephonePlugin.class);
         registerPlugin(ReglagesSystemePlugin.class);
+        registerPlugin(AutorisationsPlugin.class);
         super.onCreate(savedInstanceState);
         handleShareIntent(getIntent());
         handleWidgetIntent(getIntent());

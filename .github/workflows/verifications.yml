@@ -90,6 +90,13 @@ jobs:
       - name: L'aller-retour avec une IA installée sur le téléphone
         run: node --experimental-strip-types scripts/verifier-aller-retour-ia.ts
 
+      # Un bouton « Autoriser » sur une autorisation qu'Android ne
+      # redemandera plus jamais est un bouton mort, et rien à l'écran ne le
+      # dit. Ce contrôle lit aussi le plugin Android : une ligne du catalogue
+      # qu'il ne connaît pas afficherait « Pas encore » pour toujours.
+      - name: Les autorisations du téléphone
+        run: node --experimental-strip-types scripts/verifier-autorisations.ts
+
       - name: Retrouver quelqu'un dans le répertoire du téléphone
         run: node --experimental-strip-types scripts/verifier-contact-repertoire.ts
 

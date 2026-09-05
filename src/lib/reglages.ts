@@ -154,6 +154,11 @@ export const STOCKAGE_LOCAL_ASSUME: { prefixe: string; pourquoi: string }[] = [
       "La question envoyée à une IA installée, en attendant que Raphaël en partage la réponse. Un aller-retour en cours sur CET appareil, qui vit une demi-heure : la réponse se partage depuis le téléphone d'où la question est partie, pas depuis un autre.",
   },
   {
+    prefixe: "jarvis_autorisations_vues",
+    pourquoi:
+      "L'écran des autorisations a déjà été présenté sur CET appareil. Les autorisations Android sont propres au téléphone : recopier ce repère en base ferait sauter l'écran sur un appareil neuf, qui n'a justement rien d'accordé.",
+  },
+  {
     prefixe: "jarvis_cockpit_vu",
     pourquoi:
       "Date de la dernière visite du cockpit sur CET écran, pour dire ce qui a bougé depuis. Un repère de lecture, pas une préférence : la retrouver sur un autre appareil n'aurait aucun sens.",
