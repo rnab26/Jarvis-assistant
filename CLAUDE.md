@@ -1386,6 +1386,43 @@ supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle li
 maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
 Playwright du 4 sept.
 
+## L'assistant du téléphone : ce qui qualifie Jarvis, et ce qui ne se peut pas
+
+Raphaël, 5 sept. 2026, captures à l'appui : « voici le vrai paramétrage à
+faire pour activer Jarvis dans le téléphone ». Son chemin Samsung : Paramètres
+› Fonctions avancées › Touche latérale › Appuyer longuement › « Application
+d'assistant numérique par défaut » › Autres applications.
+
+**Le critère est celui d'AOSP, et il a été lu dans la source, pas cité de
+mémoire** (`PermissionController`,
+`AssistantRoleBehavior.getQualifyingPackagesInternal`, téléchargée depuis
+android.googlesource.com). Deux branches, l'une OU l'autre suffit : un
+`VoiceInteractionService` protégé par `BIND_VOICE_INTERACTION` (avec
+`sessionService`, `recognitionService`, `supportsAssist`), **ou** une simple
+activité EXPORTÉE répondant à `ACTION_ASSIST` avec `MATCH_DEFAULT_ONLY`.
+`AssistOverlayActivity` remplit la seconde depuis le 4 sept., et l'APK publiée
+la porte bien — vérifié en téléchargeant la release et en lisant son manifeste
+binaire.
+
+**Donc quand la liste d'Android ne montre pas Jarvis, ne cherche pas dans le
+code : c'est l'APK INSTALLÉE qui est trop ancienne.** Le piège est neuf depuis
+la mise à jour rapide, et il trompe : l'interface est à jour, ce qui donne
+toutes les raisons de croire l'app à jour, alors que le manifeste vit dans la
+coquille Android, que seule une vraie installation remplace. La carte
+« L'appui long sur la touche latérale » (Paramètres › Ce que Jarvis utilise)
+interroge le système sur notre propre paquet, sur l'appareil, et le dit —
+plutôt que de le laisser deviner.
+
+**Deux chemins qui n'existent pas, vérifiés : ne les retente pas.** L'action
+qui mène pile sur l'écran du choix (`MANAGE_DEFAULT_APP` + `EXTRA_ROLE_NAME`)
+est protégée par la permission de signature `MANAGE_ROLE_HOLDERS` ; et le rôle
+assistant est `requestable="false"` dans `roles.xml`, ce qui ferme aussi
+`RoleManager.createRequestRoleIntent`. On ouvre donc `VOICE_INPUT_SETTINGS`,
+puis à défaut la liste des applications par défaut, et les derniers pas restent
+écrits sous le bouton. Corollaire pour le chantier f5621562 : **l'appui long ne
+peut pas avoir d'interrupteur dans l'app**, c'est un rôle exclusif d'Android
+qu'une application ne peut ni s'attribuer ni se retirer.
+
 ## Le web se met à jour tout seul, l'app Android jamais
 
 Piège découvert le 3 sept. 2026 : Raphaël pensait suivre les nouveautés en
