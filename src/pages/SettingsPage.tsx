@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
@@ -68,9 +69,9 @@ const SECTIONS = {
   apps: {
     cle: "apps",
     titre: "Ce que Jarvis utilise",
-    resume: "Applications par défaut, canal des messages",
+    resume: "Applications par défaut, appui long sur le bouton",
     motsCles:
-      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia",
+      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android",
   },
   apparence: {
     cle: "apparence",
@@ -848,6 +849,7 @@ export function SettingsPage() {
       </Section>
 
       <Section {...SECTIONS.apps} filtre={recherche}>
+        <AssistantTelephone />
         <AppsParDefaut />
       </Section>
 
