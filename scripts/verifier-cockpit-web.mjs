@@ -191,8 +191,25 @@ try {
     (await visible("À faire par toi")) && (await visible("Tu décides")),
     "c'est sa demande depuis la première fiche : pour une action il ne choisit pas, il dit où il en est",
   )
+  // Chaque point arrive REPLIÉ sur sa question. Mesuré sur les vraies données
+  // de Raphaël : un seul point déplié fait 616 points de haut et repoussait le
+  // tableau des chantiers à 1 382 ; replié, la carte entière en fait 200.
+  const point = (debut) => page.getByRole("button", { name: new RegExp(`^Répondre : ${debut}`) })
   verifier(
-    "chaque question dit POURQUOI on la pose",
+    "chaque point est replié sur sa question, mais la question se lit sans ouvrir",
+    (await visible("On garde le mot-à-mot des conversations")) &&
+      !(await page.getByText("Supprimer est irréversible").isVisible()),
+    "un seul point déplié repousse le tableau des chantiers hors de l'écran",
+  )
+  verifier(
+    "et rien n'est demandé tant qu'on n'a pas ouvert",
+    (await page.getByLabel(/^Ton commentaire sur : /).count()) === 0,
+  )
+
+  await point("On garde le mot").click()
+  await pause(250)
+  verifier(
+    "ouvrir un point dit POURQUOI la question est posée",
     await visible("Supprimer est irréversible"),
     "une question dont on ne voit pas l'enjeu reste sans réponse",
   )
@@ -200,6 +217,10 @@ try {
     "et propose la recommandation de la session",
     await visible("Ce qu'on te recommande"),
   )
+
+  await point("Dépose GOOGLE").click()
+  await point("Tu veux que je coupe le micro").click()
+  await pause(300)
   verifier(
     "une ACTION propose fait / pas encore / ça bloque",
     (await page.getByRole("button", { name: /^Fait — Dépose/ }).isVisible()) &&
@@ -226,6 +247,13 @@ try {
       (await page.getByRole("button", { name: /^Ça bloque — Dépose/ }).getAttribute("aria-pressed")) ===
         "true",
     "l'état ne serait pas enregistré, ou la ligne disparaîtrait sans qu'on sache pourquoi",
+  )
+  verifier(
+    "et l'état se lit sur la ligne, sans ouvrir",
+    (await page.getByRole("button", { name: /^Répondre : Dépose GOOGLE/ }).innerText()).includes(
+      "Ça bloque",
+    ),
+    "il faudrait rouvrir chaque point pour savoir où il en est",
   )
 
   // Une décision : il choisit une option, écrit à côté, et voit ce qui partira.

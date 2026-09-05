@@ -212,6 +212,14 @@ premier écran :
 - La fenêtre d'envoi ne montre le thème, la priorité et le bouton qu'une fois
   qu'il a écrit quelque chose : sa règle, « une étape à la fois, ne montre pas
   un contrôle qui appartient à une étape avant qu'elle soit atteinte ».
+- `scripts/verifier-cockpit-reel.mjs` le monte sur les VRAIES données, lues à
+  l'instant. Les données inventées d'un banc sont trop sages : le 5 sept., ce
+  banc-là a trouvé ce que l'autre ne pouvait pas voir — la carte « Ce qui
+  attend ta décision » faisait 616 points de haut pour UN point (un
+  « pourquoi » d'un paragraphe, trois options, un champ, une photo) et
+  repoussait le tableau à 1 382 points, là où le banc inventé en montrait 200.
+  Il ne tourne pas dans la CI (il lit la base) : lance-le à la main après avoir
+  touché au cockpit.
 - `scripts/verifier-cockpit-web.mjs` monte le cockpit à SA VRAIE TAILLE
   (`?volume=1` : 83 chantiers, 9 sections) et un jour ordinaire
   (`&calme=1`) : tout ce qui rend une liste lisible se vérifie sur quatre
@@ -1207,6 +1215,7 @@ node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la secti
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
+scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
