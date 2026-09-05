@@ -186,6 +186,15 @@ const MARQUEURS_REELS = [
   null,
 ]
 
+/** Le registre tel qu'il sera dans quelques mois : quarante erreurs
+ * distinctes. La carte doit rester lisible. */
+function erreursEnVolume(): JarvisErreur[] {
+  const familles: ErreurCategorie[] = ["comprehension", "action", "ecoute", "serveur", "systeme"]
+  return Array.from({ length: 40 }, (_, i) =>
+    erreur(`Erreur numéro ${i + 1} relevée dans le cockpit`, familles[i % familles.length], (i % 4) + 1),
+  )
+}
+
 function volumeReel(): { chantiers: DevItem[]; sections: DevSection[] } {
   // En mode calme, aucune réservation expirée : la carte « Qui travaille »
   // reste repliée, comme un jour ordinaire.
@@ -228,6 +237,10 @@ const VOLUME = new URLSearchParams(location.search).has("volume")
  * question en attente, pas de réservation abandonnée. C'est l'état dans lequel
  * Raphaël l'ouvre le plus souvent, donc celui qui doit tenir dans un écran. */
 const CALME = new URLSearchParams(location.search).has("calme")
+/** `?panne=1` : les sections et le registre des erreurs n'ont pas pu être
+ * chargés. Ce que le cockpit dit alors compte autant que ce qu'il dit quand
+ * tout va bien — une panne muette se lit comme une absence. */
+const PANNE = new URLSearchParams(location.search).has("panne")
 const REEL = VOLUME ? volumeReel() : null
 
 function BancDuCockpit() {
@@ -235,15 +248,15 @@ function BancDuCockpit() {
     REELLES?.chantiers ?? REEL?.chantiers ?? CHANTIERS,
   )
   const [sections] = useState<DevSection[]>(REELLES?.sections ?? REEL?.sections ?? SECTIONS)
-  const [erreurs, setErreurs] = useState<JarvisErreur[]>(ERREURS)
+  const [erreurs, setErreurs] = useState<JarvisErreur[]>(VOLUME ? erreursEnVolume() : ERREURS)
   const [messages, setMessages] = useState<DevLogEntry[]>(
     REELLES?.messages ?? (CALME ? [] : MESSAGES),
   )
 
   const sectionsState = {
-    sections,
+    sections: PANNE ? [] : sections,
     loading: false,
-    error: null as string | null,
+    error: PANNE ? "Le serveur ne répond pas." : (null as string | null),
     refresh: rien,
     addSection: rien,
     updateSection: rien,
@@ -254,9 +267,9 @@ function BancDuCockpit() {
   }
 
   const erreursState = {
-    erreurs,
+    erreurs: PANNE ? [] : erreurs,
     loading: false,
-    error: null as string | null,
+    error: PANNE ? "Le serveur ne répond pas." : (null as string | null),
     refresh: rien,
     ajouterErreur: rien,
     modifierErreur: rien,
