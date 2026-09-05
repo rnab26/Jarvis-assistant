@@ -557,7 +557,27 @@ async function rattraperEmpreintes(supabase: SupabaseClient): Promise<void> {
     for (const ligne of data as { id: string; transcript: string }[]) {
       const vecteur = await empreinte(ligne.transcript)
       if (!vecteur) return // Supabase.ai indisponible : inutile d'insister.
-      await supabase.from("echanges").update({ embedding: JSON.stringify(vecteur) }).eq("id", ligne.id)
+      // `.select("id")` n'est pas décoratif : RLS ne refuse pas bruyamment un
+      // UPDATE, il RESTREINT les lignes visibles. Sans politique UPDATE sur
+      // `echanges`, cette écriture touchait ZÉRO ligne et rendait un succès —
+      // le rattrapage n'a rien fait pendant deux jours sans que rien ne le
+      // dise (corrigé par la migration 0021). On lit donc ce qui a vraiment
+      // été écrit, et on le signale si c'est vide.
+      const { data: ecrits, error: erreurEcriture } = await supabase
+        .from("echanges")
+        .update({ embedding: JSON.stringify(vecteur) })
+        .eq("id", ligne.id)
+        .select("id")
+      if (erreurEcriture || !ecrits?.length) {
+        await signalerPanne(
+          supabase,
+          "La mémoire n'a pas pu rendre cherchable un échange passé",
+          erreurEcriture ??
+            "L'écriture n'a touché aucune ligne : politique RLS manquante sur echanges, ou ligne disparue.",
+          ligne.transcript.slice(0, 300),
+        )
+        return // Inutile d'insister sur les neuf suivants : c'est la même cause.
+      }
     }
   } catch {
     // Le rattrapage est un confort : il ne doit jamais gêner la mémorisation.

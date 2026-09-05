@@ -3,6 +3,9 @@ import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/
 import { ecrireReglage } from "@/lib/reglages"
 import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
+import { noterQuestionEnvoyee } from "@/lib/questionEnAttente"
+import { chercherContact } from "@/lib/chercherContact"
+import { lireRepertoire } from "@/lib/repertoire"
 
 /** Les catégories du téléphone où Jarvis doit choisir une application sans
  * qu'on la lui nomme à chaque fois — apprises une fois, retenues ensuite. */
@@ -16,9 +19,12 @@ export type ActionTelephone =
       message_channel?: "whatsapp" | "sms"
       message_text: string
       contact_id?: string
+      /** Le nom prononcé, quand il ne correspond à aucun contact enregistré :
+       * c'est lui qu'on cherche dans le répertoire du téléphone. */
+      contact_name?: string
       phone_number?: string
     }
-  | { action: "call_contact"; contact_id?: string; phone_number?: string }
+  | { action: "call_contact"; contact_id?: string; contact_name?: string; phone_number?: string }
   | {
       action: "set_alarm"
       alarm_time?: string
@@ -90,6 +96,40 @@ function numeroDe(contacts: Contact[], contactId?: string, dicte?: string): stri
 
 function nomDe(contacts: Contact[], contactId?: string): string | null {
   return contacts.find((c) => c.id === contactId)?.name ?? null
+}
+
+/**
+ * Le numéro de quelqu'un, cherché dans le RÉPERTOIRE DU TÉLÉPHONE.
+ *
+ * Appelé seulement quand rien n'a été trouvé ailleurs : le répertoire n'est
+ * lu qu'au moment où il sert, jamais copié. Rend un message tout prêt en cas
+ * d'échec — et ce message distingue « je n'ai pas le droit de regarder » de
+ * « je ne trouve personne à ce nom », parce que ce n'est pas la même chose à
+ * faire ensuite.
+ */
+async function numeroDepuisTelephone(
+  nomDit: string,
+): Promise<{ numero: string; nom: string } | { echec: string }> {
+  const lecture = await lireRepertoire()
+  if (lecture.etat === "refuse") {
+    return {
+      echec:
+        "Je n'ai pas accès à ton répertoire. Autorise les contacts pour Jarvis dans les réglages d'Android, et je trouverai les numéros tout seul.",
+    }
+  }
+  if (lecture.etat === "indisponible") {
+    return { echec: `Je n'ai pas le numéro de ${nomDit}. Dis-le-moi une fois et je le retiens.` }
+  }
+
+  const trouvaille = chercherContact(nomDit, lecture.contacts)
+  if (trouvaille.etat === "trouve") {
+    return { numero: trouvaille.contact.numero, nom: trouvaille.contact.nom }
+  }
+  if (trouvaille.etat === "ambigu") {
+    const noms = trouvaille.candidats.map((c) => c.nom).join(", ")
+    return { echec: `J'en trouve plusieurs dans ton répertoire : ${noms}. Lequel ?` }
+  }
+  return { echec: `Je ne trouve personne qui s'appelle ${nomDit} dans ton répertoire.` }
 }
 
 const MEDIA_DIT: Record<CommandeMedia, string> = {
@@ -180,8 +220,20 @@ export async function executerActionTelephone(
         // connu. "whatsapp" reste le repli si on arrive quand même ici sans
         // rien savoir (ex. le tour de clarification a expiré).
         const canal = action.message_channel ?? canalMessagesPrefere() ?? "whatsapp"
-        const numero = numeroDe(contacts, action.contact_id, action.phone_number)
-        const nom = nomDe(contacts, action.contact_id)
+        let numero = numeroDe(contacts, action.contact_id, action.phone_number)
+        let nom = nomDe(contacts, action.contact_id) ?? action.contact_name ?? null
+
+        // Le répertoire du téléphone en second recours : c'est là que vivent
+        // les vrais numéros. Lu seulement s'il en manque un, jamais copié.
+        if (!numero && action.contact_name) {
+          const r = await numeroDepuisTelephone(action.contact_name)
+          if ("numero" in r) {
+            numero = r.numero
+            nom = r.nom
+          } else if (canal === "sms") {
+            return r.echec
+          }
+        }
 
         if (canal === "sms" && !numero) {
           return nom
@@ -205,8 +257,19 @@ export async function executerActionTelephone(
       }
 
       case "call_contact": {
-        const numero = numeroDe(contacts, action.contact_id, action.phone_number)
-        const nom = nomDe(contacts, action.contact_id)
+        let numero = numeroDe(contacts, action.contact_id, action.phone_number)
+        let nom = nomDe(contacts, action.contact_id) ?? action.contact_name ?? null
+
+        if (!numero && action.contact_name) {
+          const r = await numeroDepuisTelephone(action.contact_name)
+          if ("numero" in r) {
+            numero = r.numero
+            nom = r.nom
+          } else {
+            return r.echec
+          }
+        }
+
         if (!numero) {
           return nom
             ? `Je n'ai pas le numéro de ${nom}. Dis-le-moi une fois et je le retiens.`
@@ -304,7 +367,11 @@ export async function executerActionTelephone(
         if (action.app_name) ecrireReglage(CLES_APP.ia, trouvee.nom)
 
         await ActionsTelephone.envoyerTexte({ paquet: trouvee.paquet, texte: action.question })
-        return `Je pose la question à ${trouvee.nom}, tu n'as plus qu'à envoyer. Elle répondra directement là-bas, je ne peux pas te ramener sa réponse ici.`
+        // On retient la question : quand il partagera la réponse vers Jarvis
+        // (menu « Partager » d'Android), useShareReceiver la rapprochera de
+        // celle-ci. C'est ce qui fait l'aller-retour, sans rien payer.
+        noterQuestionEnvoyee(trouvee.nom, action.question)
+        return `Je pose la question à ${trouvee.nom}. Quand tu as sa réponse, appuie longuement dessus et fais « Partager » vers Jarvis : je la garde avec ta question.`
       }
     }
   } catch (e) {

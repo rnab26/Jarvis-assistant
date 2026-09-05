@@ -401,6 +401,40 @@ try {
     "quand Jarvis est l'assistant, la carte le confirme",
     await assistActif.getByText("Jarvis est l'assistant du téléphone.").isVisible(),
   )
+  // ── L'ordre réel : à quelle hauteur commence la mise à jour ──
+  // Raphaël, 5 sept. 2026 : « pour la mise à jour, il faut que je descende
+  // tout en bas, essaye de la rehausser un petit peu, mais en la compactant ».
+  // Mesuré plutôt que supposé, comme le cockpit l'a été le 4 sept.
+  {
+    const bloc = page.locator("#ordre-reel")
+    const mesures = await bloc.evaluate((racine) => {
+      const haut = racine.getBoundingClientRect().top
+      const barres = [...racine.querySelectorAll(':scope > div > button[aria-expanded="false"]')]
+      const bouton = [...racine.querySelectorAll("button")].find((b) =>
+        /Mettre à jour maintenant|Télécharger/.test(b.textContent || ""),
+      )
+      return {
+        boutonMaj: bouton ? Math.round(bouton.getBoundingClientRect().top - haut) : -1,
+        hauteurAutresBarres: barres.reduce((n, b) => n + b.getBoundingClientRect().height + 8, 0),
+        nbBarres: barres.length,
+      }
+    })
+
+    verifier(
+      "les six autres sections sont bien repliées",
+      mesures.nbBarres === 6,
+      `${mesures.nbBarres} barres repliées trouvées`,
+    )
+    verifier(
+      "le bouton de mise à jour est dans le premier écran",
+      mesures.boutonMaj >= 0 && mesures.boutonMaj < 400,
+      `il commence à ${mesures.boutonMaj} points du haut de la liste`,
+    )
+    console.log(
+      `      mesuré : bouton de mise à jour à ${mesures.boutonMaj} pts ; ` +
+        `il était ${Math.round(mesures.hauteurAutresBarres)} pts plus bas quand la section fermait la page`,
+    )
+  }
 
   // ── Rien ne déborde en largeur ──
   const debordement = await page.evaluate(

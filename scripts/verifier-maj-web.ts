@@ -22,6 +22,7 @@
  * conçu pour échouer sans dégât — le chemin n'est rendu permanent qu'après un
  * démarrage réussi — mais ça reste non vérifié ici.
  */
+import { readFileSync } from "node:fs"
 import { unzipSync, zipSync } from "fflate"
 import {
   base64VersOctets,
@@ -170,6 +171,54 @@ verifier(
     "un refus dit toujours pourquoi, en français",
     refus.possible === false && refus.raison.length > 20,
     "un bouton qui refuse sans expliquer passe pour cassé",
+  )
+}
+
+console.log("\n— Le dossier des paquets existe AVANT le téléchargement —")
+
+// Ce contrôle lit le code, comme verifier-pannes-silencieuses.ts, parce que le
+// défaut n'est pas dans une valeur calculable : il est dans l'ORDRE des appels
+// à un plugin natif, et il ne se voit qu'avec un téléphone.
+//
+// Le 5 sept. 2026, Raphaël a reçu « open failed: ENOENT » sur bundles/165.zip.
+// `downloadFile` de @capacitor/filesystem ouvre directement un
+// FileOutputStream sur le chemin demandé et n'a JAMAIS lu son option
+// `recursive` (chemin déprécié, vérifié dans le Kotlin de la version 8.1.3).
+// Le dossier `bundles/` n'existait donc pas au premier usage : la mise à jour
+// rapide échouait toujours la première fois, chez tout le monde, depuis sa
+// livraison le 4 sept.
+//
+// ON LIT LE CORPS DE `appliquerBundle`, PAS LE FICHIER ENTIER. Première
+// version de ce contrôle : elle cherchait « Filesystem.mkdir » n'importe où
+// dans majWeb.ts, et restait verte en supprimant l'APPEL — elle voyait la
+// définition de la fonction d'aide. Un contrôle qui ne rougit pas quand on
+// remet le bug ne vérifie rien.
+{
+  const source = readFileSync(new URL("../src/lib/majWeb.ts", import.meta.url), "utf8")
+
+  const depart = source.indexOf("export async function appliquerBundle")
+  const corps = depart === -1 ? "" : source.slice(depart, source.indexOf("\n}", depart))
+  verifier("appliquerBundle est bien là où on la cherche", corps.length > 200)
+
+  const posCreation = corps.search(/creerRacineBundles\(\)|Filesystem\.mkdir/)
+  const posDownload = corps.indexOf("Filesystem.downloadFile")
+
+  verifier(
+    "appliquerBundle crée le dossier des paquets",
+    posCreation !== -1,
+    "sans création du dossier, le premier téléchargement meurt sur ENOENT",
+  )
+  verifier(
+    "elle le crée AVANT de télécharger, pas après",
+    posCreation !== -1 && posDownload !== -1 && posCreation < posDownload,
+    "l'ordre est tout le bug : créer le dossier après le téléchargement ne sert à rien",
+  )
+
+  const aide = source.slice(source.indexOf("async function creerRacineBundles"))
+  verifier(
+    "et cette création est elle-même récursive",
+    /Filesystem\.mkdir\([\s\S]{0,220}?recursive:\s*true/.test(aide.slice(0, 500)),
+    "`bundles` pend sous un dossier qui peut manquer lui aussi",
   )
 }
 

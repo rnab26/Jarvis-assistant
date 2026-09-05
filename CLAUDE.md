@@ -290,6 +290,39 @@ les mots sur lesquels elle s'appuie, et **elle se tait quand rien ne se
 détache** — une suggestion fausse est acceptée sans être relue, donc elle coûte
 plus cher qu'une absence de suggestion.
 
+## Les contacts viennent du TÉLÉPHONE, plus d'un carnet dans Jarvis
+
+Décision de Raphaël, 5 sept. 2026, à ne pas rouvrir : « ça ne sert à rien,
+sachant que tu as déjà une mémoire active dans Jarvis qui retient tout ce
+qu'on dit. À partir du moment où il est connecté au téléphone à mes contacts,
+il sait tout. »
+
+Le carnet d'adresses de Jarvis (table `contacts`, onglet dédié) dupliquait deux
+choses qui existaient déjà ailleurs et mieux : les **numéros**, qui sont dans
+le répertoire du téléphone, et ce qu'il dit des **gens**, que la mémoire longue
+durée retient toute seule sans qu'il ait à dicter une fiche. Onglet, route,
+page et les quatre actions vocales `list/add/update/delete_contact` sont
+retirés (commits `8d5441c`, `24185f7`).
+
+- `ActionsTelephonePlugin.lireContacts()` (permission `READ_CONTACTS`) lit le
+  répertoire **à la demande** et n'en copie rien. Recopier en base recréerait
+  la deuxième source de vérité qu'on vient d'enlever.
+- `src/lib/chercherContact.ts` est **pur** : composer le numéro de quelqu'un
+  d'autre est l'erreur qu'on ne rattrape pas. Deux homonymes → on demande
+  lequel. Un fragment (« Yo ») ne trouve rien. Plusieurs numéros → le mobile,
+  jamais le premier de la liste.
+- `src/lib/repertoire.ts` distingue **refus de permission** et **aucun
+  contact** : rendre une liste vide sur un refus ferait dire à Jarvis « tu n'as
+  personne » alors qu'il n'a pas regardé.
+- Côté serveur, la consigne dit désormais de **ne jamais réclamer un numéro**
+  et de passer `contact_name` : le modèle ne voit pas le répertoire, le
+  téléphone si. C'est l'inverse exact de ce qu'elle disait avant, et c'est
+  cette consigne-là qui faisait répondre « il faut que tu me donnes son
+  numéro ».
+
+La table `contacts` n'est pas supprimée (vide, sans coût, et une suppression de
+table ne se défait pas) : à faire seulement sur sa demande explicite.
+
 ## Supprimer demande toujours, partout dans l'app
 
 `src/components/ConfirmerAction.tsx` : la fenêtre qui pose la question avant
@@ -387,6 +420,38 @@ en même temps que les chantiers.
 **Ne prends pas un gros lot d'un coup.** Réserve ce que tu traites maintenant
 et laisse le reste libre, pour qu'une autre session puisse avancer en
 parallèle au lieu d'attendre après toi.
+
+## Un artefact est un lieu de passage : ce qu'il répond va EN BASE
+
+Sa demande du 5 sept. 2026 au soir, après avoir répondu aux quatorze points
+d'une fiche pour rien : « les artefacts ont trop de durée de vie limitée et je
+te colle des réponses détaillées quand c'était nécessaire ». Deux choses
+distinctes se sont passées ce soir-là, et il faut retenir les deux.
+
+**Le bug, pour ne pas le refaire.** La fiche n'enregistrait QUE les champs de
+texte. `enregistrer()` abandonnait en silence tant que `claude.use("db")`
+n'avait pas répondu — ce qui arrive toujours APRÈS le premier rendu, parfois
+plusieurs secondes plus tard. Tous ses appuis des premières secondes étaient
+donc perdus, puis le chargement tardif écrasait l'état en mémoire et
+redessinait la page vide. Le compteur affichait « 0 / 14 » pendant qu'il
+cochait : le signe était à l'écran, personne ne l'a lu. Toute page à capacité
+`db` doit donc (1) **mettre en file** ce qui arrive avant que la base réponde
+et le vider dès qu'elle est là, (2) ne **jamais** laisser un chargement écraser
+ce que l'utilisateur a déjà touché — un drapeau posé au premier geste et jamais
+remis à faux, pas un drapeau d'écriture en cours, qui retombe.
+
+**La règle, qui vaut au-delà du bug.** Une fiche reste bonne pour POSER les
+questions au pouce. Mais ses réponses ne doivent pas y rester : **recopie-les
+dans les notes des chantiers concernés dès que tu les lis**, en citant ses mots.
+Une note de chantier survit à tout ; un artefact, non — il vit hors du dépôt et
+hors de la base, et la session suivante ne sait même pas qu'il existe si
+personne n'a collé son URL ici.
+
+Le chantier `85ae62b5` porte la sortie définitive : un écran « Ce qui attend ta
+décision » dans l'app elle-même, alimenté par une table, avec les options
+cliquables, un commentaire par question et les photos dans le Storage Supabase.
+Le jour où il est livré, **on cesse de publier des fiches pour lui poser des
+questions**.
 
 ## Plusieurs questions à Raphaël : une fiche, pas un mur de texte
 
@@ -501,6 +566,44 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   Son avancement : document `fiche/cle-test` (`action: "read_db"`,
   `db_op: "get"`) — un booléen par étape (projet, studio, creer, copier,
   deposer, dire) plus ses commentaires. **Chantier 4eaf9c1d.**
+- **Ce qui attend Raphaël** (5 sept.) — 5 actions et 8 décisions restées ouvertes
+  après les 24 h de sessions autonomes : mises à jour en Wi-Fi, voix app fermée,
+  conservation des conversations, contenu du briefing, recherche web payante ou
+  non, ElevenLabs, périmètre du contrôle du téléphone, barre d'actions du site
+  de Mélissa. Ses réponses sont enregistrées : `action: "read_db"` sur l'URL.
+  https://claude.ai/code/artifact/4e952f48-99a4-41de-9c67-44c24769bc17
+
+- **Le tableau de bord de Raphaël** (5 sept., soir) — **LA FICHE COURANTE, celle
+  à lire en premier.** Elle REMPLACE et refond les précédentes, qu'il jugeait
+  « désordonnées » : « il me demande de créer des clés, mais il ne me dit pas où
+  les déposer. Je ne peux pas écrire si je l'ai fait, si ça bloque. » Elle porte
+  donc, pour chacun des 3 gestes et des 11 décisions : la page exacte, le champ
+  exact, la valeur exacte à taper, un état **Fait / Pas encore / Ça bloque**, un
+  champ libre ET un bouton photo — par point, jamais un seul en bas de page.
+  https://claude.ai/code/artifact/a23fc9f6-99e1-4c70-90ee-03ab15ff82d9
+  Ses réponses : `action: "read_db"`, `db_op: "get"`, collection `fiche`,
+  doc_id `tableau-de-bord` ; ses photos : collection `photos` (une par
+  document, champ `item` = l'identifiant du point).
+
+  **Ce que cette fiche a établi, et qu'il ne faut plus lui redemander** (vérifié
+  le 5 sept. dans les secrets Supabase, pas supposé) : `GEMINI_API_KEY_TEST` est
+  DÉPOSÉE et fonctionne ; `FIREBASE_SERVICE_ACCOUNT` est DÉPOSÉ et
+  `android/app/google-services.json` est en place (projet `jarvis-507506`,
+  paquet `com.raphael.jarvis`) — les notifications app fermée n'attendent plus
+  que du code ; le compte Google est branché depuis le 3 sept. avec
+  `gmail.modify` + `calendar.events`. **Le SEUL secret manquant de tout le
+  projet est `GOOGLE_GEOCODING_API_KEY`**, et il ne sert qu'aux rappels de lieu,
+  dont il n'a aucun. Pour refaire ce constat sans rien lui demander :
+
+  ```bash
+  curl -sS https://api.supabase.com/v1/projects/bexiyvmdbxcwxasgslxp/secrets \
+    -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | python3 -c \
+    "import json,sys; print('\n'.join(sorted(s['name'] for s in json.load(sys.stdin))))"
+  grep -rhoP 'Deno\.env\.get\("\K[A-Z_0-9]+' supabase/functions/ | sort -u
+  ```
+
+  (la première liste ce qui EST déposé, la seconde ce que le code ATTEND ; la
+  différence est la seule chose à lui demander — jamais une liste devinée)
 
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
@@ -774,6 +877,19 @@ dans le registre des erreurs (`signaler_erreur`, source `memoire`) — c'est le
 POURQUOI ; et `sante_memoire()` (migration 0020) compte les échanges depuis la
 dernière chose retenue — c'est le filet pour les pannes qu'elle n'a même pas pu
 signaler. Le témoin s'affiche en tête de l'onglet Mémoire, il ne notifie rien.
+
+**Une migration qui ajoute une COLONNE doit vérifier la politique RLS qui va
+avec.** Le 5 sept., le rattrapage des empreintes n'écrivait rien depuis deux
+jours, en silence : `echanges` avait SELECT, INSERT et DELETE (migration 0006)
+mais aucune politique UPDATE — la table n'était jamais modifiée à l'époque. La
+0018 y a ajouté `embedding`, donc une écriture, sans la politique. **RLS ne
+refuse pas bruyamment un UPDATE : il restreint les lignes.** Zéro ligne
+touchée, PostgREST rend un succès, le code n'a rien à attraper, et aucun
+contrôle qui lit le code ne peut le voir — le code était juste. D'où la
+migration 0021, et la règle : toute écriture passe par un `.select()` qui
+prouve qu'une ligne a bougé (`rattraperEmpreintes`), et un contrôle
+bout-en-bout de `verifier-memoire.mjs` vérifie que le rattrapage rend
+VRAIMENT cherchable un échange ancien.
 
 **Une panne de LECTURE ne se voit pas dans le témoin, d'où `_shared/pannes.ts`.**
 Le témoin compte les écritures ; un rappel qui échoue, lui, rend exactement le
@@ -1251,6 +1367,24 @@ s'applique tant qu'on n'ouvre pas cet onglet.
 **Non vérifié sur appareil** (aucun SDK Android ici) : le redémarrage réel de
 la WebView sur le dossier téléchargé. La CI prouve que ça compile, pas que ça
 tourne.
+
+**Et ça n'a effectivement jamais tourné, du 4 au 5 sept.** Raphaël a reçu
+`open failed: ENOENT` sur `bundles/165.zip` : `downloadFile` est le chemin
+DÉPRÉCIÉ de `@capacitor/filesystem`, sa mise en œuvre ouvre un
+`FileOutputStream` sur le chemin demandé et **ne lit jamais son option
+`recursive`** (seul `writeFile` l'honore). Personne ne créait `bundles/`, donc
+le premier téléchargement mourait — chez tout le monde, à chaque fois.
+Corrigé par `creerRacineBundles()` (commit `b538cb4`).
+
+Deux leçons, et la seconde vaut au-delà de ce chantier. **Un « mesuré » qui ne
+mesure pas la même chose que ce qu'on affirme ne vaut rien** : le « 1,2 Mo
+mesuré » pesait le fichier publié, pas une installation réussie, et il a servi
+de preuve à un chantier qui ne marchait pas. Et **un contrôle doit être essayé
+à l'envers avant d'être cru** : la première version de celui-ci cherchait
+`Filesystem.mkdir` n'importe où dans `majWeb.ts` et restait verte quand on
+supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle lit
+maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
+Playwright du 4 sept.
 
 ## Le web se met à jour tout seul, l'app Android jamais
 

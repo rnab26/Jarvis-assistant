@@ -129,6 +129,11 @@
          au téléphone. Demandée à la première utilisation ; refusée, Jarvis
          se contente de composer, il n'échoue pas. -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Le repertoire du telephone, en lecture seule. Demande a la premiere
+         utilisation, jamais au demarrage : « rappelle ma femme a 23h22 » n a
+         aucun sens si Jarvis ne voit que le carnet vide qu il tenait de son
+         cote. Rien n est copie en base : la liste est lue a la demande. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Mode conversation Live (4 sept. 2026) : le micro du navigateur intégré
          (getUserMedia), pas celui du plugin de reconnaissance. Capacitor
          (BridgeWebChromeClient.onPermissionRequest) exige RECORD_AUDIO ET

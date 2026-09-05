@@ -271,6 +271,36 @@ function BancDesReglages() {
         <Confidentialite />
       </div>
 
+      {/* L'ORDRE RÉEL des sections de Paramètres, replié comme il l'est à
+          l'ouverture, avec la vraie carte de mise à jour dedans. C'est le seul
+          moyen de MESURER ce que Raphaël décrit — « pour la mise à jour, il
+          faut que je descende tout en bas » — au lieu de le supposer. Les
+          titres et l'ordre sont recopiés de SettingsPage : s'ils y changent,
+          ce banc mesure autre chose, et c'est écrit ici pour qu'on le sache. */}
+      <div id="ordre-reel" className="flex flex-col gap-2">
+        <Section
+          titre="L'application"
+          resume="Version, mise à jour, nouveautés"
+          cle="banc-ordre-app"
+          ouverteParDefaut
+          badge={<span className="shrink-0 text-xs text-muted-foreground">À jour</span>}
+        >
+          <MettreAJour update={updateFactice("up-to-date")} majWeb={majFactice(true)} />
+        </Section>
+        {[
+          ["Voix et écoute", "Sa voix, le rythme, le mot-clé de réveil"],
+          ["Tâches et organisation", "Widget d'écran d'accueil, rappels de lieu"],
+          ["Notifications", "Ce que Jarvis a le droit de faire sonner"],
+          ["Ce que Jarvis utilise", "Applications par défaut, canal des messages"],
+          ["Apparence", "Thème clair ou sombre, image du cœur"],
+          ["Comptes et connexions", "Google"],
+        ].map(([titre, resume], i) => (
+          <Section key={titre} titre={titre} resume={resume} cle={`banc-ordre-${i}`}>
+            <p>Contenu</p>
+          </Section>
+        ))}
+      </div>
+
       <div id="maj-apk">
         <Section titre="Mise à jour qui demande l'APK" cle="banc-maj-apk" ouverteParDefaut>
           <MettreAJour update={updateFactice("update-available")} majWeb={majFactice(false)} />

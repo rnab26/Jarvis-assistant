@@ -6,7 +6,9 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.media.AudioManager;
+import android.database.Cursor;
 import android.provider.AlarmClock;
+import android.provider.ContactsContract;
 import android.provider.MediaStore;
 import android.view.KeyEvent;
 import androidx.core.content.ContextCompat;
@@ -40,7 +42,13 @@ import java.util.List;
 @CapacitorPlugin(
     name = "ActionsTelephone",
     permissions = {
-        @com.getcapacitor.annotation.Permission(alias = "telephone", strings = { Manifest.permission.CALL_PHONE })
+        @com.getcapacitor.annotation.Permission(alias = "telephone", strings = { Manifest.permission.CALL_PHONE }),
+        // Le répertoire du téléphone, et non un carnet d'adresses que Jarvis
+        // tiendrait de son côté. Raphaël, 5 sept. 2026 : « pour l'accès à mes
+        // contacts, l'onglet contacts ne me sert à rien. Moi c'était juste
+        // pour dire "rappelle ma femme à 23h22" et il me répond qu'il n'a pas
+        // son numéro. » Sans cette permission, il ne voyait qu'un carnet vide.
+        @com.getcapacitor.annotation.Permission(alias = "contacts", strings = { Manifest.permission.READ_CONTACTS })
     }
 )
 public class ActionsTelephonePlugin extends Plugin {
@@ -124,6 +132,85 @@ public class ActionsTelephonePlugin extends Plugin {
             return;
         }
         if (lancer(ouverture, call, "Impossible d'ouvrir cette application.")) call.resolve();
+    }
+
+    /**
+     * Le répertoire du téléphone, en lecture seule.
+     *
+     * Rien n'est copié ni conservé : la liste est lue à la demande et rendue
+     * telle quelle au JS, qui s'en sert pour retrouver un numéro et l'oublie.
+     * Recopier le répertoire dans la base de Jarvis en ferait une deuxième
+     * source de vérité qui divergerait dès le premier contact modifié dans le
+     * téléphone — c'est exactement ce que l'onglet Contacts faisait, et
+     * pourquoi il ne servait à rien.
+     *
+     * Un contact peut avoir plusieurs numéros : chacun est une entrée, avec
+     * son étiquette (mobile, domicile), pour que « appelle sa femme » ne
+     * tombe pas au hasard sur un fax.
+     */
+    @PluginMethod
+    public void lireContacts(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_CONTACTS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissionForAlias("contacts", call, "apresPermissionContacts");
+            return;
+        }
+        rendreContacts(call);
+    }
+
+    @com.getcapacitor.annotation.PermissionCallback
+    private void apresPermissionContacts(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.READ_CONTACTS)
+                != PackageManager.PERMISSION_GRANTED) {
+            // Refus explicite : on le DIT, au lieu de rendre une liste vide qui
+            // se lirait comme « tu n'as aucun contact ».
+            call.reject("REFUS_CONTACTS");
+            return;
+        }
+        rendreContacts(call);
+    }
+
+    private void rendreContacts(PluginCall call) {
+        JSArray contacts = new JSArray();
+        String[] colonnes = {
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            ContactsContract.CommonDataKinds.Phone.NUMBER,
+            ContactsContract.CommonDataKinds.Phone.TYPE,
+            ContactsContract.CommonDataKinds.Phone.LABEL
+        };
+        try (Cursor c = getContext().getContentResolver().query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                colonnes,
+                null,
+                null,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC")) {
+            if (c != null) {
+                int iNom = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
+                int iNum = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+                int iType = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.TYPE);
+                int iLabel = c.getColumnIndex(ContactsContract.CommonDataKinds.Phone.LABEL);
+                while (c.moveToNext()) {
+                    String nom = iNom >= 0 ? c.getString(iNom) : null;
+                    String numero = iNum >= 0 ? c.getString(iNum) : null;
+                    if (nom == null || numero == null) continue;
+                    JSObject o = new JSObject();
+                    o.put("nom", nom);
+                    o.put("numero", numero);
+                    CharSequence etiquette = ContactsContract.CommonDataKinds.Phone.getTypeLabel(
+                        getContext().getResources(),
+                        iType >= 0 ? c.getInt(iType) : 0,
+                        iLabel >= 0 ? c.getString(iLabel) : null);
+                    o.put("etiquette", etiquette == null ? "" : etiquette.toString());
+                    contacts.put(o);
+                }
+            }
+        } catch (Exception e) {
+            call.reject("Impossible de lire le répertoire : " + e.getMessage());
+            return;
+        }
+        JSObject res = new JSObject();
+        res.put("contacts", contacts);
+        call.resolve(res);
     }
 
     /**

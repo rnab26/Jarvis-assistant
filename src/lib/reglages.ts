@@ -149,6 +149,11 @@ export const STOCKAGE_LOCAL_ASSUME: { prefixe: string; pourquoi: string }[] = [
       "Dernière version déjà annoncée sur CE téléphone : un aide-mémoire pour ne pas notifier deux fois, pas un choix de Raphaël.",
   },
   {
+    prefixe: "jarvis_question_ia",
+    pourquoi:
+      "La question envoyée à une IA installée, en attendant que Raphaël en partage la réponse. Un aller-retour en cours sur CET appareil, qui vit une demi-heure : la réponse se partage depuis le téléphone d'où la question est partie, pas depuis un autre.",
+  },
+  {
     prefixe: "jarvis_cockpit_vu",
     pourquoi:
       "Date de la dernière visite du cockpit sur CET écran, pour dire ce qui a bougé depuis. Un repère de lecture, pas une préférence : la retrouver sur un autre appareil n'aurait aucun sens.",
