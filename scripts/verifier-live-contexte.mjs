@@ -37,7 +37,7 @@ try {
   const contexte = `Tâches à faire de Raphaël (1) :\n- ${TACHE}`
   // Le contexte part dans le jeton, comme le fait l'app : c'est le seul
   // chemin par lequel Google l'accepte (vérifié le 4 sept.).
-  const r = await fetch(`${URL_PROJET}/functions/v1/live-jeton`, { method: "POST", headers: { apikey: ANON, Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" }, body: JSON.stringify({ contexte }) })
+  const r = await fetch(`${URL_PROJET}/functions/v1/live-jeton`, { method: "POST", headers: { apikey: ANON, Authorization: `Bearer ${jwt}`, "Content-Type": "application/json", "x-jarvis-essai": "1" }, body: JSON.stringify({ contexte }) })
   const { jeton, modele } = await r.json()
   verifier("jeton obtenu", !!jeton)
 
