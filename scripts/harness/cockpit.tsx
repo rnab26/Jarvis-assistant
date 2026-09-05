@@ -311,7 +311,9 @@ function volumeReel(): { chantiers: DevItem[]; sections: DevSection[] } {
   for (let i = 0; i < 83; i++) {
     const theme = SECTIONS_REELLES[i % SECTIONS_REELLES.length]
     const c = chantier(
-      `${DEBUTS[i % 11]} ${QUOI[i % 12]} ${QUAND[i % 13]}`,
+      // Le nom de la section reste dans le titre : d'autres contrôles s'en
+      // servent pour vérifier qu'un filtre ne laisse bien que sa section.
+      `${DEBUTS[i % 11]} ${QUOI[i % 12]} ${QUAND[i % 13]} sur ${theme.toLowerCase()}`,
       theme,
       i % 7 === 0 ? "in_progress" : "todo",
     )
@@ -472,22 +474,19 @@ function BancDuCockpit() {
         onAdd={async () => {}}
         onMarkAnswered={async () => {}}
       />
-      {/* `display: contents` : le div n'existe que pour servir de repère aux
-          contrôles. Sans lui, la carte silencieuse laissait quand même un
-          écart de 16 points dans la colonne, et la mesure de hauteur du
-          cockpit était fausse de 16 points — dans le mauvais sens, celui qui
-          fait échouer un banc pour un défaut que Raphaël ne voit pas. */}
-      <div id="doublons" className="contents">
-        <DoublonsTrouves
-          devItems={devItems}
-          onArchive={async (id) =>
-            setDevItems((liste) =>
-              liste.map((i) => (i.id === id ? { ...i, archived_at: new Date().toISOString() } : i)),
-            )
-          }
-          onRestore={async () => {}}
-        />
-      </div>
+      {/* SANS div d'enrobage, et c'est important : la carte se retire d'elle-même
+          quand il n'y a rien à dire, mais un conteneur vide continuerait de
+          consommer un `gap` de la colonne. Seize points de plus poussés sur
+          tout ce qui suit, mesurés par le banc, pour un bloc invisible. */}
+      <DoublonsTrouves
+        devItems={devItems}
+        onArchive={async (id) =>
+          setDevItems((liste) =>
+            liste.map((i) => (i.id === id ? { ...i, archived_at: new Date().toISOString() } : i)),
+          )
+        }
+        onRestore={async () => {}}
+      />
 
       <ErreursJarvis
         erreursState={erreursState}

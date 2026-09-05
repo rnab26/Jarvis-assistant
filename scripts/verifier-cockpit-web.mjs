@@ -887,7 +887,9 @@ try {
   await dbl.waitForSelector('[aria-label="Chantiers"]')
   await pause(400)
 
-  const carteDoublons = dbl.locator("#doublons")
+  // Repérée par son titre : la carte n'a pas de conteneur à elle, exprès —
+  // un div vide consommerait un `gap` de la colonne même quand elle se tait.
+  const carteDoublons = dbl
   verifier(
     "deux chantiers identiques sont signalés",
     await carteDoublons.getByText("Ça existe déjà").isVisible(),
@@ -924,7 +926,7 @@ try {
   // sur le cockpit à sa vraie taille, 83 chantiers aux titres tous distincts.
   verifier(
     "aucun doublon : la carte ne s'affiche pas du tout",
-    (await gros.locator("#doublons").getByText("Ça existe déjà").count()) === 0,
+    (await gros.getByText("Ça existe déjà").count()) === 0,
     "elle occuperait une ligne pour ne rien dire",
   )
 
