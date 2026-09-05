@@ -1,4 +1,4 @@
-import { Camera, HelpCircle, Send, Sparkles, X } from "lucide-react"
+import { Camera, ChevronDown, ChevronRight, HelpCircle, Send, Sparkles, X } from "lucide-react"
 import { useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -45,6 +45,15 @@ import type { DevItem, DevLogEntry, EtatAction, OptionDecision } from "@/types/d
  * CE QUI N'EST PAS REPRIS : le compteur « 0 / 14 » qui restait à zéro pendant
  * qu'il répondait. Chaque réponse part immédiatement en base et la question
  * disparaît de la liste — il n'y a pas de bouton final, donc rien à perdre.
+ *
+ * ET CHAQUE POINT EST REPLIÉ SUR SA QUESTION, mesuré sur ses vraies données :
+ * un seul point déplié (la question, son pourquoi, trois options, le champ de
+ * commentaire, la photo, le bouton) fait 616 points de haut sur un écran de
+ * téléphone, et repoussait le tableau des chantiers à 1 382. Sa règle le dit
+ * déjà — « une étape à la fois, ne montre pas un contrôle qui appartient à une
+ * étape avant qu'elle soit atteinte » : lire ce qui l'attend vient avant
+ * répondre à celui-là. La question, elle, reste lisible sans ouvrir : c'est
+ * elle qui lui dit lequel ouvrir.
  */
 interface CeQuiAttendTaDecisionProps {
   messages: DevLogEntry[]
@@ -119,6 +128,7 @@ function Point({
   onEtat: CeQuiAttendTaDecisionProps["onEtat"]
 }) {
   const options = useMemo(() => optionsDe(question), [question])
+  const [ouvert, setOuvert] = useState(false)
   const [choisie, setChoisie] = useState<OptionDecision | null>(null)
   const [commentaire, setCommentaire] = useState("")
   const [photo, setPhoto] = useState<File | null>(null)
@@ -145,20 +155,41 @@ function Point({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-2.5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant={estAction ? "destructive" : "default"} className="shrink-0">
-          {estAction ? "À faire par toi" : "Tu décides"}
-        </Badge>
-        <span className="text-xs text-muted-foreground">
-          {courtAuteur(question.author)} · {ago(question.created_at)}
+      <button
+        type="button"
+        aria-expanded={ouvert}
+        aria-label={`Répondre : ${question.body.slice(0, 60)}`}
+        onClick={() => setOuvert(!ouvert)}
+        className="flex flex-col gap-1 text-left"
+      >
+        <span className="flex flex-wrap items-center gap-1.5">
+          {ouvert ? (
+            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+          <Badge variant={estAction ? "destructive" : "default"} className="shrink-0">
+            {estAction ? "À faire par toi" : "Tu décides"}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {courtAuteur(question.author)} · {ago(question.created_at)}
+          </span>
+          {estAction && question.etat && (
+            <Badge variant="outline" className="shrink-0">
+              {ETATS_ACTION.find((e) => e.valeur === question.etat)?.libelle}
+            </Badge>
+          )}
+          {chantier && (
+            <span className="min-w-0 truncate text-xs text-muted-foreground">— {chantier}</span>
+          )}
         </span>
-        {chantier && (
-          <span className="min-w-0 truncate text-xs text-muted-foreground">— {chantier}</span>
-        )}
-      </div>
+        {/* La question reste lisible sans ouvrir : c'est elle qui lui dit
+            lequel ouvrir. */}
+        <span className="text-sm">{question.body}</span>
+      </button>
 
-      <p className="text-sm">{question.body}</p>
-
+      {ouvert && (
+      <>
       {/* Sans le pourquoi, il choisit au hasard ou ne répond pas. */}
       {question.pourquoi && (
         <p className="text-xs text-muted-foreground">Pourquoi : {question.pourquoi}</p>
@@ -285,6 +316,8 @@ function Point({
         <p className="text-xs text-muted-foreground">
           Ta réponse : « {corpsReponse(choisie, commentaire)} »
         </p>
+      )}
+      </>
       )}
     </div>
   )
