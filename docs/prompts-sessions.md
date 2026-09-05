@@ -490,6 +490,12 @@ merge : grep -rn '^<<<<<<< ' --exclude-dir=node_modules .
 
 ## Prompt F — Cadrage : les décisions qui attendent Raphaël (4 sept., après-midi)
 
+**OBSOLÈTE depuis le 5 sept. au soir : ne plus le coller.** Le cadrage a été
+fait (fiche 4e952f48, huit décisions répondues, chantiers réécrits en tête de
+notes). Le découpage en vigueur est celui du journal de bord du 5 sept. à
+20h45 : trois fronts, « Le téléphone », « Voix et écoute », « Le cockpit »,
+avec leurs fichiers attribués. Gardé ici comme modèle d'une session de cadrage.
+
 Demandé par Raphaël le 4 sept. : « rédige-moi un prompt que je vais
 copier-coller dans une autre session, comme ça je le fais à part ». Cette
 session ne code rien : elle rassemble tout ce qui est marqué
