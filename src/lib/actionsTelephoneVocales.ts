@@ -3,6 +3,7 @@ import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/
 import { ecrireReglage } from "@/lib/reglages"
 import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
+import { noterQuestionEnvoyee } from "@/lib/questionEnAttente"
 
 /** Les catégories du téléphone où Jarvis doit choisir une application sans
  * qu'on la lui nomme à chaque fois — apprises une fois, retenues ensuite. */
@@ -304,7 +305,11 @@ export async function executerActionTelephone(
         if (action.app_name) ecrireReglage(CLES_APP.ia, trouvee.nom)
 
         await ActionsTelephone.envoyerTexte({ paquet: trouvee.paquet, texte: action.question })
-        return `Je pose la question à ${trouvee.nom}, tu n'as plus qu'à envoyer. Elle répondra directement là-bas, je ne peux pas te ramener sa réponse ici.`
+        // On retient la question : quand il partagera la réponse vers Jarvis
+        // (menu « Partager » d'Android), useShareReceiver la rapprochera de
+        // celle-ci. C'est ce qui fait l'aller-retour, sans rien payer.
+        noterQuestionEnvoyee(trouvee.nom, action.question)
+        return `Je pose la question à ${trouvee.nom}. Quand tu as sa réponse, appuie longuement dessus et fais « Partager » vers Jarvis : je la garde avec ta question.`
       }
     }
   } catch (e) {
