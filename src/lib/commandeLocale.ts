@@ -2,6 +2,7 @@
 // `node --experimental-strip-types` pour sa vérification, qui ne connaît
 // pas l'alias « @/ » de Vite.
 import { lireHeure, lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
+import { cibleTropCourante } from "./chercherContact.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 
 /**
@@ -450,6 +451,13 @@ export function interpreterLocalement(
   /* ---------- Appeler un contact connu ---------- */
   const appelContact = texte.match(/^(?:appelle|telephone a)\s+(.+)$/)
   if (appelContact) {
+    // « Jarvis appelle mail » — ce qu'il a réellement dit le 5 sept. 2026 à
+    // 21 h 07, c'était « appelle ma femme ». Un seul mot, et c'est un mot
+    // d'appareil : ce n'est pas quelqu'un qu'il a nommé, c'est une commande
+    // mal entendue. On rend la main au serveur, qui demandera — plutôt que de
+    // composer un numéro, ce qui ne se rattrape pas. Cette fois-là, l'appel
+    // est parti vers le répondeur.
+    if (cibleTropCourante(appelContact[1])) return null
     const contact = meilleurContact(appelContact[1], ctx.contacts ?? [])
     if (contact) return [{ action: "call_contact", contact_id: contact.id }]
     // Aucun contact enregistré ne correspond : on rend quand même l'action,
@@ -473,6 +481,9 @@ export function interpreterLocalement(
   )
   if (messageContact) {
     const canalMot = messageContact[1]
+    // Même garde-fou que pour l'appel : un destinataire qui tient en un mot
+    // d'appareil n'est pas un destinataire.
+    if (cibleTropCourante(messageContact[2])) return null
     const contact = meilleurContact(messageContact[2], ctx.contacts ?? [])
     if (!contact) return null
     const texteMsg = messageContact[3].trim()

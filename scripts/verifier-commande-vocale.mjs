@@ -748,6 +748,20 @@ cas.push(
   },
 )
 
+// L'application d'appel par défaut, ajoutée le 5 sept. au soir : sans elle,
+// Android affiche « Terminer l'action avec… » à chaque appel dès que deux
+// applications savent téléphoner (il a ZoiPer en plus du téléphone).
+cas.push({
+  nom: "apprentissage direct : quelle application pour les appels",
+  phrase: "Utilise le téléphone pour mes appels.",
+  controle: (r) => {
+    const a = (r.actions ?? []).find((x) => x.action === "set_app_preference")
+    if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+    if (a.category !== "appels") return [false, `category = ${a.category}`]
+    return [true]
+  },
+})
+
 // Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
 // au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
 // répond « J'ai atteint la limite de l'offre gratuite », ou meurt en

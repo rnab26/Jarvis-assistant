@@ -111,6 +111,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/AppsParDefaut.tsx",
   },
   {
+    cle: "jarvis_app_appels",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
+    fichier: "src/components/settings/AppsParDefaut.tsx",
+  },
+  {
     cle: "jarvis_canal_messages",
     ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
     fichier: "src/components/settings/AppsParDefaut.tsx",

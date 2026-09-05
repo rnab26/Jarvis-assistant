@@ -190,6 +190,14 @@
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />
         </intent>
+        <!-- Les applications capables de PASSER l'appel, pas seulement de le
+             composer : c'est parmi celles-la qu'il choisit son application
+             d'appel par defaut, pour ne plus voir le selecteur
+             « Terminer l'action avec… » a chaque appel. -->
+        <intent>
+            <action android:name="android.intent.action.CALL" />
+            <data android:scheme="tel" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="smsto" />

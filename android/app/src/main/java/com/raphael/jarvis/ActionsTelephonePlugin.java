@@ -94,6 +94,41 @@ public class ActionsTelephonePlugin extends Plugin {
     }
 
     /**
+     * Les applications capables de PASSER un appel.
+     *
+     * Pas la même chose que « les applications installées » : c'est parmi
+     * celles-ci qu'il choisit son application d'appel par défaut, dans
+     * Paramètres. Sans ce choix, Android affiche « Terminer l'action avec… »
+     * à chaque appel dès qu'il y en a deux — il a ZoiPer en plus du
+     * téléphone, et c'était l'un des deux appuis qu'il devait encore faire le
+     * 5 sept. 2026 pour qu'un appel parte.
+     *
+     * On interroge le système sur l'intent RÉEL qui sera lancé, pas sur une
+     * liste devinée : une application qui n'y répond pas ne servirait à rien
+     * une fois choisie.
+     */
+    @PluginMethod
+    public void listerApplicationsAppel(PluginCall call) {
+        PackageManager pm = getContext().getPackageManager();
+        Intent appel = new Intent(Intent.ACTION_CALL, Uri.parse("tel:0000000000"));
+
+        JSArray apps = new JSArray();
+        List<String> vus = new ArrayList<>();
+        for (ResolveInfo info : pm.queryIntentActivities(appel, 0)) {
+            String paquet = info.activityInfo.packageName;
+            if (vus.contains(paquet)) continue;
+            vus.add(paquet);
+            JSObject app = new JSObject();
+            app.put("nom", String.valueOf(info.loadLabel(pm)));
+            app.put("paquet", paquet);
+            apps.put(app);
+        }
+        JSObject res = new JSObject();
+        res.put("applications", apps);
+        call.resolve(res);
+    }
+
+    /**
      * Les liens de recherche des applications de musique courantes.
      *
      * Deuxième chance quand l'application ne déclare pas l'intent « joue ça »
@@ -359,8 +394,36 @@ public class ActionsTelephonePlugin extends Plugin {
         boolean peutAppeler = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CALL_PHONE)
             == PackageManager.PERMISSION_GRANTED;
 
-        Intent appel = new Intent(peutAppeler ? Intent.ACTION_CALL : Intent.ACTION_DIAL,
-            Uri.parse("tel:" + propre));
+        // Viser l'application d'appel qu'il a choisie. SANS ça, Android
+        // affiche « Terminer l'action avec… » dès que deux applications
+        // savent téléphoner — il a ZoiPer en plus du téléphone, et aucune
+        // application par défaut. C'était le PREMIER des deux appuis qu'il
+        // devait encore faire le 5 sept. 2026 ; le second était l'écran
+        // d'appel lui-même, faute de permission CALL_PHONE.
+        String paquet = call.getString("paquet");
+        Uri tel = Uri.parse("tel:" + propre);
+        String action = peutAppeler ? Intent.ACTION_CALL : Intent.ACTION_DIAL;
+
+        if (paquet != null && !paquet.isEmpty()) {
+            Intent vise = new Intent(action, tel);
+            vise.setPackage(paquet);
+            vise.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                getContext().startActivity(vise);
+                JSObject res = new JSObject();
+                res.put("direct", peutAppeler);
+                res.put("application", paquet);
+                call.resolve(res);
+                return;
+            } catch (Exception ignore) {
+                // L'application choisie ne sait pas répondre à cet intent (ou
+                // a été désinstallée) : on repasse par le chemin normal
+                // plutôt que d'échouer. Le sélecteur d'Android réapparaîtra,
+                // ce qui est moins bien mais reste utilisable.
+            }
+        }
+
+        Intent appel = new Intent(action, tel);
         if (lancer(appel, call, "Aucune application de téléphone n'a répondu.")) {
             JSObject res = new JSObject();
             res.put("direct", peutAppeler);

@@ -23,6 +23,9 @@ export interface ContactTelephone {
 
 interface ActionsTelephonePlugin {
   listerApplications(): Promise<{ applications: ApplicationInstallee[] }>
+  /** Celles qui savent PASSER un appel — pas les mêmes que celles qu'on peut
+   * ouvrir. C'est parmi elles qu'il choisit son application d'appel. */
+  listerApplicationsAppel(): Promise<{ applications: ApplicationInstallee[] }>
   lireContacts(): Promise<{ contacts: ContactTelephone[] }>
   ouvrirApplication(options: {
     paquet?: string
@@ -31,7 +34,7 @@ interface ActionsTelephonePlugin {
   preparerWhatsApp(options: { texte: string; numero?: string }): Promise<void>
   preparerSms(options: { texte: string; numero?: string }): Promise<void>
   envoyerTexte(options: { paquet: string; texte: string }): Promise<void>
-  composer(options: { numero: string }): Promise<{ direct: boolean }>
+  composer(options: { numero: string; paquet?: string }): Promise<{ direct: boolean }>
   demanderPermissionAppel(): Promise<{ granted: boolean }>
   commanderMedia(options: { commande: CommandeMedia }): Promise<void>
   mettreAlarme(options: { heure: number; minute: number; libelle?: string }): Promise<void>

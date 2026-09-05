@@ -374,6 +374,45 @@ demande : ouvrir une app et lui passer un texte marche déjà sans permission,
 pour n'importe laquelle, sans code par app.
 
 
+## Appeler quelqu'un : deux garde-fous, écrits après un vrai appel au répondeur
+
+Le 5 sept. 2026 à 21 h 07, Raphaël a dit « appelle ma femme ». La
+reconnaissance a écrit « Jarvis appelle mail ». L'appel est parti vers
++972544151000 — le répondeur. C'est exactement l'erreur que `chercherContact.ts`
+dit vouloir éviter depuis le début : « composer le numéro de quelqu'un d'autre
+est le genre d'erreur qu'on ne rattrape pas. »
+
+**Ce que le journal a montré, et qui change le diagnostic** : la réponse est
+venue de `commandeLocale.ts` (`source: "locale"`), pas du serveur. La consigne
+du modèle, qui sait distinguer un prénom d'un mot-clé, n'a jamais été
+consultée. Un correctif écrit uniquement dans le prompt n'aurait rien changé.
+**Avant de corriger une commande vocale, regarde d'où la réponse est venue.**
+
+Deux garde-fous, dans `src/lib/chercherContact.ts`, et il faut les deux :
+
+1. **Les entrées SYSTÈME du répertoire ne sont pas des personnes.** La
+   messagerie de l'opérateur porte des noms faits de mots courants (« Voice
+   Mail »), donc elle gagne contre un prénom mal entendu. Elles sont sorties
+   AVANT toute comparaison. Cette liste est forcément incomplète — d'où le
+   second.
+2. **Un seul mot dit, et c'est un mot d'APPAREIL** (mail, message, sms, appel,
+   téléphone…) : ce n'est pas quelqu'un qu'on a nommé, c'est une commande mal
+   entendue. On ne compose rien, et `commandeLocale.ts` rend la main au
+   serveur, qui demandera.
+
+**Ce qui ne doit JAMAIS entrer dans `MOTS_APPAREIL`** : les façons de désigner
+une personne. « femme », « frère », « maman », « docteur » restent valides —
+« appelle ma femme » trouve « Mel Ma Femme ❤ », et un contrôle le garde.
+
+**Et il fallait encore deux appuis pour qu'un appel parte.** Le premier était
+le sélecteur « Terminer l'action avec… » d'Android — il a ZoiPer en plus du
+téléphone, et aucune application par défaut ; le second, l'écran d'appel,
+faute de permission `CALL_PHONE`. D'où : `composer()` vise l'application
+choisie (`jarvis_app_appels`, avec repli si elle refuse l'intent), la carte
+« Tes applications par défaut » a une ligne **Appels** — la seule des quatre
+qui se CHOISIT à l'écran, parce que Jarvis ne la demande jamais à l'oral —, et
+la permission se donne d'un geste depuis « Autorisations du téléphone ».
+
 ## La bulle flottante, et pourquoi il n'y a PAS d'interrupteur pour l'appui long
 
 Livrée le 5 sept. 2026 (chantier `f5621562`, partie b). Sa demande, quand je

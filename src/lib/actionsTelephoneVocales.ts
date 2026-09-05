@@ -16,7 +16,7 @@ import { lireRepertoire } from "@/lib/repertoire"
 
 /** Les catégories du téléphone où Jarvis doit choisir une application sans
  * qu'on la lui nomme à chaque fois — apprises une fois, retenues ensuite. */
-export type CategorieAppTelephone = "musique" | "navigation" | "messages" | "ia"
+export type CategorieAppTelephone = "musique" | "navigation" | "messages" | "ia" | "appels"
 
 /** Les actions vocales qui sortent de Jarvis pour aller dans une autre app. */
 export type ActionTelephone =
@@ -49,10 +49,15 @@ const SUR_LE_TELEPHONE_SEULEMENT =
 /** Exportées pour que Paramètres puisse afficher et effacer ces préférences :
  * elles étaient fixées une fois à la voix, puis invisibles et impossibles à
  * changer. Seule source de vérité pour ces clés — ne les recopie pas. */
-export const CLES_APP: Record<"musique" | "navigation" | "ia", string> = {
+export const CLES_APP: Record<"musique" | "navigation" | "ia" | "appels", string> = {
   musique: "jarvis_app_musique",
   navigation: "jarvis_app_navigation",
   ia: "jarvis_app_ia",
+  // Ajoutée le 5 sept. 2026 au soir : sans application d'appel visée, Android
+  // affiche « Terminer l'action avec… » dès que deux applications savent
+  // téléphoner. Il a ZoiPer en plus du téléphone — c'était l'un des deux
+  // appuis qu'il devait encore faire pour qu'un appel parte.
+  appels: "jarvis_app_appels",
 }
 export const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
 
@@ -60,7 +65,7 @@ export const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
  * IA tierce, si on la lui a déjà demandée une fois. Lu par MicButton pour
  * savoir s'il faut la lui demander avant d'exécuter — seule source de
  * vérité pour "quelle app pour X", avec CLES_APP ci-dessus. */
-export function appPreferee(categorie: "musique" | "navigation" | "ia"): string | null {
+export function appPreferee(categorie: "musique" | "navigation" | "ia" | "appels"): string | null {
   try {
     return localStorage.getItem(CLES_APP[categorie])
   } catch {
@@ -80,6 +85,7 @@ export function canalMessagesPrefere(): "whatsapp" | "sms" | null {
 }
 
 const NOM_CATEGORIE: Record<CategorieAppTelephone, string> = {
+  appels: "les appels",
   musique: "la musique",
   navigation: "les itinéraires",
   messages: "les messages",
@@ -340,7 +346,18 @@ export async function executerActionTelephone(
         // Première fois : on demande la permission d'appeler, pour ne pas se
         // contenter éternellement de composer alors qu'il a demandé mieux.
         await ActionsTelephone.demanderPermissionAppel().catch(() => ({ granted: false }))
-        const { direct } = await ActionsTelephone.composer({ numero })
+        // L'application d'appel qu'il a choisie, s'il en a choisi une : sans
+        // elle, Android affiche son sélecteur « Terminer l'action avec… » à
+        // chaque appel, et il faut un appui de plus. Même mécanisme que la
+        // musique et les itinéraires — une seule carte de réglages pour les
+        // quatre, pas un second chemin.
+        let paquetAppel: string | undefined
+        const appAppels = appPreferee("appels")
+        if (appAppels) {
+          const { applications } = await ActionsTelephone.listerApplications()
+          paquetAppel = trouverApplication(applications, appAppels)?.paquet
+        }
+        const { direct } = await ActionsTelephone.composer({ numero, paquet: paquetAppel })
         const qui = nom ?? "le numéro"
         if (direct) return nom ? `J'appelle ${nom}.` : "J'appelle."
         return `J'ai composé ${qui}, appuie pour lancer l'appel — autorise les appels dans les réglages si tu veux que je le fasse directement.`
