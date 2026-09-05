@@ -312,6 +312,37 @@ doitDonner("ajouter une tâche : commander les carreaux", {
 doitDonner("lance Spotify", { action: "open_app", app_name: "Spotify" })
 doitDonner("ouvre Apple Music", { action: "open_app", app_name: "Apple music" })
 
+console.log("\n— Confier une recherche à une IA installée : ses tournures du 5 sept. —")
+
+// Sa phrase, mot pour mot, dans le message du 5 septembre au soir. Elle
+// tombait dans la règle « ouvre / lance une application » et ne donnait rien.
+doitDonner(
+  "Jarvis lance une recherche via Perplexity pour des restaurants de viande réputés à Netanya",
+  { action: "ask_ai", app_name: "Perplexity", question: "Des restaurants de viande reputes a netanya" },
+)
+doitDonner("fais une recherche sur Perplexity : restaurants de viande à Netanya", {
+  action: "ask_ai",
+  app_name: "Perplexity",
+})
+doitDonner("cherche des restaurants de viande à Netanya sur Perplexity", {
+  action: "ask_ai",
+  app_name: "Perplexity",
+  question: "Des restaurants de viande a netanya",
+})
+// La tournure qui marchait déjà : elle ne doit pas avoir bougé.
+doitDonner("demande à Perplexity des restaurants de viande réputés à Netanya", {
+  action: "ask_ai",
+  app_name: "Perplexity",
+})
+doitLaisserPasser(
+  "cherche des restaurants de viande réputés à Netanya",
+  "aucune IA nommée : c'est au serveur de décider, pas à une règle locale",
+)
+doitLaisserPasser(
+  "cherche mes clés dans le salon",
+  "« dans le salon » n'est pas une application, malgré le « dans »",
+)
+
 console.log("\n— Une phrase n'est pas un nom d'application —")
 
 // `executerActionTelephone` rapproche le texte des apps installées de façon
