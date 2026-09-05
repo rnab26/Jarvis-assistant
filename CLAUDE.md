@@ -1179,6 +1179,23 @@ Capacitor efface lui-même le chemin enregistré quand l'APK change
 (`Bridge.isNewBinary`, vérifié dans les sources) : installer une APK reprend
 toujours la main sur un paquet téléchargé.
 
+**L'empreinte fait bien ce qu'on lui demande, et c'est mesuré** (5 sept.) :
+recalculée sur de vrais commits, elle est IDENTIQUE entre deux commits qui ne
+touchent que `src/` (la mise à jour rapide est donc autorisée) et DIFFÉRENTE
+de part et d'autre du commit qui a ajouté un plugin natif (elle est donc
+refusée). Vérifié aussi côté CI : la ligne `native:` de la release est passée
+de `77fe9fc7bc23fd79` à `ef2bc80e284a1128` après l'ajout de
+`ReglagesSystemePlugin.java`, et rien d'autre. Pour la revérifier, recalcule
+la même chose à deux références et compare :
+
+```bash
+git ls-tree -r <ref> -- android capacitor.config.ts patches
+```
+
+(plus la liste des plugins Capacitor du lockfile, comme dans
+`android-build.yml`). Ce sont les valeurs RELATIVES qui comptent : une même
+méthode aux deux références, puis on compare.
+
 L'empreinte de l'APK installée ne se relève QUE pendant que l'interface
 embarquée tourne (`getServerBasePath()` vide ou `"public"`) : une fois un
 paquet appliqué, `BUILD_NUMBER` et `NATIVE_EMPREINTE` décrivent le paquet, pas
