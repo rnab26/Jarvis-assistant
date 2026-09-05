@@ -19,6 +19,7 @@ function ShellContent() {
     dialogueState,
     voiceState,
     widgetState,
+    devSectionsState,
   } = useJarvisData()
 
   useShareReceiver(documentsState.saveTextDocument)
@@ -28,6 +29,7 @@ function ShellContent() {
       <MicButton
         tasksApi={tasksState}
         devItemsApi={devItemsState}
+        devSectionsApi={devSectionsState}
         documentsApi={documentsState}
         contactsApi={contactsState}
         placeRemindersApi={{

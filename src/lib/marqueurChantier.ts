@@ -90,7 +90,21 @@ export function marqueurDe(item: DevItem): Marqueur | null {
   }
   if (tete.length === 0) return null
 
-  const entete = tete.join(" ")
+  return classer(tete.join(" "))
+}
+
+/**
+ * La table de correspondance, et la SEULE : `marqueurDe` s'en sert pour
+ * l'étiquette, `notesSansMarqueur` pour savoir quel crochet retirer de
+ * l'aperçu. Écrite deux fois, elle finirait par diverger — une étiquette
+ * affichée d'un côté, le crochet gardé dans l'aperçu de l'autre, et personne
+ * pour s'en apercevoir.
+ *
+ * L'ordre n'est pas arbitraire : il va du plus « ne t'en occupe pas » au plus
+ * « vas-y ». Un chantier marqué « [LIBRE pour la partie réglages, À CADRER
+ * pour le reste] » (cas réel) ressort donc « à cadrer ».
+ */
+function classer(entete: string): Marqueur | null {
   if (entete.includes("doublon")) return "doublon"
   if (entete.includes("a faire par raphael")) return "pour_raphael"
   if (entete.includes("cadrer")) return "a_cadrer"
@@ -114,17 +128,10 @@ export function notesSansMarqueur(notes: string | null): string | null {
   for (let i = 0; i < 2; i++) {
     const m = reste.match(/^\[([^\]]{0,400})\]/)
     if (!m) break
-    const cle = normaliserRecherche(m[1]).slice(0, 60)
-    // Seuls les crochets qui PORTENT le marqueur sont retirés : « [Questionnaire] »
-    // ou « [CADRE — Raphael a tranché] » disent quelque chose, eux.
-    const estMarqueur =
-      cle.includes("doublon") ||
-      cle.includes("a faire par raphael") ||
-      cle.includes("cadrer") ||
-      cle.includes("reporte") ||
-      cle.includes("bloque") ||
-      cle.includes("libre")
-    if (!estMarqueur) break
+    // Seuls les crochets qui PORTENT un marqueur sont retirés — même table que
+    // l'étiquette, pas une seconde liste. « [Questionnaire] » ou « [CADRE —
+    // Raphael a tranché] » disent quelque chose, eux, et restent.
+    if (!classer(normaliserRecherche(m[1]).slice(0, 60))) break
     reste = reste.slice(m[0].length).trimStart()
   }
   return reste || null
