@@ -101,7 +101,7 @@ verifier(
 
 verifier(
   "les accès spéciaux ne partent jamais dans une demande",
-  !clesADemander(rien).includes("installer_maj") && !clesADemander(rien).includes("assistant"),
+  !clesADemander(rien).includes("installer_maj"),
   "aucune fenêtre Android ne les accorde : le bouton ne ferait rien",
 )
 
@@ -143,13 +143,12 @@ verifier(
 )
 verifier(
   "accès spécial : les réglages d'Android",
-  actionDeLaLigne(decl("installer_maj"), etat("installer_maj", false), rien) === "reglages" &&
-    actionDeLaLigne(decl("assistant"), etat("assistant", false), rien) === "reglages",
+  actionDeLaLigne(decl("installer_maj"), etat("installer_maj", false), rien) === "reglages",
 )
 verifier(
   "état illisible : les réglages, pas un refus annoncé à tort",
-  actionDeLaLigne(decl("assistant"), etat("assistant", false, false, false), rien) === "reglages" &&
-    libelleEtat(etat("assistant", false, false, false)) === "Non vérifiable",
+  actionDeLaLigne(decl("installer_maj"), etat("installer_maj", false, false, false), rien) ===
+    "reglages" && libelleEtat(etat("installer_maj", false, false, false)) === "Non vérifiable",
 )
 verifier(
   "l'arrière-plan attend la position, et le dit",

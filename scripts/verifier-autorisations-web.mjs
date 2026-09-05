@@ -101,7 +101,7 @@ try {
   )
   verifier(
     "le compte accordées / total est affiché",
-    /0 accordée sur 8/.test((await neuf.locator("[data-resume]").textContent()) ?? ""),
+    /0 accordée sur 7/.test((await neuf.locator("[data-resume]").textContent()) ?? ""),
     (await neuf.locator("[data-resume]").textContent()) ?? "",
   )
 
@@ -152,8 +152,8 @@ try {
   // ── Un état qu'Android ne veut pas dire n'est pas annoncé comme un refus ──
   verifier(
     "un état illisible se dit « Non vérifiable », pas « Refusée »",
-    (await bloque.locator('[data-etat="assistant"]').textContent()) === "Non vérifiable",
-    (await bloque.locator('[data-etat="assistant"]').textContent()) ?? "",
+    (await bloque.locator('[data-etat="installer_maj"]').textContent()) === "Non vérifiable",
+    (await bloque.locator('[data-etat="installer_maj"]').textContent()) ?? "",
   )
 
   // ── Tout accordé : on le dit, on ne propose rien ──

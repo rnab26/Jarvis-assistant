@@ -290,6 +290,39 @@ les mots sur lesquels elle s'appuie, et **elle se tait quand rien ne se
 détache** — une suggestion fausse est acceptée sans être relue, donc elle coûte
 plus cher qu'une absence de suggestion.
 
+## Les contacts viennent du TÉLÉPHONE, plus d'un carnet dans Jarvis
+
+Décision de Raphaël, 5 sept. 2026, à ne pas rouvrir : « ça ne sert à rien,
+sachant que tu as déjà une mémoire active dans Jarvis qui retient tout ce
+qu'on dit. À partir du moment où il est connecté au téléphone à mes contacts,
+il sait tout. »
+
+Le carnet d'adresses de Jarvis (table `contacts`, onglet dédié) dupliquait deux
+choses qui existaient déjà ailleurs et mieux : les **numéros**, qui sont dans
+le répertoire du téléphone, et ce qu'il dit des **gens**, que la mémoire longue
+durée retient toute seule sans qu'il ait à dicter une fiche. Onglet, route,
+page et les quatre actions vocales `list/add/update/delete_contact` sont
+retirés (commits `8d5441c`, `24185f7`).
+
+- `ActionsTelephonePlugin.lireContacts()` (permission `READ_CONTACTS`) lit le
+  répertoire **à la demande** et n'en copie rien. Recopier en base recréerait
+  la deuxième source de vérité qu'on vient d'enlever.
+- `src/lib/chercherContact.ts` est **pur** : composer le numéro de quelqu'un
+  d'autre est l'erreur qu'on ne rattrape pas. Deux homonymes → on demande
+  lequel. Un fragment (« Yo ») ne trouve rien. Plusieurs numéros → le mobile,
+  jamais le premier de la liste.
+- `src/lib/repertoire.ts` distingue **refus de permission** et **aucun
+  contact** : rendre une liste vide sur un refus ferait dire à Jarvis « tu n'as
+  personne » alors qu'il n'a pas regardé.
+- Côté serveur, la consigne dit désormais de **ne jamais réclamer un numéro**
+  et de passer `contact_name` : le modèle ne voit pas le répertoire, le
+  téléphone si. C'est l'inverse exact de ce qu'elle disait avant, et c'est
+  cette consigne-là qui faisait répondre « il faut que tu me donnes son
+  numéro ».
+
+La table `contacts` n'est pas supprimée (vide, sans coût, et une suppression de
+table ne se défait pas) : à faire seulement sur sa demande explicite.
+
 ## Les autorisations du téléphone : un seul écran, jamais par surprise
 
 Livré le 5 sept. 2026 (chantier `e399b670`). Sa demande : « quand on installe
@@ -327,12 +360,19 @@ Quatre choses à ne pas défaire :
    change.
 4. **Quand Android ne dit pas l'état, on le dit** (« Non vérifiable »,
    `connue: false`) au lieu d'annoncer un refus qui n'en est peut-être pas
-   un. C'est le cas de l'assistant par défaut, qu'aucune API publique
-   n'expose.
+   un — certaines surcouches constructeur répondent de travers sur les accès
+   spéciaux.
+
+L'ASSISTANT DU TÉLÉPHONE n'est PAS dans cette liste, et il ne faut pas l'y
+remettre : c'est un rôle Android, pas une autorisation, et une application ne
+peut ni se l'attribuer ni se le retirer. Il a sa carte à lui, qui lit l'état
+réel par `RoleManager` — Paramètres › Ce que Jarvis utilise › « L'appui long
+sur la touche latérale ».
 
 Pas d'autorisation par application tierce, et c'est explicite dans sa
 demande : ouvrir une app et lui passer un texte marche déjà sans permission,
 pour n'importe laquelle, sans code par app.
+
 
 ## Supprimer demande toujours, partout dans l'app
 
@@ -746,7 +786,16 @@ tout seul les fichiers voisins (`memoire.ts`) et le dossier `_shared/` quand
 la fonction s'en sert, et il relit puis **conserve le réglage `verify_jwt`
 existant** — `google-oauth` doit rester ouvert pour recevoir la redirection de
 Google, qui ne porte aucun jeton ; le refermer casserait la connexion du
-compte Google. **Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
+compte Google. **`git fetch && git merge` AVANT de déployer, toujours.** Le script envoie ce
+qui est SUR LE DISQUE, pas ce qui est sur la branche. Le 5 sept., un
+déploiement fait pour une raison sans rapport (une phrase de
+`_shared/environnement.ts`) a remis en ligne l'`index.ts` d'avant le correctif
+qu'une autre session venait de pousser — le rouge est tombé une demi-heure
+plus tard sur `verifier-commande-vocale.mjs`, chez celui qui n'y était pour
+rien. Plusieurs sessions déploient la MÊME fonction ; l'état du disque n'est à
+jour que si on vient de le mettre à jour.
+
+**Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
 à mettre dans les variables d'environnement de l'environnement cloud — jamais
 dans le dépôt). Tant qu'elle manque, le script le dit et s'arrête.
 
@@ -1401,6 +1450,43 @@ de preuve à un chantier qui ne marchait pas. Et **un contrôle doit être essay
 supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle lit
 maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
 Playwright du 4 sept.
+
+## L'assistant du téléphone : ce qui qualifie Jarvis, et ce qui ne se peut pas
+
+Raphaël, 5 sept. 2026, captures à l'appui : « voici le vrai paramétrage à
+faire pour activer Jarvis dans le téléphone ». Son chemin Samsung : Paramètres
+› Fonctions avancées › Touche latérale › Appuyer longuement › « Application
+d'assistant numérique par défaut » › Autres applications.
+
+**Le critère est celui d'AOSP, et il a été lu dans la source, pas cité de
+mémoire** (`PermissionController`,
+`AssistantRoleBehavior.getQualifyingPackagesInternal`, téléchargée depuis
+android.googlesource.com). Deux branches, l'une OU l'autre suffit : un
+`VoiceInteractionService` protégé par `BIND_VOICE_INTERACTION` (avec
+`sessionService`, `recognitionService`, `supportsAssist`), **ou** une simple
+activité EXPORTÉE répondant à `ACTION_ASSIST` avec `MATCH_DEFAULT_ONLY`.
+`AssistOverlayActivity` remplit la seconde depuis le 4 sept., et l'APK publiée
+la porte bien — vérifié en téléchargeant la release et en lisant son manifeste
+binaire.
+
+**Donc quand la liste d'Android ne montre pas Jarvis, ne cherche pas dans le
+code : c'est l'APK INSTALLÉE qui est trop ancienne.** Le piège est neuf depuis
+la mise à jour rapide, et il trompe : l'interface est à jour, ce qui donne
+toutes les raisons de croire l'app à jour, alors que le manifeste vit dans la
+coquille Android, que seule une vraie installation remplace. La carte
+« L'appui long sur la touche latérale » (Paramètres › Ce que Jarvis utilise)
+interroge le système sur notre propre paquet, sur l'appareil, et le dit —
+plutôt que de le laisser deviner.
+
+**Deux chemins qui n'existent pas, vérifiés : ne les retente pas.** L'action
+qui mène pile sur l'écran du choix (`MANAGE_DEFAULT_APP` + `EXTRA_ROLE_NAME`)
+est protégée par la permission de signature `MANAGE_ROLE_HOLDERS` ; et le rôle
+assistant est `requestable="false"` dans `roles.xml`, ce qui ferme aussi
+`RoleManager.createRequestRoleIntent`. On ouvre donc `VOICE_INPUT_SETTINGS`,
+puis à défaut la liste des applications par défaut, et les derniers pas restent
+écrits sous le bouton. Corollaire pour le chantier f5621562 : **l'appui long ne
+peut pas avoir d'interrupteur dans l'app**, c'est un rôle exclusif d'Android
+qu'une application ne peut ni s'attribuer ni se retirer.
 
 ## Le web se met à jour tout seul, l'app Android jamais
 

@@ -364,6 +364,43 @@ try {
     "un fichier local ouvert dans la fenêtre de l'app remplacerait l'application, qui perdrait son état",
   )
 
+  // ── L'assistant du téléphone : l'appui long sur la touche latérale ──
+  // Ce qui compte ici n'est pas un calcul mais une PHRASE : quand Jarvis
+  // n'apparaît pas dans la liste d'Android, la carte doit dire que la cause
+  // est l'APK installée, sinon Raphaël cherche dans les réglages du téléphone
+  // un réglage qui ne peut pas y être.
+  const assistVieux = page.locator("#assistant-ancien")
+  await assistVieux.getByText(/ne sait pas encore se déclarer/).waitFor({ timeout: 5000 })
+  verifier(
+    "APK trop ancienne : la carte dit que c'est la version installée qui bloque",
+    await assistVieux.getByText(/ne sait pas encore se déclarer/).isVisible(),
+  )
+  verifier(
+    "et qu'une mise à jour rapide n'y suffira pas",
+    await assistVieux.getByText(/mise à jour rapide ne suffit pas/).isVisible(),
+    "sans cette phrase, il appuie sur « Mettre à jour » et rien ne change",
+  )
+
+  const assistCandidat = page.locator("#assistant-candidat")
+  verifier(
+    "APK à jour mais assistant non choisi : la carte le dit",
+    await assistCandidat.getByText(/ce n'est pas lui pour l'instant/).isVisible(),
+  )
+  verifier(
+    "et propose d'ouvrir le réglage d'Android",
+    await assistCandidat.getByRole("button", { name: "Ouvrir le réglage Android" }).isVisible(),
+  )
+  verifier(
+    "le chemin exact reste écrit : le bouton ne mène pas jusqu'au dernier écran",
+    await assistCandidat.getByText(/Application d'assistant numérique par défaut/).isVisible(),
+    "l'action qui irait pile dessus est protégée par une permission de signature",
+  )
+
+  const assistActif = page.locator("#assistant-actif")
+  verifier(
+    "quand Jarvis est l'assistant, la carte le confirme",
+    await assistActif.getByText("Jarvis est l'assistant du téléphone.").isVisible(),
+  )
   // ── L'ordre réel : à quelle hauteur commence la mise à jour ──
   // Raphaël, 5 sept. 2026 : « pour la mise à jour, il faut que je descende
   // tout en bas, essaye de la rehausser un petit peu, mais en la compactant ».

@@ -6,7 +6,6 @@ import {
   Mic,
   Phone,
   ShieldCheck,
-  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react"
@@ -33,7 +32,6 @@ const ICONES: Record<CleAutorisation, LucideIcon> = {
   position: MapPin,
   position_fond: MapPin,
   installer_maj: Download,
-  assistant: Sparkles,
 }
 
 /**

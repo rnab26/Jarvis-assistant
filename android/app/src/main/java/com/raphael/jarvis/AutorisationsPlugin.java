@@ -58,8 +58,8 @@ public class AutorisationsPlugin extends Plugin {
     /**
      * Les autorisations qu'on sait demander à l'exécution, dans l'ordre où
      * l'écran les présente. Les « accès spéciaux » (installer une mise à
-     * jour, être l'assistant du téléphone) ne sont pas ici : ils ne passent
-     * pas par une fenêtre de demande mais par un écran de réglages.
+     * jour) ne sont pas ici : ils ne passent pas par une fenêtre de demande
+     * mais par un écran de réglages.
      */
     private static final String[] RUNTIME = {
         "micro", "notifications", "contacts", "telephone", "position", "position_fond"
@@ -153,39 +153,7 @@ public class AutorisationsPlugin extends Plugin {
         return !ActivityCompat.shouldShowRequestPermissionRationale(getActivity(), permission);
     }
 
-    /**
-     * Jarvis est-il l'assistant du téléphone (l'appui long sur le bouton) ?
-     *
-     * Android n'expose aucune API publique pour le lire. On lit le réglage
-     * système, et quand il est illisible on le DIT (« connue » à false)
-     * plutôt que d'annoncer un refus qui n'en est peut-être pas un.
-     */
-    private JSObject etatAssistant() {
-        JSObject o = new JSObject();
-        o.put("cle", "assistant");
-        String valeur = null;
-        try {
-            valeur = Settings.Secure.getString(getContext().getContentResolver(), "assistant");
-            if (valeur == null || valeur.isEmpty()) {
-                valeur = Settings.Secure.getString(
-                    getContext().getContentResolver(), "voice_interaction_service");
-            }
-        } catch (Exception ignore) {
-            // Certaines surcouches refusent la lecture : on reste honnête.
-        }
-        if (valeur == null || valeur.isEmpty()) {
-            o.put("accordee", false);
-            o.put("connue", false);
-        } else {
-            o.put("accordee", valeur.contains(getContext().getPackageName()));
-            o.put("connue", true);
-        }
-        o.put("bloquee", false);
-        return o;
-    }
-
     private JSObject etatDe(String cle) {
-        if ("assistant".equals(cle)) return etatAssistant();
         JSObject o = new JSObject();
         o.put("cle", cle);
         o.put("accordee", estAccordee(cle));
@@ -198,7 +166,6 @@ public class AutorisationsPlugin extends Plugin {
         JSArray liste = new JSArray();
         for (String cle : RUNTIME) liste.put(etatDe(cle));
         liste.put(etatDe("installer_maj"));
-        liste.put(etatAssistant());
         JSObject res = new JSObject();
         res.put("autorisations", liste);
         return res;
@@ -292,9 +259,6 @@ public class AutorisationsPlugin extends Plugin {
                 } else {
                     intent = ficheApplication();
                 }
-                break;
-            case "assistant":
-                intent = new Intent(Settings.ACTION_VOICE_INPUT_SETTINGS);
                 break;
             default:
                 intent = ficheApplication();

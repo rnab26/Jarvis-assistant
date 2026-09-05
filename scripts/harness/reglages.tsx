@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
+import { AssistantTelephone, type PontAssistant } from "@/components/settings/AssistantTelephone"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
@@ -40,6 +41,21 @@ Capacitor.isNativePlatform = () => true
 const { MettreAJour } = await import("@/components/settings/MettreAJour")
 
 const rien = async () => {}
+
+/** Le pont vers Android, en factice : le banc tourne dans un vrai navigateur,
+ * où le plugin n'existe pas. Les trois états qui comptent (APK trop ancienne,
+ * candidat mais pas choisi, choisi) se parcourent ainsi à 390 points de large,
+ * comme Raphaël les verra. */
+function pontFactice(assistant: { candidat: boolean; role: "actif" | "inactif" | "inconnu" } | null): PontAssistant {
+  return {
+    natif: true,
+    lire: async () => {
+      if (assistant === null) throw new Error("plugin absent de cette APK")
+      return assistant
+    },
+    ouvrir: async () => ({ ecran: "assistant" }),
+  }
+}
 
 const ETAT_AUTORISE: EtatNotifications = {
   disponible: true,
@@ -182,6 +198,27 @@ function BancDesReglages() {
               PREFS_NOTIFS_DEFAUT,
             )}
           />
+        </Section>
+      </div>
+
+      {/* L'assistant du téléphone : la carte doit dire POURQUOI Jarvis
+          n'apparaît pas dans la liste d'Android — une APK trop ancienne — au
+          lieu de laisser chercher. */}
+      <div id="assistant-ancien">
+        <Section titre="Assistant (APK trop ancienne)" cle="banc-assist-vieux" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice(null)} />
+        </Section>
+      </div>
+
+      <div id="assistant-candidat">
+        <Section titre="Assistant (choisissable)" cle="banc-assist-candidat" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice({ candidat: true, role: "inactif" })} />
+        </Section>
+      </div>
+
+      <div id="assistant-actif">
+        <Section titre="Assistant (actif)" cle="banc-assist-actif" ouverteParDefaut>
+          <AssistantTelephone pont={pontFactice({ candidat: true, role: "actif" })} />
         </Section>
       </div>
 

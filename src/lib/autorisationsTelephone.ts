@@ -28,7 +28,6 @@ export type CleAutorisation =
   | "position"
   | "position_fond"
   | "installer_maj"
-  | "assistant"
 
 /** L'état d'une autorisation, tel que le plugin Android le rapporte. */
 export interface EtatAutorisation {
@@ -41,9 +40,10 @@ export interface EtatAutorisation {
    */
   bloquee: boolean
   /**
-   * Faux quand Android ne veut pas dire l'état (le cas de l'assistant par
-   * défaut, qu'aucune API publique n'expose). On l'affiche alors comme
-   * inconnu plutôt que d'annoncer un refus qui n'en est peut-être pas un.
+   * Faux quand Android refuse de dire l'état — certaines surcouches
+   * constructeur répondent de travers sur les accès spéciaux. On l'affiche
+   * alors comme inconnu plutôt que d'annoncer un refus qui n'en est
+   * peut-être pas un, et la ligne renvoie vers les réglages du téléphone.
    */
   connue: boolean
 }
@@ -73,6 +73,13 @@ export interface AutorisationDeclaree {
 /**
  * Le catalogue, dans l'ordre d'affichage : ce qui sert tous les jours
  * d'abord, les accès spéciaux à la fin.
+ *
+ * L'ASSISTANT DU TÉLÉPHONE N'EST PAS ICI, et c'est volontaire : ce n'est pas
+ * une autorisation mais un RÔLE Android, qu'une application ne peut ni
+ * s'attribuer ni se retirer. Il a sa propre carte, qui lit l'état réel par
+ * RoleManager — Paramètres › Ce que Jarvis utilise › « L'appui long sur la
+ * touche latérale » (src/components/settings/AssistantTelephone.tsx). Deux
+ * endroits pour la même chose finiraient par en dire deux versions.
  */
 export const AUTORISATIONS: AutorisationDeclaree[] = [
   {
@@ -137,15 +144,6 @@ export const AUTORISATIONS: AutorisationDeclaree[] = [
     usage: "Poser la nouvelle version sans passer par le navigateur.",
     sansElle: "Chaque mise à jour demande de repasser par le téléchargement à la main.",
     technique: "Installer des applications (REQUEST_INSTALL_PACKAGES)",
-    type: "speciale",
-    essentielle: false,
-  },
-  {
-    cle: "assistant",
-    titre: "Répondre à l'appui long sur le bouton",
-    usage: "Devenir l'assistant du téléphone, comme Perplexity : appui long, Jarvis écoute.",
-    sansElle: "Il faut ouvrir l'app ou passer par le widget.",
-    technique: "Application d'assistance (réglage Android)",
     type: "speciale",
     essentielle: false,
   },

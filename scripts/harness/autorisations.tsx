@@ -44,7 +44,7 @@ function BancAutorisations() {
     )
 
   const avecBlocage = tous(false).map((e) =>
-    e.cle === "micro" ? { ...e, bloquee: true } : e.cle === "assistant" ? { ...e, connue: false } : e,
+    e.cle === "micro" ? { ...e, bloquee: true } : e.cle === "installer_maj" ? { ...e, connue: false } : e,
   )
 
   return (
@@ -61,7 +61,7 @@ function BancAutorisations() {
         />
       </Cas>
 
-      <Cas titre="Micro refusé pour de bon, assistant illisible" id="cas-bloque">
+      <Cas titre="Micro refusé pour de bon, accès spécial illisible" id="cas-bloque">
         <ListeAutorisations
           etats={avecBlocage}
           chargement={false}
