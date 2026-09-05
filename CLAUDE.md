@@ -699,6 +699,13 @@ de démarrage l'injecte dans **chaque** session suivante, dans deux blocs
 dédiés : « Ce qui attend une DÉCISION de Raphaël » et « Ce que Raphaël a
 répondu ». Une capture jointe se récupère avec `scripts/photo.sh <chemin>`.
 
+**Chaque point arrive REPLIÉ sur sa question**, et c'est mesuré : déplié, un
+seul point (question, pourquoi, trois options, champ de commentaire, photo,
+bouton) fait 616 points de haut sur un écran de téléphone et repoussait le
+tableau des chantiers à 1 382. Replié, la carte entière en fait 200. La
+question, elle, reste lisible sans ouvrir — c'est elle qui lui dit lequel
+ouvrir — et l'état d'une action se lit sur la ligne repliée.
+
 **Pourquoi on a arrêté les fiches**, ses mots du 5 sept. : « les artefacts ont
 trop de durée de vie limitée et je te colle des réponses détaillées quand
 c'était nécessaire ». Une fiche vit hors du dépôt ET hors de la base : la
