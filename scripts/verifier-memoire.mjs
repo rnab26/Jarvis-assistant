@@ -246,6 +246,52 @@ if (loyers.length >= 2) {
 }
 
 // ---------------------------------------------------------------------------
+// Le rattrapage des empreintes écrit-il VRAIMENT ? (5 sept. 2026)
+//
+// Il n'écrivait rien depuis deux jours, en silence : `echanges` avait des
+// politiques SELECT/INSERT/DELETE mais aucune pour UPDATE, et RLS ne refuse
+// pas bruyamment un UPDATE — il restreint les lignes. Zéro ligne touchée,
+// succès rendu, rien à attraper. Aucun contrôle ne le voyait parce que tous
+// regardaient le code, qui était juste.
+// ---------------------------------------------------------------------------
+
+{
+  // Un vieil échange sans empreinte, comme les 75 de Raphaël.
+  await fetch(`${URL_PROJET}/rest/v1/echanges`, {
+    method: "POST",
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${jeton}`,
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      transcript: "Un vieil échange que personne n'a jamais rendu cherchable.",
+      reponse: "ok",
+    }),
+  })
+  const avant = sql(
+    `select count(*)::int as n from echanges where user_id = '${userId}' and embedding is null`,
+  )[0].n
+  verifier("un échange sans empreinte est bien en place pour le test", avant >= 1, `${avant} trouvé(s)`)
+
+  // Une phrase quelconque déclenche le rattrapage, qui tourne en tâche de fond.
+  await dire("Bonjour, ça va ?")
+  await attendreStabilisation()
+
+  const apres = sql(
+    `select count(*)::int as n from echanges where user_id = '${userId}' and embedding is null`,
+  )[0].n
+  verifier(
+    "le rattrapage rend vraiment cherchables les échanges anciens",
+    apres < avant,
+    `${avant} sans empreinte avant, ${apres} après — l'écriture ne passe pas ` +
+      "(politique RLS UPDATE manquante sur echanges ?), et elle le fait en silence",
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Retrouver une CONVERSATION passée, pas seulement un fait (chantier caa54df2).
 //
 // On choisit exprès un échange dont la consigne d'extraction dit qu'il ne doit

@@ -775,6 +775,19 @@ POURQUOI ; et `sante_memoire()` (migration 0020) compte les échanges depuis la
 dernière chose retenue — c'est le filet pour les pannes qu'elle n'a même pas pu
 signaler. Le témoin s'affiche en tête de l'onglet Mémoire, il ne notifie rien.
 
+**Une migration qui ajoute une COLONNE doit vérifier la politique RLS qui va
+avec.** Le 5 sept., le rattrapage des empreintes n'écrivait rien depuis deux
+jours, en silence : `echanges` avait SELECT, INSERT et DELETE (migration 0006)
+mais aucune politique UPDATE — la table n'était jamais modifiée à l'époque. La
+0018 y a ajouté `embedding`, donc une écriture, sans la politique. **RLS ne
+refuse pas bruyamment un UPDATE : il restreint les lignes.** Zéro ligne
+touchée, PostgREST rend un succès, le code n'a rien à attraper, et aucun
+contrôle qui lit le code ne peut le voir — le code était juste. D'où la
+migration 0021, et la règle : toute écriture passe par un `.select()` qui
+prouve qu'une ligne a bougé (`rattraperEmpreintes`), et un contrôle
+bout-en-bout de `verifier-memoire.mjs` vérifie que le rattrapage rend
+VRAIMENT cherchable un échange ancien.
+
 **Une panne de LECTURE ne se voit pas dans le témoin, d'où `_shared/pannes.ts`.**
 Le témoin compte les écritures ; un rappel qui échoue, lui, rend exactement le
 même résultat qu'un rappel qui n'a rien trouvé — la chaîne vide. Jarvis
