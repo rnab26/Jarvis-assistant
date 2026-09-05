@@ -7,7 +7,7 @@ import {
   Trash2,
   Wrench,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +60,9 @@ interface ErreursJarvisProps {
 /** Ce qu'on montre par défaut : ce qui n'est ni réglé ni écarté. */
 const OUVERTES: ErreurStatut[] = ["nouveau", "en_cours"]
 
+/** Au-delà, la carte ferait un mur : le registre se remplit tout seul. */
+const AFFICHEES_PAR_DEFAUT = 25
+
 export function ErreursJarvis({
   erreursState,
   devItems,
@@ -69,6 +72,7 @@ export function ErreursJarvis({
   const { erreurs, loading, error, refresh } = erreursState
   const [voirReglees, setVoirReglees] = useState(false)
   const [categorie, setCategorie] = useState<ErreurCategorie | null>(null)
+  const [toutVoir, setToutVoir] = useState(false)
 
   const ouvertes = useMemo(() => erreurs.filter((e) => OUVERTES.includes(e.statut)), [erreurs])
   const affichees = useMemo(
@@ -105,7 +109,13 @@ export function ErreursJarvis({
         <>
           Erreurs de Jarvis{" "}
           <span className="font-normal text-muted-foreground">
-            — {ouvertes.length} ouverte{ouvertes.length > 1 ? "s" : ""}
+            {/* Repliée, cette carte ne dit qu'un chiffre : il ne doit pas être
+                « 0 ouvertes » quand la vérité est « je n'ai pas pu lire ». */}
+            {error
+              ? "— non chargées"
+              : loading
+                ? "— …"
+                : `— ${ouvertes.length} ouverte${ouvertes.length > 1 ? "s" : ""}`}
           </span>
         </>
       }
@@ -176,7 +186,7 @@ export function ErreursJarvis({
             </div>
           ) : (
             <div className="divide-y">
-              {affichees.map((erreur) => (
+              {(toutVoir ? affichees : affichees.slice(0, AFFICHEES_PAR_DEFAUT)).map((erreur) => (
                 <LigneErreur
                   key={erreur.id}
                   erreur={erreur}
@@ -186,6 +196,16 @@ export function ErreursJarvis({
                   onCreerChantier={onCreerChantier}
                 />
               ))}
+              {!toutVoir && affichees.length > AFFICHEES_PAR_DEFAUT && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => setToutVoir(true)}
+                >
+                  Voir les {affichees.length - AFFICHEES_PAR_DEFAUT} autres
+                </Button>
+              )}
             </div>
           )}
       </CardContent>
@@ -211,6 +231,15 @@ function LigneErreur({
   const [deplie, setDeplie] = useState(false)
   const [correction, setCorrection] = useState(erreur.correction ?? "")
   const [enregistre, setEnregistre] = useState(false)
+
+  // La correction peut être modifiée AILLEURS que dans ce champ : par la
+  // fenêtre du crayon, ou depuis un autre appareil. Sans cette remise à
+  // niveau, le champ garderait l'ancien texte, le bouton « Enregistrer »
+  // réapparaîtrait, et un appui rendrait la version périmée — en écrasant ce
+  // qui venait d'être écrit.
+  useEffect(() => {
+    setCorrection(erreur.correction ?? "")
+  }, [erreur.correction])
   const chantier = devItems.find((i) => i.id === erreur.dev_item_id)
 
   async function creerChantier() {
