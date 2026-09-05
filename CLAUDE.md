@@ -150,6 +150,12 @@ va d'abord voir s'il a déjà répondu ici** (outil Artifact, `action: "read"`, 
   https://claude.ai/code/artifact/fc8f0416-f799-4fc6-b9ae-3951b1486dbd
 - **Brancher Google à Jarvis** — actions à faire côté Google Cloud :
   https://claude.ai/code/artifact/27f79fa6-2f64-49bd-879e-5215df9f88cd
+- **Ce qui attend Raphaël** (5 sept.) — 5 actions et 8 décisions restées ouvertes
+  après les 24 h de sessions autonomes : mises à jour en Wi-Fi, voix app fermée,
+  conservation des conversations, contenu du briefing, recherche web payante ou
+  non, ElevenLabs, périmètre du contrôle du téléphone, barre d'actions du site
+  de Mélissa. Ses réponses sont enregistrées : `action: "read_db"` sur l'URL.
+  https://claude.ai/code/artifact/4e952f48-99a4-41de-9c67-44c24769bc17
 
 Les deux premières servent aussi de modèle : catalogue oui/non, et décisions à
 options. Si tu publies une nouvelle fiche, **ajoute son URL à cette liste** dans
