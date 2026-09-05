@@ -290,6 +290,23 @@ les mots sur lesquels elle s'appuie, et **elle se tait quand rien ne se
 détache** — une suggestion fausse est acceptée sans être relue, donc elle coûte
 plus cher qu'une absence de suggestion.
 
+## Supprimer demande toujours, partout dans l'app
+
+`src/components/ConfirmerAction.tsx` : la fenêtre qui pose la question avant
+une action qu'on ne peut pas défaire. Elle porte aussi le choix qui accompagne
+certaines suppressions — « où vont les chantiers de cette section ? » — dans la
+même fenêtre que la confirmation, pas dans une étape de plus.
+
+Il n'y en avait **aucune** dans l'app jusqu'au 4 sept. : chantiers, tâches,
+contacts, documents, corrections de prononciation, rappels de lieu se
+supprimaient au premier appui, sans un mot. Sur un téléphone la corbeille est à
+trois millimètres du crayon, et aucune de ces choses n'a d'archive — sauf les
+chantiers.
+
+**Toute nouvelle corbeille passe par ce composant.** Le texte dit ce qui va
+disparaître, nommément, et propose l'issue moins radicale quand elle existe
+(« archive-le plutôt »).
+
 ## Les prompts des sessions parallèles
 
 Quand Raphaël ouvre plusieurs sessions d'un coup, une par thème, les prompts
@@ -839,6 +856,7 @@ node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la secti
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
+node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer

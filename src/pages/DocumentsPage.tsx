@@ -1,5 +1,6 @@
 import { Download, Trash2, Upload } from "lucide-react"
 import { useRef, useState } from "react"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { Button } from "@/components/ui/button"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
@@ -96,14 +97,22 @@ export function DocumentsPage() {
               >
                 <Download className="size-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Supprimer"
-                onClick={() => handleDelete(doc.path)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
+              <ConfirmerAction
+                titre="Supprimer ce document ?"
+                description={
+                  <>
+                    « {doc.name} » sera supprimé définitivement du stockage. Jarvis ne pourra
+                    plus s'y référer.
+                  </>
+                }
+                libelleConfirmation="Supprimer"
+                onConfirmer={() => handleDelete(doc.path)}
+                trigger={
+                  <Button variant="ghost" size="icon" aria-label="Supprimer">
+                    <Trash2 className="size-4" />
+                  </Button>
+                }
+              />
             </div>
           ))}
         </div>

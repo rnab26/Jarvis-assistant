@@ -1,4 +1,5 @@
 import { Pencil, Plus, Trash2 } from "lucide-react"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { ContactFormDialog } from "@/components/contacts/ContactFormDialog"
 import { Button } from "@/components/ui/button"
@@ -53,14 +54,22 @@ export function ContactsPage() {
                   </Button>
                 }
               />
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Supprimer"
-                onClick={() => deleteContact(contact.id)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
+              <ConfirmerAction
+                titre="Supprimer ce contact ?"
+                description={
+                  <>
+                    « {contact.name} » sera supprimé définitivement — Jarvis ne saura plus qui
+                    c'est quand tu le nommeras.
+                  </>
+                }
+                libelleConfirmation="Supprimer"
+                onConfirmer={() => deleteContact(contact.id)}
+                trigger={
+                  <Button variant="ghost" size="icon" aria-label="Supprimer">
+                    <Trash2 className="size-4" />
+                  </Button>
+                }
+              />
             </div>
           ))}
         </div>

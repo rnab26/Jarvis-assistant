@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core"
 import { Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { Confidentialite } from "@/components/settings/Confidentialite"
@@ -711,14 +712,22 @@ export function SettingsPage() {
                       <p className="font-medium">{p.veut_dire}</p>
                       <p className="text-sm text-muted-foreground">entendu « {p.entendu} »</p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Supprimer"
-                      onClick={() => pronunciationsState.deletePronunciation(p.id)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <ConfirmerAction
+                      titre="Supprimer cette correction ?"
+                      description={
+                        <>
+                          Jarvis réentendra « {p.entendu} » sans savoir que tu dis
+                          « {p.veut_dire} ».
+                        </>
+                      }
+                      libelleConfirmation="Supprimer"
+                      onConfirmer={() => pronunciationsState.deletePronunciation(p.id)}
+                      trigger={
+                        <Button variant="ghost" size="icon" aria-label="Supprimer">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      }
+                    />
                   </li>
                 ))}
               </ul>
@@ -808,14 +817,22 @@ export function SettingsPage() {
                       <p className="font-medium">{p.place}</p>
                       <p className="text-sm text-muted-foreground">{p.reminder}</p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Supprimer"
-                      onClick={() => placeRemindersState.deletePlaceReminder(p.id)}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <ConfirmerAction
+                      titre="Supprimer ce rappel de lieu ?"
+                      description={
+                        <>
+                          Jarvis ne te rappellera plus « {p.reminder} » en arrivant à
+                          « {p.place} ».
+                        </>
+                      }
+                      libelleConfirmation="Supprimer"
+                      onConfirmer={() => placeRemindersState.deletePlaceReminder(p.id)}
+                      trigger={
+                        <Button variant="ghost" size="icon" aria-label="Supprimer">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      }
+                    />
                   </li>
                 ))}
               </ul>
