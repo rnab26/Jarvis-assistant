@@ -159,6 +159,35 @@ L'ordre choisi par Raphaël est aussi celui du bloc injecté au démarrage de
 session (le hook joint `dev_sections` sur cette clé) : ce qu'il voit dans l'app
 et ce que tu lis en ouvrant une session sont rangés pareil.
 
+### Un thème sans section, ça se signale — ça ne se corrige jamais tout seul
+
+Chantier 765af020, 6 sept. 2026. Mesuré, pas supposé : `dev_sections` en
+déclarait 10 alors que les chantiers portaient 15 thèmes distincts — cinq
+thèmes (dont « Site de Mélissa », 6 chantiers) n'avaient donc ni ordre, ni
+description, ni la possibilité d'être renommés depuis l'app. La dérive vient
+d'un thème écrit librement (voix, SQL d'une session, saisie) sans que rien ne
+crée la section correspondante.
+
+`src/lib/themesNonDeclares.ts` (pur, vérifié par
+`verifier-themes-non-declares.ts`) compare les thèmes portés aux sections
+déclarées via `cleTheme()` — même clé que partout ailleurs. La carte
+`ThemesNonDeclares` (silencieuse quand tout est rangé, même famille que
+« Ça existe déjà ») les affiche avec un bouton « Déclarer » par thème.
+
+**Le bouton PROPOSE, il ne corrige rien tout seul** : un automatisme qui crée
+une section à chaque nouveau thème fabriquerait des sections dans son dos,
+pour un thème mal orthographié ou qui ne sert qu'une fois — c'est le même
+choix que pour les doublons.
+
+**Un thème qui n'a qu'un seul chantier ne mérite pas forcément sa propre
+section.** Les cinq trouvés le 6 sept. : deux (« Site de Mélissa », « Le
+cockpit ») avaient plusieurs chantiers et une raison claire de durer — ils ont
+eu leur section. Les trois autres (« Comportement », « Intégration IA »,
+« Tâches et rappels ») n'avaient qu'un chantier chacun, topiquement proches
+d'une section existante : rattachés directement (`update dev_items set
+theme = ...`) à « L'app elle-même » ou « Recherche et veille » plutôt que
+d'éparpiller trois sections d'un seul élément.
+
 ### Le registre des erreurs : ce qui y arrive tout seul, et ce qui n'y arrive pas
 
 `jarvis_erreurs` + la fonction `signaler_erreur(categorie, titre, detail,
@@ -2074,6 +2103,7 @@ node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis chois
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
+node --experimental-strip-types scripts/verifier-themes-non-declares.ts  # un thème sans section se signale, jamais tout seul, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
