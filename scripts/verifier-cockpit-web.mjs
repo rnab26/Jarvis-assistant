@@ -152,6 +152,68 @@ try {
     (await page.getByText("Depuis ton dernier passage").count()) === 1,
   )
 
+  // ── « Ce qui a changé » sur un chantier ──
+  // Le CLAUDE.md du projet dit que deux notes ont été écrasées les 5 et
+  // 6 sept., dont une portant un retour de Raphaël écrit nulle part ailleurs.
+  // Ce qui compte à l'écran : retrouver le texte d'avant, et NE PAS crier au
+  // loup sur une note simplement complétée.
+  const histo = page.locator("#historique")
+  verifier(
+    "l'historique est REPLIÉ tant qu'on ne le demande pas",
+    !(await histo.getByText(/réécrit la note/).isVisible()),
+    "déplié partout, il ferait de chaque carte un mur",
+  )
+  await histo.getByRole("button", { name: "Ce qui a changé" }).click()
+  await pause(200)
+  verifier(
+    "ouvert, il dit qui a réécrit la note",
+    await histo.getByText(/telephone-0509 a réécrit la note/).isVisible(),
+    (await histo.innerText()).slice(0, 200),
+  )
+  verifier(
+    "et il montre le texte d'AVANT, celui qu'on vient chercher",
+    await histo.getByText(/il faut que Jarvis sache lancer une musique précise/).first().isVisible(),
+  )
+  verifier(
+    "une note COMPLÉTÉE n'est pas présentée comme perdue",
+    (await histo.getByText(/a complété la note/).isVisible()) &&
+      (await histo.getByText(/réécrit la note/).count()) === 1,
+    "un signalement qui se déclenche à tort n'est plus lu du tout",
+  )
+  verifier(
+    "un changement de statut se lit en français",
+    await histo.getByText(/passé le chantier en « en cours »/).isVisible(),
+  )
+  verifier(
+    "et seule la note réécrite propose d'y revenir",
+    (await histo.getByRole("button", { name: "Revenir à cette note" }).count()) === 1,
+    "proposer de revenir sur un statut ferait mentir le tableau",
+  )
+
+  await histo.getByRole("button", { name: "Revenir à cette note" }).click()
+  await pause(250)
+  verifier(
+    "revenir à une note DEMANDE avant",
+    await page.getByText("Revenir à cette note ?").isVisible(),
+    "une note remplacée sans confirmation, c'est la perte qu'on essaie d'éviter",
+  )
+  await page.getByRole("button", { name: "Annuler" }).first().click()
+  await pause(250)
+
+  await page.locator("#historique-vide").getByRole("button", { name: "Ce qui a changé" }).click()
+  await pause(200)
+  verifier(
+    "un chantier sans historique le dit",
+    await page.locator("#historique-vide").getByText(/Rien n'a changé/).isVisible(),
+  )
+  await page.locator("#historique-panne").getByRole("button", { name: "Ce qui a changé" }).click()
+  await pause(200)
+  verifier(
+    "une lecture en échec ne se lit pas comme « rien n'a changé »",
+    await page.locator("#historique-panne").getByText(/n'a pas pu être lu/).isVisible(),
+    "il croirait que rien n'a été enregistré, et n'irait pas chercher plus loin",
+  )
+
   // ── « Où j'en suis » : la réponse en un écran ──
   // C'est la première chose de la page, et c'est la question qu'il pose en
   // ouvrant : « je ne sais plus où mettre le nez ».
