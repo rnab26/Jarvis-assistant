@@ -51,6 +51,26 @@ const cree = await admin("/auth/v1/admin/users", {
 if (!cree.corps?.id) { console.error("création impossible", cree); process.exit(1) }
 const userId = cree.corps.id
 
+// UN COMPTE GOOGLE DE FACADE POUR L UTILISATEUR DE TEST.
+// Depuis que _shared/branchements.ts dit au modele l etat REEL de
+// l installation (6 sept. 2026), un utilisateur sans compte Google branche
+// s entend repondre « je n ai pas acces a tes e-mails » — ce qui est la BONNE
+// reponse, et ce qui faisait virer au rouge les six controles agenda/Gmail,
+// pour rien. On declare donc un compte ici, avec les memes portees que le
+// sien. Aucun jeton n est pose : ces controles regardent ce que le MODELE
+// decide de faire, pas ce que Google repond.
+// La ligne part avec l utilisateur (cle etrangere sur auth.users).
+await admin("/rest/v1/google_accounts", {
+  method: "POST",
+  headers: { Prefer: "return=minimal" },
+  body: JSON.stringify({
+    user_id: userId,
+    email: `essai+${userId.slice(0, 8)}@exemple.test`,
+    scopes: "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.events",
+    connected_at: new Date().toISOString(),
+  }),
+})
+
 const connexion = await fetch(`${URL_PROJET}/auth/v1/token?grant_type=password`, {
   method: "POST",
   headers: { apikey: ANON, "Content-Type": "application/json" },
