@@ -62,6 +62,13 @@ export async function parler(text: string, options: OptionsParler = {}): Promise
   // réponse reste affichée à l'écran.
   if (prefs.muted && !forcer) return
   const index = voiceIndex ?? prefs.voiceIndex ?? undefined
+  // La langue de lecture suit la voix choisie (voir plus bas) : si la liste
+  // des voix n'a encore jamais été demandée — Paramètres jamais ouvert cette
+  // session, ou premier mot dit avant —, voixEnCache est encore vide et une
+  // voix non française retomberait à tort sur LANGUE_PAR_DEFAUT, qu'Android
+  // refuse de lire avec cette voix. Piège déjà payé une fois pour cette
+  // raison précise (voir le commentaire de LANGUE_PAR_DEFAUT ci-dessus).
+  if (index !== undefined && voixEnCache === null) await voixDisponibles()
   const voix = index === undefined ? undefined : voixEnCache?.[index]
 
   await new Promise<void>((resolve) => {

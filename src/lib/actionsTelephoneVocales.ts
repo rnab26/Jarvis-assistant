@@ -13,7 +13,7 @@ import {
 } from "@/lib/actionsTelephoneFenetre"
 import { attendreOuAnnuler } from "@/lib/actionsTelephoneToast"
 import { marquerAnnonceParlee } from "@/lib/annonceDejaDite"
-import { parler } from "@/lib/parler"
+import { arreterParler, parler } from "@/lib/parler"
 import { ecrireReglage } from "@/lib/reglages"
 import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
@@ -325,6 +325,10 @@ export async function executerActionTelephone(
     marquerAnnonceParlee(annonce)
     const continuer = await attendreOuAnnuler(annonce, attente)
     if (!continuer) {
+      // Sans ça, l'annonce en cours (« J'ouvre Waze. ») continuerait de se
+      // dire par-dessus « D'accord, j'annule. » — une annulation doit
+      // couper la voix tout de suite, pas seulement l'action.
+      arreterParler()
       noterEcoute("action_annulee", { action: action.action })
       return "D'accord, j'annule."
     }
