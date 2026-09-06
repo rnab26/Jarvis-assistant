@@ -337,6 +337,30 @@ Un jeu d'essai doit être distinct **après normalisation**, pas seulement à
 l'œil : trois listes de longueurs premières entre elles (11, 12, 13) donnent
 83 titres dont aucune paire ne se ressemble.
 
+### Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
+
+Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
+Claude** — la commande vocale avait compris « ajoute une tâche » là où il
+disait « ajoute un chantier ». L'une d'elles, « connexion entre mon Jarvis et
+celui de Mélissa », n'existait nulle part ailleurs : sa demande dormait dans sa
+liste de courses depuis sa dictée, invisible de toutes les sessions.
+
+L'onglet Tâches signale ces lignes, dit **ce qui les a fait reconnaître**, et
+propose « en faire un chantier ». La tâche est alors marquée **faite, jamais
+supprimée** : c'est sa liste, il doit retrouver ce qu'il a dicté.
+
+**Ce qui compte le plus est ce qu'il ne faut PAS signaler.** Raphaël est dans
+l'immobilier : chez lui « chantier » veut d'abord dire maçonnerie. « Appeler le
+chantier de la villa Dan », « commander les carreaux pour le chantier » sont de
+vraies tâches, et quatre contrôles gardent ce cas. Seules les tournures qui
+**annoncent une demande faite à Claude** sont retenues. Mesure sur ses 29
+tâches réelles : 6 signalées, 6 justes, 0 à tort.
+
+`doublonChantier.ts` sert maintenant aux deux listes (`EntreeComparable` :
+un titre, des notes, rien de plus) — trois « racheter un spot pour l'entrée »
+identiques dormaient dans ses tâches pendant que le cockpit prévenait depuis
+des jours.
+
 ### Les actions groupées et le « Annuler »
 
 Le bouton « Choisir » du cockpit passe le tableau en mode sélection : tout se
@@ -1307,6 +1331,7 @@ node --experimental-strip-types scripts/verifier-sections.ts    # groupement, or
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
+node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
