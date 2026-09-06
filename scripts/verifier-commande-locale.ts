@@ -331,6 +331,14 @@ doitLaisserPasser("lance la deuxième vidéo", "la phrase canonique de screen_ac
 doitLaisserPasser("ouvre la première vidéo", "idem, avec « ouvre »")
 doitLaisserPasser("lance le dernier épisode", "idem, avec un ordinal accentué")
 doitLaisserPasser("lance le premier résultat", "un résultat de recherche, pas une application")
+// Relevé par la revue Copilot de la PR #2 : l'article élidé et le pluriel
+// n'étaient pas couverts, et repassaient donc par le même piège.
+doitLaisserPasser("lance l'episode", "article élidé sans espace")
+doitLaisserPasser("lance l'épisode", "article élidé, accentué")
+doitLaisserPasser("lance les episodes", "pluriel, sans accent")
+doitLaisserPasser("lance les résultats", "pluriel, accentué")
+doitLaisserPasser("ouvre les morceaux", "pluriel irrégulier (morceau → morceaux)")
+doitLaisserPasser("lance le morceau", "singulier de ce même mot irrégulier : ne doit pas régresser")
 
 console.log("\n— Confier une recherche à une IA installée : ses tournures du 5 sept. —")
 

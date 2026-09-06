@@ -164,10 +164,11 @@ function estUnNomDApp(cible: string): boolean {
 }
 
 /**
- * « un episode », « la deuxième vidéo », « le premier résultat » : un
- * déterminant ou un ordinal suivi d'un nom générique désigne un ÉLÉMENT
- * AFFICHÉ À L'ÉCRAN, jamais une application — c'est exactement le cas d'usage
- * que 3f3ad20b confie à `screen_action` (« lance la deuxième vidéo »).
+ * « un episode », « la deuxième vidéo », « les résultats », « l'épisode » :
+ * un déterminant (élidé ou non) ou un ordinal suivi d'un nom générique
+ * désigne un ÉLÉMENT AFFICHÉ À L'ÉCRAN, jamais une application — c'est
+ * exactement le cas d'usage que 3f3ad20b confie à `screen_action`
+ * (« lance la deuxième vidéo »).
  *
  * Piège payé deux fois pour la même conséquence — ouvrir מכבי au hasard,
  * `estUnNomDApp` ne suffisant pas à l'arrêter : le 5 sept. sur une phrase de
@@ -176,9 +177,13 @@ function estUnNomDApp(cible: string): boolean {
  * que de deviner une application, lui laisse la chance d'appeler
  * `screen_action` — qui lit le VRAI écran au lieu de faire un rapprochement
  * flou sur du texte.
+ *
+ * Le pluriel et l'article élidé (« l'épisode », « les vidéos ») sont des
+ * tournures aussi probables que le singulier — les manquer laisserait
+ * repasser le même מכבי sous une formulation à peine différente.
  */
 function ressembleAUnElementAffiche(cible: string): boolean {
-  return /^(?:un|une|le|la|les|ce|cette|mon|ma|son|sa)\s+(?:\d+|premi[eè]re?|deuxi[eè]me|troisi[eè]me|dernier|derni[eè]re|autre|prochaine?)?\s*(?:episode|épisode|vid[eé]o|chanson|morceau|chapitre|page|onglet|r[ée]sultat|article|photo|image)\b/i.test(
+  return /^(?:(?:un|une|le|la|les|des|ce|cette|mon|ma|son|sa)\s+|l['’]\s*)(?:\d+|premi[eè]re?|deuxi[eè]me|troisi[eè]me|dernier|derni[eè]re|autre|prochaine?)?\s*(?:episodes?|épisodes?|vid[eé]os?|chansons?|morceaux?|chapitres?|pages?|onglets?|r[ée]sultats?|articles?|photos?|images?)\b/i.test(
     cible.trim(),
   )
 }
