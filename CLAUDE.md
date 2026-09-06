@@ -1178,6 +1178,62 @@ Quatre choses à ne pas défaire :
 L'écran reste à faire : demande posée dans `dev_log` pour la session
 « Le cockpit ».
 
+### La veille des modèles : passer tout seul au meilleur (6 sept. 2026)
+
+Chantier `66a7a233`. Ses mots du 5 sept. : « s'il y a des mises à jour qui sont
+faites pour quelque chose de plus évolué, évidemment qu'il faut que nous aussi
+on fasse les mises à jour automatiques en interne sans que forcément je puisse
+le demander à chaque fois manuellement. » Et sa limite du même soir : « il ne
+faut pas changer les voix tout seul » — **ceci ne concerne QUE le modèle de
+langue**, jamais la reconnaissance vocale ni la voix de synthèse.
+
+- Migration `0026_veille_modeles.sql` — `moteur_choisi` (ce qui tourne, avec de
+  quoi revenir en arrière), `essais_modele` (ce que chaque essai réel a donné,
+  par jour), `veilles_modele` (les passes, y compris celles qui ne font rien).
+- `_shared/veilleModele.ts` — **la décision, pure**, vérifiée par
+  `scripts/verifier-veille-modele.ts`.
+- `_shared/controlesModele.ts` — six phrases dont la bonne réponse ne se
+  discute pas. C'est un ÉCHANTILLON, pas la vraie consigne de 26 000
+  caractères : la recopier ferait une seconde source de vérité.
+- `supabase/functions/moteur-veille/` — la passe. **Déployée.**
+- Paramètres › Le cockpit › Le moteur de langue (`jarvis_moteur_auto`).
+
+**Ce que ce mécanisme REFUSE compte plus que ce qu'il accepte**, et rien de
+tout ça ne doit être assoupli sans refaire la mesure :
+
+1. **Deux jours DIFFÉRENTS de réussite.** Une seule bonne nuit ne prouve rien :
+   les trois modèles morts le 4 sept. répondaient parfaitement la veille.
+2. **Répondre n'est pas obéir** : un modèle qui n'appelle pas l'outil, ou qui
+   rate un seul contrôle, est écarté.
+3. **Plafond journalier ≥ 200 et plafond/minute ≥ 10.** Un modèle à 20 par
+   jour a tué la mémoire en silence ; un modèle à 5 par minute
+   (`gemini-3-flash-preview`, mesuré) ne tient pas une rafale.
+4. **Jamais un modèle de la mémoire**, ni un moteur PAYANT, ni par-dessus un
+   secret posé à la main.
+5. **Sept jours de repos** entre deux promotions.
+6. **On ne promeut pas tant qu'on ne sait pas observer le résultat** : sous
+   20 appels réels vus sur sept jours, le retour arrière automatique serait
+   aveugle. C'est une précondition qui se garde toute seule — elle reste vraie
+   tant que `voice-command` n'écrit pas dans `appels_modele`.
+7. **Le retour arrière passe AVANT la promotion**, et zéro appel ne veut pas
+   dire que tout va bien : ça veut dire qu'on ne sait rien.
+
+**Pas de pg_cron ni de pg_net, et c'est une décision** : les installer donnerait
+à sa base la capacité d'appeler l'extérieur, ce qui est un choix de sécurité
+qui lui appartient. La passe est donc réveillée **paresseusement** après une
+phrase, comme `purger_echanges` — au plus une fois par fenêtre de six heures et
+par instance, sans `await`, jamais depuis un appel de vérification, jamais
+après un échec du moteur. `moteur-veille` est écrite pour pouvoir être appelée
+pour rien : c'est elle qui répond « trop tôt ».
+
+Pour la voir travailler sans attendre :
+
+```bash
+curl -sS -X POST https://bexiyvmdbxcwxasgslxp.supabase.co/functions/v1/moteur-veille \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "content-type: application/json" -d '{}'
+scripts/sql.sh "select verdict, detail, demarre_at from veilles_modele order by demarre_at desc limit 5"
+```
+
 ### Le code des Edge Functions est enfin typechecké (6 sept. 2026)
 
 Jusque-là, **rien** ne vérifiait `supabase/functions/**` : ni la CI (`npx tsc
@@ -1656,6 +1712,7 @@ node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoir
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
 node --experimental-strip-types scripts/verifier-moteur.ts        # quel fournisseur, quel modèle, quels seaux de quota — vrai répartiteur, fetch en doublure
 node --experimental-strip-types scripts/verifier-consommation.ts   # ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas, sans réseau
+node --experimental-strip-types scripts/verifier-veille-modele.ts # on ne change pas de modèle à la légère, sans réseau
 npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
 node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau
