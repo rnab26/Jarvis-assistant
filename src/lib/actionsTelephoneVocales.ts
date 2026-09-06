@@ -12,6 +12,8 @@ import {
   passeParLaFenetre,
 } from "@/lib/actionsTelephoneFenetre"
 import { attendreOuAnnuler } from "@/lib/actionsTelephoneToast"
+import { marquerAnnonceParlee } from "@/lib/annonceDejaDite"
+import { parler } from "@/lib/parler"
 import { ecrireReglage } from "@/lib/reglages"
 import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
@@ -305,6 +307,15 @@ export async function executerActionTelephone(
   const attente = delaiAnnulation()
   if (attente > 0 && passeParLaFenetre(action.action)) {
     const annonce = annonceAction(action.action, cibleAnnoncee(action, contacts))
+    // Dite tout de suite, SANS attendre la fin de la phrase pour lancer le
+    // décompte — sinon le délai d'annulation double (le temps de la dire,
+    // PUIS le décompte). Il est souvent en train de conduire ou de marcher :
+    // une fenêtre qu'on ne voit pas ne rattrape rien si elle n'est pas dite
+    // (chantier f44c6673). marquerAnnonceParlee évite que MicButton la relise
+    // une seconde fois quand la réponse finale répète les mêmes mots
+    // (« J'ouvre Waze. » à l'annonce, puis à nouveau après l'ouverture).
+    void parler(annonce)
+    marquerAnnonceParlee(annonce)
     const continuer = await attendreOuAnnuler(annonce, attente)
     if (!continuer) {
       noterEcoute("action_annulee", { action: action.action })

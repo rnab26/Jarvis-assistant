@@ -18,6 +18,7 @@ import {
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
 import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
+import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
 import { signalerErreur } from "@/lib/erreurs"
 import { cibleDeLAction, echecDeLAction, echecSignalePar, type TourJarvis } from "@/lib/retours"
@@ -447,7 +448,10 @@ export function MicButton({
     setLastReply(reply)
     setStatus("speaking")
     bargeInRef.current = false
-    await speak(reply, voiceIndex ?? undefined)
+    // La fenêtre d'annulation vient peut-être déjà de dire ces mots
+    // (« J'ouvre Waze. ») pendant le décompte : ne pas les relire une
+    // seconde fois. Le texte reste affiché, seule la voix se tait ici.
+    if (!estDejaAnnoncee(reply)) await speak(reply, voiceIndex ?? undefined)
     if (bargeInRef.current) return false
     if (suiteMs > 0) return true
     setStatus("idle")
