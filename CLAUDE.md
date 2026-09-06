@@ -515,6 +515,28 @@ rendre une chaîne vide (`src/lib/live/sessionLive.ts`, alimenté par
 `MicButton`). La consigne dit au modèle quoi faire de ce vide, mais la vraie
 correction est de ne jamais le produire — chantier ouvert.
 
+## « À quoi tu es branché ? » — l'état RÉEL, pas la description de l'app
+
+Sa remarque du 6 sept. 2026 : « Jarvis ne connaît toujours pas son propre
+environnement sur certains points. Par exemple quand je lui demande à quoi il
+est branché. »
+
+`environnement.ts` décrit l'APPLICATION — ses onglets, ses cartes. C'est un
+texte figé, le même pour tout le monde. `_shared/branchements.ts` dit l'ÉTAT de
+SON installation : compte Google et ce qu'il autorise, applications choisies,
+mode Live. **Tout se lit en base** — ses réglages y sont recopiés depuis la
+migration 0014 —, donc sans rien demander à l'app et sans toucher au contexte
+que MicButton envoie. Joint par `voice-command` ET `live-jeton` (en Live le
+contexte est scellé à l'ouverture : ce qui n'y est pas ne se rattrape plus).
+
+**Ce que le serveur NE VOIT PAS, le bloc le dit en toutes lettres** : les
+autorisations Android, le service d'accessibilité, la version installée. Ils
+vivent sur l'appareil. Jarvis répond « je ne peux pas les voir, regarde dans
+Paramètres » — inventer une réponse ici serait exactement le défaut corrigé
+juste au-dessus.
+
+Court, et sans titre vide : chaque phrase envoie déjà ~45 000 caractères.
+
 ## WhatsApp ou WhatsApp Business : on ne devine pas
 
 Le 6 sept., ses messages partaient dans WhatsApp Business. `preparerWhatsApp`
@@ -1430,7 +1452,7 @@ node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
-node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », sans réseau
+node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau

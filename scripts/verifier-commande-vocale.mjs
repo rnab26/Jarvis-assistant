@@ -791,6 +791,40 @@ cas.push(
   },
 )
 
+// « Jarvis ne connaît toujours pas son propre environnement […] quand je lui
+// demande à quoi il est branché » (6 sept. 2026). L'état réel de SON
+// installation est lu en base et joint au contexte — et ce que le serveur ne
+// voit pas (autorisations Android, accessibilité, version installée), Jarvis
+// doit le DIRE plutôt que d'inventer.
+cas.push(
+  {
+    nom: "il sait dire à quoi il est branché",
+    phrase: "À quoi tu es branché exactement ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (!message.trim()) return [false, "réponse vide"]
+      if (/je n'?ai pas acc[èe]s à l'?interface|je ne sais pas ce que je suis/i.test(message)) {
+        return [false, `il se dit aveugle : "${message}"`]
+      }
+      if (!/google|application|musique|whatsapp|sms|agenda|mail/i.test(message)) {
+        return [false, `il ne cite rien de concret : "${message}"`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "et il n'invente pas ce que le serveur ne peut pas voir",
+    phrase: "Est-ce que le service d'accessibilité est activé sur mon téléphone ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (/(oui|non),? (il est|c'est) (bien )?(activé|désactivé)/i.test(message)) {
+        return [false, `il tranche alors qu'il ne peut pas le voir : "${message}"`]
+      }
+      return [true]
+    },
+  },
+)
+
 // Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
 // au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
 // répond « J'ai atteint la limite de l'offre gratuite », ou meurt en

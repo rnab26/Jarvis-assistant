@@ -20,6 +20,7 @@
  */
 import { readFileSync } from "node:fs"
 import { CONSIGNE_HONNETETE } from "../supabase/functions/_shared/honnetete.ts"
+import { consigneBranchements } from "../supabase/functions/_shared/branchements.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -137,6 +138,53 @@ verifier(
   /a_choisir/.test(vocales) && /je ne sais pas lequel tu utilises/.test(vocales),
   "prendre la première, c'est un message écrit dans une application qu'il n'ouvre jamais",
 )
+
+// ── « À quoi tu es branché ? » ───────────────────────────────────────────
+//
+// Sa remarque du 6 sept. : « Jarvis ne connaît toujours pas son propre
+// environnement sur certains points. Par exemple quand je lui demande à quoi
+// il est branché. » environnement.ts décrit l'APPLICATION, figée ; il fallait
+// l'ÉTAT de son installation, lu en base.
+const branche = consigneBranchements({
+  googleEmail: "r.nabet26@gmail.com",
+  googleScopes: "gmail.modify calendar.events",
+  reglages: { jarvis_app_musique: "Apple Music", jarvis_canal_messages: "whatsapp" },
+})
+const rien = consigneBranchements({ googleEmail: null, googleScopes: "", reglages: {} })
+
+verifier(
+  "il sait dire à quel compte Google il est branché",
+  branche.includes("r.nabet26@gmail.com") && /agenda et ses mails/.test(branche),
+)
+verifier(
+  "et quand il n'y en a pas, il le dit au lieu de laisser croire",
+  /Aucun compte Google branché/.test(rien) && /NI à son agenda NI à ses mails/.test(rien),
+)
+verifier(
+  "il sait dire quelles applications sont choisies",
+  /Apple Music/.test(branche) && /WhatsApp/.test(branche),
+)
+verifier(
+  "CE QU'IL NE SAIT PAS, il le dit — dans les deux cas",
+  [branche, rien].every(
+    (b) => /autorisations Android/.test(b) && /accessibilité/.test(b) && /pas les voir/.test(b),
+  ),
+  "inventer une réponse ici serait exactement le défaut qu'on vient de corriger",
+)
+verifier(
+  "le bloc reste court : ~45 000 caractères partent déjà à chaque phrase",
+  branche.length < 1400,
+  `${branche.length} caractères`,
+)
+for (const fonction of ["voice-command", "live-jeton"]) {
+  verifier(
+    `${fonction} joint l'état réel au contexte`,
+    readFileSync(`supabase/functions/${fonction}/index.ts`, "utf8").includes(
+      "rappelerBranchements(supabase)",
+    ),
+    "en Live le contexte est scellé à l'ouverture : ce qui n'y est pas ne se rattrape plus",
+  )
+}
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)
