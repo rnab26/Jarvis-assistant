@@ -8,7 +8,7 @@
  * PUR : aucun appel réseau, aucun React. Ce qui se décide ici peut être faux
  * EN SILENCE — un chiffre rassurant devant un quota vide, ou l'inverse —, donc
  * ça se vérifie hors ligne (`scripts/verifier-consommation.ts`). Les données
- * viennent de `etat_consommation()` (migration 0025) ; l'affichage est ailleurs.
+ * viennent de `etat_consommation()` (migration 0028) ; l'affichage est ailleurs.
  *
  * LA CHOSE À NE PAS FAIRE ICI : inventer un plafond. Jarvis tourne sur l'offre
  * GRATUITE de Gemini, dont les limites ne sont publiées NULLE PART — ni dans
@@ -46,7 +46,7 @@ export interface LigneConsommation {
    * le secret GEMINI_MODELE, que l'app ne peut pas lire. Deviner ici quel nom
    * est le principal donnerait une page silencieusement fausse le jour où le
    * secret change — c'est-à-dire le jour où il faut savoir qu'on est sur un
-   * secours. `null` sur les lignes écrites avant la migration 0025.
+   * secours. `null` sur les lignes écrites avant la migration 0028.
    */
   rang: number | null
 }
@@ -136,7 +136,7 @@ export function resumerConsommation(lignes: LigneConsommation[]): Consommation {
 
   const msMedian = gagnant?.ms_median ?? null
   // `rang > 0` = ce n'est pas le principal qui a répondu. Une ligne d'avant la
-  // migration 0025 n'a pas de rang : on ne prétend rien plutôt que d'alerter à
+  // migration 0028 n'a pas de rang : on ne prétend rien plutôt que d'alerter à
   // tort sur un historique qu'on ne sait pas lire.
   const surSecours = (gagnant?.rang ?? 0) > 0
 

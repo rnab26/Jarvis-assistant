@@ -1,5 +1,10 @@
 -- Ce que Jarvis consomme, écrit en base et plus seulement dans les journaux.
 --
+-- RENUMÉROTÉE 0025 → 0028 le 6 sept. 2026 : la session « Le cockpit » a livré
+-- 0025_visites_cockpit.sql dans le tronc pendant que celle-ci portait le même
+-- numéro. Les deux étaient déjà appliquées et ne se touchent pas ; c'est le
+-- numéro en double qui devait partir, pour que l'ordre reste lisible.
+--
 -- Chantier 5ac4d12c. Sa demande, dictée le 5 sept. 2026 à 17h59 : « savoir
 -- combien il me reste de crédit et à combien de temps de discussion ça
 -- équivaut, et le noter constamment ».

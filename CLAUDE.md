@@ -1378,7 +1378,7 @@ l'air normal.
 
 Trois pièces, et la frontière compte :
 
-- Migration `0025_appels_modele.sql` — la table `appels_modele`,
+- Migration `0028_appels_modele.sql` — la table `appels_modele`,
   `noter_appel_modele()` et `etat_consommation()`. **Avant ça il n'y avait
   rien à afficher** : la consommation n'existait que dans les journaux de la
   fonction, qui ne se lisent pas depuis son téléphone, ne se totalisent pas et

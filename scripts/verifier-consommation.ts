@@ -134,7 +134,7 @@ const ligne = (p: Partial<LigneConsommation> = {}): LigneConsommation => ({
   )
 }
 
-// ── Un historique d'avant la migration 0025 n'a pas de rang ───────────────
+// ── Un historique d'avant la migration 0028 n'a pas de rang ───────────────
 {
   const r = resumerConsommation([ligne({ modele: "un-vieux-modele", reussis: 5, rang: null })])
   verifier(
