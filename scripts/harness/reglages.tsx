@@ -12,7 +12,9 @@ import { Notifications } from "@/components/settings/Notifications"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
 import { Section } from "@/components/settings/Section"
 import { Memoire } from "@/components/settings/Memoire"
+import { Consommation } from "@/components/settings/Consommation"
 import { SessionsAutonomes } from "@/components/settings/SessionsAutonomes"
+import type { LigneConsommation } from "@/lib/consommationModele"
 import type { PasseAutonome } from "@/lib/passeAutonome"
 import { Theme } from "@/components/settings/Theme"
 import type { NotificationsApi } from "@/hooks/useNotifications"
@@ -221,6 +223,68 @@ const PASSES_MUETTES: PasseAutonome[] = [
   { ...PASSES_BANC[2], id: "p9", demarre_at: ilYA(60 * 48), fini_at: ilYA(60 * 48) },
 ]
 
+/**
+ * Une journée ORDINAIRE de consommation : le modèle principal répond, il a
+ * enchaîné vite à un moment (des refus « par minute »), et la mémoire a
+ * travaillé de son côté.
+ *
+ * Ce que le banc vérifie sur cet état est un SILENCE : ces refus-là ne doivent
+ * lever aucune alerte. C'est le fonctionnement normal quand il enchaîne les
+ * phrases, ça se lève en soixante secondes, et un bandeau qui s'allume tous
+ * les jours n'est plus lu — c'est la panne qu'on ne verra pas.
+ */
+const CONSO_ORDINAIRE: LigneConsommation[] = [
+  {
+    role: "commande",
+    modele: "gemini-3.1-flash-lite",
+    fournisseur: "gemini",
+    appels: 44,
+    reussis: 40,
+    refus_minute: 4,
+    refus_jour: 0,
+    jetons_entree: 486_000,
+    jetons_sortie: 12_400,
+    jetons_reflexion: 0,
+    ms_median: 1420,
+    dernier_at: new Date().toISOString(),
+    rang: 0,
+  },
+  {
+    role: "memoire",
+    modele: "gemini-3.5-flash-lite",
+    fournisseur: "gemini",
+    appels: 40,
+    reussis: 40,
+    refus_minute: 0,
+    refus_jour: 0,
+    jetons_entree: 61_000,
+    jetons_sortie: 3_100,
+    jetons_reflexion: 0,
+    ms_median: 900,
+    dernier_at: new Date().toISOString(),
+    rang: 0,
+  },
+]
+
+/**
+ * Ses phrases passent par un SECOURS : le principal ne répond pas.
+ *
+ * Le rang vient du serveur (`rang: 1`) et c'est lui seul qui le dit. Le
+ * principal se règle par le secret `GEMINI_MODELE`, que l'app ne peut pas
+ * lire : comparer des noms de modèles ici donnerait une page fausse en
+ * silence le jour du changement — c'est-à-dire le jour où il faut savoir.
+ */
+const CONSO_SECOURS: LigneConsommation[] = [
+  {
+    ...CONSO_ORDINAIRE[0],
+    modele: "gemini-3.1-flash-lite-preview",
+    reussis: 12,
+    appels: 19,
+    refus_minute: 0,
+    rang: 1,
+  },
+]
+
 function BancDesReglages() {
   const [prefs, setPrefs] = useState<PrefsNotifications>(PREFS_NOTIFS_DEFAUT)
   // Ce que le micro écoute pour se relire : sans ce signal, l'interrupteur du
@@ -389,6 +453,37 @@ function BancDesReglages() {
         <SessionsAutonomes api={{ passes: [], loading: false, error: "Le serveur ne répond pas." }} />
       </div>
 
+      {/* Ce que Jarvis a consommé, dans les quatre états qui comptent. Deux
+          d'entre eux se vérifient par un SILENCE : une journée ordinaire ne
+          doit afficher NI solde NI pourcentage (l'offre est gratuite, les
+          plafonds ne se lisent que dans le corps d'un 429), et des refus
+          « par minute » ne doivent lever aucune alerte. Le dernier est celui
+          qui trompe : une lecture en échec ne doit pas se lire comme « rien
+          consommé » — ce serait le rassurer juste avant un quota vide. */}
+      <div id="conso">
+        <Consommation
+          api={{ lignes: CONSO_ORDINAIRE, erreur: null, enCours: false, rafraichir: async () => {} }}
+        />
+      </div>
+      <div id="conso-secours">
+        <Consommation
+          api={{ lignes: CONSO_SECOURS, erreur: null, enCours: false, rafraichir: async () => {} }}
+        />
+      </div>
+      <div id="conso-vide">
+        <Consommation api={{ lignes: [], erreur: null, enCours: false, rafraichir: async () => {} }} />
+      </div>
+      <div id="conso-panne">
+        <Consommation
+          api={{
+            lignes: null,
+            erreur: "Le serveur ne répond pas.",
+            enCours: false,
+            rafraichir: async () => {},
+          }}
+        />
+      </div>
+
       <div id="theme">
         <Theme />
       </div>
@@ -423,6 +518,7 @@ function BancDesReglages() {
           ["Tâches et organisation", "Widget d'écran d'accueil, rappels de lieu"],
           ["Notifications", "Ce que Jarvis a le droit de faire sonner"],
           ["Ce que Jarvis utilise", "Applications par défaut, appui long sur le bouton"],
+          ["Ce que Jarvis consomme", "Phrases et jetons du jour, et la marge qu'il reste"],
           ["Mémoire", "Combien de temps il garde tes conversations"],
           ["Le cockpit", "Ce qui compte comme « livré », et les sessions qui travaillent sans toi"],
           ["Apparence", "Thème clair ou sombre, image du cœur"],
