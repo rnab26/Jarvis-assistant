@@ -288,6 +288,14 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- Les lecteurs de musique qui ne declarent pas
+             MEDIA_PLAY_FROM_SEARCH : sans cette ligne ils sont invisibles, et
+             la liste de Parametres est fausse — « il n'y a pas les
+             applications qu'il y a » (6 sept. 2026). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_MUSIC" />
+        </intent>
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
