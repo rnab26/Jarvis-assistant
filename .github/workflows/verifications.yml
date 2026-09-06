@@ -26,6 +26,15 @@ jobs:
       # `tsc --noEmit` à la racine ne vérifie PAS l'app et dit « OK » à tort.
       - run: npx tsc -b
 
+      # Et il ne couvre QUE `src` : jusqu'au 6 sept. 2026, rien ne typecheckait
+      # les Edge Functions. Ni en CI, ni dans les sessions (pas de Deno
+      # installé). Une faute de frappe dans voice-command ne se voyait donc
+      # qu'après déploiement, c'est-à-dire chez Raphaël, sous la forme d'un
+      # Jarvis muet. `supabase/functions/deno.d.ts` donne à tsc le minimum
+      # qu'il lui manque pour lire ce code.
+      - name: Le code des Edge Functions se tient
+        run: npx tsc -p supabase/functions/tsconfig.json
+
       - name: Les réglages sont déclarés et réglables
         run: node --experimental-strip-types scripts/verifier-reglages.ts
 
@@ -89,6 +98,13 @@ jobs:
       # du quota à chaque phrase.
       - name: Les corrections de Raphaël arrivent jusqu'au modèle
         run: node --experimental-strip-types scripts/verifier-corrections.ts
+
+      # Changer de moteur doit rester un secret à poser, jamais une réécriture
+      # — et surtout, rien ne doit basculer TOUT SEUL vers un moteur payant :
+      # Raphaël a quitté l'API Anthropic en découvrant sa clé à sec. Le
+      # contrôle fait tourner le vrai répartiteur avec un `fetch` en doublure.
+      - name: Le moteur — quel fournisseur, quel modèle, quels seaux de quota
+        run: node --experimental-strip-types scripts/verifier-moteur.ts
 
       # « Une panne qui se lit comme une absence » : un rappel de mémoire qui
       # échoue rendait le même résultat qu'un rappel qui n'a rien trouvé. Ce

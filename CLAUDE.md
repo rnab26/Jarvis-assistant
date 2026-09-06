@@ -1072,11 +1072,78 @@ du compromis (Google se réserve d'utiliser les contenus de l'offre gratuite
 pour améliorer ses produits, relecture humaine comprise). Les options
 écartées : Haiku 4.5 (moitié prix, privé), rester sur Sonnet 5.
 
-Tout ce qui est propre à Gemini vit dans `supabase/functions/_shared/gemini.ts`
-— un seul endroit pour la forme de la requête, les erreurs et les nouveaux
-essais. `index.ts` et `memoire.ts` ne font qu'appeler `appelerGemini()`.
-Les phrases d'erreur y sont alignées mot pour mot avec
-`src/lib/erreurServeurVocal.ts` : changer l'une, c'est changer l'autre.
+### Changer de moteur est un SECRET à poser, plus une réécriture (6 sept. 2026)
+
+Chantier `2c54c62f`. Sa crainte, le 3 sept. : « il va bien falloir qu'on trouve
+une solution stable », après avoir tout reperdu une fois. **Le constat, lui,
+est rassurant et il faut le lui redire plutôt que le reconstruire : rien de ce
+qui fait Jarvis ne vit dans le modèle.** La consigne, le schéma d'outil, la
+mémoire, ses réglages, ses corrections sont dans notre code et dans la base ;
+rien n'est entraîné ni affiné. Changer de moteur ne peut rien lui faire perdre.
+
+`supabase/functions/_shared/modele.ts` porte l'interface commune et le SEUL
+endroit qui décide quel moteur répond. `gemini.ts` et `anthropic.ts` sont deux
+implémentations derrière elle. `index.ts` et `memoire.ts` appellent
+`appelerModele()` et demandent un **RÔLE** (`commande` / `memoire`), jamais un
+nom de modèle.
+
+Trois secrets, et plus une ligne de code à toucher :
+
+| Secret | Ce qu'il fait |
+| --- | --- |
+| `FOURNISSEUR` | `gemini` (défaut) ou `anthropic` |
+| `GEMINI_MODELE`, `GEMINI_MODELE_MEMOIRE` | le modèle de chaque rôle |
+| `GEMINI_SECOURS`, `GEMINI_SECOURS_MEMOIRE` | ses secours, séparés par des virgules |
+
+**`GEMINI_SECOURS` est la sortie du chantier `0edec0c4`** : les secours étaient
+écrits en dur, donc en changer demandait un redéploiement — c'est-à-dire
+attendre, pendant que Jarvis se tait. Ils se posent maintenant à chaud.
+
+Quatre choses à ne pas défaire :
+
+1. **Rien ne bascule TOUT SEUL vers un moteur payant.** `Fournisseur.gratuit`
+   existe pour ça : Raphaël a quitté l'API Anthropic en découvrant sa clé à
+   sec, sans avoir jamais choisi de payer. Une clé Anthropic présente ne suffit
+   pas — il faut qu'il pose `FOURNISSEUR=anthropic` lui-même. Ni un secours, ni
+   la promotion automatique du chantier `66a7a233` ne doivent franchir ça.
+2. **Un seul fournisseur est chargé par appel**, celui qui sert. Charger les
+   deux ferait dépendre Jarvis d'un moteur qu'il n'utilise pas : un import
+   cassé côté Anthropic tuerait la commande vocale alors que Gemini répondait.
+3. **La commande et la mémoire ne partagent JAMAIS un modèle.** C'est le rôle
+   qui porte cette séparation. Un troisième appelant qui demanderait
+   « commande » pour autre chose referait l'erreur du 3 sept.
+4. **Les phrases d'erreur ne nomment aucun fournisseur** (« le moteur », jamais
+   « Gemini ») : sinon une bascule obligerait à republier l'app pour rester
+   vraie, et elle mentirait entre les deux. Elles sont alignées **mot pour
+   mot** avec `src/lib/erreurServeurVocal.ts` — `scripts/verifier-moteur.ts`
+   refuse qu'elles divergent, à une exception près qu'il nomme lui-même.
+
+**Le mode Live reste Gemini, quel que soit `FOURNISSEUR`** : `live-jeton` mint
+un jeton pour l'API Gemini Live, qui est un produit Google sans équivalent
+ailleurs dans notre pile. Ce n'est pas un oubli.
+
+`scripts/verifier-moteur.ts` (dans la CI, sans réseau) ne lit pas le code : il
+remplace `Deno` et `fetch` par des doublures et fait tourner le VRAI
+répartiteur. Un contrôle qui chercherait des mots dans un fichier resterait
+vert le jour où la bascule cesse de marcher.
+
+### Le code des Edge Functions est enfin typechecké (6 sept. 2026)
+
+Jusque-là, **rien** ne vérifiait `supabase/functions/**` : ni la CI (`npx tsc
+-b` ne couvre que `src` et `scripts/harness`), ni les sessions (pas de Deno
+installé dans l'environnement). Une faute de frappe dans `voice-command` ne se
+voyait donc qu'après déploiement — chez Raphaël, sous la forme d'un Jarvis
+muet.
+
+```bash
+npx tsc -p supabase/functions/tsconfig.json
+```
+
+`supabase/functions/deno.d.ts` donne à `tsc` le minimum qui lui manque : le
+global `Deno`, et les spécificateurs `jsr:` / `npm:`. Les bibliothèques
+externes y sont volontairement typées large — on ne vérifie pas le SDK de
+Google, on vérifie que nos fichiers se tiennent entre eux. **Lance-le avant de
+pousser quoi que ce soit sous `supabase/functions/`.**
 
 Le coût, même à zéro, se surveille : la limite de l'offre gratuite se compte
 en requêtes et en jetons par minute, et chaque phrase envoie ~45 000
@@ -1139,11 +1206,17 @@ Un modèle qui répond n'est donc pas un modèle utilisable : regarde la ligne
 réel. Un `flash` n'a pas du tout le même plafond qu'un `flash-lite` — c'est ce
 qui a fait remettre la mémoire sur `gemini-3.5-flash-lite`.
 
-Et dans `_shared/gemini.ts`, `STATUTS_CHANGER_DE_MODELE` vaut **404, 429, 503**
-— trois façons de dire « ce modèle-là ne répond pas », toutes les trois
-réglées en passant au suivant, jamais en insistant. Le 503 y a été ajouté ce
-jour-là : on rejouait trois fois le modèle saturé puis on abandonnait sans
-jamais essayer les secours, qui eux répondaient.
+Et dans `_shared/modele.ts` (il vivait dans `gemini.ts` avant le 6 sept.),
+`STATUTS_CHANGER_DE_MODELE` vaut **404, 429, 503, 529** — quatre façons de dire
+« ce modèle-là ne répond pas », toutes réglées en passant au suivant, jamais en
+insistant. Le 503 y a été ajouté le 4 sept. : on rejouait trois fois le modèle
+saturé puis on abandonnait sans jamais essayer les secours, qui eux
+répondaient. Le 529 est le « overloaded » d'Anthropic.
+
+Le **0** de `STATUTS_A_REESSAYER` n'est pas un statut HTTP : c'est notre code
+pour une coupure réseau, passagère par nature. L'oublier ferait abandonner
+Jarvis au premier hoquet de connexion, sans que rien ne le dise — un contrôle
+de `verifier-moteur.ts` garde ce cas.
 
 ### Les vérifications ne puisent plus dans le quota de Raphaël
 
@@ -1505,6 +1578,8 @@ node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
+node --experimental-strip-types scripts/verifier-moteur.ts        # quel fournisseur, quel modèle, quels seaux de quota — vrai répartiteur, fetch en doublure
+npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
 node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation

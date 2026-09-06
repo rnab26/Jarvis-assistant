@@ -1,5 +1,4 @@
-// Un seul chemin vers le modèle, pour les deux appels de Jarvis (la commande
-// vocale dans index.ts, l'extraction de souvenirs dans memoire.ts).
+// Le moteur Gemini, une implémentation de `Fournisseur` parmi d'autres.
 //
 // POURQUOI GEMINI : décision de Raphaël, 3 sept. 2026. Jarvis tournait sur
 // Claude via l'API Anthropic, facturée au jeton ; il l'a découvert en voyant
@@ -9,134 +8,87 @@
 // gratuite pour améliorer ses produits, relecture humaine comprise.
 //
 // Ce module isole tout ce qui est propre à l'API Gemini — forme de la
-// requête, forme de la réponse, erreurs, nouveaux essais — pour que le reste
-// du code ne parle qu'en termes de « quelle consigne, quel outil, quel
-// texte ». Changer encore de moteur un jour ne touchera que ce fichier.
+// requête, forme de la réponse, lecture du quota, noms de modèles. La
+// décision de réessayer ou de changer de modèle, elle, est commune et vit
+// dans `modele.ts` : deux moteurs qui la prendraient chacun de leur côté
+// finiraient par ne plus se comporter pareil.
 //
 // Ce qui est VÉRIFIÉ dans la référence REST officielle (ai.google.dev/api) :
 // l'URL, le champ systemInstruction, tools[].functionDeclarations,
 // toolConfig.functionCallingConfig {mode: "ANY", allowedFunctionNames},
 // generationConfig, la réponse candidates[0].content.parts[].functionCall
-// {name, args} et usageMetadata. Ce qui est DÉDUIT et à confirmer au premier
-// appel réel : la façon d'écrire « peut être nul » dans un schéma (voir
-// `pourGemini`).
+// {name, args} et usageMetadata.
+
+import {
+  type AppelResolu,
+  type Fournisseur,
+  type ReponseFournisseur,
+  type Role,
+  listeDepuisSecret,
+} from "./modele.ts"
 
 const HOTE = "https://generativelanguage.googleapis.com/v1beta"
 
-/** Un outil au sens d'Anthropic, tel que le code existant le déclare. */
-export interface OutilDeclare {
-  name: string
-  description: string
-  input_schema: Record<string, unknown>
-}
-
-export interface AppelModele {
-  /** Identifiant du modèle, ex. "gemini-flash-lite-latest". */
-  modele: string
-  /**
-   * Modèles à essayer si le premier refuse faute de quota.
-   *
-   * Le plafond gratuit est compté PAR MODÈLE
-   * (« GenerateRequestsPerMinutePerProjectPerModel »), donc changer de modèle
-   * rend la main tout de suite là où attendre coûte plusieurs secondes — et
-   * dans une conversation parlée, un silence de cinq secondes s'entend.
-   */
-  secours?: string[]
-  /** La consigne, stable d'un appel à l'autre. */
-  systeme: string
-  /** Ce que l'utilisateur a dit. */
-  texte: string
-  /** L'outil que le modèle DOIT appeler : sa réponse est le contenu de l'appel. */
-  outil: OutilDeclare
-  maxTokens: number
-  cle: string
-}
-
-export interface Consommation {
-  entree?: number
-  cache_lu?: number
-  sortie?: number
-  /** Jetons de réflexion : les modèles Gemini 3 pensent avant de répondre. */
-  reflexion?: number
-}
-
-export interface ResultatModele {
-  /** Les arguments de l'appel d'outil, tels que le modèle les a renvoyés. */
-  args?: Record<string, unknown>
-  consommation?: Consommation
-  echec?: Echec
-  /**
-   * Le modèle qui a effectivement répondu — pas celui qu'on a demandé.
-   *
-   * Sans ça, un basculement sur un secours est invisible : Jarvis répond,
-   * tout va bien en apparence, et on ne découvre que le seau principal est
-   * vide qu'au moment où le dernier secours lâche à son tour.
-   */
-  modele?: string
-}
-
-export interface Echec {
-  statut: number
-  texte: string
-  /** Vrai si un nouvel essai a une chance d'aboutir (surcharge, quota par minute). */
-  passager: boolean
-  /**
-   * Ce que le 429 disait vraiment : quel seau est vide, et de quelle taille.
-   *
-   * Un 429 « par minute » se lève tout seul en une minute ; un 429 « par jour »
-   * laisse Jarvis muet jusqu'au lendemain. Les deux se ressemblent dans les
-   * journaux, et c'est ce qui a fait perdre du temps le 3 sept. : on croyait à
-   * une saturation passagère alors que le seau du JOUR était vide. Google le
-   * dit dans le corps de la réponse ; on ne le jetait pas, on ne le lisait pas.
-   */
-  quota?: { id?: string; limite?: string }
-}
-
-/** Extrait le quotaId et la limite du corps d'un 429. Silencieux : un format
- * inattendu ne doit pas faire échouer davantage un appel déjà en échec. */
-function lireQuota(texte: string): Echec["quota"] {
-  try {
-    const violation = JSON.parse(texte)?.error?.details
-      ?.find((d: { violations?: unknown[] }) => Array.isArray(d.violations))
-      ?.violations?.[0]
-    if (!violation) return undefined
-    return { id: violation.quotaId, limite: violation.quotaValue }
-  } catch {
-    return undefined
-  }
-}
-
 /**
- * Statuts pour lesquels un nouvel essai a du sens. 429 est le plus fréquent
- * sur l'offre gratuite : limite par minute atteinte, elle se lève seule.
- * Tout le reste (400, 403…) vient de la requête ou de la clé et se
- * reproduirait à l'identique.
- */
-const STATUTS_A_REESSAYER = new Set([408, 409, 429, 500, 502, 503, 504])
-
-/**
- * Statuts qui visent CE modèle-là, et pour lesquels changer de modèle rend la
- * main tout de suite là où insister ne donne rien.
+ * Le modèle de la COMMANDE VOCALE.
  *
- * - 429 : le plafond gratuit est compté par modèle, le suivant a le sien.
- * - 503 « This model is currently experiencing high demand » : c'est la
- *   capacité de ce modèle chez Google qui manque, pas la nôtre. Constaté le
- *   4 sept. 2026 : les DIX contrôles de scripts/verifier-commande-vocale.mjs
- *   sont tombés d'affilée là-dessus, sur une clé au quota intact — et Jarvis
- *   répondait « Le modèle est débordé » à Raphaël au même moment. On rejouait
- *   trois fois le modèle saturé, puis on abandonnait sans jamais essayer les
- *   secours, qui eux répondaient.
- * - 404 « no longer available to new users » : Google retire ses modèles sans
- *   prévenir, et sans les retirer de ListModels — gemini-2.5-flash et
- *   gemini-2.5-flash-lite sont tombés le même jour, alors qu'ils figuraient
- *   encore dans la liste. Un modèle disparu doit être SAUTÉ, pas faire
- *   abandonner toute la chaîne : sinon le jour où Google retire celui qu'on a
- *   mis en tête, Jarvis se tait alors que trois autres répondaient.
+ * gemini-3.5-flash-lite a tenu ce rôle jusqu'au 4 sept. 2026, où il a commencé
+ * à répondre 503 « This model is currently experiencing high demand » en
+ * continu, sur les DEUX clés du projet — donc Jarvis muet chez Raphaël.
+ * gemini-3.1-flash-lite est de la même famille (Lite = ~640 ms, la latence ne
+ * s'entend pas) et répond, mesuré le jour même par un appel réel sur les deux
+ * clés.
+ *
+ * Mesures du 3 sept. 2026, sur la vraie API :
+ * - gemini-3.8-flash est plafonné à 20 requêtes PAR JOUR et renvoie 429 dès le
+ *   premier appel : le nommer en tête laissait Jarvis muet.
+ * - gemini-3.5-flash répond en ~3 s : la latence s'entend, et Raphaël la
+ *   signale déjà comme une gêne.
+ *
+ * Pas d'alias « latest » en tête, justement : un changement de modèle doit
+ * être un choix, pas une surprise un matin.
  */
-const STATUTS_CHANGER_DE_MODELE = new Set([404, 429, 503])
+const COMMANDE_PAR_DEFAUT = "gemini-3.1-flash-lite"
 
-/** Trois essais au plus, ~15 s dans le pire des cas : l'app abandonne à 25 s. */
-const ESSAIS_MAX = 3
+/**
+ * Essayés dans l'ordre si la minute du premier est saturée : le quota gratuit
+ * est compté PAR MODÈLE, donc basculer rend la main tout de suite là où
+ * attendre coûte plusieurs secondes.
+ *
+ * Des seaux RÉELLEMENT distincts, ce qui n'était pas le cas avant :
+ * « gemini-flash-lite-latest » est un ALIAS de gemini-3.5-flash-lite, donc le
+ * même compteur — le premier secours ne servait à rien. Et
+ * gemini-3.1-flash-lite était en même temps le modèle de la mémoire, qui
+ * vidait le seau de son côté. Le 3 sept. les 500 requêtes du jour sont
+ * parties, et Jarvis est resté muet.
+ *
+ * PIÈGE VÉRIFIÉ LE 4 SEPT. 2026 : la liste rendue par ListModels n'est PAS une
+ * autorisation. Les deux clés annoncent gemini-2.5-flash et
+ * gemini-2.5-flash-lite, et generateContent les refuse toutes les deux en 404
+ * « no longer available to new users ». Un secours écrit d'après la liste, ou
+ * de mémoire, ne se voit donc qu'en production. Les modèles ci-dessous ont été
+ * essayés pour de vrai, avec chaque clé, avant d'être écrits ici.
+ *
+ * LIMITE CONNUE, MESURÉE LE 4 SEPT. (chantier 0edec0c4) : ces deux secours
+ * sont plafonnés à 20 requêtes PAR JOUR chacun
+ * (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). Le filet vaut donc
+ * 40 phrases, après quoi il n'existe plus. D'où le secret GEMINI_SECOURS : de
+ * meilleurs secours se posent sans redéployer, dès qu'ils sont mesurés.
+ */
+const COMMANDE_SECOURS = ["gemini-3.5-flash", "gemini-3.6-flash"]
+
+/**
+ * Le modèle de la MÉMOIRE. Il ne partage JAMAIS un seau avec la commande.
+ *
+ * gemini-2.5-flash-lite est mort le 4 sept. 2026 : 404 « no longer available
+ * to new users ». Son remplaçant gemini-3.7-flash s'est révélé pire le même
+ * jour — plafonné à 20 requêtes par jour, donc une mémoire morte en silence
+ * après vingt phrases. gemini-3.5-flash-lite répond (essayé pour de vrai avec
+ * la clé de test) et n'est plus le modèle de la commande, qui est passée à
+ * gemini-3.1-flash-lite.
+ */
+const MEMOIRE_PAR_DEFAUT = "gemini-3.5-flash-lite"
+const MEMOIRE_SECOURS = ["gemini-3.7-flash"]
 
 /**
  * Adapte un schéma écrit pour Anthropic au sous-ensemble accepté par Gemini.
@@ -166,62 +118,72 @@ export function pourGemini(schema: unknown): unknown {
   return cible
 }
 
-/**
- * Appelle le modèle en lui imposant l'outil, et renvoie ses arguments.
- *
- * Réessaie sur les pannes passagères avec une attente croissante ; ne
- * réessaie jamais une requête refusée pour de bon.
- */
-export async function appelerGemini(appel: AppelModele): Promise<ResultatModele> {
-  const candidats = [appel.modele, ...(appel.secours ?? [])]
-  let dernierResultat: ResultatModele = { echec: undefined }
-
-  for (const modele of candidats) {
-    dernierResultat = await tenterUnModele(appel, modele)
-    if (!dernierResultat.echec) return { ...dernierResultat, modele }
-    // Quota atteint ou modèle saturé chez Google : le suivant a son propre
-    // seau et sa propre capacité. Toute autre erreur (400, 403…) vient de la
-    // requête ou de la clé et se reproduirait à l'identique, on s'arrête là.
-    if (!STATUTS_CHANGER_DE_MODELE.has(dernierResultat.echec.statut)) break
+/** Extrait le quotaId et la limite du corps d'un 429. Silencieux : un format
+ * inattendu ne doit pas faire échouer davantage un appel déjà en échec. */
+function lireQuota(texte: string): { id?: string; limite?: string } | undefined {
+  try {
+    const violation = JSON.parse(texte)?.error?.details
+      ?.find((d: { violations?: unknown[] }) => Array.isArray(d.violations))
+      ?.violations?.[0]
+    if (!violation) return undefined
+    return { id: violation.quotaId, limite: violation.quotaValue }
+  } catch {
+    return undefined
   }
-
-  return dernierResultat
 }
 
-async function tenterUnModele(appel: AppelModele, modele: string): Promise<ResultatModele> {
-  const corps = {
-    systemInstruction: { parts: [{ text: appel.systeme }] },
-    contents: [{ role: "user", parts: [{ text: appel.texte }] }],
-    tools: [
-      {
-        functionDeclarations: [
-          {
-            name: appel.outil.name,
-            description: appel.outil.description,
-            parameters: pourGemini(appel.outil.input_schema),
-          },
-        ],
+export const gemini: Fournisseur = {
+  nom: "gemini",
+  gratuit: true,
+  secretCle: "GEMINI_API_KEY",
+  secretCleEssai: "GEMINI_API_KEY_TEST",
+
+  modeles(role: Role) {
+    // Réglables par secret, sans redéployer : les quotas de l'offre gratuite
+    // ne sont publiés nulle part (visibles seulement dans AI Studio), ils
+    // diffèrent par modèle, et un modèle meurt sans prévenir. Devoir
+    // redéployer pour changer un nom, c'est laisser Jarvis muet en attendant.
+    if (role === "memoire") {
+      return {
+        modele: Deno.env.get("GEMINI_MODELE_MEMOIRE") || MEMOIRE_PAR_DEFAUT,
+        secours: listeDepuisSecret("GEMINI_SECOURS_MEMOIRE", MEMOIRE_SECOURS),
+      }
+    }
+    return {
+      modele: Deno.env.get("GEMINI_MODELE") || COMMANDE_PAR_DEFAUT,
+      secours: listeDepuisSecret("GEMINI_SECOURS", COMMANDE_SECOURS),
+    }
+  },
+
+  async unEssai(appel: AppelResolu): Promise<ReponseFournisseur> {
+    const corps = {
+      systemInstruction: { parts: [{ text: appel.systeme }] },
+      contents: [{ role: "user", parts: [{ text: appel.texte }] }],
+      tools: [
+        {
+          functionDeclarations: [
+            {
+              name: appel.outil.name,
+              description: appel.outil.description,
+              parameters: pourGemini(appel.outil.input_schema),
+            },
+          ],
+        },
+      ],
+      toolConfig: {
+        functionCallingConfig: { mode: "ANY", allowedFunctionNames: [appel.outil.name] },
       },
-    ],
-    toolConfig: {
-      functionCallingConfig: { mode: "ANY", allowedFunctionNames: [appel.outil.name] },
-    },
-    generationConfig: {
-      maxOutputTokens: appel.maxTokens,
-      // Choisir la bonne action parmi trente demande de la constance, pas de
-      // la variété : les 25 contrôles de verifier-commande-vocale.mjs doivent
-      // donner le même résultat d'une fois sur l'autre.
-      temperature: 0,
-    },
-  }
-
-  let dernier: Echec | undefined
-
-  for (let essai = 1; essai <= ESSAIS_MAX; essai++) {
-    let attendreMs: number | null = null
+      generationConfig: {
+        maxOutputTokens: appel.maxTokens,
+        // Choisir la bonne action parmi trente demande de la constance, pas de
+        // la variété : les contrôles de verifier-commande-vocale.mjs doivent
+        // donner le même résultat d'une fois sur l'autre.
+        temperature: 0,
+      },
+    }
 
     try {
-      const reponse = await fetch(`${HOTE}/models/${modele}:generateContent`, {
+      const reponse = await fetch(`${HOTE}/models/${appel.modele}:generateContent`, {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": appel.cle },
         body: JSON.stringify(corps),
@@ -245,61 +207,19 @@ async function tenterUnModele(appel: AppelModele, modele: string): Promise<Resul
       }
 
       const texte = await reponse.text()
-      // Inutile d'attendre ici quand l'appelant va changer de modèle : les
-      // trois essais seraient dépensés sur celui qui vient de refuser, et le
-      // budget de 25 s de l'app serait mangé avant d'avoir essayé les autres.
-      // Les autres pannes passagères, elles, valent la peine d'être rejouées
-      // sur le même modèle.
-      const passager =
-        !STATUTS_CHANGER_DE_MODELE.has(reponse.status) && STATUTS_A_REESSAYER.has(reponse.status)
-      const quota = reponse.status === 429 ? lireQuota(texte) : undefined
-      dernier = { statut: reponse.status, texte, passager, quota }
-
-      // Un 429 « par jour » et un 429 « par minute » se ressemblent dans les
-      // journaux, et n'ont rien à voir : le premier laisse Jarvis muet
-      // jusqu'au lendemain. On écrit donc le seau concerné, pas juste l'échec.
-      if (reponse.status === 429) {
-        console.log(
-          "quota",
-          JSON.stringify({ modele, id: quota?.id, limite: quota?.limite }),
-        )
-      }
-      if (!passager) break
-
       const entete = Number(reponse.headers.get("retry-after"))
-      attendreMs = Number.isFinite(entete) && entete > 0 ? entete * 1000 : null
+      return {
+        echec: {
+          statut: reponse.status,
+          texte,
+          quota: reponse.status === 429 ? lireQuota(texte) : undefined,
+          attendreMs: Number.isFinite(entete) && entete > 0 ? entete * 1000 : undefined,
+        },
+      }
     } catch (err) {
-      // Coupure réseau : passagère par nature.
-      dernier = { statut: 0, texte: String(err), passager: true }
+      // Coupure réseau : passagère par nature. `modele.ts` classe le 0 comme
+      // tel et rejouera.
+      return { echec: { statut: 0, texte: String(err) } }
     }
-
-    if (essai === ESSAIS_MAX) break
-    const parDefaut = 2 ** (essai - 1) * 1000 + Math.random() * 300
-    await new Promise((r) => setTimeout(r, Math.min(attendreMs ?? parDefaut, 5000)))
-  }
-
-  return { echec: dernier }
-}
-
-/**
- * La phrase que Jarvis dit quand le modèle n'a pas répondu — la cause ET la
- * sortie, jamais du JSON brut à l'écran.
- *
- * Mêmes formulations que src/lib/erreurServeurVocal.ts, qui rattrape côté
- * app ce que le serveur ne peut pas habiller (fonction plantée, réseau coupé,
- * session expirée). Deux chemins, une seule formulation : si tu en changes
- * une, change l'autre.
- */
-export function phrasePourEchec(echec: Echec | undefined): string {
-  const detail = echec?.texte ?? ""
-  if (/RESOURCE_EXHAUSTED|quota/i.test(detail) || echec?.statut === 429) {
-    return "J'ai atteint la limite de l'offre gratuite de Gemini pour le moment. Redis-moi ça dans une minute ; si ça se répète toute la journée, c'est le quota du jour qui est épuisé."
-  }
-  if (/API_KEY_INVALID|API key not valid|PERMISSION_DENIED/i.test(detail) || echec?.statut === 403) {
-    return "Ma clé Gemini est refusée par le serveur : elle a dû être changée, révoquée, ou l'API n'est pas activée pour elle."
-  }
-  if (echec?.passager) {
-    return "Le modèle est débordé en ce moment. Redis-moi ça dans quelques secondes."
-  }
-  return "Je n'arrive pas à joindre le modèle en ce moment. Réessaie, et regarde les journaux de voice-command si ça dure."
+  },
 }

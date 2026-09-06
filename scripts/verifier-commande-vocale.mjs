@@ -831,7 +831,7 @@ cas.push(
 // IDLE_TIMEOUT à 150 s en attendant un modèle saturé. Le contrôle tombe, mais
 // le code est bon — les mêmes cas rejoués lentement repassent au vert. Sans ce
 // relevé, on relit son diff pendant une heure pour rien.
-const SIGNATURE_QUOTA = /IDLE_TIMEOUT|limite de l'offre gratuite|quota|RESOURCE_EXHAUSTED|429/i
+const SIGNATURE_QUOTA = /IDLE_TIMEOUT|limite du moteur|limite de l'offre gratuite|quota|RESOURCE_EXHAUSTED|429/i
 const suspectsQuota = []
 
 // Rejouer UN sous-ensemble sans redérouler les 46 appels : chaque appel coûte
