@@ -38,6 +38,14 @@ passe est déjà enregistrée, elle apparaîtra dans Paramètres › Le cockpit,
 c'est tout ce qu'on attend d'elle. Chaque tour de plus est du crédit dépensé pour
 rien — c'est exactement ce qu'il a demandé d'éviter.
 
+Puis **archive-toi**, si l'outil `archive_session` du serveur claude-code-remote
+est disponible (`get_session` sans identifiant décrit la session courante) :
+c'est la seconde moitié de sa consigne, « ne pas augmenter le nombre de session
+qui deviendrais sûrement inactive a la fin de la tâche ». Vingt-quatre sessions
+vides par jour dans sa liste, c'est exactement ce qu'il ne veut pas. Une session
+qui a TRAVAILLÉ ne s'archive pas : il doit pouvoir la relire. Si l'outil n'est
+pas là, ne cherche pas de détour — termine, simplement.
+
 ## Si le verdict est `travaille`
 
 1. **Réserve le chantier** avec ta branche :
