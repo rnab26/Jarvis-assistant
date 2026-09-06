@@ -14,6 +14,7 @@ import {
   type EtatMajWeb,
   type VerdictMajWeb,
 } from "@/lib/majWeb"
+import { noterMajEnCours } from "@/lib/majEnCours"
 import { ID_MAJ_APP } from "@/lib/notifications/plan"
 import { notifierMaintenant } from "@/lib/notifications/service"
 
@@ -115,6 +116,10 @@ export function useMajWeb(
     if (!published?.bundleUrl) return
     setErreur(null)
     setProgression(null)
+    // Le micro se tait pendant ce temps : sa demande du 6 sept., capture à
+    // l'appui — la fenêtre d'installation d'Android s'ouvrait par-dessus un
+    // « Conversation en cours ». Voir src/lib/majEnCours.ts.
+    noterMajEnCours(true)
     try {
       await appliquerBundle(
         {
@@ -132,6 +137,12 @@ export function useMajWeb(
       setEtape(null)
       setProgression(null)
       setErreur(e instanceof Error ? e.message : "La mise à jour rapide a échoué.")
+      // Rendu AVANT de relancer l'erreur : une mise à jour ratée qui
+      // laisserait le drapeau levé rendrait Jarvis sourd jusqu'au prochain
+      // démarrage, sans que rien ne le dise. En cas de succès on ne le baisse
+      // pas — setServerBasePath relance l'interface, et le module repart à
+      // faux avec elle.
+      noterMajEnCours(false)
       throw e
     }
   }, [published])

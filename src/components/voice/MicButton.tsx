@@ -33,6 +33,7 @@ import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
 import { consigneQuestionApp, suiteDeLaQuestion, type QuestionEnAttente } from "@/lib/questionAppLive"
 import { retourOuAveu } from "@/lib/retourVide"
+import { majEnCours, sAbonnerMaj } from "@/lib/majEnCours"
 import { ecrireModeLive, lireModeLive } from "@/lib/livePrefs"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import type { DevItem } from "@/types/database"
@@ -775,6 +776,17 @@ export function MicButton({
   // En mode Live aussi : dire « Jarvis » ouvre la conversation. Pendant la
   // conversation, l'état n'est jamais au repos, donc la veille attend.
   const veilleActive = wakeWordEnabled && visible
+
+  // Une mise à jour qui s'installe suspend la veille (voir majEnCours.ts et
+  // peutEcouterEnVeille). L'état sert à l'AFFICHAGE, la ref à la boucle —
+  // qui est montée une fois et ne verrait jamais un état changé après coup.
+  const [majEnCoursEtat, setMajEnCoursEtat] = useState(majEnCours)
+  const majEnCoursRef = useRef(majEnCoursEtat)
+  majEnCoursRef.current = majEnCoursEtat
+  useEffect(() => {
+    setMajEnCoursEtat(majEnCours())
+    return sAbonnerMaj(setMajEnCoursEtat)
+  }, [])
   // LES FONCTIONS APPELÉES DEPUIS UN EFFET PASSENT PAR CETTE REF, JAMAIS EN
   // DIRECT. La boucle de veille (et les deux lanceurs ci-dessous) vivent
   // dans des effets montés une seule fois : ce qu'ils appellent en direct
@@ -794,7 +806,16 @@ export function MicButton({
       let echecDemarrage = false
       let rafalesMuettes = 0
       while (!cancelled) {
-        if (!peutEcouterEnVeille({ actif: true, visible: true, statut: statusRef.current })) {
+        if (
+          !peutEcouterEnVeille({
+            actif: true,
+            visible: true,
+            statut: statusRef.current,
+            // Relu à CHAQUE tour, pas capturé au montage : une mise à jour
+            // commence après le démarrage de la boucle, pas avant.
+            majEnCours: majEnCoursRef.current,
+          })
+        ) {
           await new Promise((r) => setTimeout(r, 400))
           continue
         }
@@ -937,13 +958,23 @@ export function MicButton({
           était réellement actif : un indicateur qui n'apparaît qu'une fraction
           du temps revient à ne rien indiquer. */}
       {wakeWordEnabled && (status === "wake-listening" || status === "idle") && (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="relative flex size-2">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
-            <span className="relative inline-flex size-2 rounded-full bg-primary" />
-          </span>
-          {modeLive ? "Dis « Jarvis » pour lancer la conversation" : "Dis « Jarvis » quand tu veux"}
-        </p>
+        majEnCoursEtat ? (
+          // Le DIRE plutôt que de rester muet : une veille suspendue sans un
+          // mot se lit exactement comme un mot-clé qui ne marche pas — le
+          // défaut qu'il signalait le 3 sept. (« je ne sais jamais ce qui est
+          // réellement actif »).
+          <p className="text-xs text-muted-foreground">
+            Mise à jour en cours — je me remets à l'écoute juste après.
+          </p>
+        ) : (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-primary" />
+            </span>
+            {modeLive ? "Dis « Jarvis » pour lancer la conversation" : "Dis « Jarvis » quand tu veux"}
+          </p>
+        )
       )}
       {(lastUserText || lastReply) && (
         <div className="max-w-xs text-center text-sm">

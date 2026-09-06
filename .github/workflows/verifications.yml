@@ -53,6 +53,13 @@ jobs:
       - name: Les commandes comprises sans modèle
         run: node --experimental-strip-types scripts/verifier-commande-locale.ts
 
+      # Sa demande du 6 sept., capture à l'appui : la fenêtre d'installation
+      # d'Android par-dessus un « Conversation en cours ». On suspend la VEILLE
+      # pendant une mise à jour — et RIEN de plus : un appui sur le cœur reste
+      # obéi. La moitié des contrôles garde ce « uniquement ».
+      - name: Jarvis se tait pendant une mise à jour, et rien de plus
+        run: node --experimental-strip-types scripts/verifier-maj-ecoute.ts
+
       - name: La clôture de la conversation à la voix
         run: node --experimental-strip-types scripts/verifier-fin-conversation.ts
 
