@@ -338,6 +338,7 @@ doitLaisserPasser("lance l'épisode", "article élidé, accentué")
 doitLaisserPasser("lance les episodes", "pluriel, sans accent")
 doitLaisserPasser("lance les résultats", "pluriel, accentué")
 doitLaisserPasser("ouvre les morceaux", "pluriel irrégulier (morceau → morceaux)")
+doitLaisserPasser("lance le morceau", "singulier de ce même mot irrégulier : ne doit pas régresser")
 
 console.log("\n— Confier une recherche à une IA installée : ses tournures du 5 sept. —")
 
