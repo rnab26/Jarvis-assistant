@@ -619,6 +619,64 @@ cas.push(
     },
   },
   {
+    nom: "« lance la deuxième vidéo » est une action d'écran, pas une recherche",
+    phrase: "Attends, vas-y, lance la deuxième vidéo.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "screen_action")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.screen_command !== "clic") return [false, `screen_command = ${a.screen_command}`]
+      // Il ne voit pas l'écran : il doit reprendre SES mots, pas inventer un
+      // titre de vidéo. Le téléphone compare ces mots à ce qui est affiché.
+      if (!a.screen_target || !/deuxi|2/i.test(a.screen_target)) {
+        return [false, `screen_target inventé ou absent : "${a.screen_target ?? ""}"`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "« descends » fait défiler, sans rien cliquer",
+    phrase: "Descends un peu.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "screen_action")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.screen_command !== "defiler_bas") return [false, `screen_command = ${a.screen_command}`]
+      return [true]
+    },
+  },
+  {
+    nom: "« appuie sur envoyer » ne redemande pas le destinataire",
+    phrase: "Appuie sur envoyer.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "screen_action")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.screen_command !== "clic") return [false, `screen_command = ${a.screen_command}`]
+      if (!a.screen_target || !/envoy|envoi/i.test(a.screen_target)) {
+        return [false, `screen_target = "${a.screen_target ?? ""}"`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "« ne touche jamais à ma banque » met l'app sur la liste noire",
+    phrase: "N'appuie jamais dans Bitwarden.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "block_screen_app")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (!/bitwarden/i.test(a.app_name ?? "")) return [false, `app_name = "${a.app_name ?? ""}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "« lance la deuxième vidéo » ne devient PAS une tâche ni un chantier",
+    phrase: "Vas-y, lance la troisième.",
+    controle: (r) => {
+      const familles = (r.actions ?? []).map((x) => x.action)
+      const inventees = familles.filter((f) => /add_task|add_dev_item|save_document/.test(f))
+      if (inventees.length) return [false, `il a créé quelque chose : ${inventees.join(", ")}`]
+      return [true]
+    },
+  },
+  {
     nom: "il sait où retrouver ce qu'il a mémorisé",
     phrase: "Où je peux relire ce que tu as retenu sur moi ?",
     controle: (r) => {
