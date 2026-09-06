@@ -20,6 +20,11 @@
  *    STOCKAGE_LOCAL_ASSUME avec la raison de rester locale.
  * 2. Chaque réglage déclaré dit OÙ il se règle, et le fichier annoncé existe.
  * 3. Aucune clé déclarée deux fois.
+ * 4. Le fichier annoncé est RÉELLEMENT atteignable depuis Paramètres — c'est
+ *    la moitié de la règle que rien ne vérifiait. Un contrôle qui existe dans
+ *    un fichier que l'écran de réglages ne monte jamais est aussi invisible
+ *    qu'un contrôle absent : la préférence reste figée sur sa valeur de
+ *    départ, et le contrôle qui la déclarait disait vrai sur toute la ligne.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
@@ -71,6 +76,57 @@ for (const reglage of REGLAGES) {
 // Les clés d'un fichier qui touche localStorage sont des préférences de
 // l'appareil. Ailleurs (canaux de notification, stockage natif du widget),
 // « jarvis_… » désigne autre chose et ne concerne pas la synchro.
+/**
+ * Tout ce que Paramètres monte, directement ou non.
+ *
+ * On suit les imports « @/… » depuis `SettingsPage.tsx`. Un fichier hors de
+ * ce graphe n'est jamais affiché dans les réglages, quoi qu'en dise la
+ * déclaration — c'est exactement le cas que le chantier permanent 776235be
+ * signalait pour `jarvis_mode_live`, réglable seulement par une case sous le
+ * cœur pendant plusieurs jours.
+ */
+function atteignableDepuisParametres(): Set<string> {
+  const vus = new Set<string>()
+  const aVoir = ["src/pages/SettingsPage.tsx"]
+
+  while (aVoir.length > 0) {
+    const fichier = aVoir.pop()!
+    if (vus.has(fichier)) continue
+    let contenu: string
+    try {
+      contenu = readFileSync(fichier, "utf8")
+    } catch {
+      continue
+    }
+    vus.add(fichier)
+
+    for (const trouve of contenu.matchAll(/from "@\/([^"]+)"/g)) {
+      const base = join("src", trouve[1])
+      // L'import ne porte pas l'extension : on essaie celles du projet.
+      for (const candidat of [`${base}.tsx`, `${base}.ts`, join(base, "index.tsx"), join(base, "index.ts")]) {
+        try {
+          statSync(candidat)
+          aVoir.push(candidat)
+          break
+        } catch {
+          // extension suivante
+        }
+      }
+    }
+  }
+  return vus
+}
+
+const DEPUIS_PARAMETRES = atteignableDepuisParametres()
+
+for (const reglage of REGLAGES) {
+  verifier(
+    `${reglage.cle} : son contrôle est atteignable depuis Paramètres`,
+    DEPUIS_PARAMETRES.has(reglage.fichier),
+    `${reglage.fichier} n'est monté par aucun écran de Paramètres : la préférence est invisible et figée sur sa valeur de départ, exactement comme si le contrôle n'existait pas`,
+  )
+}
+
 const CLE = /"(jarvis_[a-z0-9_]*)"/g
 const orphelines = new Map<string, string>()
 
