@@ -620,6 +620,38 @@ choisie (`jarvis_app_appels`, avec repli si elle refuse l'intent), la carte
 qui se CHOISIT à l'écran, parce que Jarvis ne la demande jamais à l'oral —, et
 la permission se donne d'un geste depuis « Autorisations du téléphone ».
 
+## Une dictée qui part au mauvais endroit se corrige d'un mot
+
+Sa demande du 6 sept. 2026 : « Si jarvis a un doute ou est-ce qu'il faut
+déposer une requête ou un chantier il faut qu'il donne une supposition a
+raphael ou bien raphael lui indique lui meme ou la placer. »
+
+Ce qui existait (`tacheOuChantier.ts`, la carte de l'onglet Tâches) est du
+RATTRAPAGE : ça répare après coup, parfois des jours plus tard — une de ses
+demandes a dormi dans sa liste de courses, invisible de toutes les sessions.
+`src/lib/ouVaCetteDictee.ts` (pur) traite l'INSTANT de la dictée.
+
+- **On annonce, on ne demande pas.** Sa règle du 5 sept. tient : rien
+  n'attend sa réponse. Jarvis range au mieux, DIT ce qui l'a fait pencher, et
+  la correction reste possible — le compromis de `actionsTelephoneFenetre.ts`.
+- **La correction DÉPLACE, elle ne recrée pas**, et n'efface qu'après avoir
+  écrit ailleurs : l'inverse perdrait sa dictée si la seconde écriture échoue,
+  et recréer sans effacer laisserait l'originale dans la mauvaise liste.
+- **Elle est reconnue SUR L'APPAREIL** (`commandeLocale.ts`) : c'est une
+  reprise dite dans la foulée, un aller-retour au modèle coûterait une seconde
+  et une chance de plus de la comprendre comme une nouvelle demande.
+- **Une seule règle de reconnaissance**, `chantierDeguise`, mesurée sur ses
+  vraies lignes. Une seconde divergerait, et l'onglet Tâches ne dirait plus la
+  même chose que la voix du même titre.
+- **Le sens inverse n'est PAS détecté**, et c'est voulu : rien ne le mesure.
+  La correction, elle, marche dans les deux sens.
+
+**La moitié de `verifier-ou-va-cette-dictee.ts` vérifie le REFUS** : « ajoute
+un chantier pour refaire la salle de bain » porte exactement les mêmes mots
+que « mets-le en chantier ». La prendre pour une correction déplacerait la
+ligne précédente AU LIEU de créer celle-ci — on perdrait sa demande et on
+abîmerait la précédente, d'un coup.
+
 ## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
 
 Raphaël, 6 sept. 2026 : « il a une certaine logique de me demander pour un
@@ -1921,6 +1953,7 @@ node --experimental-strip-types scripts/verifier-reglages.ts     # toute préfé
 node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton « Autoriser » n'est jamais mort, sans réseau
 node --experimental-strip-types scripts/verifier-musique.ts       # « je lance » n'est dit que si ça joue vraiment, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
+node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau

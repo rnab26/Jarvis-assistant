@@ -224,6 +224,13 @@ jobs:
       - name: Le téléchargement de l'APK ne peut plus rester muet
         run: node --experimental-strip-types scripts/verifier-telechargement-apk.ts
 
+      # Où atterrit ce qu'il dicte. La moitié de ces contrôles vérifie le
+      # REFUS : « ajoute un chantier pour refaire la salle de bain » a les
+      # mêmes mots que « mets-le en chantier », et la prendre pour une
+      # correction déplacerait la ligne précédente au lieu de créer celle-ci.
+      - name: Une dictée atterrit au bon endroit, et se corrige d'un mot
+        run: node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts
+
       # Les applications proposées doivent être celles du TÉLÉPHONE. Une
       # liste écrite dans le code est fausse le jour où il installe autre
       # chose — et « en aucun cas il y a Waze » est exactement ça.
