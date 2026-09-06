@@ -807,6 +807,40 @@ Trois choses à ne pas défaire :
    Entre la lecture et le clic, une vidéo finit de charger, une notification
    arrive. Sans cette relecture, on appuierait sur ce qui a glissé à la place.
 
+### « Envoie-le », « vas-y » après un message préparé : reconnu sur l'appareil, pas par le modèle
+
+Chantier `21cf48d2`, 6 sept. 2026. Raphaël a activé le service (capture à
+l'appui), mais le message ne partait toujours pas. `journal_ecoute` a montré
+pourquoi : deux `send_message` consécutifs pour la même demande, jamais un
+`screen_action` — le modèle rouvrait le même brouillon WhatsApp au lieu de
+cliquer sur « Envoyer ».
+
+**Un premier correctif, une consigne côté serveur, ne pouvait pas marcher —
+et ça vaut d'être écrit pour ne pas le retenter.** `resolveTranscript`
+(`MicButton.tsx`) envoie à `voice-command` la phrase courante SEULE, sans le
+tour précédent ni son résultat : aucune consigne ne peut apprendre au modèle
+qu'un message vient d'être préparé, puisqu'il ne reçoit jamais cette
+information à l'appel suivant.
+
+Le vrai correctif vit donc côté appareil, avec l'état que seul lui a :
+`src/lib/confirmationEnvoi.ts` (pur, vérifié par
+`verifier-confirmation-envoi.ts`) lit `dernierTourRef` — la même ref que
+`MicButton` tient déjà pour signaler ses propres échecs — et traduit une
+confirmation nue (« envoie-le », « vas-y », « c'est bon », « confirme »,
+« appuie sur envoyer », ou « envoyer LE message » redit) dans les 90
+secondes après un `send_message` directement en `screen_action` (clic sur
+« Envoyer »), avant tout aller-retour réseau. Même famille que
+`move_last_entry` dans `commandeLocale.ts`, mais nécessairement hors de ce
+module-là : ces phrases sont trop génériques pour être reconnues par leur
+seul texte, il faut le tour précédent pour les désambiguïser.
+
+**Le signal qui sépare une confirmation d'une nouvelle demande est
+l'article.** « Envoyer UN message » (indéfini) est une nouvelle demande ;
+« envoyer LE message » (défini), ou une confirmation sans objet du tout, se
+rattache au message déjà préparé. Vérifié sur les deux phrases réelles du
+6 sept., mot pour mot — la reconnaissance vocale y a transcrit l'infinitif
+« Envoyer », jamais l'impératif « Envoie » attendu.
+
 ### Il n'y a PAS de fenêtre d'annulation ici, et ce n'est pas un oubli
 
 La fenêtre (`actionsTelephoneFenetre.ts`) est un bandeau affiché DANS Jarvis.
@@ -1690,7 +1724,15 @@ tout seul les fichiers voisins (`memoire.ts`) et le dossier `_shared/` quand
 la fonction s'en sert, et il relit puis **conserve le réglage `verify_jwt`
 existant** — `google-oauth` doit rester ouvert pour recevoir la redirection de
 Google, qui ne porte aucun jeton ; le refermer casserait la connexion du
-compte Google. **`git fetch && git merge` AVANT de déployer, toujours.** Le script envoie ce
+compte Google. `push-notifier` (chantier 76a6a595) est ouverte pour la même
+raison de fond, mais un cas différent : c'est Postgres qui l'appelle via
+pg_net, sans jeton utilisateur — décision explicite de Raphaël (dev_log,
+6 sept. 2026), protégée par le secret partagé `x-push-secret` (Vault côté
+base + secret Edge Function), jamais par la clé service_role. Ce script
+préserve les deux réglages en le relisant ; pour poser `verify_jwt=false` sur
+une fonction qui ne l'a pas encore, passe par l'outil MCP
+`deploy_edge_function` (paramètre `verify_jwt`) — un déploiement qui change ce
+réglage est une décision de sécurité, jamais à prendre sans lui. **`git fetch && git merge` AVANT de déployer, toujours.** Le script envoie ce
 qui est SUR LE DISQUE, pas ce qui est sur la branche. Le 5 sept., un
 déploiement fait pour une raison sans rapport (une phrase de
 `_shared/environnement.ts`) a remis en ligne l'`index.ts` d'avant le correctif
@@ -2023,6 +2065,7 @@ node --experimental-strip-types scripts/verifier-musique.ts       # « je lance 
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
+node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
 node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau
