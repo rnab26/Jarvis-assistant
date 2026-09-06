@@ -68,6 +68,13 @@ jobs:
       - name: Une action muette ne devient ni un silence ni un mensonge
         run: node --experimental-strip-types scripts/verifier-retour-vide.ts
 
+      # « La musique ne se coupe pas, mais il a du mal à entendre » — ses mots
+      # du 6 sept. On baisse le son des autres apps pendant qu'il parle, et on
+      # le remonte sur TOUTES les sorties. Surtout : PAS pendant la veille,
+      # sinon une rafale toutes les 1 à 8 s ferait pomper sa musique sans arrêt.
+      - name: La musique baisse pendant qu'il parle, et remonte à tous les coups
+        run: node --experimental-strip-types scripts/verifier-baisser-son.ts
+
       - name: L'envoi d'un chantier à Claude Code
         run: node --experimental-strip-types scripts/verifier-envoi-chantier.ts
 

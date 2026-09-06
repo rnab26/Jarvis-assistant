@@ -103,13 +103,26 @@ try {
   )
   verifier(
     "avec le compte de ce qui a été livré, ouvert et écrit",
-    (await visible("1 livré")) && (await visible("4 nouveaux")) && (await visible("4 messages")),
+    // « pour toi » et plus « messages » : ce qui lui est adressé se compte à
+    // part de ce que les sessions se disent entre elles.
+    (await visible("1 livré")) && (await visible("4 nouveaux")) && (await visible("3 pour toi")),
     (await page.locator("body").innerText()).slice(0, 200),
   )
   verifier(
     "et le détail, pas seulement des chiffres",
     await visible("Le badge de version, livré"),
   )
+  // CE QUI LUI EST ADRESSÉ SE LIT, CE QUE LES SESSIONS SE DISENT SE COMPTE.
+  // Le 6 sept., deux comptes rendus de 2 000 et 2 500 caractères occupaient
+  // les deux lignes les plus précieuses du bandeau, le matin même où il a dit
+  // ne pas arriver à savoir ce qui avait bougé.
+  verifier(
+    "un compte rendu entre sessions est compté, pas déballé",
+    (await visible("entre sessions")) &&
+      !(await page.getByText(/CE QUI VOUS CONCERNE/).isVisible()),
+    "un mur de notes techniques recouvre ce qui a réellement bougé",
+  )
+
   await page.getByRole("button", { name: "Vu" }).first().click()
   await pause(300)
   verifier(

@@ -116,10 +116,15 @@ try {
     const c = cartes.find((e) => /Ce qui attend ta décision/.test(e.textContent ?? ""))
     return c ? Math.round(c.getBoundingClientRect().bottom) : null
   })
+  // `null` = la carte n'existe pas, parce que rien n'attend sa décision. C'est
+  // le bon comportement, pas un échec : on retombe alors sur « Où j'en suis »,
+  // qui doit tenir seul dans le premier écran.
   verifier(
-    "« Où j'en suis » et « Ce qui attend ta décision » tiennent ensemble dans le premier écran",
-    basDecisions !== null && basDecisions <= 844,
-    `ils se terminent à ${basDecisions} points sur 844`,
+    "« Où j'en suis » et ce qui attend sa décision tiennent ensemble dans le premier écran",
+    (basDecisions ?? carte?.bas ?? 9999) <= 844,
+    basDecisions === null
+      ? `rien n'attend sa décision, et « Où j'en suis » se termine à ${carte?.bas} points`
+      : `ils se terminent à ${basDecisions} points sur 844`,
   )
 
   const cartes = await page.evaluate(() => {
