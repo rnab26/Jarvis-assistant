@@ -1,8 +1,8 @@
 diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
-index a99ea69..ed6be02 100644
+index a99ea69..bd79d36 100644
 --- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 +++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
-@@ -2,10 +2,15 @@ package com.getcapacitor.community.speechrecognition;
+@@ -2,10 +2,17 @@ package com.getcapacitor.community.speechrecognition;
  
  import android.Manifest;
  import android.app.Activity;
@@ -10,6 +10,8 @@ index a99ea69..ed6be02 100644
  import android.content.Intent;
 +import android.content.pm.PackageManager;
 +import android.content.pm.ResolveInfo;
++import android.media.AudioAttributes;
++import android.media.AudioFocusRequest;
 +import android.media.AudioManager;
  import android.os.Build;
  import android.os.Bundle;
@@ -18,7 +20,7 @@ index a99ea69..ed6be02 100644
  import android.speech.RecognizerIntent;
  import android.speech.SpeechRecognizer;
  import androidx.activity.result.ActivityResult;
-@@ -37,6 +42,40 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -37,6 +44,105 @@ public class SpeechRecognition extends Plugin implements Constants {
      private Receiver languageReceiver;
      private SpeechRecognizer speechRecognizer;
  
@@ -29,37 +31,102 @@ index a99ea69..ed6be02 100644
 +    // de Google, lui, ne fait ni l'un ni l'autre : on le vise explicitement
 +    // quand il est installe.
 +    private String serviceChoisi = "defaut";
-+    // Deuxieme piste, seulement si Google est absent : couper le flux
-+    // audio le temps du "beep" plutot que de le laisser sonner.
-+    private boolean streamCoupe = false;
++    // Le focus audio pris pendant l'ecoute, a rendre ensuite. Type Object et
++    // non AudioFocusRequest : cette classe n'existe qu'a partir d'Android 8,
++    // et le champ ne doit rien exiger sur un Android 7 (minSdk 24).
++    private Object focusRequest = null;
++    private AudioManager.OnAudioFocusChangeListener focusListener = null;
++    private boolean focusPris = false;
 +
 +    /**
-+     * Rend le son, quoi qu'il arrive.
++     * Baisse le son des autres applications pendant l'ecoute -- sans le couper.
 +     *
-+     * MESURE DU 5 SEPT. 2026 sur le journal d'ecoute de Raphael : sur son
-+     * telephone, `servicesDisponibles` vaut
-+     * "com.google.android.as,com.google.android.tts,com.anthropic.claude" --
-+     * PAS de com.google.android.googlequicksearchbox. Le service de Google
-+     * n'est donc pas installe, `serviceChoisi` reste "defaut", et CHAQUE
-+     * rafale coupe STREAM_MUSIC. Or le son n'etait retabli que dans
-+     * onBeginningOfSpeech, c'est-a-dire seulement quand quelqu'un parlait
-+     * pour de vrai. 363 rafales de veille se sont terminees sans qu'un mot
-+     * soit prononce : autant de fois ou la musique restait coupee, sans que
-+     * rien ne le signale. On retablit donc le son sur TOUTES les sorties --
-+     * parole detectee, fin d'ecoute, erreur, arret -- pas seulement sur
-+     * celle du cas heureux.
++     * SES MOTS, 6 sept. 2026, apres le correctif de la veille : "la musique ne
++     * se coupe pas, mais il a du mal a entendre une fois que la musique est
++     * lancee, car le fond musical est present." Ce n'est donc plus une coupure,
++     * c'est une reconnaissance noyee dans le son -- et c'est un cas d'usage
++     * quotidien chez lui.
++     *
++     * POURQUOI LE FOCUS AUDIO ET PAS adjustStreamVolume. La version d'avant
++     * coupait STREAM_MUSIC a la main. Trois defauts : elle coupe au lieu de
++     * baisser (on perd la musique au lieu de la mettre en fond) ; elle ne
++     * previent pas l'application qui joue, donc rien ne se retablit tout seul
++     * si notre processus meurt en cours d'ecoute -- la musique reste muette
++     * jusqu'au redemarrage ; et c'est exactement le bug du 5 sept.
++     * AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK est l'API prevue pour ca : le systeme
++     * baisse les autres applications le temps qu'on ecoute, les remonte quand
++     * on rend le focus, ET les remonte aussi tout seul si on disparait.
++     *
++     * Demande pour TOUS les services, plus seulement quand Google est absent :
++     * une reconnaissance vocale a toujours interet a ce que la musique baisse.
 +     */
-+    private void retablirSon() {
-+        if (!streamCoupe) return;
-+        streamCoupe = false;
++    @SuppressWarnings("deprecation")
++    private void baisserLesAutresSons() {
++        if (focusPris) return;
 +        AudioManager audio = (AudioManager) bridge.getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
-+        if (audio != null) audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_UNMUTE, 0);
++        if (audio == null) return;
++        // Un ecouteur est exige par l'API meme quand on n'en fait rien : c'est
++        // lui qui identifie notre demande au moment de la rendre.
++        if (focusListener == null) {
++            focusListener = new AudioManager.OnAudioFocusChangeListener() {
++                @Override
++                public void onAudioFocusChange(int changement) {
++                    // Rien a faire : nous ne jouons aucun son, nous ecoutons.
++                    // L'ecouteur n'existe que parce que l'API l'exige, et
++                    // parce que c'est lui qui identifie notre demande quand on
++                    // rend le focus.
++                }
++            };
++        }
++        int resultat;
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++            AudioFocusRequest req = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
++                .setAudioAttributes(
++                    new AudioAttributes.Builder()
++                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
++                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
++                        .build()
++                )
++                .setOnAudioFocusChangeListener(focusListener)
++                .build();
++            focusRequest = req;
++            resultat = audio.requestAudioFocus(req);
++        } else {
++            resultat = audio.requestAudioFocus(
++                focusListener,
++                AudioManager.STREAM_MUSIC,
++                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
++            );
++        }
++        focusPris = resultat == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
++    }
++
++    /**
++     * Rend le focus, quoi qu'il arrive -- donc remonte le son des autres.
++     *
++     * Appele depuis TOUTES les sorties (parole detectee, fin d'ecoute, erreur,
++     * arret), et pas seulement celle du cas heureux : c'est la lecon du
++     * 5 sept., ou le son n'etait retabli que dans onBeginningOfSpeech et
++     * restait donc coupe les 363 fois ou personne n'avait parle.
++     */
++    @SuppressWarnings("deprecation")
++    private void retablirSon() {
++        if (!focusPris) return;
++        focusPris = false;
++        AudioManager audio = (AudioManager) bridge.getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
++        if (audio == null) return;
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && focusRequest instanceof AudioFocusRequest) {
++            audio.abandonAudioFocusRequest((AudioFocusRequest) focusRequest);
++        } else if (focusListener != null) {
++            audio.abandonAudioFocus(focusListener);
++        }
++        focusRequest = null;
 +    }
 +
      private final ReentrantLock lock = new ReentrantLock();
      private boolean listening = false;
  
-@@ -48,7 +87,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -48,7 +154,7 @@ public class SpeechRecognition extends Plugin implements Constants {
          bridge
              .getWebView()
              .post(() -> {
@@ -68,7 +135,7 @@ index a99ea69..ed6be02 100644
                  SpeechRecognitionListener listener = new SpeechRecognitionListener();
                  speechRecognizer.setRecognitionListener(listener);
                  Logger.info(getLogTag(), "Instantiated SpeechRecognizer in load()");
-@@ -118,6 +157,13 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -118,6 +224,13 @@ public class SpeechRecognition extends Plugin implements Constants {
          call.resolve(new JSObject().put("listening", SpeechRecognition.this.listening));
      }
  
@@ -82,7 +149,7 @@ index a99ea69..ed6be02 100644
      @ActivityCallback
      private void listeningResult(PluginCall call, ActivityResult result) {
          if (call == null) {
-@@ -151,6 +197,44 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -151,6 +264,44 @@ public class SpeechRecognition extends Plugin implements Constants {
          this.listening = value;
      }
  
@@ -127,7 +194,7 @@ index a99ea69..ed6be02 100644
      private void beginListening(
          String language,
          int maxResults,
-@@ -188,11 +272,18 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -188,11 +339,22 @@ public class SpeechRecognition extends Plugin implements Constants {
                              speechRecognizer = null;
                          }
  
@@ -137,17 +204,21 @@ index a99ea69..ed6be02 100644
                          listener.setCall(call);
                          listener.setPartialResults(partialResults);
                          speechRecognizer.setRecognitionListener(listener);
-+                        if (!serviceChoisi.startsWith("com.google")) {
-+                            AudioManager audio = (AudioManager) bridge.getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
-+                            if (audio != null) {
-+                                audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_MUTE, 0);
-+                                streamCoupe = true;
-+                            }
++                        // SEULEMENT QUAND L'APPELANT LE DEMANDE, et c'est
++                        // essentiel : la veille relance une rafale toutes les
++                        // 1 a 8 secondes. Baisser puis remonter la musique a
++                        // ce rythme la ferait "pomper" en permanence, ce qui
++                        // serait pire que le probleme qu'on corrige. L'app ne
++                        // demande donc a baisser que pour une VRAIE prise de
++                        // parole (mode commande), pas pour l'ecoute passive du
++                        // mot-cle. Voir src/hooks/useSpeechRecognition.ts.
++                        if (call.getBoolean("baisserLeSon", false)) {
++                            SpeechRecognition.this.baisserLesAutresSons();
 +                        }
                          speechRecognizer.startListening(intent);
                          SpeechRecognition.this.listening(true);
                          if (partialResults) {
-@@ -217,6 +308,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -217,6 +379,7 @@ public class SpeechRecognition extends Plugin implements Constants {
                          speechRecognizer.stopListening();
                          SpeechRecognition.this.listening(false);
                      }
@@ -155,7 +226,7 @@ index a99ea69..ed6be02 100644
                  } catch (Exception ex) {
                      throw ex;
                  } finally {
-@@ -245,6 +337,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -245,6 +408,7 @@ public class SpeechRecognition extends Plugin implements Constants {
          public void onBeginningOfSpeech() {
              try {
                  SpeechRecognition.this.lock.lock();
@@ -163,7 +234,7 @@ index a99ea69..ed6be02 100644
                  // Notify listeners that recording has started
                  JSObject ret = new JSObject();
                  ret.put("status", "started");
-@@ -268,6 +361,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -268,6 +432,7 @@ public class SpeechRecognition extends Plugin implements Constants {
                      try {
                          SpeechRecognition.this.lock.lock();
                          SpeechRecognition.this.listening(false);
@@ -171,7 +242,7 @@ index a99ea69..ed6be02 100644
  
                          JSObject ret = new JSObject();
                          ret.put("status", "stopped");
-@@ -281,8 +375,24 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -281,8 +446,24 @@ public class SpeechRecognition extends Plugin implements Constants {
          @Override
          public void onError(int error) {
              SpeechRecognition.this.stopListening();

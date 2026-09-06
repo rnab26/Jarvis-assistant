@@ -553,7 +553,18 @@ export function useSpeechRecognition() {
               maxResults: 1,
               partialResults: true,
               popup: false,
-            }),
+              // BAISSER LA MUSIQUE PENDANT QU'IL PARLE. Ses mots du 6 sept. :
+              // « la musique ne se coupe pas, mais il a du mal à entendre une
+              // fois que la musique est lancée, car le fond musical est
+              // présent. » Le plugin demande alors le focus audio à Android,
+              // qui baisse les autres applications puis les remonte tout seul.
+              //
+              // Ici SEULEMENT, et pas dans l'écoute du mot-clé : la veille
+              // relance une rafale toutes les 1 à 8 s, et baisser puis
+              // remonter la musique à ce rythme la ferait « pomper » sans
+              // arrêt — pire que le défaut qu'on corrige.
+              baisserLeSon: true,
+            } as Parameters<typeof NativeSpeechRecognition.start>[0]),
             DELAI_PLUGIN_MS,
           )
           // En mode partiels, `start()` se résout dès que le service est
