@@ -1,5 +1,10 @@
 import { Capacitor } from "@capacitor/core"
-import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/actionsTelephone"
+import {
+  ActionsTelephone,
+  trouverApplication,
+  type ApplicationInstallee,
+  type CommandeMedia,
+} from "@/lib/actionsTelephone"
 import { phraseMusique, type ResultatOuverture } from "@/lib/actionsTelephoneMusique"
 import {
   annonceAction,
@@ -126,6 +131,35 @@ const NOM_CATEGORIE: Record<CategorieAppTelephone, string> = {
 export function questionAppPreferee(categorie: CategorieAppTelephone): string {
   if (categorie === "messages") return "Tu préfères WhatsApp ou les SMS pour tes messages ?"
   return `Quelle application utilises-tu pour ${NOM_CATEGORIE[categorie]} ?`
+}
+
+/**
+ * Les applications qui savent vraiment ouvrir un ITINÉRAIRE, telles que le
+ * téléphone les déclare.
+ *
+ * On demande au système l'intent RÉEL qui sera lancé (`geo:`), jamais une
+ * liste devinée : c'est la cause racine que Raphaël a signalée deux fois le
+ * 6 sept. 2026 — WhatsApp Business le matin, Waze absent l'après-midi. On
+ * supposait au lieu de regarder.
+ *
+ * Repli sur la liste générale quand l'APK installée est antérieure à cette
+ * méthode : une interface récente peut tourner dans une ancienne coquille
+ * depuis la mise à jour rapide, et il vaut mieux une liste large qu'un échec.
+ */
+async function appsItineraire(): Promise<ApplicationInstallee[]> {
+  try {
+    return (await ActionsTelephone.listerApplicationsItineraire()).applications ?? []
+  } catch {
+    return (await ActionsTelephone.listerApplications()).applications ?? []
+  }
+}
+
+async function appsMusique(): Promise<ApplicationInstallee[]> {
+  try {
+    return (await ActionsTelephone.listerApplicationsMusique()).applications ?? []
+  } catch {
+    return (await ActionsTelephone.listerApplications()).applications ?? []
+  }
 }
 
 /** Le numéro d'un contact, ou celui que Raphaël a dicté à voix haute. */
@@ -463,11 +497,23 @@ export async function executerActionTelephone(
         let paquet: string | undefined
         const preferee = appPreferee("navigation")
         if (preferee) {
-          const { applications } = await ActionsTelephone.listerApplications()
-          paquet = trouverApplication(applications, preferee)?.paquet
+          paquet = trouverApplication(await appsItineraire(), preferee)?.paquet
+          // DEMANDER PUIS NE RIEN FAIRE EST PIRE QUE NE PAS DEMANDER. Sa
+          // remarque du 6 sept. : « il a une certaine logique de me demander
+          // pour un itinéraire quelle application j'utilise, mais il ne sait
+          // pas la lancer. » Avant, une préférence qui ne correspondait à
+          // aucune application installée retombait en silence sur le
+          // sélecteur d'Android, et Jarvis annonçait quand même « je t'ouvre
+          // l'itinéraire ».
+          if (!paquet) {
+            noterEcoute("app_introuvable", { categorie: "navigation", preferee })
+            return `Tu m'as dit d'utiliser ${preferee} pour les itinéraires, mais je ne la trouve pas parmi celles qui savent en ouvrir un sur ton téléphone. Choisis-en une dans Paramètres, « Tes applications par défaut ».`
+          }
         }
         await ActionsTelephone.itineraire({ destination: action.destination, paquet })
-        return `Je t'ouvre l'itinéraire vers ${action.destination}.`
+        return preferee
+          ? `Je t'ouvre l'itinéraire vers ${action.destination} dans ${preferee}.`
+          : `Je t'ouvre l'itinéraire vers ${action.destination}.`
       }
 
       case "media_control": {
@@ -488,8 +534,16 @@ export async function executerActionTelephone(
             : "Compris, je passerai par WhatsApp pour tes messages."
         }
 
-        const { applications } = await ActionsTelephone.listerApplications()
-        const trouvee = trouverApplication(applications, action.app_name)
+        // La liste PAR USAGE, pas « toutes les applications » : en retenir
+        // une qui ne répond pas à l'intent ne changerait rien une fois
+        // choisie, et rien ne le dirait.
+        const candidates =
+          action.category === "navigation"
+            ? await appsItineraire()
+            : action.category === "musique"
+              ? await appsMusique()
+              : ((await ActionsTelephone.listerApplications()).applications ?? [])
+        const trouvee = trouverApplication(candidates, action.app_name)
         if (!trouvee) {
           return `Je ne trouve pas d'application qui s'appelle "${action.app_name}" sur ton téléphone.`
         }

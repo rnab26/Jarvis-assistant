@@ -592,6 +592,40 @@ choisie (`jarvis_app_appels`, avec repli si elle refuse l'intent), la carte
 qui se CHOISIT à l'écran, parce que Jarvis ne la demande jamais à l'oral —, et
 la permission se donne d'un geste depuis « Autorisations du téléphone ».
 
+## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
+
+Raphaël, 6 sept. 2026 : « il a une certaine logique de me demander pour un
+itinéraire quelle application j'utilise, mais il ne sait pas la lancer. Il me
+dit que je peux voir dans l'application à quelle application il a
+l'autorisation — sauf qu'en aucun cas il y a Waze. Il n'y a pas les
+applications qu'il y a. »
+
+**Même cause racine que WhatsApp Business le matin même** : on supposait au
+lieu de regarder. Trois défauts distincts dans cette phrase, et il fallait les
+trois.
+
+1. **Il n'y avait AUCUNE liste** pour les itinéraires ni la musique. Ces
+   lignes de « Tes applications par défaut » montraient la valeur retenue et
+   un bouton « Oublier », rien d'autre — seule la ligne Appels avait un vrai
+   sélecteur. `listerApplicationsItineraire()` et `listerApplicationsMusique()`
+   interrogent maintenant le système sur l'intent RÉELLEMENT lancé (`geo:`,
+   `MEDIA_PLAY_FROM_SEARCH` + `CATEGORY_APP_MUSIC`), et `LigneAvecChoix`
+   remplace les trois lignes. `CATEGORY_APP_MUSIC` a dû être ajouté aux
+   `<queries>` : sans ça, un lecteur de musique est invisible depuis
+   Android 11, en silence.
+2. **Demander puis ne rien lancer est pire que ne pas demander.** Une
+   préférence qui ne correspondait à aucune application installée retombait en
+   silence sur le sélecteur d'Android, et Jarvis annonçait quand même « je
+   t'ouvre l'itinéraire ». Il le DIT maintenant, et renvoie vers la carte.
+3. **Il renvoyait vers le mauvais écran.** « Autorisations du téléphone » ne
+   parle que de ce que le système laisse faire — il n'y a aucune application
+   dedans. La consigne l'interdit explicitement, et un contrôle bout-en-bout
+   le vérifie.
+
+`scripts/verifier-apps-par-defaut.ts` (CI) tient les trois, et il a été essayé
+à l'envers : viser la mauvaise liste, retirer le message d'application
+introuvable ou la déclaration `<queries>` le fait rougir.
+
 ## Chercher passe par les IA de son téléphone, jamais par une API
 
 Sa décision du 5 sept. 2026, à ne pas rouvrir : « je ne veux pas payer, je
@@ -914,11 +948,28 @@ par un déclencheur n'a personne à qui parler. On ratisse volontairement large 
 un chantier écarté à tort attend la prochaine session qu'il ouvre, ce qui ne
 coûte rien ; un chantier pris à tort part pendant qu'il dort.
 
-Le déclencheur est la Routine `trig_01JNQzAFipU7KT7FXomtz5cp`, une fois par
-heure. **Une session qu'elle ouvre n'hérite pas forcément des outils
-`mcp__github__*`** : dans ce cas elle ne peut pas lire la CI, et
-`docs/session-autonome.md` lui dit de lancer elle-même, en entier, ce que la CI
-lance — ce sont les mêmes scripts — puis de l'écrire dans `dev_log`.
+Le déclencheur est la Routine `trig_01AbpcwCgpLeVMTtyCfqRguQ`, une fois par
+heure, et elle réveille **une session persistante qui porte le dépôt**
+(`session_01HbJWrhPvY3kn3jzuCdyBWH`).
+
+**Une Routine qui ouvre une session FRAÎCHE ne lui donne pas le dépôt**, et
+c'est la première version de ce déclencheur : deux tirs pour rien, le 6 sept.
+`create_trigger` avec `create_new_session_on_fire` pose un `sources: []` — la
+session démarre dans un conteneur vide, sans `scripts/`, sans CLAUDE.md. Le
+piège est silencieux trois fois : la Routine se déclare `SUCCEEDED`, la session
+n'apparaît pas dans `list_sessions` (identifiant préfixé `cse_`), et la seule
+trace est une absence de ligne dans `passes_autonomes` — ce qui, dans l'app,
+ressemble exactement à « il n'y avait rien à faire ». Toute Routine qui doit
+toucher au dépôt se rattache donc à une session existante
+(`persistent_session_id`), comme le font déjà toutes les autres Routines de
+Raphaël. Après un tir, la vérification est une ligne de plus dans
+`passes_autonomes` ; sinon, `get_session` sur `last_run.session_id` et regarder
+si `session_context.sources` est vide.
+
+**Une session autonome n'hérite pas forcément des outils `mcp__github__*`** :
+dans ce cas elle ne peut pas lire la CI, et `docs/session-autonome.md` lui dit
+de lancer elle-même, en entier, ce que la CI lance — ce sont les mêmes
+scripts — puis de l'écrire dans `dev_log`.
 
 **Pour tout arrêter** : Paramètres › Le cockpit › Sessions autonomes. Le
 réglage `jarvis_sessions_autonomes` est lu EN BASE à chaque passe — d'où
@@ -1637,6 +1688,7 @@ node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le tem
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
 node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau
+node --experimental-strip-types scripts/verifier-apps-par-defaut.ts  # les applications proposées sont celles du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
