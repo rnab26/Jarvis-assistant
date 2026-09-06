@@ -17,6 +17,7 @@ import {
 } from "@/lib/veille"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
+import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
 import { signalerErreur } from "@/lib/erreurs"
 import { cibleDeLAction, echecDeLAction, echecSignalePar, type TourJarvis } from "@/lib/retours"
@@ -262,6 +263,20 @@ export function MicButton({
    * l'autre comme faite") : elles reviennent dans l'ordre dicté.
    */
   async function resolveTranscript(transcript: string): Promise<VoiceAction[]> {
+    // « Envoie-le », « vas-y », « c'est bon » après un message préparé : un
+    // CLIC, pas un second brouillon (chantier 21cf48d2). AVANT toute autre
+    // règle et avant le serveur, qui ne voit jamais le tour précédent —
+    // c'est justement pour ça que la reconnaissance doit se faire ici, avec
+    // dernierTourRef, que le serveur n'a pas.
+    if (estConfirmationEnvoi(dernierTourRef.current, transcript, Date.now())) {
+      const confirmation: VoiceAction[] = [
+        { action: "screen_action", screen_command: "clic", screen_target: "Envoyer" },
+      ]
+      noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: confirmation.length })
+      derniereLocaleRef.current = transcript
+      return confirmation
+    }
+
     // D'ABORD SUR L'APPAREIL, ET SANS RIEN DEMANDER À PERSONNE.
     //
     // « Ce n'est pas vraiment de l'IA, c'est plus un assistant qui va faire
