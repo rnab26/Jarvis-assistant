@@ -527,7 +527,7 @@ export async function executerActionTelephone(
         // geste, ne l'accomplit pas à sa place.
         const nomCible = action.app_name || appPreferee("ia") || undefined
         if (!nomCible) {
-          return "Je ne sais pas encore à quelle IA la poser. Dis-le-moi une fois et je m'en souviendrai."
+          return "Je ne sais pas encore à quelle application poser la question. Dis-le-moi une fois (« utilise Perplexity pour l'IA »), ou choisis-la dans Paramètres, « Tes applications d'IA »."
         }
 
         const { applications } = await ActionsTelephone.listerApplications()

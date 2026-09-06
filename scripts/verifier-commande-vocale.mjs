@@ -697,6 +697,38 @@ cas.push(
     },
   },
   {
+    nom: "« cherche X » part vers son application d'IA, sans la nommer",
+    phrase: "Cherche le prix du grès cérame au mètre carré.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "ask_ai")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.app_name) return [false, `il a deviné une application : "${a.app_name}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "« cherche X sur Perplexity » vise l'application citée",
+    phrase: "Cherche sur Perplexity ce que vaut un carrelage en grès cérame.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "ask_ai")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (!/perplexity/i.test(a.app_name ?? "")) return [false, `app_name = "${a.app_name ?? ""}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "« sur internet » n'est PAS un nom d'application",
+    phrase: "Cherche sur internet qui a gagné le match hier soir.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "ask_ai")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.app_name && /internet|web/i.test(a.app_name)) {
+        return [false, `app_name = "${a.app_name}" — aucune application ne s'appelle comme ça`]
+      }
+      return [true]
+    },
+  },
+  {
     nom: "il sait où retrouver ce qu'il a mémorisé",
     phrase: "Où je peux relire ce que tu as retenu sur moi ?",
     controle: (r) => {

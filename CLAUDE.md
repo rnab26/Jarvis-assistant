@@ -592,6 +592,41 @@ choisie (`jarvis_app_appels`, avec repli si elle refuse l'intent), la carte
 qui se CHOISIT à l'écran, parce que Jarvis ne la demande jamais à l'oral —, et
 la permission se donne d'un geste depuis « Autorisations du téléphone ».
 
+## Chercher passe par les IA de son téléphone, jamais par une API
+
+Sa décision du 5 sept. 2026, à ne pas rouvrir : « je ne veux pas payer, je
+veux profiter des applications que je paye déjà ». Et le mécanisme, qu'il a
+décrit lui-même : « dans les paramètres on branche toutes nos applications
+d'IA disponibles sur notre téléphone et on valide une application favorite
+pour les recherches web […] ou bien si je mentionne le nom d'une autre
+application ça lance via l'application citée ».
+
+**IL N'Y A RIEN À BRANCHER, et c'est le point qu'on se remet à chercher.**
+Android n'offre à aucune application le moyen d'interroger le compte d'une
+autre, et l'abonnement grand public de Perplexity ne donne pas accès à son API
+(vérifié le 5 sept. : les crédits inclus dans Pro ont été retirés). Ce qui
+marche est gratuit et existait déjà : `ask_ai` envoie la question à
+l'application par un intent, elle répond avec SON abonnement, il rapporte la
+réponse par le partage Android (`allerRetourIA.ts`).
+
+`src/lib/appsIA.ts` (pur) reconnaît donc les IA parmi les applications
+installées, et `ConnecteursIA.tsx` les montre. **Aucun état « connecté »
+n'est inventé** : la seule chose enregistrée est la favorite, dans
+`jarvis_app_ia` — la clé qui existait déjà, qui était fixée à l'oral et
+invisible dans Paramètres (c'est elle qui a fait écrire la règle des
+réglages). La ligne « Question à une IA » a quitté « Tes applications par
+défaut » dans le même travail : deux façons de régler la même chose finissent
+par ne plus dire pareil.
+
+Deux règles que `verifier-apps-ia.ts` tient : la liste des IA connues MET EN
+AVANT, elle ne limite jamais (« en vrai on peut même le faire pour toutes les
+applis ») ; et hors de l'app on dit « je n'ai pas pu regarder », jamais « tu
+n'as aucune application d'IA » — la même distinction que `repertoire.ts` pour
+les contacts.
+
+Côté consigne : « cherche X » part vers la favorite, « cherche X sur Y » vers
+l'application citée, et **« sur internet » n'est pas un nom d'application**.
+
 ## Appuyer sur l'écran à sa place : une capacité GÉNÉRALE, pas un bouton WhatsApp
 
 Livré le 6 sept. 2026 (chantier `3f3ad20b`). Sa demande, en deux temps. Le
@@ -1600,6 +1635,7 @@ node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
+node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone

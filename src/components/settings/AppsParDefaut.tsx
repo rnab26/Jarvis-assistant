@@ -37,7 +37,6 @@ const CANAUX = [
 export function AppsParDefaut() {
   const [musique, setMusique] = useState<string | null>(null)
   const [navigation, setNavigation] = useState<string | null>(null)
-  const [ia, setIa] = useState<string | null>(null)
   const [appels, setAppels] = useState<string | null>(null)
   const [whatsapp, setWhatsapp] = useState<string | null>(null)
   const [canal, setCanal] = useState<"whatsapp" | "sms" | null>(null)
@@ -45,7 +44,6 @@ export function AppsParDefaut() {
   function relire() {
     setMusique(appPreferee("musique"))
     setNavigation(appPreferee("navigation"))
-    setIa(appPreferee("ia"))
     setAppels(appPreferee("appels"))
     setWhatsapp(paquetWhatsAppPrefere())
     setCanal(canalMessagesPrefere())
@@ -106,14 +104,10 @@ export function AppsParDefaut() {
           valeur={navigation}
           onOublier={() => oublier(CLES_APP.navigation)}
         />
-        {/* Manquait à l'appel : cette préférence existait, se fixait à l'oral,
-            et n'apparaissait nulle part — exactement le défaut que cette carte
-            répare pour les deux autres. Trouvée par verifier-reglages.ts. */}
-        <Ligne
-          titre="Question à une IA"
-          valeur={ia}
-          onOublier={() => oublier(CLES_APP.ia)}
-        />
+        {/* L'IA n'est plus ici : elle a sa carte, « Tes applications d'IA »,
+            juste en dessous. Elle y montre celles qui sont installées, la
+            favorite, et la phrase à dire — deux façons de régler la même
+            chose finiraient par ne plus dire pareil. */}
 
         {/* LEQUEL des deux WhatsApp. Le 6 sept. 2026, ses messages partaient
             dans WhatsApp Business : le chemin « lien wa.me » ne visait aucune

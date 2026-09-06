@@ -112,8 +112,8 @@ export const REGLAGES: ReglageDeclare[] = [
   },
   {
     cle: "jarvis_app_ia",
-    ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
-    fichier: "src/components/settings/AppsParDefaut.tsx",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications d'IA",
+    fichier: "src/components/settings/ConnecteursIA.tsx",
   },
   {
     cle: "jarvis_app_appels",
