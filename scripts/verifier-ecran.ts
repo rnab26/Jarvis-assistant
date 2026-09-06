@@ -296,6 +296,11 @@ verifier(
   /registerPlugin\(AccessibilitePlugin\.class\)/.test(activite),
 )
 
+verifier(
+  "la lecture NOMME l'application, pour qu'il sache si Jarvis regarde le bon écran",
+  phraseEcran({ fait: "lu", lecture: youtube }).includes("youtube"),
+)
+
 const service = readFileSync(
   "android/app/src/main/java/com/raphael/jarvis/JarvisAccessibiliteService.java",
   "utf8",
@@ -306,6 +311,19 @@ verifier(
   corpsCliquer.includes("equalsIgnoreCase(attendu)") &&
     corpsCliquer.includes("ResultatClic.ECRAN_CHANGE"),
   "entre la lecture et le clic, un écran peut avoir changé : là on ne touche à rien",
+)
+
+verifier(
+  "la lecture écarte NOTRE fenêtre : sinon Jarvis lit sa propre pastille",
+  service.includes("racineUtile") &&
+    service.includes("getWindows()") &&
+    service.includes("nous.contentEquals(p)"),
+  "la fenêtre d'assistance est une vraie activité : elle est la fenêtre ACTIVE pendant qu'il parle",
+)
+verifier(
+  "et le drapeau qui donne getWindows() est déclaré",
+  /flagRetrieveInteractiveWindows/.test(config),
+  "sans lui, getWindows() ne rend que la fenêtre active — la nôtre",
 )
 
 const controle = readFileSync("src/lib/controleEcran.ts", "utf8")

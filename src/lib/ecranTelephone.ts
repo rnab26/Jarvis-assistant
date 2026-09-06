@@ -303,8 +303,14 @@ export function phraseEcran(
       return "Je reviens en arrière."
     case "accueil":
       return "Je retourne à l'accueil."
-    case "lu":
-      return `Sur cet écran je vois : ${resumeEcran(resultat.lecture)}.`
+    case "lu": {
+      // On NOMME l'application : c'est le seul mot qui lui dit si Jarvis
+      // regarde bien l'écran qu'il a sous les yeux, ou un autre.
+      const ou = resultat.lecture.application?.trim()
+      return ou
+        ? `Sur l'écran de ${ou} je vois : ${resumeEcran(resultat.lecture)}.`
+        : `Sur cet écran je vois : ${resumeEcran(resultat.lecture)}.`
+    }
     case "echec": {
       const cause = resultat.cause
       if (cause === "service_inactif") {

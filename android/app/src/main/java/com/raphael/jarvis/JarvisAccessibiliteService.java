@@ -8,6 +8,7 @@ import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -183,7 +184,7 @@ public class JarvisAccessibiliteService extends AccessibilityService {
      * liste vide a la place.
      */
     public Lecture lire() {
-        AccessibilityNodeInfo racine = getRootInActiveWindow();
+        AccessibilityNodeInfo racine = racineUtile();
         if (racine == null) return null;
         Lecture lecture = new Lecture();
         CharSequence p = racine.getPackageName();
@@ -191,6 +192,48 @@ public class JarvisAccessibiliteService extends AccessibilityService {
         lecture.application = nomApplication(lecture.paquet);
         parcourir(racine, lecture, false);
         return lecture;
+    }
+
+    /**
+     * L'ecran QU'IL REGARDE, et pas le notre.
+     *
+     * PIEGE QUI REND TOUT LE RESTE INUTILE SI ON L'OUBLIE. Quand il parle a
+     * Jarvis par l'appui long ou par la bulle, c'est AssistOverlayActivity qui
+     * passe au premier plan : une vraie activite, avec un fond transparent.
+     * getRootInActiveWindow() rend donc NOTRE fenetre, et Jarvis lirait sa
+     * propre pastille au lieu des resultats YouTube -- « je ne trouve pas ça a
+     * l'ecran », a chaque fois, sans que rien n'indique pourquoi. Or c'est
+     * exactement la situation de tous ses cas d'usage : la commande arrive
+     * TOUJOURS pendant qu'une autre application est dessous.
+     *
+     * On parcourt donc toutes les fenetres, on ecarte les notres, et on garde
+     * celle du dessus. Repli sur la fenetre active quand il n'y a rien
+     * d'autre : c'est le cas du bouton d'essai de Parametres, ou Jarvis est
+     * seul a l'ecran.
+     */
+    private AccessibilityNodeInfo racineUtile() {
+        String nous = getPackageName();
+        AccessibilityNodeInfo meilleure = null;
+        int meilleurCalque = Integer.MIN_VALUE;
+        try {
+            for (AccessibilityWindowInfo fenetre : getWindows()) {
+                if (fenetre == null) continue;
+                if (fenetre.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                AccessibilityNodeInfo r = fenetre.getRoot();
+                if (r == null) continue;
+                CharSequence p = r.getPackageName();
+                if (p != null && nous.contentEquals(p)) continue;
+                if (fenetre.getLayer() > meilleurCalque) {
+                    meilleurCalque = fenetre.getLayer();
+                    meilleure = r;
+                }
+            }
+        } catch (Exception e) {
+            // Certaines surcouches constructeur repondent de travers ici : on
+            // retombe sur la fenetre active plutot que d'echouer.
+        }
+        if (meilleure != null) return meilleure;
+        return getRootInActiveWindow();
     }
 
     private String nomApplication(String paquet) {
