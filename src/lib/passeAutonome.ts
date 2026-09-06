@@ -61,6 +61,29 @@ export interface Decision {
 }
 
 /**
+ * Le nom sous lequel une passe réserve un chantier — c'est ce que Raphaël lit
+ * dans le cockpit, « Prise par … », et c'est aussi la clé que
+ * `release_dev_item` exige pour rendre la réservation.
+ *
+ * MESURÉ le 6 sept. : la première vraie passe a écrit une branche VIDE. Le
+ * clone d'une session ouverte par un déclencheur est en HEAD détaché, et
+ * `git branch --show-current` ne rend alors rien du tout — pas une erreur, une
+ * chaîne vide. Une réservation sans nom s'affiche « Prise par » suivi de rien,
+ * et surtout ne se libère plus : personne ne peut deviner l'identifiant à
+ * repasser.
+ */
+export const NOM_PASSE_SANS_BRANCHE = "session-autonome"
+
+export function identiteSession(brancheGit: string | null | undefined): string {
+  const propre = (brancheGit ?? "").trim()
+  // « HEAD » est ce que rend `rev-parse --abbrev-ref` en détaché : un nom, mais
+  // le même pour toutes les sessions. Il ne distingue rien, donc il ne vaut pas
+  // mieux que le vide.
+  if (!propre || propre === "HEAD") return NOM_PASSE_SANS_BRANCHE
+  return propre
+}
+
+/**
  * Défaut ACTIF : c'est sa réponse. Une clé absente veut dire « il n'y a jamais
  * touché », pas « il a dit non » — et lui demander une seconde fois de dire
  * oui est exactement ce qu'il reproche.

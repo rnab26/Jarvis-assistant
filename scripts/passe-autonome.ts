@@ -18,7 +18,7 @@
 import { execFileSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
-import { deciderPasse, type EtatAutonomie } from "../src/lib/passeAutonome.ts"
+import { deciderPasse, identiteSession, type EtatAutonomie } from "../src/lib/passeAutonome.ts"
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), "..")
 const SQL = join(RACINE, "scripts", "sql.sh")
@@ -45,13 +45,18 @@ function option(nom: string): string | null {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : null
 }
 
-const branche = (() => {
-  try {
-    return execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim()
-  } catch {
-    return "session-autonome"
-  }
-})()
+// Le clone d'une session ouverte par un déclencheur est en HEAD détaché :
+// `--show-current` rend alors une chaîne VIDE, sans erreur. D'où le repli, qui
+// vit dans le module pur pour être vérifiable.
+const branche = identiteSession(
+  (() => {
+    try {
+      return execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" })
+    } catch {
+      return ""
+    }
+  })(),
+)
 
 if (args.includes("--terminer")) {
   const id = option("--terminer")

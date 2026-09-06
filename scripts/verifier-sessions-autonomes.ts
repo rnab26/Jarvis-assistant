@@ -11,6 +11,8 @@
  */
 import {
   autonomieActive,
+  identiteSession,
+  NOM_PASSE_SANS_BRANCHE,
   chantiersPrenables,
   deciderPasse,
   PASSE_PERIMEE_MINUTES,
@@ -208,6 +210,25 @@ const AUTORISES = [
 for (const titre of AUTORISES) {
   verifier(`« ${titre.slice(0, 40)}… » reste prenable`, sujetReserve(item(titre)) === null, "écarté à tort")
 }
+
+console.log("\n— Le nom sous lequel elle réserve —")
+
+verifier(
+  "une branche vide ne donne jamais une réservation sans nom",
+  identiteSession("") === NOM_PASSE_SANS_BRANCHE &&
+    identiteSession(null) === NOM_PASSE_SANS_BRANCHE &&
+    identiteSession("   \n") === NOM_PASSE_SANS_BRANCHE,
+  "c'est arrivé le 6 sept. : le clone était en HEAD détaché, la réservation était anonyme et ne pouvait plus se libérer",
+)
+verifier(
+  "« HEAD » non plus : il ne distingue aucune session",
+  identiteSession("HEAD") === NOM_PASSE_SANS_BRANCHE,
+)
+verifier(
+  "une vraie branche est gardée telle quelle",
+  identiteSession("claude/cockpit-0609\n") === "claude/cockpit-0609",
+  "c'est ce que Raphaël lit dans « Prise par … »",
+)
 
 console.log("\n— L'ordre, et les bords —")
 
