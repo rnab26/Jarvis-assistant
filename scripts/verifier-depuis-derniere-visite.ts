@@ -12,6 +12,7 @@
  *   — compter ce qu'il a écrit lui-même comme « du nouveau », ce qui gonfle
  *     les chiffres avec ses propres messages.
  */
+import { reperePlusRecent, repereApresLecture } from "../src/lib/cockpitVu.ts"
 import { depuisDerniereVisite, depuisQuand } from "../src/lib/depuisDerniereVisite.ts"
 import type { DevItem, DevLogEntry } from "../src/types/database.ts"
 
@@ -211,6 +212,55 @@ verifier("« il y a 3 h »", ilYA(3) === "il y a 3 h", ilYA(3))
 verifier("« hier » pour une nuit entière", ilYA(24) === "hier", ilYA(24))
 verifier("« il y a 3 jours »", ilYA(72) === "il y a 3 jours", ilYA(72))
 verifier("et des minutes pour un aller-retour", ilYA(0.2).endsWith("min"), ilYA(0.2))
+
+console.log("\n— Le repère, partagé entre le téléphone et le site —")
+
+// Chantier ae0f3a7b. Il utilise l'app ET le site dans la même matinée :
+// appuyer sur « Vu » d'un côté doit valoir de l'autre.
+const TOT = "2026-09-01T08:00:00Z"
+const TARD = "2026-09-05T20:00:00Z"
+
+verifier(
+  "le « Vu » du téléphone vaut sur le site",
+  reperePlusRecent(TOT, TARD) === TARD,
+  "sinon le site réannonce les quatorze mêmes chantiers livrés",
+)
+verifier(
+  "et le repère ne RECULE jamais",
+  reperePlusRecent(TARD, TOT) === TARD,
+  "reculer, c'est réannoncer six semaines de travail à quelqu'un qui vient de tout regarder",
+)
+verifier(
+  "un écran neuf prend celui de la base",
+  reperePlusRecent(null, TARD) === TARD,
+)
+verifier(
+  "un compte neuf garde celui de l'écran",
+  reperePlusRecent(TARD, null) === TARD,
+)
+verifier(
+  "rien nulle part reste rien : la première ouverture n'annonce pas tout",
+  reperePlusRecent(null, null) === null,
+)
+verifier(
+  "une date illisible ne fait pas repartir de zéro",
+  reperePlusRecent(TARD, "pas une date") === TARD,
+  "un repère corrompu déballerait tout le cockpit",
+)
+
+verifier(
+  "UNE PANNE DE LECTURE ne se lit pas comme « tu n'as jamais rien vu »",
+  repereApresLecture(TARD, { ok: false }) === TARD,
+  "c'est le piège du projet : une absence et un échec rendent la même valeur",
+)
+verifier(
+  "et une lecture réussie qui ne trouve rien garde ce que l'écran savait",
+  repereApresLecture(TARD, { ok: true, vuLe: null }) === TARD,
+)
+verifier(
+  "une lecture réussie plus récente l'emporte",
+  repereApresLecture(TOT, { ok: true, vuLe: TARD }) === TARD,
+)
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

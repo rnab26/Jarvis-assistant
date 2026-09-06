@@ -198,10 +198,38 @@ livrés, chantiers ouverts, messages des sessions (les siens ne comptent pas).
 Deux choix à ne pas défaire : la date de visite n'est enregistrée QUE quand il
 appuie sur « Vu » — mise à jour toute seule à l'affichage, le bandeau
 disparaîtrait avant d'avoir été lu ; et la première ouverture n'annonce rien,
-faute de repère, plutôt que de présenter tout le cockpit comme nouveau. La clé
-`jarvis_cockpit_vu` est volontairement locale (déclarée dans
-`STOCKAGE_LOCAL_ASSUME`) : c'est un repère de lecture propre à l'écran, pas
-une préférence.
+faute de repère, plutôt que de présenter tout le cockpit comme nouveau.
+
+**Le repère suit son COMPTE, plus son écran** (chantier `ae0f3a7b`, 6 sept.).
+Il était local, avec pour raison écrite « la retrouver sur un autre appareil
+n'aurait aucun sens » — et c'était faux pour lui : il utilise l'app ET le site
+dans la même matinée. Il appuyait sur « Vu » sur le téléphone, et le site lui
+réannonçait les quatorze mêmes chantiers livrés.
+
+- La base porte la vérité (table `visites_cockpit`, migration 0025) ; le
+  localStorage reste le chemin RAPIDE, parce que le cockpit s'affiche avant que
+  le réseau ait répondu et qu'un bandeau qui apparaît puis disparaît est pire
+  que pas de bandeau.
+- **Le repère ne recule jamais**, et c'est le SQL qui le garantit
+  (`marquer_cockpit_vu` fait un `greatest`), pas le client : deux écrans
+  ouverts, celui qu'on quitte en dernier ne doit pas effacer le passage de
+  l'autre.
+- **Une panne de lecture ne se lit pas comme « tu n'as jamais rien vu »**
+  (`repereApresLecture` dans `src/lib/cockpitVu.ts`) — sinon le bandeau
+  réannonce six semaines de travail à quelqu'un qui vient de tout regarder.
+  Et quand l'écriture échoue, le bandeau le DIT : « ce Vu ne vaut que sur cet
+  écran ».
+- `ANON_KEY=... node scripts/verifier-visite-cockpit.mjs` couvre ce que le hors
+  ligne ne peut pas : le non-recul côté SQL et le cloisonnement RLS.
+
+**Et une troisième catégorie de clé est née avec lui : `MIROIR_EN_BASE`**
+(`src/lib/reglages.ts`). Une donnée qui doit suivre son compte sans être une
+préférence ne va ni dans `REGLAGES` — qui obligerait à lui offrir un contrôle
+dans Paramètres, et un réglage « date de ta dernière visite » n'a aucun sens —
+ni dans `STOCKAGE_LOCAL_ASSUME`, dont la raison écrite dirait le contraire de
+ce que fait le code. `verifier-reglages.ts` exige que la table annoncée existe
+vraiment dans une migration : sans ça, la clé promettrait un partage entre ses
+écrans que personne ne réalise.
 
 ### Ce qu'on voit en ouvrant le cockpit, mesuré et pas supposé
 
@@ -1697,7 +1725,8 @@ node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la secti
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
-node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
+node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, et le repère « déjà vu », sans réseau
+ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà vu » suit son compte : non-recul côté SQL et cloisonnement RLS
 node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une session autonome se retire quand il le faut, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)

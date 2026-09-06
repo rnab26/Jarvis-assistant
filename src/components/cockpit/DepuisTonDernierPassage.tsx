@@ -1,14 +1,12 @@
 import { Check, ChevronDown, ChevronRight, Sparkles } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { depuisDerniereVisite, depuisQuand } from "@/lib/depuisDerniereVisite"
 import { courtAuteur } from "@/lib/journalBord"
+import { useVisiteCockpit, type VisiteCockpitApi } from "@/hooks/useVisiteCockpit"
 import type { DevItem, DevLogEntry } from "@/types/database"
-
-/** Sur CET écran seulement : voir STOCKAGE_LOCAL_ASSUME dans reglages.ts. */
-const CLE = "jarvis_cockpit_vu"
 
 /**
  * « Depuis ton dernier passage » — ce qui a bougé pendant qu'il n'était pas là.
@@ -39,19 +37,19 @@ const CLE = "jarvis_cockpit_vu"
  * derrière « … et 11 autres »), ce qui lui est ADRESSÉ se lit — même règle
  * que le badge du journal, `estPourRaphael` —, et ce que les sessions
  * s'écrivent entre elles se COMPTE sans se déballer.
+ *
+ * ET LE REPÈRE EST DÉSORMAIS PARTAGÉ ENTRE SES ÉCRANS (chantier ae0f3a7b).
+ * Il vivait dans le seul localStorage : il appuyait sur « Vu » sur le
+ * téléphone, et le site lui réannonçait les quatorze mêmes chantiers livrés.
+ * `useVisiteCockpit` le lit en base et garde le local comme chemin rapide —
+ * le bandeau s'affiche avant que le réseau ait répondu, et le plus récent des
+ * deux l'emporte.
  */
 interface DepuisTonDernierPassageProps {
   devItems: DevItem[]
   messages: DevLogEntry[]
-}
-
-function lire(): string | null {
-  try {
-    return localStorage.getItem(CLE)
-  } catch {
-    // Navigateur qui refuse le stockage : on n'annonce rien, on ne casse rien.
-    return null
-  }
+  /** Injectable pour le banc d'essai, qui n'a ni Supabase ni session. */
+  visite?: VisiteCockpitApi
 }
 
 /** Combien de chantiers livrés on lit d'emblée. Au-delà, un appui : une nuit
@@ -59,16 +57,25 @@ function lire(): string | null {
  * cockpit repoussent le tableau hors de l'écran. */
 const LIVRES_EN_TETE = 5
 
-export function DepuisTonDernierPassage({ devItems, messages }: DepuisTonDernierPassageProps) {
-  const [vuLe, setVuLe] = useState<string | null>(null)
+export function DepuisTonDernierPassage(props: DepuisTonDernierPassageProps) {
+  return props.visite ? <Bandeau {...props} visite={props.visite} /> : <BandeauBranche {...props} />
+}
+
+/** Deux composants et pas un seul : un hook ne se saute pas selon une prop, et
+ * `useAuth` n'existe pas dans le banc d'essai. */
+function BandeauBranche(props: DepuisTonDernierPassageProps) {
+  const visite = useVisiteCockpit()
+  return <Bandeau {...props} visite={visite} />
+}
+
+function Bandeau({
+  devItems,
+  messages,
+  visite,
+}: DepuisTonDernierPassageProps & { visite: VisiteCockpitApi }) {
+  const { vuLe, erreur, marquerVu } = visite
   const [masque, setMasque] = useState(false)
   const [toutVoir, setToutVoir] = useState(false)
-
-  // Au montage seulement : la date lue est celle du passage PRÉCÉDENT, et elle
-  // ne doit pas bouger pendant qu'il regarde.
-  useEffect(() => {
-    setVuLe(lire())
-  }, [])
 
   const bilan = useMemo(
     () => depuisDerniereVisite(devItems, messages, vuLe),
@@ -77,12 +84,8 @@ export function DepuisTonDernierPassage({ devItems, messages }: DepuisTonDernier
 
   if (masque || !bilan.quelqueChose || !bilan.depuis) return null
 
-  function marquerVu() {
-    try {
-      localStorage.setItem(CLE, new Date().toISOString())
-    } catch {
-      // Rien à faire : on masque quand même pour cette session d'affichage.
-    }
+  function vu() {
+    marquerVu()
     setMasque(true)
   }
 
@@ -96,7 +99,7 @@ export function DepuisTonDernierPassage({ devItems, messages }: DepuisTonDernier
               ? `Depuis ton dernier passage, ${depuisQuand(bilan.depuis)}`
               : `Depuis ton dernier message, ${depuisQuand(bilan.depuis)}`}
           </p>
-          <Button variant="ghost" size="sm" onClick={marquerVu}>
+          <Button variant="ghost" size="sm" onClick={vu}>
             <Check className="size-3.5" />
             Vu
           </Button>
@@ -162,6 +165,15 @@ export function DepuisTonDernierPassage({ devItems, messages }: DepuisTonDernier
           <p className="text-xs text-muted-foreground/70">
             {bilan.notesEntreSessions} note{bilan.notesEntreSessions > 1 ? "s" : ""} entre sessions,
             dans le journal de bord.
+          </p>
+        )}
+
+        {/* Le repère n'a pas pu être partagé : ça se dit, sinon il appuie sur
+            « Vu » ici et retrouve le même bandeau sur son autre écran sans
+            comprendre pourquoi. Le bandeau reste juste sur CET écran. */}
+        {erreur && (
+          <p className="text-xs text-destructive">
+            Ce « Vu » ne vaut que sur cet écran : le repère n'a pas pu être enregistré.
           </p>
         )}
       </CardContent>

@@ -123,11 +123,33 @@ try {
     "un mur de notes techniques recouvre ce qui a réellement bougé",
   )
 
+  // Le repère est PARTAGÉ entre son téléphone et le site depuis le 6 sept.
+  // (chantier ae0f3a7b) : quand il n'a pas pu être enregistré, le bandeau doit
+  // le dire, sinon il appuie sur « Vu » ici et le retrouve ailleurs sans
+  // comprendre pourquoi.
+  verifier(
+    "un « Vu » qui n'a pas pu être partagé le dit",
+    await page
+      .locator("#passage-hors-ligne")
+      .getByText(/ne vaut que sur cet écran/)
+      .isVisible(),
+    "il croirait avoir marqué son passage sur tous ses écrans",
+  )
+  verifier(
+    "et le bandeau normal ne raconte pas cette histoire",
+    (await page.getByText(/ne vaut que sur cet écran/).count()) === 1,
+    "un avertissement affiché sans raison n'est plus lu du tout",
+  )
+
+  // Le bandeau du haut est le premier du document ; celui du bas est la
+  // variante hors ligne. On les repère par leur ordre, sans conteneur : un
+  // `div` autour d'une carte qui peut ne rien rendre consomme quand même
+  // l'espacement de la colonne, et le budget de hauteur le voit.
   await page.getByRole("button", { name: "Vu" }).first().click()
   await pause(300)
   verifier(
     "« Vu » le referme, et il ne réapparaîtra pas au prochain passage",
-    !(await page.getByText("Depuis ton dernier passage").isVisible()),
+    (await page.getByText("Depuis ton dernier passage").count()) === 1,
   )
 
   // ── « Où j'en suis » : la réponse en un écran ──

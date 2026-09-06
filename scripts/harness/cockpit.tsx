@@ -6,6 +6,8 @@ import "@/index.css"
 import { Toaster } from "@/components/ui/sonner"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
+import { lireRepereLocal, ecrireRepereLocal } from "@/lib/cockpitVu"
+import type { VisiteCockpitApi } from "@/hooks/useVisiteCockpit"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
@@ -380,6 +382,8 @@ const PANNE = new URLSearchParams(location.search).has("panne")
 const REEL = VOLUME ? volumeReel() : null
 
 function BancDuCockpit() {
+  // Lu une fois, comme le chemin rapide du vrai hook.
+  const [repereInitial] = useState(lireRepereLocal)
   const [devItems, setDevItems] = useState<DevItem[]>(
     DOUBLONS
       ? [
@@ -427,13 +431,29 @@ function BancDuCockpit() {
     },
   }
 
+  // Le repère lu au montage, comme le fait le vrai hook par son chemin rapide.
+  const visite: VisiteCockpitApi = {
+    vuLe: repereInitial,
+    chargement: false,
+    erreur: null,
+    marquerVu: () => ecrireRepereLocal(new Date().toISOString()),
+  }
+
   return (
     <div className="flex flex-col gap-4 p-3">
       {/* Le même Toaster que l'app : c'est lui qui porte le bouton
           « Annuler » après une action groupée. Sans lui, le banc verrait
           l'action réussir et manquerait la moitié qui compte. */}
       <Toaster />
-      <DepuisTonDernierPassage devItems={devItems} messages={messages} />
+      {/* Le repère de visite est injecté : le banc n'a ni session ni Supabase.
+          La variante hors ligne est montée TOUT EN BAS, pas ici : elle
+          occuperait sinon de la place en tête de page, et c'est exactement ce
+          que le budget de hauteur mesure. Et AUCUN `div` autour de ce
+          bandeau-ci : un conteneur consomme l'espacement de la colonne même
+          quand la carte ne rend rien, ce qui a déjà coûté 16 points au budget
+          une première fois avec la carte des doublons. On repère donc les deux
+          bandeaux par leur ORDRE — celui du haut d'abord. */}
+      <DepuisTonDernierPassage devItems={devItems} messages={messages} visite={visite} />
       <OuJenSuis
         devItems={devItems}
         sections={sections}
@@ -575,6 +595,17 @@ function BancDuCockpit() {
           )
         }}
       />
+
+      {/* Le cas qui trompe : la base n'a pas pu être écrite. Le « Vu » ne vaut
+          alors que sur CET écran, et il doit le savoir — sinon il retrouve le
+          même bandeau sur son téléphone sans comprendre pourquoi. */}
+      <div id="passage-hors-ligne">
+        <DepuisTonDernierPassage
+          devItems={devItems}
+          messages={messages}
+          visite={{ ...visite, erreur: "Le serveur ne répond pas." }}
+        />
+      </div>
     </div>
   )
 }

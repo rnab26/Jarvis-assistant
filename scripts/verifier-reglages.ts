@@ -28,7 +28,7 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { REGLAGES, STOCKAGE_LOCAL_ASSUME } from "../src/lib/reglages.ts"
+import { MIROIR_EN_BASE, REGLAGES, STOCKAGE_LOCAL_ASSUME } from "../src/lib/reglages.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -137,6 +137,7 @@ for (const fichier of fichiersSource("src")) {
     const cle = trouve[1]
     if (declarees.has(cle)) continue
     if (STOCKAGE_LOCAL_ASSUME.some((l) => cle.startsWith(l.prefixe))) continue
+    if (MIROIR_EN_BASE.some((m) => cle.startsWith(m.prefixe))) continue
     if (!orphelines.has(cle)) orphelines.set(cle, fichier)
   }
 }
@@ -147,7 +148,7 @@ verifier(
   [...orphelines]
     .map(
       ([cle, fichier]) =>
-        `${cle} (${fichier}) — ajoute-la à REGLAGES avec son contrôle dans Paramètres, ou à STOCKAGE_LOCAL_ASSUME en disant pourquoi elle reste locale`,
+        `${cle} (${fichier}) — ajoute-la à REGLAGES avec son contrôle dans Paramètres, à MIROIR_EN_BASE si elle est recopiée par sa propre table, ou à STOCKAGE_LOCAL_ASSUME en disant pourquoi elle reste locale`,
     )
     .join("\n      "),
 )
@@ -157,6 +158,32 @@ for (const local of STOCKAGE_LOCAL_ASSUME) {
     `${local.prefixe} dit pourquoi il reste local`,
     local.pourquoi.trim().length > 20,
     "sans raison écrite, la prochaine session ne saura pas si c'est un choix ou un oubli",
+  )
+}
+
+// Une clé « miroir » ment si sa table n'existe pas : elle promet un partage
+// entre écrans que personne ne fait. On lit les migrations plutôt que la
+// bonne volonté — même motif que le reste de ce contrôle.
+const migrations = readdirSync("supabase/migrations")
+  .map((f) => readFileSync(join("supabase/migrations", f), "utf8"))
+  .join("\n")
+
+for (const miroir of MIROIR_EN_BASE) {
+  verifier(
+    `${miroir.prefixe} dit pourquoi il est recopié en base`,
+    miroir.pourquoi.trim().length > 20,
+    "sans raison écrite, la prochaine session ne saura pas si c'est un choix ou un oubli",
+  )
+  verifier(
+    `${miroir.prefixe} : la table ${miroir.table} est bien créée par une migration`,
+    new RegExp(`create table[^;]*\\b${miroir.table}\\b`, "i").test(migrations),
+    "la clé promet un partage entre ses écrans que rien ne réalise",
+  )
+  verifier(
+    `${miroir.prefixe} n'est pas aussi déclaré ailleurs`,
+    !declarees.has(miroir.prefixe) &&
+      !STOCKAGE_LOCAL_ASSUME.some((l) => l.prefixe === miroir.prefixe),
+    "deux déclarations finiraient par dire deux choses différentes de la même clé",
   )
 }
 

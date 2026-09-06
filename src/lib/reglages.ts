@@ -198,10 +198,28 @@ export const STOCKAGE_LOCAL_ASSUME: { prefixe: string; pourquoi: string }[] = [
     pourquoi:
       "L'écran des autorisations a déjà été présenté sur CET appareil. Les autorisations Android sont propres au téléphone : recopier ce repère en base ferait sauter l'écran sur un appareil neuf, qui n'a justement rien d'accordé.",
   },
+]
+
+/**
+ * Les clés locales qui sont recopiées en base par LEUR PROPRE table, et non
+ * par `reglages`.
+ *
+ * Troisième cas, découvert le 6 sept. 2026 avec `jarvis_cockpit_vu` : une
+ * donnée qui doit suivre Raphaël d'un écran à l'autre, mais qui n'est PAS une
+ * préférence. La mettre dans `REGLAGES` obligerait à lui offrir un contrôle
+ * dans Paramètres — et un réglage « date de ta dernière visite » n'aurait
+ * aucun sens à l'écran. La laisser dans `STOCKAGE_LOCAL_ASSUME` faisait dire
+ * au code le contraire de ce qu'il fait.
+ *
+ * Le localStorage reste le chemin RAPIDE (l'écran s'affiche avant le réseau) ;
+ * la base porte la vérité.
+ */
+export const MIROIR_EN_BASE: { prefixe: string; table: string; pourquoi: string }[] = [
   {
     prefixe: "jarvis_cockpit_vu",
+    table: "visites_cockpit",
     pourquoi:
-      "Date de la dernière visite du cockpit sur CET écran, pour dire ce qui a bougé depuis. Un repère de lecture, pas une préférence : la retrouver sur un autre appareil n'aurait aucun sens.",
+      "Date de la dernière visite du cockpit. Ce n'est pas une préférence — rien à régler dans Paramètres — mais elle doit suivre son compte : il utilise l'app ET le site dans la même matinée, et appuyer sur « Vu » d'un côté doit valoir de l'autre. Chemin rapide en local, vérité en base (migration 0025).",
   },
 ]
 
