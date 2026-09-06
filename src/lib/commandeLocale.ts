@@ -3,6 +3,7 @@
 // pas l'alias « @/ » de Vite.
 import { lireHeure, lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
 import { cibleTropCourante } from "./chercherContact.ts"
+import { correctionDeDestination } from "./ouVaCetteDictee.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 
 /**
@@ -237,6 +238,18 @@ export function interpreterLocalement(
   const texte = nettoyer(phrase)
   if (!texte) return null
   const maintenant = ctx.maintenant ?? new Date()
+
+  /* ---------- « Non, mets-le en chantier » ----------
+     En PREMIER, et localement. C'est une reprise dite dans la foulée d'une
+     création : la faire remonter au modèle coûterait un aller-retour, une
+     seconde d'attente et une chance de plus de la comprendre comme une
+     nouvelle demande — auquel cas la ligne d'origine resterait dans la
+     mauvaise liste pendant qu'une jumelle apparaîtrait ailleurs.
+     `correctionDeDestination` refuse tout ce qui porte du contenu en plus
+     (« ajoute un chantier pour refaire la salle de bain »), et c'est la
+     moitié qui compte. */
+  const correction = correctionDeDestination(texte)
+  if (correction) return [{ action: "move_last_entry", vers: correction }]
 
   /* ---------- La voix ---------- */
   if (/^(coupe|arrete|stoppe)( ta| la)? voix\b/.test(texte) ||
