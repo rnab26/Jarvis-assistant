@@ -323,6 +323,46 @@ cite souvent un autre chantier en écrivant « [LIBRE] » au passage — le pren
 pour le marqueur du chantier ferait démarrer une session sur un sujet qu'il
 voulait cadrer d'abord. Le contrôle hors réseau garde exactement ce cas.
 
+### Un chantier garde ce qu'on y a écrit (migration 0027)
+
+Initiative d'une session le 6 sept. 2026, chantier `765b3d02`. La raison est
+écrite quelques sections plus haut, dans ce fichier même : « Le 5 sept. puis le
+6, deux notes ont été écrasées de cette façon — l'une contenait un retour de
+Raphaël qui n'était écrit nulle part ailleurs. » La parade était une consigne
+(« relis la note dans un appel SÉPARÉ »), et une consigne qu'aucun mécanisme ne
+soutient finit par être oubliée : c'est arrivé deux fois en deux jours.
+
+**Un TRIGGER, pas une écriture côté app**, et c'est le point à ne pas défaire :
+les notes sont réécrites depuis l'app, la commande vocale, `scripts/sql.sh` et
+les sessions Claude Code. Un seul de ces chemins oublié, et la trace manque
+précisément le jour où on en a besoin. `dev_items_historique` +
+`tracer_changement_dev_item()`.
+
+**Les réservations ne sont PAS tracées.** `claim_dev_item` tourne à chaque
+passe autonome, toutes les heures : les enregistrer noierait en un jour les
+changements qui comptent. Le trigger ne regarde que `title`, `notes`, `status`,
+`priority`, `theme`, `archived_at`.
+
+**Restaurer une note laisse elle-même une trace** (`restaurer_note_chantier`),
+sinon on remplace une perte par une autre. Et on ne restaure QUE des notes :
+rendre un ancien statut sans le dire ferait mentir le tableau.
+
+Côté écran, dans la carte DÉPLIÉE et replié par défaut, chargé seulement quand
+on l'ouvre — soixante cartes qui interrogeraient la base au montage rendraient
+le cockpit inutilisable pour une information que personne ne regarde la plupart
+du temps. Le budget de hauteur du tableau n'a donc pas bougé.
+
+`src/lib/historiqueChantier.ts` (pur) tient la seule distinction qui compte :
+une note **complétée** (l'ancienne y est encore) n'a rien à récupérer ; une
+note **réécrite** en a tout. Seule la seconde propose « Revenir à cette note »,
+et seule une perte de plus de 200 caractères mérite qu'on prévienne — un
+signalement qui se déclenche à tort n'est plus lu du tout.
+
+Deux contrôles : `verifier-historique-chantier.ts` (hors ligne, la lecture) et
+`ANON_KEY=... node scripts/verifier-historique-reel.mjs` (le trigger depuis
+n'importe quel chemin, le silence sur les réservations, la restauration tracée,
+le cloisonnement RLS, et la suppression qui emporte l'historique).
+
 ### Un chantier porte sa conversation
 
 Les messages du journal rattachés à un chantier (`dev_log.item_id`) existaient
@@ -1970,6 +2010,8 @@ node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâ
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, et le repère « déjà vu », sans réseau
 ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà vu » suit son compte : non-recul côté SQL et cloisonnement RLS
 node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une session autonome se retire quand il le faut, sans réseau
+node --experimental-strip-types scripts/verifier-historique-chantier.ts  # une note complétée n'est pas une note écrasée, sans réseau
+ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce qu'on y a écrit : trigger, restauration tracée, RLS
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur

@@ -7,6 +7,9 @@ import { Toaster } from "@/components/ui/sonner"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
 import { lireRepereLocal, ecrireRepereLocal } from "@/lib/cockpitVu"
+import { HistoriqueChantier } from "@/components/cockpit/HistoriqueChantier"
+import type { HistoriqueApi } from "@/hooks/useHistoriqueChantier"
+import type { LigneHistorique } from "@/lib/historiqueChantier"
 import type { VisiteCockpitApi } from "@/hooks/useVisiteCockpit"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
@@ -381,6 +384,52 @@ const CALME = new URLSearchParams(location.search).has("calme")
 const PANNE = new URLSearchParams(location.search).has("panne")
 const REEL = VOLUME ? volumeReel() : null
 
+/** Un historique de chantier comme il s'en écrit vraiment : une note complétée,
+ * un statut, et LA note écrasée — celle qu'on vient chercher. */
+const NOTE_LONGUE =
+  "[LIBRE] Ses mots, dictés le 3 sept. : « il faut que Jarvis sache lancer une " +
+  "musique précise ». Vérifié le 5 sept. : l'intent part bien, Apple Music s'ouvre, " +
+  "mais rien ne joue. Écarté : passer par l'API Spotify, il ne l'a pas. Écarté aussi : " +
+  "lui faire choisir le lecteur à chaque fois, il l'a refusé le 4 sept."
+
+const HISTORIQUE_BANC: LigneHistorique[] = [
+  {
+    id: "h1",
+    item_id: "1",
+    champ: "notes",
+    avant: NOTE_LONGUE,
+    apres: "Fait : correction poussée. Commit abc1234.",
+    par: "claude/telephone-0509",
+    change_at: "2026-09-06T08:40:00Z",
+  },
+  {
+    id: "h2",
+    item_id: "1",
+    champ: "status",
+    avant: "todo",
+    apres: "in_progress",
+    par: "claude/telephone-0509",
+    change_at: "2026-09-06T08:10:00Z",
+  },
+  {
+    id: "h3",
+    item_id: "1",
+    champ: "notes",
+    avant: "[LIBRE] Ses mots, dictés le 3 sept.",
+    apres: NOTE_LONGUE,
+    par: "claude/cockpit-0509",
+    change_at: "2026-09-05T21:00:00Z",
+  },
+]
+
+function historiqueFactice(
+  lignes: LigneHistorique[],
+  erreur: string | null = null,
+  chargement = false,
+): HistoriqueApi {
+  return { lignes, chargement, erreur, restaurer: async () => {} }
+}
+
 function BancDuCockpit() {
   // Lu une fois, comme le chemin rapide du vrai hook.
   const [repereInitial] = useState(lireRepereLocal)
@@ -605,6 +654,19 @@ function BancDuCockpit() {
           messages={messages}
           visite={{ ...visite, erreur: "Le serveur ne répond pas." }}
         />
+      </div>
+
+      {/* « Ce qui a changé » : la note écrasée doit se retrouver, et le
+          reste doit rester discret. Monté ici, tout en bas, pour ne pas
+          entamer le budget de hauteur du tableau. */}
+      <div id="historique">
+        <HistoriqueChantier itemId="1" api={historiqueFactice(HISTORIQUE_BANC)} />
+      </div>
+      <div id="historique-vide">
+        <HistoriqueChantier itemId="2" api={historiqueFactice([])} />
+      </div>
+      <div id="historique-panne">
+        <HistoriqueChantier itemId="3" api={historiqueFactice([], "Le serveur ne répond pas.")} />
       </div>
     </div>
   )

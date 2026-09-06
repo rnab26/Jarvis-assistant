@@ -265,6 +265,13 @@ jobs:
       - name: Une session autonome se retire quand il le faut
         run: node --experimental-strip-types scripts/verifier-sessions-autonomes.ts
 
+      # Deux notes de chantier ont ete ecrasees les 5 et 6 sept., dont une
+      # portant un retour de Raphael ecrit nulle part ailleurs. Ce qui se
+      # verifie ici : distinguer une note completee d'une note ecrasee, et
+      # se taire le reste du temps.
+      - name: Un chantier garde ce qu'on y a écrit
+        run: node --experimental-strip-types scripts/verifier-historique-chantier.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.

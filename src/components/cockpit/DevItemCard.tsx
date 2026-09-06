@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
+import { HistoriqueChantier } from "@/components/cockpit/HistoriqueChantier"
 import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
 import {
   EXPLICATION_MARQUEUR,
@@ -382,6 +383,12 @@ export function DevItemCard({
           )}
         </div>
       )}
+
+      {/* Ce qui a changé sur ce chantier. Replié, et chargé seulement quand on
+          l'ouvre : soixante cartes qui interrogeraient la base au montage
+          rendraient le cockpit inutilisable pour une information que personne
+          ne regarde la plupart du temps. */}
+      {deplie && !selectionnable && <HistoriqueChantier itemId={item.id} />}
 
       {deplie && !selectionnable && !item.archived_at && (
         <div className="flex flex-col gap-1.5 pl-0.5">
