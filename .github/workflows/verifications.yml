@@ -114,6 +114,13 @@ jobs:
       - name: Ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas
         run: node --experimental-strip-types scripts/verifier-consommation.ts
 
+      # Ce mécanisme-là décide TOUT SEUL, la nuit, de changer le modèle de
+      # Jarvis. La moitié des contrôles vérifie qu'il NE promeut PAS : un
+      # mécanisme qui adopte trop facilement est pire qu'un qui n'adopte
+      # jamais — le second se remarque, le premier casse une nuit au hasard.
+      - name: On ne change pas de modèle à la légère
+        run: node --experimental-strip-types scripts/verifier-veille-modele.ts
+
       # « Une panne qui se lit comme une absence » : un rappel de mémoire qui
       # échoue rendait le même résultat qu'un rappel qui n'a rien trouvé. Ce
       # contrôle lit le code, parce que la règle porte sur sa forme.
