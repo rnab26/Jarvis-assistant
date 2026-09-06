@@ -123,6 +123,12 @@
     }
   body {
     @apply bg-background text-foreground;
+    /* L'encoche et les coins arrondis d'un iPhone en paysage mordent sur les
+       bords latéraux — sans ça, du texte peut se retrouver sous l'encoche.
+       Sans effet ailleurs : env() vaut 0 quand il n'y a rien à éviter
+       (chantier a40fccaa, "soigne-le pour iPhone"). */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
     }
   html {
     @apply font-sans;
