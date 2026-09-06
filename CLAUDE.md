@@ -1048,6 +1048,34 @@ par un déclencheur n'a personne à qui parler. On ratisse volontairement large 
 un chantier écarté à tort attend la prochaine session qu'il ouvre, ce qui ne
 coûte rien ; un chantier pris à tort part pendant qu'il dort.
 
+**Et ce filtre a déjà laissé passer le pire, le 6 sept. 2026 à 10 h 15**
+(chantier `4d0ebdf3`). La passe a rendu « travaille » sur `3f3ad20b` — « agir
+directement sur le téléphone comme s'il était l'utilisateur (contrôle des
+APPLICATIONS) », c'est-à-dire le service d'accessibilité qui clique à sa place.
+Le motif cherchait « controle du telephone » ; le titre disait « contrôle des
+applications ». Deux autres suivaient dans la file, dont « Mode entraînement »,
+dont les notes disent « stocker ses identifiants chiffrés en base pour que
+Jarvis se connecte à sa place » — aucune catégorie ne parlait d'identifiants.
+
+Le contrôle censé garder ça était vert, et il ne pouvait qu'être vert : ses
+cinq cas d'essai étaient des **paraphrases des expressions régulières**
+(« Permettre à Jarvis de prendre le contrôle du téléphone » reprend le motif
+« prendre le controle »). Il vérifiait que la regex se reconnaît elle-même.
+C'est le piège déjà payé par le sélecteur Playwright et par `Filesystem.mkdir`
+le 4 sept. : **un contrôle doit viser la VRAIE donnée, et être essayé à
+l'envers avant d'être cru.** Les cas de `verifier-sessions-autonomes.ts` sont
+désormais des titres copiés du cockpit, et remettre l'ancien filtre fait
+tomber neuf vérifications.
+
+Deux points à ne pas défaire. `NOTES_LUES` vaut **1500** caractères et pas
+400 : une note s'ouvre par le marqueur, la date et l'historique, et le
+périmètre réel vient après — à 400, « Bulle Jarvis flottante » passait au
+travers, son titre ne disant pas de quel accès spécial il s'agit. Et les faux
+positifs ne se « corrigent » pas : le filtre écarte aujourd'hui trois chantiers
+à tort, c'est le prix écrit du paragraphe ci-dessus. Si tu ajoutes un motif,
+mesure-le sur ses vrais chantiers (la marche à suivre est en tête de
+`SUJETS_RESERVES`) plutôt que de le juger à l'œil sur des titres imaginés.
+
 Le déclencheur est la Routine `trig_01AbpcwCgpLeVMTtyCfqRguQ`, une fois par
 heure, et elle réveille **une session persistante qui porte le dépôt**
 (`session_01HbJWrhPvY3kn3jzuCdyBWH`).
