@@ -16,6 +16,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AutorisationsPlugin.class);
         registerPlugin(BullePlugin.class);
         registerPlugin(AccessibilitePlugin.class);
+        registerPlugin(NotificationsPlugin.class);
         super.onCreate(savedInstanceState);
         handleShareIntent(getIntent());
         handleWidgetIntent(getIntent());

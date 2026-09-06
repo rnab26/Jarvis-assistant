@@ -158,6 +158,29 @@
                 android:resource="@xml/accessibilite" />
         </service>
 
+        <!-- Lire les notifications des autres applications, à la demande
+             (chantier b1b6172d). Réponse de Raphaël, 5 sept. 2026 : « Oui,
+             mais il ne s'en sert que si je le demande. » L'autorisation
+             Android est totale et permanente ; c'est le CODE qui se retient
+             — voir JarvisNotificationListenerService pour les trois règles.
+
+             BIND_NOTIFICATION_LISTENER_SERVICE n'est pas decorative : Android
+             refuse de se lier a un ecouteur de notifications qui ne la
+             declare pas, et il n'apparait alors nulle part dans les
+             reglages. Exporte parce que c'est le systeme qui s'y lie, et
+             cette permission de signature est ce qui le protege.
+
+             Il ne s'active PAS a l'installation : c'est un acces special que
+             seul Raphael peut accorder, une fois, dans ses reglages Android. -->
+        <service
+            android:name=".JarvisNotificationListenerService"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <receiver android:name=".JarvisWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
