@@ -122,17 +122,25 @@ export async function rappelerBranchements(supabase: ClientLecture): Promise<str
   // pour deux) faisaient de ms_jeton le plus gros morceau d'une ouverture
   // Live. Ces deux lectures sont indépendantes ; rien ne justifie de les
   // enchaîner plutôt que de les lancer ensemble.
+  //
+  // PAS DE `.catch()` DIRECTEMENT SUR LE CONSTRUCTEUR DE REQUÊTE : essayé une
+  // première fois le 6 sept., ça a cassé la fonction déployée pour de vrai
+  // (« maybeSingle(...).catch is not a function ») — le constructeur rendu
+  // par le client Supabase est PromiseLike (il a un `.then()`), mais pas une
+  // vraie Promise tant qu'on ne l'attend pas. `await` dans un `try` marche
+  // toujours, `.catch()` posé dessus non. Vérifié sur la fonction réellement
+  // déployée, pas seulement au typecheck — c'est justement ce que le
+  // typecheck ne peut pas voir.
+  const lire = async <T>(requete: PromiseLike<T>, repli: T): Promise<T> => {
+    try {
+      return await requete
+    } catch {
+      return repli
+    }
+  }
   const [compte, reglagesLus] = await Promise.all([
-    supabase
-      .from("google_accounts")
-      .select("email, scopes")
-      .maybeSingle()
-      .catch(() => ({ data: null })),
-    supabase
-      .from("reglages")
-      .select("valeurs")
-      .maybeSingle()
-      .catch(() => ({ data: null })),
+    lire(supabase.from("google_accounts").select("email, scopes").maybeSingle(), { data: null, error: null }),
+    lire(supabase.from("reglages").select("valeurs").maybeSingle(), { data: null, error: null }),
   ])
 
   const dataCompte = compte?.data
