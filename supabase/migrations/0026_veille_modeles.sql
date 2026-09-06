@@ -244,6 +244,14 @@ returns jsonb language sql stable security definer set search_path = public as $
         'secours', secours, 'promu_at', promu_at, 'promu_par', promu_par))
       from public.moteur_choisi),
     'sante_commande', (select to_jsonb(s) from public.sante_promotion('commande') s),
+    -- SAIT-ON SEULEMENT OBSERVER CE QU'ON FAIT ? Tant que voice-command n'a pas
+    -- été redéployée avec l'écriture de `appels_modele`, ce nombre reste à
+    -- zéro, le retour arrière automatique est aveugle, et promouvoir
+    -- reviendrait à changer le modèle de Jarvis sans filet. La décision s'en
+    -- sert pour refuser de promouvoir — c'est une précondition qui se garde
+    -- toute seule, plutôt qu'un interrupteur que personne ne pense à mettre.
+    'appels_observes', (select count(*) from public.appels_modele
+                         where at >= now() - interval '7 days' and essai = false),
     'essais_recents', coalesce((select jsonb_agg(to_jsonb(e))
       from (select modele, jour, repond, appelle_outil, controles_reussis,
                    controles_total, ms_median, plafond_jour, plafond_minute

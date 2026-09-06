@@ -70,11 +70,14 @@ export const anthropic: Fournisseur = {
       return {
         modele: Deno.env.get("ANTHROPIC_MODELE_MEMOIRE") || MEMOIRE_PAR_DEFAUT,
         secours: listeDepuisSecret("ANTHROPIC_SECOURS_MEMOIRE", []),
+        impose: Deno.env.get("ANTHROPIC_MODELE_MEMOIRE") !== undefined,
       }
     }
     return {
       modele: Deno.env.get("ANTHROPIC_MODELE") || COMMANDE_PAR_DEFAUT,
       secours: listeDepuisSecret("ANTHROPIC_SECOURS", []),
+      // Un secret posé à la main l'emporte sur la veille automatique.
+      impose: Deno.env.get("ANTHROPIC_MODELE") !== undefined,
     }
   },
 

@@ -188,11 +188,14 @@ export const gemini: Fournisseur = {
       return {
         modele: Deno.env.get("GEMINI_MODELE_MEMOIRE") || MEMOIRE_PAR_DEFAUT,
         secours: listeDepuisSecret("GEMINI_SECOURS_MEMOIRE", MEMOIRE_SECOURS),
+        impose: Deno.env.get("GEMINI_MODELE_MEMOIRE") !== undefined,
       }
     }
     return {
       modele: Deno.env.get("GEMINI_MODELE") || COMMANDE_PAR_DEFAUT,
       secours: listeDepuisSecret("GEMINI_SECOURS", COMMANDE_SECOURS),
+      // Un secret posé à la main l'emporte sur la veille automatique.
+      impose: Deno.env.get("GEMINI_MODELE") !== undefined,
     }
   },
 

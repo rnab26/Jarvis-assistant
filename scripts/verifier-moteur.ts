@@ -91,6 +91,7 @@ const {
   moteurNonConfigure,
   nomFournisseurChoisi,
   phrasePourEchec,
+  oublierChoixEnBase,
   FOURNISSEUR_PAR_DEFAUT,
 } = await import("../supabase/functions/_shared/modele.ts")
 const { gemini } = await import("../supabase/functions/_shared/gemini.ts")
@@ -122,7 +123,36 @@ const remiseAZero = (nouveaux: Record<string, string> = {}) => {
   Object.assign(secrets, { GEMINI_API_KEY: "cle-gemini" }, nouveaux)
   scenario = []
   envois = []
+  // Le choix promu est gardé dix minutes en mémoire : sans ce vidage, le
+  // deuxième contrôle lirait la réponse du premier.
+  oublierChoixEnBase()
 }
+
+/**
+ * Une doublure de client Supabase qui rend ce qu'on lui dit, ou qui traîne.
+ *
+ * `retard` sert à vérifier ce qui compte le plus ici : cette lecture est sur le
+ * chemin de CHAQUE phrase de Raphaël, donc une base lente ne doit pas rendre
+ * Jarvis lent, et une base muette ne doit surtout pas le rendre muet.
+ */
+const clientFactice = (
+  ligne: Record<string, unknown> | null,
+  options: { retard?: number; casse?: boolean } = {},
+) => ({
+  rpc: async (nom: string) => {
+    if (options.casse) throw new Error("base injoignable")
+    if (options.retard) await new Promise((r) => setTimeout(r, options.retard))
+    return nom === "moteur_en_service" ? { data: ligne ? [ligne] : [] } : { data: null }
+  },
+})
+
+const journalFactice = (
+  ligne: Record<string, unknown> | null,
+  options: { retard?: number; casse?: boolean } = {},
+) =>
+  ({ supabase: clientFactice(ligne, options), userId: "u1" }) as unknown as Parameters<
+    typeof appelerModele
+  >[0]["journal"]
 
 // ── Le fournisseur par défaut, et le seul gratuit ──────────────────────────
 {
@@ -334,6 +364,87 @@ const remiseAZero = (nouveaux: Record<string, string> = {}) => {
 
   remiseAZero()
   verifier("moteur configuré : aucun message", (await moteurNonConfigure(false)) === null)
+}
+
+// ── Ce que la veille a promu prend effet, sans mettre la phrase en danger ──
+// Chantier 66a7a233. La table `moteur_choisi` ne peut qu'AJOUTER un choix :
+// tout ce qui va de travers doit ramener au modèle écrit dans le code, qui
+// marche.
+{
+  const promu = { fournisseur: "gemini", modele: "modele-promu", secours: ["secours-promu"] }
+
+  remiseAZero()
+  await appel({ journal: journalFactice(promu) })
+  verifier(
+    "un modèle promu par la veille est bien celui qu'on appelle",
+    envois[0].url.includes("modele-promu"),
+    envois[0].url,
+  )
+
+  remiseAZero()
+  scenario = [429, "ok"]
+  await appel({ journal: journalFactice(promu) })
+  verifier(
+    "et ses secours à lui sont utilisés, pas ceux du code",
+    envois[1]?.url.includes("secours-promu") === true,
+    envois.map((e) => e.url.split("/models/")[1]).join(" → "),
+  )
+
+  remiseAZero({ ANTHROPIC_API_KEY: "cle-anthropic" })
+  await appel({
+    journal: journalFactice({ fournisseur: "anthropic", modele: "claude-cher", secours: [] }),
+  })
+  verifier(
+    "UNE LIGNE EN BASE NE PEUT PAS FAIRE PASSER JARVIS SUR UN MOTEUR PAYANT",
+    envois[0].url.includes("googleapis.com"),
+    `${envois[0].url} — il a quitté l'API Anthropic en découvrant sa clé à sec ; seul le secret FOURNISSEUR décide`,
+  )
+
+  remiseAZero({ GEMINI_MODELE: "pose-a-la-main" })
+  await appel({ journal: journalFactice(promu) })
+  verifier(
+    "un secret posé à la main l'emporte sur la veille automatique",
+    envois[0].url.includes("pose-a-la-main"),
+    `${envois[0].url} — prendre le contre-pied d'une décision humaine est la faute que ce projet évite partout`,
+  )
+
+  remiseAZero()
+  await appel({ journal: journalFactice(promu, { casse: true }) })
+  verifier(
+    "une base injoignable ramène au modèle du code, elle ne rend pas Jarvis muet",
+    envois[0].url.includes(gemini.modeles("commande").modele),
+    envois[0].url,
+  )
+
+  remiseAZero()
+  const debut = Date.now()
+  await appel({ journal: journalFactice(promu, { retard: 4000 }) })
+  const dureeLecture = Date.now() - debut
+  verifier(
+    "une base lente n'attend pas plus d'une seconde et demie",
+    dureeLecture < 1500,
+    `${dureeLecture} ms — cette lecture est sur le chemin de chaque phrase`,
+  )
+  verifier(
+    "et dans ce cas c'est le modèle du code qui répond",
+    envois[0].url.includes(gemini.modeles("commande").modele),
+    envois[0].url,
+  )
+
+  remiseAZero()
+  await appel({ journal: journalFactice(null) })
+  verifier(
+    "rien en base : le code décide, comme avant ce chantier",
+    envois[0].url.includes(gemini.modeles("commande").modele),
+    envois[0].url,
+  )
+
+  remiseAZero()
+  await appel()
+  verifier(
+    "sans client Supabase, on ne lit rien du tout",
+    envois[0].url.includes(gemini.modeles("commande").modele),
+  )
 }
 
 // ── Un modèle mis en service a été mesuré ──────────────────────────────────

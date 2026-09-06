@@ -55,6 +55,15 @@ export interface EtatVeille {
   en_service: EnService[] | null
   sante_commande: SantePromotion | null
   essais_recents: Essai[]
+  /**
+   * Combien d'appels réels ont été observés ces sept derniers jours.
+   *
+   * Zéro veut dire qu'on ne sait PAS observer — pas que tout va bien. C'est le
+   * cas tant que voice-command n'écrit pas dans `appels_modele`. Promouvoir
+   * dans cet état, ce serait changer le modèle de Jarvis en ayant désactivé le
+   * seul filet qui le rattrape.
+   */
+  appels_observes: number
 }
 
 export type VerdictVeille = "gelee" | "occupee" | "trop_tot" | "veille"
@@ -86,6 +95,15 @@ export const PLAFOND_JOUR_MINIMUM = 200
 
 /** Combien de jours DIFFÉRENTS un candidat doit avoir réussi. */
 export const JOURS_DE_PREUVE = 2
+
+/**
+ * En dessous, on considère qu'on ne sait pas observer, et on ne promeut pas.
+ *
+ * Le filet du point 5 (revenir en arrière tout seul) lit `appels_modele`. S'il
+ * n'y a rien à lire, promouvoir revient à changer le cerveau de Jarvis en
+ * ayant débranché l'alarme.
+ */
+export const APPELS_OBSERVES_MINIMUM = 20
 
 /**
  * Faut-il lancer une passe maintenant ?
@@ -248,21 +266,31 @@ export function nouvelleChaine(promu: string, ancien: string, secours: string[])
 export function decider(
   etat: EtatVeille,
   essaisDuJour: Essai[],
+  /**
+   * Ce que le serveur utilise EN CE MOMENT pour la commande.
+   *
+   * Passé en argument plutôt que lu en base, et c'est nécessaire : à la toute
+   * première passe la table est vide, et une décision qui exigerait une ligne
+   * ne pourrait jamais en écrire la première. L'appelant donne donc ce que le
+   * fournisseur utilise réellement, ligne en base ou valeur du code.
+   */
+  courant: { modele: string; secours: string[]; promu_at: string },
   maintenant: Date,
 ): Decision {
-  const commande = etat.en_service?.find((s) => s.role === "commande") ?? null
   const memoire = etat.en_service?.find((s) => s.role === "memoire") ?? null
 
   const retour = doitRevenirEnArriere(etat.sante_commande)
   if (retour.quoi === "retour_arriere") return retour
 
-  if (!commande) {
+  // On ne change rien tant qu'on ne saurait pas voir que ça s'est mal passé.
+  if (etat.appels_observes < APPELS_OBSERVES_MINIMUM) {
     return {
       quoi: "rien",
-      raison: "Aucun modèle en base pour la commande : le serveur suit son secret ou son code, on n'y touche pas tant qu'on n'a pas mieux.",
+      raison: `Seulement ${etat.appels_observes} appel(s) observé(s) sur sept jours : le retour arrière automatique serait aveugle, on ne promeut pas.`,
     }
   }
 
+  const commande = courant
   const depuisPromotion = maintenant.getTime() - new Date(commande.promu_at).getTime()
   if (depuisPromotion < REPOS_ENTRE_PROMOTIONS_MS) {
     const jours = Math.ceil((REPOS_ENTRE_PROMOTIONS_MS - depuisPromotion) / (24 * 60 * 60 * 1000))

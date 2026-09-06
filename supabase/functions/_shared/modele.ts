@@ -144,8 +144,15 @@ export interface Fournisseur {
   /** Le secret qui porte sa clé, et celui de nos vérifications. */
   secretCle: string
   secretCleEssai: string
-  /** Le modèle et ses secours pour ce rôle, secrets compris. */
-  modeles(role: Role): { modele: string; secours: string[] }
+  /**
+   * Le modèle et ses secours pour ce rôle.
+   *
+   * `impose` vaut vrai quand la valeur vient d'un SECRET, c'est-à-dire d'une
+   * main humaine. Elle l'emporte alors sur le choix automatique de la veille :
+   * prendre le contre-pied d'une décision posée exprès est la faute que ce
+   * projet évite partout ailleurs.
+   */
+  modeles(role: Role): { modele: string; secours: string[]; impose: boolean }
   /** UN appel HTTP, sans nouvel essai ni bascule : c'est le travail d'ici. */
   unEssai(appel: AppelResolu): Promise<ReponseFournisseur>
 }
@@ -286,8 +293,11 @@ export async function appelerModele(appel: AppelModele): Promise<ResultatModele>
   // appel, pour que ça se voie dans les journaux dès la première phrase.
   if (!f.gratuit) console.log("moteur payant", f.nom)
 
-  const { modele, secours } = f.modeles(appel.role)
-  const candidats = [modele, ...secours]
+  const { modele, secours, impose } = f.modeles(appel.role)
+  const choisi = impose ? null : await choixEnBase(appel, f)
+  const candidats = choisi
+    ? [choisi.modele, ...choisi.secours]
+    : [modele, ...secours]
   let dernier: ResultatModele = {}
 
   for (const [rang, candidat] of candidats.entries()) {
@@ -305,6 +315,79 @@ export async function appelerModele(appel: AppelModele): Promise<ResultatModele>
   }
 
   return { ...dernier, fournisseur: f.nom }
+}
+
+/** Ce que la veille a promu pour un rôle, quand elle a promu quelque chose. */
+interface ChoixEnBase {
+  modele: string
+  secours: string[]
+}
+
+/**
+ * Dix minutes de mémoire, et une seconde d'attente au plus.
+ *
+ * Cette lecture est sur le chemin de CHAQUE phrase de Raphaël. Une base lente
+ * ne doit pas pouvoir rendre Jarvis lent, et une base injoignable ne doit
+ * surtout pas le rendre muet : dans les deux cas on retombe sur ce que dit le
+ * code, qui marche. Le cache fait qu'une instance chaude ne lit qu'une fois
+ * par dizaine de minutes.
+ */
+const MEMOIRE_CHOIX_MS = 10 * 60 * 1000
+const ATTENTE_CHOIX_MS = 1000
+const choixConnus = new Map<Role, { lu: number; choix: ChoixEnBase | null }>()
+
+/**
+ * Vide cette mémoire. Pour les bancs d'essai UNIQUEMENT — en service, dix
+ * minutes de cache sont exactement ce qu'on veut, et un appelant qui viderait
+ * le cache à chaque phrase remettrait une lecture de base sur le chemin de
+ * chacune d'elles.
+ */
+export function oublierChoixEnBase(): void {
+  choixConnus.clear()
+}
+
+/**
+ * Le modèle promu par la veille (chantier 66a7a233), ou `null`.
+ *
+ * TROIS PORTES DE SORTIE, et il faut les trois :
+ *
+ * 1. Pas de client Supabase sous la main (le banc d'essai, une fonction qui ne
+ *    passe pas `journal`) → on ne lit rien.
+ * 2. La ligne ne concerne pas le fournisseur en cours → on l'ignore. C'est le
+ *    garde-fou de l'argent : sans lui, une ligne en base pourrait faire passer
+ *    Jarvis sur un moteur PAYANT sans que Raphaël ait rien posé, alors qu'il a
+ *    justement quitté l'API Anthropic en découvrant sa clé à sec.
+ * 3. Lecture lente, en échec, ou vide → on retombe sur le code. Cette table ne
+ *    peut qu'AJOUTER un choix, jamais casser celui qui marche.
+ */
+async function choixEnBase(appel: AppelModele, f: Fournisseur): Promise<ChoixEnBase | null> {
+  if (!appel.journal) return null
+
+  const connu = choixConnus.get(appel.role)
+  if (connu && Date.now() - connu.lu < MEMOIRE_CHOIX_MS) return connu.choix
+
+  let choix: ChoixEnBase | null = null
+  try {
+    const lecture = appel.journal.supabase.rpc("moteur_en_service", { p_role: appel.role })
+    const reponse = await Promise.race([
+      lecture,
+      new Promise<null>((r) => setTimeout(() => r(null), ATTENTE_CHOIX_MS)),
+    ])
+    const ligne = (reponse as { data?: Array<Record<string, unknown>> } | null)?.data?.[0]
+    if (ligne && ligne.fournisseur === f.nom && typeof ligne.modele === "string") {
+      choix = {
+        modele: ligne.modele,
+        secours: Array.isArray(ligne.secours) ? (ligne.secours as string[]) : [],
+      }
+    }
+  } catch {
+    // Une panne de lecture ne doit pas se voir autrement que par le retour au
+    // modèle du code : c'est le comportement d'avant ce chantier, et il marche.
+    choix = null
+  }
+
+  choixConnus.set(appel.role, { lu: Date.now(), choix })
+  return choix
 }
 
 /**

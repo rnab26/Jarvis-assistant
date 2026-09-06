@@ -14,6 +14,7 @@
  */
 import {
   APPELS_AVANT_DE_JUGER,
+  APPELS_OBSERVES_MINIMUM,
   type Essai,
   type EtatVeille,
   INTERVALLE_VEILLE_MS,
@@ -87,6 +88,15 @@ const etat = (p: Partial<EtatVeille> = {}): EtatVeille => ({
   ],
   sante_commande: null,
   essais_recents: [],
+  appels_observes: 500,
+  ...p,
+})
+
+/** Ce que le serveur utilise en ce moment, tel que l'appelant le passe. */
+const courant = (p: Partial<{ modele: string; secours: string[]; promu_at: string }> = {}) => ({
+  modele: "en-service",
+  secours: ["secours-a", "secours-b"],
+  promu_at: ilYA(JOURS(30)),
   ...p,
 })
 
@@ -278,7 +288,7 @@ const etat = (p: Partial<EtatVeille> = {}): EtatVeille => ({
     essai({ modele: "candidat", jour: "2026-09-19" }),
   ]
 
-  const d = decider(etat({ essais_recents: deuxJours }), [], MAINTENANT)
+  const d = decider(etat({ essais_recents: deuxJours }), [], courant(), MAINTENANT)
   verifier("un candidat prouvé est promu", d.quoi === "promouvoir" && d.modele === "candidat", JSON.stringify(d))
   verifier(
     "et l'ancien passe en premier secours",
@@ -296,35 +306,60 @@ const etat = (p: Partial<EtatVeille> = {}): EtatVeille => ({
     decider(
       etat({ essais_recents: deuxJours, sante_commande: sante({ appels: 100, echecs: 60 }) }),
       [],
+      courant(),
       MAINTENANT,
     ).quoi === "retour_arriere",
     "promouvoir par-dessus un modèle qui va mal ferait perdre le seul qui marchait encore",
   )
 
-  const recent = etat({
-    essais_recents: deuxJours,
-    en_service: [
-      { ...etat().en_service![0], promu_at: ilYA(REPOS_ENTRE_PROMOTIONS_MS - JOURS(1)) },
-      etat().en_service![1],
-    ],
-  })
   verifier(
     "on ne change pas de modèle deux fois dans la semaine",
-    decider(recent, [], MAINTENANT).quoi === "rien",
+    decider(etat({ essais_recents: deuxJours }), [], courant({ promu_at: ilYA(REPOS_ENTRE_PROMOTIONS_MS - JOURS(1)) }), MAINTENANT).quoi === "rien",
     "une série de « preview » ferait sinon changer le cerveau de Jarvis tous les jours",
   )
 
   verifier(
     "sans rien de mieux, on ne touche à rien",
-    decider(etat(), [], MAINTENANT).quoi === "rien",
+    decider(etat(), [], courant(), MAINTENANT).quoi === "rien",
   )
   verifier(
-    "sans modèle en base, on laisse le serveur suivre son code",
-    decider(etat({ en_service: null, essais_recents: deuxJours }), [], MAINTENANT).quoi === "rien",
+    "LA TOUTE PREMIÈRE promotion est possible, table vide comprise",
+    decider(etat({ en_service: null, essais_recents: deuxJours }), [], courant(), MAINTENANT).quoi === "promouvoir",
+    "une décision qui exigerait une ligne en base ne pourrait jamais en écrire la première",
+  )
+
+  verifier(
+    "ON NE PROMEUT PAS TANT QU'ON NE SAIT PAS OBSERVER LE RÉSULTAT",
+    decider(
+      etat({ essais_recents: deuxJours, appels_observes: APPELS_OBSERVES_MINIMUM - 1 }),
+      [],
+      courant(),
+      MAINTENANT,
+    ).quoi === "rien",
+    "sans appels observés, le retour arrière automatique est aveugle : promouvoir reviendrait à changer le cerveau de Jarvis en ayant débranché l'alarme",
+  )
+  verifier(
+    "et on dit pourquoi, plutôt que de se taire",
+    decider(
+      etat({ essais_recents: deuxJours, appels_observes: 0 }),
+      [],
+      courant(),
+      MAINTENANT,
+    ).raison.includes("aveugle"),
+  )
+  verifier(
+    "mais un retour arrière, lui, reste possible même sans promotion en cours",
+    decider(
+      etat({ appels_observes: 0, sante_commande: sante({ appels: 100, echecs: 60 }) }),
+      [],
+      courant(),
+      MAINTENANT,
+    ).quoi === "retour_arriere",
+    "le refus de promouvoir ne doit jamais empêcher de réparer",
   )
   verifier(
     "les essais du jour comptent autant que ceux d'avant",
-    decider(etat(), deuxJours, MAINTENANT).quoi === "promouvoir",
+    decider(etat(), deuxJours, courant(), MAINTENANT).quoi === "promouvoir",
   )
 }
 
