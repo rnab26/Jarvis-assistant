@@ -307,7 +307,10 @@ export async function appelerModele(appel: AppelModele): Promise<ResultatModele>
     // sinon un secours sollicité tous les jours reste invisible, et on ne
     // découvre que le principal est mort qu'au moment où tout se tait.
     noter(appel, f.nom, candidat, dernier, Date.now() - debut, rang)
-    if (!dernier.echec) return { ...dernier, modele: candidat, fournisseur: f.nom }
+    if (!dernier.echec) {
+      reveillerLaVeille(appel)
+      return { ...dernier, modele: candidat, fournisseur: f.nom }
+    }
     // Quota atteint ou modèle saturé : le suivant a son propre seau et sa
     // propre capacité. Toute autre erreur (400, 403…) vient de la requête ou
     // de la clé et se reproduirait à l'identique, on s'arrête là.
@@ -344,6 +347,7 @@ const choixConnus = new Map<Role, { lu: number; choix: ChoixEnBase | null }>()
  */
 export function oublierChoixEnBase(): void {
   choixConnus.clear()
+  dernierReveil = 0
 }
 
 /**
@@ -388,6 +392,44 @@ async function choixEnBase(appel: AppelModele, f: Fournisseur): Promise<ChoixEnB
 
   choixConnus.set(appel.role, { lu: Date.now(), choix })
   return choix
+}
+
+/**
+ * Au plus une tentative de réveil toutes les six heures, par instance.
+ *
+ * C'est volontairement grossier : ce compteur ne SAIT PAS quand la dernière
+ * passe a eu lieu, et il n'a pas à le savoir — le lui demander mettrait une
+ * lecture de base de plus sur le chemin de chaque phrase. Il évite seulement
+ * qu'on sonne à la porte à chaque mot. C'est `moteur-veille` qui décide
+ * vraiment, et qui répond « trop tôt » la plupart du temps.
+ */
+const REVEIL_AU_PLUS_TOUS_LES_MS = 6 * 60 * 60 * 1000
+let dernierReveil = 0
+
+/**
+ * Réveille la veille des modèles, sans jamais faire attendre Raphaël.
+ *
+ * PARESSEUX PAR NÉCESSITÉ : il n'y a ni pg_cron ni pg_net sur ce projet, et les
+ * installer donnerait à sa base la capacité d'appeler l'extérieur — un choix de
+ * sécurité qui n'est pas le nôtre à faire. Le projet utilise déjà ce motif pour
+ * `purger_echanges` : « Purge paresseuse : pas de tâche planifiée à maintenir. »
+ *
+ * Pas d'`await`, erreurs avalées : sa phrase a déjà eu sa réponse. Si l'appel
+ * est coupé parce que la fonction se termine, la passe suivante le refera —
+ * c'est pour ça que `moteur-veille` est écrite pour pouvoir être appelée pour
+ * rien.
+ */
+function reveillerLaVeille(appel: AppelModele): void {
+  if (!appel.journal || appel.essai) return
+  if (Date.now() - dernierReveil < REVEIL_AU_PLUS_TOUS_LES_MS) return
+  dernierReveil = Date.now()
+  try {
+    const fonctions = (appel.journal.supabase as { functions?: { invoke: (n: string) => Promise<unknown> } })
+      .functions
+    void fonctions?.invoke("moteur-veille")?.then?.(() => {}, () => {})
+  } catch {
+    // Un réveil manqué ne coûte qu'une journée de retard sur la veille.
+  }
 }
 
 /**

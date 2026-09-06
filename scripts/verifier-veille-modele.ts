@@ -20,6 +20,7 @@ import {
   INTERVALLE_VEILLE_MS,
   JOURS_DE_PREUVE,
   PLAFOND_JOUR_MINIMUM,
+  PLAFOND_MINUTE_MINIMUM,
   REPOS_ENTRE_PROMOTIONS_MS,
   type SantePromotion,
   decider,
@@ -29,6 +30,13 @@ import {
   meilleurCandidat,
   nouvelleChaine,
 } from "../supabase/functions/_shared/veilleModele.ts"
+import {
+  SILENCE_ANORMAL_MS,
+  VEILLE_PAR_DEFAUT,
+  etatDeLaVeille,
+  type MoteurChoisi,
+  type PasseVeille,
+} from "../src/lib/veilleMoteur.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -202,6 +210,15 @@ const courant = (p: Partial<{ modele: string; secours: string[]; promu_at: strin
     "un plafond journalier confortable passe",
     essaiConcluant(essai({ plafond_jour: PLAFOND_JOUR_MINIMUM })),
   )
+  verifier(
+    "un modèle trop étroit à la MINUTE ne peut pas être principal",
+    !essaiConcluant(essai({ plafond_minute: 5 })),
+    "mesuré le 6 sept. : gemini-3-flash-preview ne passe qu'une requête sur une rafale de vingt",
+  )
+  verifier(
+    "mais une limite/minute confortable passe",
+    essaiConcluant(essai({ plafond_minute: PLAFOND_MINUTE_MINIMUM })),
+  )
 }
 
 // ── Le choix du candidat ───────────────────────────────────────────────────
@@ -360,6 +377,81 @@ const courant = (p: Partial<{ modele: string; secours: string[]; promu_at: strin
   verifier(
     "les essais du jour comptent autant que ceux d'avant",
     decider(etat(), deuxJours, courant(), MAINTENANT).quoi === "promouvoir",
+  )
+}
+
+// ── Ce qu'il voit dans Paramètres ──────────────────────────────────────────
+{
+  const passe = (p: Partial<PasseVeille> = {}): PasseVeille => ({
+    id: "p1",
+    demarre_at: ilYA(JOURS(1)),
+    fini_at: ilYA(JOURS(1)),
+    verdict: "rien_a_faire",
+    detail: "Rien de mieux n'a fait ses preuves.",
+    ...p,
+  })
+  const choix: MoteurChoisi = {
+    role: "commande",
+    modele: "modele-en-service",
+    secours: ["secours-1"],
+    promu_at: ilYA(JOURS(9)),
+    promu_par: "veille",
+    raison: null,
+  }
+
+  verifier(
+    "la veille tourne par défaut : c'est sa demande, l'interrupteur sert à GELER",
+    VEILLE_PAR_DEFAUT === true,
+  )
+
+  const normal = etatDeLaVeille([passe()], choix, true, MAINTENANT)
+  verifier("une passe récente sans changement n'alarme pas", normal.ton === "ok", JSON.stringify(normal))
+  verifier(
+    "et on lui dit QUEL modèle lui répond, pas seulement que tout va bien",
+    normal.detail.includes("modele-en-service"),
+    normal.detail,
+  )
+
+  const muet = etatDeLaVeille(
+    [passe({ demarre_at: ilYA(SILENCE_ANORMAL_MS + JOURS(1)) })],
+    choix,
+    true,
+    MAINTENANT,
+  )
+  verifier(
+    "UN SILENCE PROLONGÉ N'EST PAS « RIEN DE NEUF » : c'est une panne",
+    muet.ton === "alerte",
+    `${muet.titre} — les deux se ressemblent parfaitement quand on ne regarde que l'absence de changement`,
+  )
+
+  verifier(
+    "un retour arrière se signale",
+    etatDeLaVeille([passe({ verdict: "retour_arriere" })], choix, true, MAINTENANT).ton === "alerte",
+  )
+  verifier(
+    "une passe en échec aussi",
+    etatDeLaVeille([passe({ verdict: "echec" })], choix, true, MAINTENANT).ton === "alerte",
+  )
+  verifier(
+    "une adoption se dit, sans alarmer",
+    etatDeLaVeille([passe({ verdict: "promotion" })], choix, true, MAINTENANT).ton === "ok",
+  )
+
+  const gele = etatDeLaVeille([passe()], choix, false, MAINTENANT)
+  verifier("gelé, on le dit et on n'alarme pas", gele.ton === "eteint", gele.titre)
+  verifier(
+    "et un long silence ne se signale PAS quand c'est lui qui a éteint",
+    etatDeLaVeille([passe({ demarre_at: ilYA(SILENCE_ANORMAL_MS * 2) })], choix, false, MAINTENANT).ton ===
+      "eteint",
+    "l'alarmer sur un silence qu'il a demandé, c'est le bandeau qu'on n'écoute plus",
+  )
+
+  const jamais = etatDeLaVeille([], null, true, MAINTENANT)
+  verifier("aucune passe encore : on le dit sans alarmer", jamais.ton === "jamais")
+  verifier(
+    "et sans modèle en base, on ne prétend pas en connaître un",
+    jamais.detail.includes("écrit dans son code"),
+    jamais.detail,
   )
 }
 

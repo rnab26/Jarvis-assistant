@@ -93,6 +93,17 @@ export const TAUX_ECHEC_INTOLERABLE = 0.3
 /** Un modèle dont le plafond du jour est sous ce seuil ne peut pas être principal. */
 export const PLAFOND_JOUR_MINIMUM = 200
 
+/**
+ * Ni un modèle trop étroit à la minute.
+ *
+ * Mesuré le 6 sept. 2026 : gemini-3-flash-preview est limité à 5 requêtes par
+ * minute, et n'en passe qu'UNE sur une rafale de vingt. Un principal doit
+ * encaisser une conversation suivie ; à 5 par minute, Raphaël s'en prendrait
+ * plein la figure dès qu'il enchaîne. C'est acceptable pour un dernier
+ * recours, jamais pour le modèle qui répond d'habitude.
+ */
+export const PLAFOND_MINUTE_MINIMUM = 10
+
 /** Combien de jours DIFFÉRENTS un candidat doit avoir réussi. */
 export const JOURS_DE_PREUVE = 2
 
@@ -190,7 +201,8 @@ export function essaiConcluant(e: Essai): boolean {
     e.controles_reussis === e.controles_total &&
     // Un plafond journalier trop bas condamne le modèle comme principal : la
     // mémoire est morte en silence à cause d'un modèle à 20 requêtes par jour.
-    (e.plafond_jour === null || e.plafond_jour >= PLAFOND_JOUR_MINIMUM)
+    (e.plafond_jour === null || e.plafond_jour >= PLAFOND_JOUR_MINIMUM) &&
+    (e.plafond_minute === null || e.plafond_minute >= PLAFOND_MINUTE_MINIMUM)
   )
 }
 

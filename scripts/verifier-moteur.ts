@@ -123,6 +123,7 @@ const remiseAZero = (nouveaux: Record<string, string> = {}) => {
   Object.assign(secrets, { GEMINI_API_KEY: "cle-gemini" }, nouveaux)
   scenario = []
   envois = []
+  reveils = []
   // Le choix promu est gardé dix minutes en mémoire : sans ce vidage, le
   // deuxième contrôle lirait la réponse du premier.
   oublierChoixEnBase()
@@ -135,14 +136,22 @@ const remiseAZero = (nouveaux: Record<string, string> = {}) => {
  * chemin de CHAQUE phrase de Raphaël, donc une base lente ne doit pas rendre
  * Jarvis lent, et une base muette ne doit surtout pas le rendre muet.
  */
+let reveils: string[] = []
 const clientFactice = (
   ligne: Record<string, unknown> | null,
-  options: { retard?: number; casse?: boolean } = {},
+  options: { retard?: number; casse?: boolean; reveilInterminable?: boolean } = {},
 ) => ({
   rpc: async (nom: string) => {
     if (options.casse) throw new Error("base injoignable")
     if (options.retard) await new Promise((r) => setTimeout(r, options.retard))
     return nom === "moteur_en_service" ? { data: ligne ? [ligne] : [] } : { data: null }
+  },
+  functions: {
+    invoke: (nom: string) => {
+      reveils.push(nom)
+      // Une veille qui ne répond jamais ne doit pas retenir la phrase.
+      return options.reveilInterminable ? new Promise(() => {}) : Promise.resolve({})
+    },
   },
 })
 
@@ -444,6 +453,50 @@ const journalFactice = (
   verifier(
     "sans client Supabase, on ne lit rien du tout",
     envois[0].url.includes(gemini.modeles("commande").modele),
+  )
+}
+
+// ── Le réveil de la veille : jamais aux dépens de sa phrase ────────────────
+// Il n'y a ni pg_cron ni pg_net sur ce projet : la veille est réveillée
+// paresseusement après une phrase, comme `purger_echanges`. Elle ne doit donc
+// ni ralentir la réponse, ni partir à chaque mot.
+{
+  remiseAZero()
+  await appel({ journal: journalFactice(null) })
+  verifier("une phrase réveille la veille", reveils.includes("moteur-veille"))
+
+  await appel({ journal: journalFactice(null) })
+  await appel({ journal: journalFactice(null) })
+  verifier(
+    "mais pas à chaque phrase : une fois par fenêtre suffit",
+    reveils.length === 1,
+    `${reveils.length} réveils — c'est moteur-veille qui décide vraiment, on sonne juste à la porte`,
+  )
+
+  remiseAZero()
+  await appel({ essai: true, journal: journalFactice(null) })
+  verifier(
+    "un appel de vérification ne réveille rien",
+    reveils.length === 0,
+    "nos contrôles ne doivent pas déclencher une passe de veille",
+  )
+
+  remiseAZero()
+  const debutReveil = Date.now()
+  await appel({ journal: journalFactice(null, { reveilInterminable: true }) })
+  verifier(
+    "une veille qui ne répond jamais ne retient pas la phrase",
+    Date.now() - debutReveil < 1500,
+    `${Date.now() - debutReveil} ms`,
+  )
+
+  remiseAZero()
+  scenario = [400]
+  await appel({ journal: journalFactice(null) })
+  verifier(
+    "un appel en échec ne réveille pas la veille",
+    reveils.length === 0,
+    "quand le moteur ne répond pas, ce n'est pas le moment de lui en essayer un autre",
   )
 }
 

@@ -91,6 +91,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/SessionsAutonomes.tsx",
   },
   {
+    cle: "jarvis_moteur_auto",
+    ou: "Paramètres › Le cockpit › Le moteur de langue",
+    fichier: "src/components/settings/MoteurDeLangue.tsx",
+  },
+  {
     cle: "jarvis_theme",
     ou: "Paramètres › Apparence › Thème",
     fichier: "src/components/settings/Theme.tsx",
