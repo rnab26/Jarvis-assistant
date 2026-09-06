@@ -20,6 +20,7 @@
  * mémoire.
  */
 import { readFileSync } from "node:fs"
+import { DELAI_MAX_MS, quoiRendre } from "../src/lib/demarrageOverlay.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -148,6 +149,58 @@ verifier(
   "et elle se retire ensuite",
   codeSession.includes("hide()"),
   "sans hide(), la session reste au-dessus et le prochain appui long ne rouvre rien",
+)
+
+// ── Le moteur de reconnaissance ne doit JAMAIS être choisi ────────────────
+//
+// Constaté le 6 sept. 2026 dans le journal d'écoute de Raphaël :
+// « com.raphael.jarvis » est apparu parmi les moteurs de reconnaissance de son
+// téléphone, dès que l'APK a déclaré le VoiceInteractionService. Ce moteur ne
+// reconnaît rien — s'il était choisi par défaut, Jarvis deviendrait sourd sans
+// le moindre message.
+const reconnaissanceXml = readFileSync(
+  "android/app/src/main/res/xml/recognition_service.xml",
+  "utf8",
+)
+verifier(
+  "le moteur de reconnaissance refuse d'être choisi par défaut",
+  /android:selectableAsDefault="false"/.test(reconnaissanceXml),
+  "sans ça, Android peut le retenir comme moteur du téléphone et plus rien n'écoute",
+)
+
+// ── Une seule fenêtre monte un micro à la fois ───────────────────────────
+//
+// LE BUG DU 6 SEPT., 8 h 24 : estOverlay() est asynchrone, et pendant qu'elle
+// répondait le routeur rendait déjà la route « / » — donc la coquille de l'app
+// normale, donc un premier micro, qui consommait le drapeau « démarre
+// l'écoute » posé par l'activité avant de se faire démonter. Le micro de la
+// fenêtre d'assistance arrivait ensuite, ne trouvait plus le drapeau, et
+// attendait le mot-clé. Le journal montrait les deux rafales à 40 ms d'écart.
+verifier(
+  "on n'affiche rien tant qu'on ne sait pas dans quelle fenêtre on est",
+  quoiRendre("inconnu") === "attendre",
+)
+verifier(
+  "et la fenêtre d'assistance se rend sans passer par une redirection",
+  quoiRendre("overlay") === "overlay" && quoiRendre("normal") === "normal",
+  "une redirection laisserait, le temps d'un rendu, un second micro se monter",
+)
+verifier(
+  "le filet existe : un pont muet ne laisse pas un écran blanc",
+  DELAI_MAX_MS > 0 && DELAI_MAX_MS <= 3000,
+  `${DELAI_MAX_MS} ms — une app qui s'affiche vaut mieux qu'une app qui attend`,
+)
+
+const app = readFileSync("src/App.tsx", "utf8")
+verifier(
+  "App.tsx applique bien cette décision avant de rendre les routes",
+  app.includes("quoiRendre") && /if \(rendu === "attendre"\) return null/.test(app),
+  "sinon la coquille de l'app normale se remonte pendant l'attente, et le bug revient",
+)
+verifier(
+  "et la fenêtre d'assistance n'est plus atteinte par navigate()",
+  !app.includes('navigate("/assistant"'),
+  "la redirection est précisément ce qui montait deux micros",
 )
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

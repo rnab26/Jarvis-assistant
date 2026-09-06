@@ -1811,6 +1811,34 @@ plutôt que de le laisser deviner. Depuis le 6 sept., elle regarde `service`
 `candidat` : se fier à `candidat` seul lui disait « Jarvis peut être choisi »
 devant une liste où il n'était pas.
 
+### Deux pièges de la fenêtre d'assistance, payés le 6 sept.
+
+**UNE SEULE FENÊTRE DOIT MONTER UN MICRO.** `AssistOverlay.estOverlay()` est
+asynchrone. Tant qu'elle n'a pas répondu, le routeur rendait la route « / » —
+donc la coquille de l'app normale, donc un premier micro, qui consommait au
+passage le drapeau « démarre l'écoute » posé par l'activité avant de se faire
+démonter par la redirection. Le micro de la fenêtre d'assistance arrivait
+40 ms plus tard, ne trouvait plus le drapeau, et attendait le mot-clé —
+pendant que les deux se disputaient le micro du téléphone. À l'écran : « Dis
+Jarvis pour lancer la conversation » au lieu d'une écoute, et rien qui
+aboutit.
+
+`App.tsx` n'affiche donc RIEN tant qu'il ne sait pas où il est
+(`src/lib/demarrageOverlay.ts`, pur), et rend la fenêtre d'assistance
+directement plutôt que par une redirection. **Ne remets pas de `navigate()`
+vers `/assistant`** : c'est précisément ce qui montait deux micros. Un délai
+maximum évite l'écran blanc si le pont ne répond jamais.
+
+**LE MOTEUR DE RECONNAISSANCE-CROUPION NE DOIT JAMAIS ÊTRE CHOISI.** Dès que
+l'APK a déclaré le VoiceInteractionService, `com.raphael.jarvis` est apparu
+parmi les moteurs de reconnaissance de son téléphone — c'est
+`JarvisRecognitionService`, qui ne reconnaît rien. S'il était retenu comme
+moteur par défaut, Jarvis deviendrait sourd sans le moindre message. D'où
+`android:selectableAsDefault="false"` dans `res/xml/recognition_service.xml` :
+l'attribut est celui d'AOSP (`attrs.xml`, styleable `RecognitionService`), et
+`findAvailRecognizer` s'en sert pour écarter les moteurs qui ne veulent pas
+être choisis. Ne le retire pas.
+
 ### Prouver qu'une déclaration a bien atteint l'APK, sans téléphone
 
 Un manifeste juste dans le dépôt ne prouve rien : c'est la coquille Android
