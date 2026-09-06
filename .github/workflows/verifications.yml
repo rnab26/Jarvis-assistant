@@ -161,6 +161,11 @@ jobs:
       # Quand une déclaration du VoiceInteractionService manque, Android
       # rejette le service EN SILENCE : Jarvis disparaît de la liste des
       # assistants et rien, nulle part, ne dit pourquoi.
+      # « Il me dit qu'il a envoyé un message alors que ce n'est pas vrai. »
+      # Une chose qui ment ruine la confiance dans tout ce qui marche.
+      - name: Jarvis n'annonce jamais au passé ce qu'il n'a pas fait
+        run: node --experimental-strip-types scripts/verifier-honnetete.ts
+
       - name: Jarvis peut être choisi comme assistant du téléphone
         run: node --experimental-strip-types scripts/verifier-assistant.ts
 
