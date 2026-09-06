@@ -128,6 +128,67 @@ public class ActionsTelephonePlugin extends Plugin {
         call.resolve(res);
     }
 
+    /** Le corps commun des listes par usage : on interroge le systeme sur
+     * l'intent REEL qui sera lance, jamais sur une liste ecrite dans le code.
+     * Une application qui n'y repond pas ne servirait a rien une fois
+     * choisie — et c'est exactement le defaut qu'il a signale le 6 sept. :
+     * « il n'y a pas les applications qu'il y a ». */
+    private void repondreAvecLesApps(PluginCall call, Intent... intents) {
+        PackageManager pm = getContext().getPackageManager();
+        JSArray apps = new JSArray();
+        List<String> vus = new ArrayList<>();
+        for (Intent intent : intents) {
+            for (ResolveInfo info : pm.queryIntentActivities(intent, 0)) {
+                String paquet = info.activityInfo.packageName;
+                if (vus.contains(paquet)) continue;
+                vus.add(paquet);
+                JSObject app = new JSObject();
+                app.put("nom", String.valueOf(info.loadLabel(pm)));
+                app.put("paquet", paquet);
+                apps.put(app);
+            }
+        }
+        JSObject res = new JSObject();
+        res.put("applications", apps);
+        call.resolve(res);
+    }
+
+    /**
+     * Les applications capables d'ouvrir un ITINERAIRE.
+     *
+     * Raphael, 6 sept. 2026 : « il a une certaine logique de me demander pour
+     * un itineraire quelle application j'utilise, mais il ne sait pas la
+     * lancer. [...] en aucun cas il y a Waze. Il n'y a pas les applications
+     * qu'il y a. » Il n'y avait aucune liste a l'ecran pour les itineraires :
+     * la ligne de Parametres montrait la valeur retenue et un bouton
+     * « Oublier », rien de plus. Impossible de voir ce qui existe, impossible
+     * de choisir.
+     *
+     * On interroge donc le systeme sur `geo:` — l'intent que
+     * `itineraire()` lance vraiment.
+     */
+    @PluginMethod
+    public void listerApplicationsItineraire(PluginCall call) {
+        repondreAvecLesApps(call, new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=test")));
+    }
+
+    /**
+     * Les applications capables de recevoir une demande de MUSIQUE.
+     *
+     * Deux intents, et il faut les deux : celles qui savent jouer une
+     * recherche (MEDIA_PLAY_FROM_SEARCH — le vrai « lance du Brassens ») et
+     * celles qui se declarent simplement comme lecteurs de musique. Les
+     * secondes ne savent pas lancer une lecture toutes seules, mais elles
+     * s'ouvrent, et il doit pouvoir les choisir : c'est SON telephone.
+     */
+    @PluginMethod
+    public void listerApplicationsMusique(PluginCall call) {
+        Intent joue = new Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH);
+        Intent lecteur = new Intent(Intent.ACTION_MAIN);
+        lecteur.addCategory(Intent.CATEGORY_APP_MUSIC);
+        repondreAvecLesApps(call, joue, lecteur);
+    }
+
     /**
      * Les liens de recherche des applications de musique courantes.
      *

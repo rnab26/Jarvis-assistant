@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -57,6 +57,12 @@ export function AppsParDefaut() {
     return () => window.removeEventListener(REGLAGES_RESTAURES, relire)
   }, [])
 
+  // Stables : passées en prop à un effet, une fonction recréée à chaque
+  // rendu relancerait la lecture des applications en boucle.
+  const listerMusique = useCallback(() => ActionsTelephone.listerApplicationsMusique(), [])
+  const listerItineraire = useCallback(() => ActionsTelephone.listerApplicationsItineraire(), [])
+  const listerAppel = useCallback(() => ActionsTelephone.listerApplicationsAppel(), [])
+
   function oublier(cle: string) {
     ecrireReglage(cle, null)
     relire()
@@ -77,9 +83,26 @@ export function AppsParDefaut() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <Ligne
+        {/* LES TROIS LIGNES SE CHOISISSENT MAINTENANT ICI, et la liste vient
+            du TÉLÉPHONE. Son retour du 6 sept. 2026 : « il a une certaine
+            logique de me demander pour un itinéraire quelle application
+            j'utilise, mais il ne sait pas la lancer. […] en aucun cas il y a
+            Waze. Il n'y a pas les applications qu'il y a. » Il n'y avait
+            effectivement AUCUNE liste : ces lignes montraient la valeur
+            retenue et un bouton « Oublier », rien de plus. Impossible de voir
+            ce qui est installé, impossible de choisir sans repasser par
+            l'oral. Même cause racine que WhatsApp Business le matin même : on
+            supposait au lieu de regarder. */}
+        <LigneAvecChoix
           titre="Musique"
+          siRien="Rien de choisi : Jarvis te le demandera la prochaine fois."
+          siAucune="Aucune application de musique n'a été trouvée sur ton téléphone."
+          lister={listerMusique}
           valeur={musique}
+          onChoisir={(nom) => {
+            ecrireReglage(CLES_APP.musique, nom)
+            relire()
+          }}
           onOublier={() => oublier(CLES_APP.musique)}
         />
         {/* Ajoutée le 5 sept. 2026 au soir. Sans elle, Android affiche
@@ -91,7 +114,11 @@ export function AppsParDefaut() {
             ne la demande jamais à l'oral, donc une ligne avec le seul bouton
             « Oublier » n'aurait servi à rien — la préférence serait restée
             vide pour toujours. */}
-        <LigneAppel
+        <LigneAvecChoix
+          titre="Appels"
+          siRien="Rien de choisi : Android te demandera avec quelle application appeler."
+          siAucune="Aucune application capable de passer un appel n'a été trouvée."
+          lister={listerAppel}
           valeur={appels}
           onChoisir={(nom) => {
             ecrireReglage(CLES_APP.appels, nom)
@@ -99,9 +126,16 @@ export function AppsParDefaut() {
           }}
           onOublier={() => oublier(CLES_APP.appels)}
         />
-        <Ligne
+        <LigneAvecChoix
           titre="Itinéraires"
+          siRien="Rien de choisi : Jarvis te le demandera la prochaine fois."
+          siAucune="Aucune application capable d'ouvrir un itinéraire n'a été trouvée."
+          lister={listerItineraire}
           valeur={navigation}
+          onChoisir={(nom) => {
+            ecrireReglage(CLES_APP.navigation, nom)
+            relire()
+          }}
           onOublier={() => oublier(CLES_APP.navigation)}
         />
         {/* L'IA n'est plus ici : elle a sa carte, « Tes applications d'IA »,
@@ -232,11 +266,21 @@ function LigneWhatsApp({
  * (ACTION_CALL), pas toutes celles qui sont installées : en choisir une qui
  * ne répond pas à cet intent ne changerait rien, sans que rien ne le dise.
  */
-function LigneAppel({
+function LigneAvecChoix({
+  titre,
+  siRien,
+  siAucune,
+  lister,
   valeur,
   onChoisir,
   onOublier,
 }: {
+  titre: string
+  /** Ce que ça donne tant qu'il n'a rien choisi. */
+  siRien: string
+  /** Ce qu'on dit quand on a VRAIMENT regardé et qu'il n'y a rien. */
+  siAucune: string
+  lister: () => Promise<{ applications: ApplicationInstallee[] }>
   valeur: string | null
   onChoisir: (nom: string) => void
   onOublier: () => void
@@ -244,21 +288,19 @@ function LigneAppel({
   const [apps, setApps] = useState<ApplicationInstallee[] | null>(null)
 
   useEffect(() => {
-    ActionsTelephone.listerApplicationsAppel()
+    lister()
       .then((r) => setApps(r.applications ?? []))
       // Hors de l'app, ou APK antérieure à cette méthode : on retombe sur
       // l'affichage simple plutôt que sur une liste vide inexpliquée.
       .catch(() => setApps(null))
-  }, [])
+  }, [lister])
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-medium">Appels</p>
-          <p className="truncate text-xs text-muted-foreground">
-            {valeur ?? "Rien de choisi : Android te demandera avec quelle application appeler."}
-          </p>
+          <p className="font-medium">{titre}</p>
+          <p className="truncate text-xs text-muted-foreground">{valeur ?? siRien}</p>
         </div>
         {valeur && (
           <Button variant="ghost" size="sm" className="shrink-0" onClick={onOublier}>
@@ -272,9 +314,7 @@ function LigneAppel({
           Le choix ne s'affiche que dans l'application installée sur le téléphone.
         </p>
       ) : apps.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Aucune application capable de passer un appel n'a été trouvée.
-        </p>
+        <p className="text-xs text-muted-foreground">{siAucune}</p>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {apps.map((app) => (
@@ -298,31 +338,3 @@ function LigneAppel({
   )
 }
 
-function Ligne({
-  titre,
-  valeur,
-  onOublier,
-}: {
-  titre: string
-  valeur: string | null
-  onOublier: () => void
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-      <div className="min-w-0">
-        <p className="font-medium">{titre}</p>
-        <p className="truncate text-xs text-muted-foreground">
-          {valeur ?? "Rien de choisi : Jarvis te le demandera la prochaine fois."}
-        </p>
-      </div>
-      {valeur && (
-        // « Oublier » plutôt qu'un champ à retaper : le nom doit correspondre à
-        // une application réellement installée, et Jarvis sait la retrouver en
-        // la redemandant. Un nom tapé de travers ne lancerait rien.
-        <Button variant="ghost" size="sm" className="shrink-0" onClick={onOublier}>
-          Oublier
-        </Button>
-      )}
-    </div>
-  )
-}

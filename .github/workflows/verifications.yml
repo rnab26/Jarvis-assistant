@@ -193,6 +193,12 @@ jobs:
       - name: Le téléchargement de l'APK ne peut plus rester muet
         run: node --experimental-strip-types scripts/verifier-telechargement-apk.ts
 
+      # Les applications proposées doivent être celles du TÉLÉPHONE. Une
+      # liste écrite dans le code est fausse le jour où il installe autre
+      # chose — et « en aucun cas il y a Waze » est exactement ça.
+      - name: Les applications par défaut sont celles qui sont installées
+        run: node --experimental-strip-types scripts/verifier-apps-par-defaut.ts
+
       # Les connecteurs d'IA : « je n'ai pas pu regarder » ne doit jamais se
       # lire comme « tu n'as aucune application d'IA », et la liste des IA
       # connues met en avant sans jamais limiter.

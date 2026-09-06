@@ -729,6 +729,21 @@ cas.push(
     },
   },
   {
+    nom: "il envoie vers « Tes applications par défaut », jamais vers les autorisations",
+    phrase: "Où est-ce que je choisis l'application que tu utilises pour les itinéraires ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (SANS_ACCES.test(message)) return [false, `il se dit sans accès à l'interface : "${message}"`]
+      if (/autorisation/i.test(message)) {
+        return [false, `il renvoie vers les autorisations, où il n'y a aucune application : "${message}"`]
+      }
+      if (!/applications par d[ée]faut/i.test(message)) {
+        return [false, `la bonne carte n'est pas citée : "${message}"`]
+      }
+      return [true]
+    },
+  },
+  {
     nom: "il sait où retrouver ce qu'il a mémorisé",
     phrase: "Où je peux relire ce que tu as retenu sur moi ?",
     controle: (r) => {

@@ -592,6 +592,40 @@ choisie (`jarvis_app_appels`, avec repli si elle refuse l'intent), la carte
 qui se CHOISIT à l'écran, parce que Jarvis ne la demande jamais à l'oral —, et
 la permission se donne d'un geste depuis « Autorisations du téléphone ».
 
+## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
+
+Raphaël, 6 sept. 2026 : « il a une certaine logique de me demander pour un
+itinéraire quelle application j'utilise, mais il ne sait pas la lancer. Il me
+dit que je peux voir dans l'application à quelle application il a
+l'autorisation — sauf qu'en aucun cas il y a Waze. Il n'y a pas les
+applications qu'il y a. »
+
+**Même cause racine que WhatsApp Business le matin même** : on supposait au
+lieu de regarder. Trois défauts distincts dans cette phrase, et il fallait les
+trois.
+
+1. **Il n'y avait AUCUNE liste** pour les itinéraires ni la musique. Ces
+   lignes de « Tes applications par défaut » montraient la valeur retenue et
+   un bouton « Oublier », rien d'autre — seule la ligne Appels avait un vrai
+   sélecteur. `listerApplicationsItineraire()` et `listerApplicationsMusique()`
+   interrogent maintenant le système sur l'intent RÉELLEMENT lancé (`geo:`,
+   `MEDIA_PLAY_FROM_SEARCH` + `CATEGORY_APP_MUSIC`), et `LigneAvecChoix`
+   remplace les trois lignes. `CATEGORY_APP_MUSIC` a dû être ajouté aux
+   `<queries>` : sans ça, un lecteur de musique est invisible depuis
+   Android 11, en silence.
+2. **Demander puis ne rien lancer est pire que ne pas demander.** Une
+   préférence qui ne correspondait à aucune application installée retombait en
+   silence sur le sélecteur d'Android, et Jarvis annonçait quand même « je
+   t'ouvre l'itinéraire ». Il le DIT maintenant, et renvoie vers la carte.
+3. **Il renvoyait vers le mauvais écran.** « Autorisations du téléphone » ne
+   parle que de ce que le système laisse faire — il n'y a aucune application
+   dedans. La consigne l'interdit explicitement, et un contrôle bout-en-bout
+   le vérifie.
+
+`scripts/verifier-apps-par-defaut.ts` (CI) tient les trois, et il a été essayé
+à l'envers : viser la mauvaise liste, retirer le message d'application
+introuvable ou la déclaration `<queries>` le fait rougir.
+
 ## Chercher passe par les IA de son téléphone, jamais par une API
 
 Sa décision du 5 sept. 2026, à ne pas rouvrir : « je ne veux pas payer, je
@@ -1654,6 +1688,7 @@ node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le tem
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
 node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau
+node --experimental-strip-types scripts/verifier-apps-par-defaut.ts  # les applications proposées sont celles du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone

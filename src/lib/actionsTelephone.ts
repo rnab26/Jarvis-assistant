@@ -26,6 +26,13 @@ interface ActionsTelephonePlugin {
   /** Celles qui savent PASSER un appel — pas les mêmes que celles qu'on peut
    * ouvrir. C'est parmi elles qu'il choisit son application d'appel. */
   listerApplicationsAppel(): Promise<{ applications: ApplicationInstallee[] }>
+  /** Celles qui savent ouvrir un ITINÉRAIRE (`geo:`). La ligne « Itinéraires »
+   * de Paramètres n'avait aucune liste : impossible de voir Waze, impossible
+   * de le choisir — son retour du 6 sept. 2026. */
+  listerApplicationsItineraire(): Promise<{ applications: ApplicationInstallee[] }>
+  /** Celles qui savent recevoir une demande de MUSIQUE, ou qui se déclarent
+   * lecteurs de musique. */
+  listerApplicationsMusique(): Promise<{ applications: ApplicationInstallee[] }>
   lireContacts(): Promise<{ contacts: ContactTelephone[] }>
   ouvrirApplication(options: {
     paquet?: string
