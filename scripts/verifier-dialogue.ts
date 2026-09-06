@@ -223,6 +223,39 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
   verifier("« … euh » est suspendue", phraseSembleFinie("il faut que je passe euh"), false)
   verifier("« … à 14h » est finie", phraseSembleFinie("rendez-vous avec Yoni à 14h"), true)
   verifier("vide : pas finie", phraseSembleFinie(""), false)
+
+  // Un seul mot ne suffit jamais à en juger — voir MIN_MOTS_POUR_JUGER.
+  verifier("un seul mot : pas assez pour juger, jamais « finie »", phraseSembleFinie("plombier"), false)
+  verifier("une seule lettre : pareil", phraseSembleFinie("B"), false)
+}
+
+// 15. L'épellation ne coupe plus le tour après la première lettre.
+//
+// TROUVÉ le 6 sept. 2026 (chantier 6b33ee97) : « quand j'épelle des lettres,
+// il s'arrête et note n'importe quoi ». Chaque lettre arrivait comme un
+// segment isolé ; une lettre seule n'étant presque jamais dans
+// MOTS_SUSPENDUS, phraseSembleFinie() la jugeait « finie » dès la première,
+// et le tour se terminait avant qu'il ait fini d'épeler.
+{
+  const ADAPT: OptionsTour = { ...OPTS, silenceMs: 4000, silenceCourtMs: 1500 }
+
+  let etat = creerTour(0)
+  etat = noterTexte(etat, "B", 1000)
+  etat = cloturerSegment(etat)
+  verifier(
+    "une lettre seule + moteur arrêté : on N'ABANDONNE PAS le tour à 1,6 s",
+    decider(etat, 2600, ADAPT, false),
+    "attendre",
+  )
+
+  // La lettre suivante arrive : le tour continue d'accumuler normalement.
+  etat = noterTexte(etat, "C", 3000)
+  etat = cloturerSegment(etat)
+  verifier(
+    "la lettre suivante s'ajoute, le tour n'a pas été coupé entre les deux",
+    texteDuTour(etat),
+    "B C",
+  )
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
