@@ -337,6 +337,30 @@ Un jeu d'essai doit être distinct **après normalisation**, pas seulement à
 l'œil : trois listes de longueurs premières entre elles (11, 12, 13) donnent
 83 titres dont aucune paire ne se ressemble.
 
+### Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
+
+Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
+Claude** — la commande vocale avait compris « ajoute une tâche » là où il
+disait « ajoute un chantier ». L'une d'elles, « connexion entre mon Jarvis et
+celui de Mélissa », n'existait nulle part ailleurs : sa demande dormait dans sa
+liste de courses depuis sa dictée, invisible de toutes les sessions.
+
+L'onglet Tâches signale ces lignes, dit **ce qui les a fait reconnaître**, et
+propose « en faire un chantier ». La tâche est alors marquée **faite, jamais
+supprimée** : c'est sa liste, il doit retrouver ce qu'il a dicté.
+
+**Ce qui compte le plus est ce qu'il ne faut PAS signaler.** Raphaël est dans
+l'immobilier : chez lui « chantier » veut d'abord dire maçonnerie. « Appeler le
+chantier de la villa Dan », « commander les carreaux pour le chantier » sont de
+vraies tâches, et quatre contrôles gardent ce cas. Seules les tournures qui
+**annoncent une demande faite à Claude** sont retenues. Mesure sur ses 29
+tâches réelles : 6 signalées, 6 justes, 0 à tort.
+
+`doublonChantier.ts` sert maintenant aux deux listes (`EntreeComparable` :
+un titre, des notes, rien de plus) — trois « racheter un spot pour l'entrée »
+identiques dormaient dans ses tâches pendant que le cockpit prévenait depuis
+des jours.
+
 ### Les actions groupées et le « Annuler »
 
 Le bouton « Choisir » du cockpit passe le tableau en mode sélection : tout se
@@ -1349,11 +1373,13 @@ node --experimental-strip-types scripts/verifier-musique.ts       # « je lance 
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
+node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
+node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
@@ -1561,6 +1587,38 @@ n'entrerait pas dans les réglages recopiés en base ; et on passe par
 next-themes plutôt qu'un bricolage maison parce que `components/ui/sonner.tsx`
 lit déjà son état — sinon un toast clair s'afficherait au-dessus d'un écran
 sombre.
+
+## Les heures de silence protègent son sommeil, pas son attention
+
+Sa demande du 6 sept. 2026 : « concernant les heures de silence, si on
+l'utilise pour lancer une action, il faudrait que ça marche, oui. » Le cas
+visé est le rappel qu'il a demandé LUI-MÊME le soir (« rappelle-moi dans dix
+minutes ») : il partait sur le canal muet, et vu de son fauteuil il avait
+demandé quelque chose sans que rien ne se passe.
+
+La règle, en une phrase : **elles taisent ce que Jarvis INITIE pendant qu'il
+ne s'en sert pas, jamais ce qu'il a demandé.** En pratique, deux signes
+suffisent à lever le silence (`ilSenSertMaintenant`, pur, dans
+`annonceVocale.ts`) : l'app est à l'écran, ou il a parlé à Jarvis il y a moins
+de quinze minutes.
+
+**Le quart d'heure se raisonne à partir de SA phrase type**, « rappelle-moi
+dans dix minutes » : dix minutes tomberaient exactement sur la limite et
+rateraient le cas qu'il décrit. Au-delà, on parlerait la nuit longtemps après
+qu'il a reposé le téléphone.
+
+**`dansLaPlageSilencieuse` n'a pas bougé**, et son passage par minuit non plus
+— c'est `raisonDuSilence` qui ne l'applique plus quand il s'en sert. Et
+l'interrupteur « Sauf si je viens de te parler » (Paramètres › Notifications,
+sous les heures de silence) existe pour le cas inverse : lire au lit à côté de
+quelqu'un qui dort.
+
+**« Il vient de me parler » se lit dans `journalEcoute.ts`** (`derniereParole`),
+pas dans le moteur d'écoute : tout ce qui l'entend passe déjà par
+`noterEcoute` — micro classique, mode Live, widget. Un seul point à brancher,
+aucun chemin oublié. C'est en mémoire et pas en base, exprès : la question est
+« est-ce qu'il s'en sert EN CE MOMENT », et une valeur relue après un
+redémarrage répondrait « oui » à propos d'hier soir.
 
 ## Les notifications : Jarvis ne notifie QUE ce qui vit chez lui
 
@@ -1772,18 +1830,81 @@ android.googlesource.com). Deux branches, l'une OU l'autre suffit : un
 `VoiceInteractionService` protégé par `BIND_VOICE_INTERACTION` (avec
 `sessionService`, `recognitionService`, `supportsAssist`), **ou** une simple
 activité EXPORTÉE répondant à `ACTION_ASSIST` avec `MATCH_DEFAULT_ONLY`.
-`AssistOverlayActivity` remplit la seconde depuis le 4 sept., et l'APK publiée
-la porte bien — vérifié en téléchargeant la release et en lisant son manifeste
-binaire.
 
-**Donc quand la liste d'Android ne montre pas Jarvis, ne cherche pas dans le
-code : c'est l'APK INSTALLÉE qui est trop ancienne.** Le piège est neuf depuis
+**MAIS LA LISTE DE SAMSUNG NE REGARDE QUE LA PREMIÈRE.** Constaté par Raphaël
+le 6 sept. 2026, captures à l'appui : `AssistOverlayActivity` remplissait la
+seconde depuis le 4 sept., l'APK publiée la portait bien (vérifié en lisant
+son manifeste binaire), et Jarvis n'apparaissait toujours pas dans « Autres
+applications ». D'où `JarvisVoiceInteractionService` + sa session + un
+`JarvisRecognitionService` qui ne reconnaît rien.
+
+**Ce dernier n'est pas une fonctionnalité, c'est une case à cocher du
+système** : `VoiceInteractionServiceInfo` refuse tout le service avec « No
+recognitionService specified » si le XML n'en déclare pas — relevé dans la
+source le 6 sept. Et le rejet est SILENCIEUX : rien à l'écran, rien dans les
+journaux de l'app, Jarvis disparaît simplement de la liste. C'est pour ça que
+`scripts/verifier-assistant.ts` lit le manifeste et le XML plutôt que de faire
+confiance.
+
+**Donc quand la liste d'Android ne montre pas Jarvis, la première question
+reste : l'APK INSTALLÉE est-elle assez récente ?** Le piège est neuf depuis
 la mise à jour rapide, et il trompe : l'interface est à jour, ce qui donne
 toutes les raisons de croire l'app à jour, alors que le manifeste vit dans la
 coquille Android, que seule une vraie installation remplace. La carte
 « L'appui long sur la touche latérale » (Paramètres › Ce que Jarvis utilise)
 interroge le système sur notre propre paquet, sur l'appareil, et le dit —
-plutôt que de le laisser deviner.
+plutôt que de le laisser deviner. Depuis le 6 sept., elle regarde `service`
+(le VoiceInteractionService réellement déclaré par l'APK installée), pas
+`candidat` : se fier à `candidat` seul lui disait « Jarvis peut être choisi »
+devant une liste où il n'était pas.
+
+### Deux pièges de la fenêtre d'assistance, payés le 6 sept.
+
+**UNE SEULE FENÊTRE DOIT MONTER UN MICRO.** `AssistOverlay.estOverlay()` est
+asynchrone. Tant qu'elle n'a pas répondu, le routeur rendait la route « / » —
+donc la coquille de l'app normale, donc un premier micro, qui consommait au
+passage le drapeau « démarre l'écoute » posé par l'activité avant de se faire
+démonter par la redirection. Le micro de la fenêtre d'assistance arrivait
+40 ms plus tard, ne trouvait plus le drapeau, et attendait le mot-clé —
+pendant que les deux se disputaient le micro du téléphone. À l'écran : « Dis
+Jarvis pour lancer la conversation » au lieu d'une écoute, et rien qui
+aboutit.
+
+`App.tsx` n'affiche donc RIEN tant qu'il ne sait pas où il est
+(`src/lib/demarrageOverlay.ts`, pur), et rend la fenêtre d'assistance
+directement plutôt que par une redirection. **Ne remets pas de `navigate()`
+vers `/assistant`** : c'est précisément ce qui montait deux micros. Un délai
+maximum évite l'écran blanc si le pont ne répond jamais.
+
+**LE MOTEUR DE RECONNAISSANCE-CROUPION NE DOIT JAMAIS ÊTRE CHOISI.** Dès que
+l'APK a déclaré le VoiceInteractionService, `com.raphael.jarvis` est apparu
+parmi les moteurs de reconnaissance de son téléphone — c'est
+`JarvisRecognitionService`, qui ne reconnaît rien. S'il était retenu comme
+moteur par défaut, Jarvis deviendrait sourd sans le moindre message. D'où
+`android:selectableAsDefault="false"` dans `res/xml/recognition_service.xml` :
+l'attribut est celui d'AOSP (`attrs.xml`, styleable `RecognitionService`), et
+`findAvailRecognizer` s'en sert pour écarter les moteurs qui ne veulent pas
+être choisis. Ne le retire pas.
+
+### Prouver qu'une déclaration a bien atteint l'APK, sans téléphone
+
+Un manifeste juste dans le dépôt ne prouve rien : c'est la coquille Android
+publiée qui compte, et la mise à jour rapide ne la remplace pas. La release
+se lit d'ici, et c'est la meilleure preuve atteignable sans appareil :
+
+```bash
+curl -sSL -o app.apk https://github.com/rnab26/Jarvis-assistant/releases/download/latest-debug/app-debug.apk
+unzip -o -q app.apk AndroidManifest.xml 'res/xml/*'
+strings -el AndroidManifest.xml | grep -F JarvisVoiceInteractionService   # manifeste : UTF-16
+strings -a  res/xml/interaction_service.xml | grep -F recognitionService  # ressource : UTF-8
+```
+
+**Le piège, payé le 6 sept. : les deux ne s'encodent pas pareil.** Le
+manifeste binaire se lit avec `strings -el` (UTF-16), la ressource XML
+compilée avec `strings -a` (UTF-8). Utiliser `-el` sur la seconde ne rend
+RIEN — et « rien » se lit exactement comme « la déclaration est absente ».
+Vérifié sur la build 192 : les trois services, la permission, la meta-data et
+les quatre attributs du XML y sont tous.
 
 **Deux chemins qui n'existent pas, vérifiés : ne les retente pas.** L'action
 qui mène pile sur l'écran du choix (`MANAGE_DEFAULT_APP` + `EXTRA_ROLE_NAME`)

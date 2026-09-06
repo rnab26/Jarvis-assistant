@@ -2,7 +2,21 @@
 // qui ne connaît pas l'alias « @/ » de Vite.
 import { motsUtiles } from "./suggestionTheme.ts"
 import { normaliserRecherche } from "./sections.ts"
-import type { DevItem } from "@/types/database"
+/**
+ * Le minimum pour comparer deux entrées. Volontairement PLUS PETIT que
+ * `DevItem` : le 5 sept. 2026, trois tâches perso strictement identiques
+ * cohabitaient dans sa liste (« racheter un spot pour l'entrée de la
+ * maison », dictée trois fois) alors que le cockpit, lui, prévenait depuis
+ * des jours. Le module ne sait pas de quoi il parle, et c'est ce qui lui
+ * permet de servir aux deux listes.
+ */
+export interface EntreeComparable {
+  id: string
+  title: string
+  notes?: string | null
+  /** Absent pour une tâche : elle n'a pas d'archive. */
+  archived_at?: string | null
+}
 
 /**
  * « Ça existe déjà » : les chantiers proches de ce qu'on est en train
@@ -29,8 +43,8 @@ import type { DevItem } from "@/types/database"
  * fréquent, et il se tait le reste du temps plutôt que d'alerter à tort.
  */
 
-export interface ChantierProche {
-  item: DevItem
+export interface ChantierProche<T extends EntreeComparable = EntreeComparable> {
+  item: T
   /** Entre 0 et 1 : la part de vocabulaire commun. */
   score: number
   /** Les mots partagés, affichés pour que la ressemblance se juge d'un œil. */
@@ -48,11 +62,11 @@ const MOTS_MINIMUM = 2
  * Les chantiers qui ressemblent au texte en cours de saisie, le plus proche
  * en premier. Les archivés sont inclus — c'est même le cas le plus utile.
  */
-export function chantiersProches(
+export function chantiersProches<T extends EntreeComparable>(
   texte: string,
-  items: DevItem[],
+  items: T[],
   limite = 3,
-): ChantierProche[] {
+): ChantierProche<T>[] {
   const mots = new Set(motsUtiles(texte))
   if (mots.size < MOTS_MINIMUM) return []
 
@@ -80,7 +94,7 @@ export function chantiersProches(
 
       return { item, score: Number(score.toFixed(3)), motsCommuns: communsTitre }
     })
-    .filter((p): p is ChantierProche => p !== null && p.score >= SEUIL)
+    .filter((p): p is ChantierProche<T> => p !== null && p.score >= SEUIL)
     .sort(
       (a, b) =>
         b.score - a.score ||

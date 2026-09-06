@@ -16,14 +16,21 @@ import { ReglagesSysteme, type EtatAssistant } from "@/lib/reglagesSystemePlugin
  * par défaut › Autres applications.
  *
  * CE QUI QUALIFIE UNE APP, vérifié dans le code d'AOSP et pas deviné
- * (PermissionController, AssistantRoleBehavior.getQualifyingPackagesInternal) :
- * une activité exportée qui répond à ACTION_ASSIST avec MATCH_DEFAULT_ONLY.
- * Jarvis la déclare depuis le 4 sept. (AssistOverlayActivity), et l'APK
- * publiée la porte bien. Donc quand la liste ne montre pas Jarvis, la cause
- * n'est pas dans le code : c'est que l'APK INSTALLÉE est plus ancienne. Cette
- * carte le dit au lieu de le laisser deviner — elle interroge le système sur
- * notre propre paquet, sur l'appareil, plutôt que de supposer d'après le
- * dépôt.
+ * (PermissionController, AssistantRoleBehavior) : DEUX branches, une activité
+ * exportée répondant à ACTION_ASSIST, ou un vrai VoiceInteractionService.
+ *
+ * ET LA LISTE DE SAMSUNG NE REGARDE QUE LA SECONDE. Constaté par Raphaël le
+ * 6 sept. 2026, captures à l'appui : Jarvis remplissait la première depuis le
+ * 4 sept. et n'apparaissait toujours pas dans « Autres applications ». C'est
+ * donc `service` — le VoiceInteractionService déclaré par l'APK RÉELLEMENT
+ * installée — que cette carte regarde pour dire si la version installée
+ * suffit. Se fier à `candidat` seul lui dirait « Jarvis peut être choisi »
+ * devant une liste où il n'est pas, ce qui est le pire des messages.
+ *
+ * Elle interroge le système sur notre propre paquet, sur l'appareil, plutôt
+ * que de supposer d'après le dépôt : depuis la mise à jour rapide, une
+ * interface récente tourne souvent dans une coquille Android plus ancienne,
+ * et c'est la coquille qui porte le manifeste.
  *
  * ET ON NE PEUT PAS OUVRIR LA BONNE PAGE DIRECTEMENT : l'action qui y mène
  * (MANAGE_DEFAULT_APP + EXTRA_ROLE_NAME) est protégée par une permission de
@@ -139,21 +146,25 @@ export function AssistantTelephone({ pont = PONT_REEL }: { pont?: PontAssistant 
 
         {etat.pret && !etat.web && (
           <>
-            {(etat.assistant === null || !etat.assistant.candidat) && (
+            {(etat.assistant === null ||
+              !etat.assistant.candidat ||
+              etat.assistant.service !== true) && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 <p className="font-medium">
                   La version installée ne sait pas encore se déclarer comme assistant.
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  C'est pour ça que Jarvis n'apparaît pas dans la liste d'Android. Installe la
-                  dernière APK depuis la carte « Mettre à jour l'application » : la mise à jour
-                  rapide ne suffit pas, elle ne remplace que l'interface, pas la coquille Android
-                  qui porte cette déclaration.
+                  C'est pour ça que Jarvis n'apparaît pas dans la liste d'Android. Samsung n'y
+                  montre que les applications qui déclarent un vrai service d'assistance, et
+                  celle qui est installée ne le fait pas. Installe la dernière APK depuis la
+                  carte « Mettre à jour l'application » : la mise à jour rapide ne suffit pas,
+                  elle ne remplace que l'interface, pas la coquille Android qui porte cette
+                  déclaration.
                 </p>
               </div>
             )}
 
-            {etat.assistant?.candidat && etat.assistant.role === "actif" && (
+            {etat.assistant?.service === true && etat.assistant.role === "actif" && (
               <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm">
                 <p className="font-medium">Jarvis est l'assistant du téléphone.</p>
                 <p className="mt-1 text-muted-foreground">
@@ -163,7 +174,7 @@ export function AssistantTelephone({ pont = PONT_REEL }: { pont?: PontAssistant 
               </div>
             )}
 
-            {etat.assistant?.candidat && etat.assistant.role !== "actif" && (
+            {etat.assistant?.service === true && etat.assistant.role !== "actif" && (
               <p className="text-sm text-muted-foreground">
                 {etat.assistant.role === "inactif"
                   ? "Jarvis peut être choisi comme assistant, mais ce n'est pas lui pour l'instant."

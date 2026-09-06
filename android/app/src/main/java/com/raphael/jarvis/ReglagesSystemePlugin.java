@@ -84,6 +84,20 @@ public class ReglagesSystemePlugin extends Plugin {
                 .isEmpty();
         resultat.put("candidat", candidat);
 
+        // Le VOICE INTERACTION SERVICE, la seconde branche d'AOSP — et la
+        // seule que la liste de Samsung regarde. Constaté par Raphaël le
+        // 6 sept. 2026 : avec l'activité ACTION_ASSIST seule (donc `candidat`
+        // à vrai), Jarvis n'apparaissait toujours pas dans « Application
+        // d'assistant numérique par défaut ». Sans cette seconde lecture, la
+        // carte lui aurait dit « Jarvis peut être choisi » devant une liste
+        // où il n'est pas — le pire des messages.
+        Intent service = new Intent("android.service.voice.VoiceInteractionService");
+        service.setPackage(ctx.getPackageName());
+        boolean declareService = !ctx.getPackageManager()
+                .queryIntentServices(service, 0)
+                .isEmpty();
+        resultat.put("service", declareService);
+
         String role = "inconnu";
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {

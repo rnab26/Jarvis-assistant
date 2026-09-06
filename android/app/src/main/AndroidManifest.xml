@@ -67,6 +67,52 @@
             </intent-filter>
         </activity>
 
+        <!-- Ce qui rend Jarvis CHOISISSABLE comme assistant du telephone
+             (chantier 7b8e68a7). Le 5 sept. on avait declare une activite
+             exportee repondant a ACTION_ASSIST : c'est l'une des deux
+             branches qu'AOSP accepte, mais la liste de Samsung ne montre que
+             l'autre — un vrai VoiceInteractionService. Constate par Raphael
+             le 6 sept. au matin, captures a l'appui : il suit le chemin
+             jusqu'au bout et Jarvis n'y est pas.
+
+             La permission BIND_VOICE_INTERACTION n'est PAS decorative :
+             VoiceInteractionServiceInfo compare `si.permission` a cette
+             chaine exacte et refuse tout le service sinon, en silence. Les
+             deux services sont exportes parce que c'est le systeme qui s'y
+             lie, et cette permission de signature est ce qui les protege. -->
+        <service
+            android:name=".JarvisVoiceInteractionService"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".JarvisVoiceInteractionSessionService"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true" />
+
+        <!-- Un moteur de reconnaissance qui ne reconnait rien : Android
+             refuse le VoiceInteractionService dont le XML ne declare pas de
+             recognitionService (« No recognitionService specified »), et
+             Jarvis disparait de la liste sans le moindre message. Jarvis
+             ecoute par le plugin, qui vise le moteur de Google. -->
+        <service
+            android:name=".JarvisRecognitionService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
+
         <!-- La bulle flottante (chantier f5621562). Service de premier plan
              parce qu'une vue posée par WindowManager vit dans le processus de
              l'app : sans lui, Android tue ce processus en arriere-plan et la

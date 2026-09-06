@@ -452,6 +452,22 @@ try {
     "sans cette phrase, il appuie sur « Mettre à jour » et rien ne change",
   )
 
+  // LE CAS RÉEL DU 6 SEPT. 2026 : l'activité ACTION_ASSIST est déclarée, donc
+  // « candidat » est vrai — et Jarvis n'apparaît quand même pas dans la liste
+  // de Samsung, qui ne regarde que le VoiceInteractionService. La carte doit
+  // dire d'installer l'APK, pas « Jarvis peut être choisi ».
+  const assistSansService = page.locator("#assistant-sans-service")
+  verifier(
+    "activité déclarée mais pas le service : la carte dit encore d'installer l'APK",
+    await assistSansService.getByText(/ne sait pas encore se déclarer/).isVisible(),
+    "c'est le cas qui lui a fait suivre le chemin pour rien le 6 sept.",
+  )
+  verifier(
+    "et elle ne prétend PAS qu'il peut déjà être choisi",
+    !(await assistSansService.getByText(/ce n'est pas lui pour l'instant/).isVisible()),
+    "ce message-là devant une liste où Jarvis n'est pas est le pire des deux",
+  )
+
   const assistCandidat = page.locator("#assistant-candidat")
   verifier(
     "APK à jour mais assistant non choisi : la carte le dit",
