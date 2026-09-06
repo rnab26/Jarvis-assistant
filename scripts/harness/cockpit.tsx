@@ -206,6 +206,27 @@ const DECISIONS: DevLogEntry[] = [
   },
 ]
 
+/**
+ * Un compte rendu d'une session à l'autre, à sa VRAIE longueur.
+ *
+ * Le 6 sept., deux notes de 2 000 et 2 500 caractères occupaient les deux
+ * lignes les plus précieuses du bandeau « Depuis ton dernier passage » — le
+ * matin même où Raphaël a dit ne pas arriver à savoir ce qui avait bougé. Une
+ * note courte dans un banc d'essai ne reproduit pas ce défaut.
+ */
+const COMPTE_RENDU: DevLogEntry = {
+  id: "cr1",
+  user_id: "banc",
+  item_id: null,
+  author: "claude/une-autre-session",
+  kind: "info",
+  body:
+    "SESSION X — commits abc1234, def5678. CE QUI VOUS CONCERNE : " +
+    "la fonction machin a été déplacée, réutilisez-la plutôt que d'en écrire une seconde. ".repeat(20),
+  answered_at: null,
+  created_at: new Date(Date.now() - 90 * 60000).toISOString(),
+}
+
 const ERREURS = [
   erreur("Il a créé une tâche au lieu d'un chantier", "comprehension", 3),
   erreur("Le serveur vocal a refusé de répondre", "serveur"),
@@ -376,7 +397,7 @@ function BancDuCockpit() {
   const [sections] = useState<DevSection[]>(REELLES?.sections ?? REEL?.sections ?? SECTIONS)
   const [erreurs, setErreurs] = useState<JarvisErreur[]>(VOLUME ? erreursEnVolume() : ERREURS)
   const [messages, setMessages] = useState<DevLogEntry[]>(
-    REELLES?.messages ?? (CALME ? [] : [...MESSAGES, ...DECISIONS]),
+    REELLES?.messages ?? (CALME ? [] : [...MESSAGES, ...DECISIONS, COMPTE_RENDU]),
   )
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
 

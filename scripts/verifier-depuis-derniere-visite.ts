@@ -42,12 +42,17 @@ const chantier = (titre: string, creele: string, archiveLe: string | null = null
   updated_at: creele,
 })
 
-const message = (auteur: string, quand: string, corps = "coucou"): DevLogEntry => ({
+const message = (
+  auteur: string,
+  quand: string,
+  corps = "coucou",
+  kind: DevLogEntry["kind"] = "info",
+): DevLogEntry => ({
   id: `m${++n}`,
   user_id: "u",
   item_id: null,
   author: auteur,
-  kind: "info",
+  kind,
   body: corps,
   answered_at: null,
   created_at: quand,
@@ -60,7 +65,12 @@ const ITEMS = [
   chantier("Ouvert avant, toujours là", AVANT),
 ]
 const MESSAGES = [
+  // Un compte rendu d'une session à l'autre : c'est le cas RÉEL du 6 sept.,
+  // où deux notes de 2 000 et 2 500 caractères occupaient les deux lignes les
+  // plus précieuses du bandeau.
   message("claude/voix", APRES, "J'ai fini le micro."),
+  // Et une question qui lui est adressée, à lui : celle-là doit se lire.
+  message("claude/voix", APRES, "Tu veux qu'on coupe après 30 s ?", "question"),
   message("claude/voix", AVANT, "Message d'avant."),
   message("Raphaël", APRES, "Ce qu'il a écrit lui-même."),
 ]
@@ -86,9 +96,19 @@ verifier(
   !bilan.nouveaux.some((i) => i.archived_at),
 )
 verifier(
-  "les messages des sessions sont comptés",
-  bilan.messages.length === 1 && bilan.messages[0].body === "J'ai fini le micro.",
+  "ce qui lui est ADRESSÉ se lit dans le bandeau",
+  bilan.messages.length === 1 && bilan.messages[0].body === "Tu veux qu'on coupe après 30 s ?",
   JSON.stringify(bilan.messages.map((m) => m.body)),
+)
+verifier(
+  "et les notes entre sessions se comptent SANS se déballer",
+  bilan.notesEntreSessions === 1,
+  `${bilan.notesEntreSessions} — le 6 sept., deux comptes rendus de 2 000 et 2 500 caractères occupaient les deux lignes les plus précieuses du bandeau, le matin même où il a dit ne pas arriver à savoir ce qui avait bougé`,
+)
+verifier(
+  "une note entre sessions compte quand même comme « il s'est passé quelque chose »",
+  depuisDerniereVisite([], [message("claude/voix", APRES, "Compte rendu.")], HIER).quelqueChose,
+  "le bandeau serait vide un jour où trois sessions ont travaillé toute la nuit",
 )
 verifier(
   "ce que Raphaël a écrit lui-même n'est pas du nouveau pour lui",
