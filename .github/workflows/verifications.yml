@@ -123,6 +123,9 @@ jobs:
       - name: Les doublons déjà en base
         run: node --experimental-strip-types scripts/verifier-doublons-existants.ts
 
+      - name: Une tâche perso qui est en fait un chantier
+        run: node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts
+
       - name: Ce qui a bougé depuis le dernier passage
         run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
 

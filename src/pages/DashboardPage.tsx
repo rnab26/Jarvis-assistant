@@ -7,9 +7,10 @@ import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilte
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import type { Task } from "@/types/database"
 
 export function DashboardPage() {
-  const { tasksState } = useJarvisData()
+  const { tasksState, devItemsState } = useJarvisData()
   const {
     tasks,
     categories,
@@ -24,6 +25,27 @@ export function DashboardPage() {
   } = tasksState
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [newCategoryName, setNewCategoryName] = useState("")
+
+  /**
+   * Une « tâche » qui est en fait une demande à Claude passe dans le cockpit.
+   *
+   * On crée le chantier ET on marque la tâche faite — on ne la SUPPRIME
+   * jamais : c'est sa liste, et il doit pouvoir retrouver ce qu'il a dicté.
+   * La note d'origine part avec le chantier, sinon le contexte resterait dans
+   * la tâche pendant que le travail part sans lui.
+   */
+  async function enFaireUnChantier(task: Task, titre: string, notes: string | null) {
+    await devItemsState.addDevItem({
+      title: titre,
+      notes: [notes, `Dicté comme tâche perso le ${new Date(task.created_at).toLocaleDateString("fr-FR")}, remis dans le cockpit depuis l'onglet Tâches.`]
+        .filter(Boolean)
+        .join("\n\n"),
+      status: "todo",
+      priority: "normal",
+      theme: null,
+    })
+    await toggleStatus(task)
+  }
 
   const filteredTasks =
     categoryFilter === ALL_CATEGORIES
@@ -50,6 +72,7 @@ export function DashboardPage() {
         />
         <TaskFormDialog
           categories={categories}
+          taches={tasks}
           onSubmit={addTask}
           trigger={
             <Button size="sm">
@@ -83,6 +106,7 @@ export function DashboardPage() {
           onToggle={toggleStatus}
           onUpdate={updateTask}
           onDelete={deleteTask}
+          onEnFaireUnChantier={enFaireUnChantier}
         />
       )}
     </div>

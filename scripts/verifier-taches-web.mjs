@@ -97,13 +97,68 @@ try {
     await page.getByText("Appeler le plombier").first().isVisible(),
   )
 
+  // ── Une « tâche » qui est en fait une demande à Claude ──
+  // Au 5 sept. 2026, six de ses tâches étaient dans ce cas, dont une qui
+  // n'existait NULLE PART ailleurs : sa demande dormait dans sa liste de
+  // courses depuis sa dictée, invisible de toutes les sessions.
+  verifier(
+    "une demande à Claude est signalée sur sa ligne",
+    await page.getByText(/c'est une demande à Claude, pas une tâche/).first().isVisible(),
+  )
+  verifier(
+    "et la ligne dit CE QUI l'a fait reconnaître",
+    await page.getByText(/Ça commence par/).first().isVisible(),
+    "sans l'indice, il faudrait me croire sur parole",
+  )
+  verifier(
+    "une vraie tâche qui parle d'un chantier de maçonnerie n'est PAS signalée",
+    (await page.getByText(/c'est une demande à Claude/).count()) === 1,
+    "« commander les carreaux pour le chantier de la villa Dan » est une vraie tâche",
+  )
+
+  await page.getByRole("button", { name: "En faire un chantier" }).first().click()
+  await pause(400)
+  verifier(
+    "le chantier est créé avec un titre débarrassé de l'amorce",
+    (await page.locator("#chantiers-crees").innerText()).includes(
+      "Savoir combien il reste de credit",
+    ),
+    await page.locator("#chantiers-crees").innerText(),
+  )
+  verifier(
+    "et la tâche est marquée faite, jamais supprimée",
+    (await page.getByText("R un chantier : savoir combien il reste de credit").count()) > 0,
+    "c'est SA liste : il doit retrouver ce qu'il a dicté",
+  )
+
+  // ── « Ça existe déjà » à la saisie d'une tâche ──
+  // Trois « racheter un spot pour l'entrée de la maison » identiques
+  // dormaient dans sa liste : le cockpit prévenait, l'onglet Tâches non.
+  await page.getByRole("button", { name: "Nouvelle tâche" }).click()
+  await pause(300)
+  await page.getByLabel("Titre").fill("Racheter un spot pour l'entrée")
+  await pause(300)
+  verifier(
+    "à la saisie, une tâche déjà présente est signalée",
+    await page.getByText(/Tu as déjà une tâche proche|Tu as déjà des tâches proches/).isVisible(),
+  )
+  await page.getByLabel("Titre").fill("Réserver le restaurant de samedi")
+  await pause(300)
+  verifier(
+    "et rien n'est signalé quand la tâche est nouvelle",
+    (await page.getByText(/Tu as déjà/).count()) === 0,
+    "un avertissement qui se déclenche à tort n'est plus lu du tout",
+  )
+  await page.keyboard.press("Escape")
+  await pause(300)
+
   await page.getByRole("button", { name: "Supprimer" }).first().click()
   await pause(300)
   await page.getByRole("button", { name: "Supprimer", exact: true }).last().click()
   await pause(400)
   verifier(
     "confirmer supprime pour de bon",
-    await page.locator("#vide").isVisible(),
+    (await page.getByText("Appeler le plombier").count()) === 0,
     "la tâche est toujours là après confirmation",
   )
 } finally {
