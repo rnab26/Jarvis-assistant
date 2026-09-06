@@ -320,6 +320,18 @@ doitDonner("ajouter une tâche : commander les carreaux", {
 doitDonner("lance Spotify", { action: "open_app", app_name: "Spotify" })
 doitDonner("ouvre Apple Music", { action: "open_app", app_name: "Apple music" })
 
+console.log("\n— Élément affiché à l'écran, pas une application : le מכבי du 6 sept. au soir —")
+
+// « lance un episode » (deux mots, sans ponctuation) passait estUnNomDApp et
+// ouvrait מכבי au hasard — journal_ecoute, 6 sept. 2026, 18h42. C'est
+// exactement le cas que screen_action (3f3ad20b) doit traiter en lisant le
+// VRAI écran, jamais une application à deviner.
+doitLaisserPasser("lance un episode", "désigne un élément affiché, pas une application")
+doitLaisserPasser("lance la deuxième vidéo", "la phrase canonique de screen_action (3f3ad20b)")
+doitLaisserPasser("ouvre la première vidéo", "idem, avec « ouvre »")
+doitLaisserPasser("lance le dernier épisode", "idem, avec un ordinal accentué")
+doitLaisserPasser("lance le premier résultat", "un résultat de recherche, pas une application")
+
 console.log("\n— Confier une recherche à une IA installée : ses tournures du 5 sept. —")
 
 // Sa phrase, mot pour mot, dans le message du 5 septembre au soir. Elle

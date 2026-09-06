@@ -164,6 +164,26 @@ function estUnNomDApp(cible: string): boolean {
 }
 
 /**
+ * « un episode », « la deuxième vidéo », « le premier résultat » : un
+ * déterminant ou un ordinal suivi d'un nom générique désigne un ÉLÉMENT
+ * AFFICHÉ À L'ÉCRAN, jamais une application — c'est exactement le cas d'usage
+ * que 3f3ad20b confie à `screen_action` (« lance la deuxième vidéo »).
+ *
+ * Piège payé deux fois pour la même conséquence — ouvrir מכבי au hasard,
+ * `estUnNomDApp` ne suffisant pas à l'arrêter : le 5 sept. sur une phrase de
+ * dix mots, et le 6 sept. au soir sur « lance un episode » (deux mots, qui
+ * passe `estUnNomDApp` sans problème). Rendre la main au serveur ici, plutôt
+ * que de deviner une application, lui laisse la chance d'appeler
+ * `screen_action` — qui lit le VRAI écran au lieu de faire un rapprochement
+ * flou sur du texte.
+ */
+function ressembleAUnElementAffiche(cible: string): boolean {
+  return /^(?:un|une|le|la|les|ce|cette|mon|ma|son|sa)\s+(?:\d+|premi[eè]re?|deuxi[eè]me|troisi[eè]me|dernier|derni[eè]re|autre|prochaine?)?\s*(?:episode|épisode|vid[eé]o|chanson|morceau|chapitre|page|onglet|r[ée]sultat|article|photo|image)\b/i.test(
+    cible.trim(),
+  )
+}
+
+/**
  * Un titre de tâche ne garde ni l'amorce de commande qui le précède, ni la
  * ponctuation laissée par le retrait de la date. « une tâche pour demain :
  * sortir les poubelles » donne « Sortir les poubelles », pas
@@ -457,7 +477,13 @@ export function interpreterLocalement(
     // a ouvert מכבי : une phrase de dix mots avait été prise pour un nom
     // d'app. Au-delà de trois mots, ou dès qu'il y a une ponctuation de
     // phrase, on rend la main au serveur plutôt que d'ouvrir n'importe quoi.
-    if (!estUnNomDApp(cible)) return null
+    //
+    // Et le 6 sept. au soir, « lance un episode » (deux mots, qui passe le
+    // test ci-dessus sans problème) a rouvert exactement le même מכבי : un
+    // déterminant + un nom d'élément affiché (« un episode », « la deuxième
+    // vidéo ») désigne ce que `screen_action` doit cliquer sur l'écran RÉEL,
+    // jamais une application à deviner à l'aveugle.
+    if (!estUnNomDApp(cible) || ressembleAUnElementAffiche(cible)) return null
     return [{ action: "open_app", app_name: majuscule(cible) }]
   }
 
