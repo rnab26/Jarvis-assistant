@@ -914,11 +914,28 @@ par un déclencheur n'a personne à qui parler. On ratisse volontairement large 
 un chantier écarté à tort attend la prochaine session qu'il ouvre, ce qui ne
 coûte rien ; un chantier pris à tort part pendant qu'il dort.
 
-Le déclencheur est la Routine `trig_01JNQzAFipU7KT7FXomtz5cp`, une fois par
-heure. **Une session qu'elle ouvre n'hérite pas forcément des outils
-`mcp__github__*`** : dans ce cas elle ne peut pas lire la CI, et
-`docs/session-autonome.md` lui dit de lancer elle-même, en entier, ce que la CI
-lance — ce sont les mêmes scripts — puis de l'écrire dans `dev_log`.
+Le déclencheur est la Routine `trig_01AbpcwCgpLeVMTtyCfqRguQ`, une fois par
+heure, et elle réveille **une session persistante qui porte le dépôt**
+(`session_01HbJWrhPvY3kn3jzuCdyBWH`).
+
+**Une Routine qui ouvre une session FRAÎCHE ne lui donne pas le dépôt**, et
+c'est la première version de ce déclencheur : deux tirs pour rien, le 6 sept.
+`create_trigger` avec `create_new_session_on_fire` pose un `sources: []` — la
+session démarre dans un conteneur vide, sans `scripts/`, sans CLAUDE.md. Le
+piège est silencieux trois fois : la Routine se déclare `SUCCEEDED`, la session
+n'apparaît pas dans `list_sessions` (identifiant préfixé `cse_`), et la seule
+trace est une absence de ligne dans `passes_autonomes` — ce qui, dans l'app,
+ressemble exactement à « il n'y avait rien à faire ». Toute Routine qui doit
+toucher au dépôt se rattache donc à une session existante
+(`persistent_session_id`), comme le font déjà toutes les autres Routines de
+Raphaël. Après un tir, la vérification est une ligne de plus dans
+`passes_autonomes` ; sinon, `get_session` sur `last_run.session_id` et regarder
+si `session_context.sources` est vide.
+
+**Une session autonome n'hérite pas forcément des outils `mcp__github__*`** :
+dans ce cas elle ne peut pas lire la CI, et `docs/session-autonome.md` lui dit
+de lancer elle-même, en entier, ce que la CI lance — ce sont les mêmes
+scripts — puis de l'écrire dans `dev_log`.
 
 **Pour tout arrêter** : Paramètres › Le cockpit › Sessions autonomes. Le
 réglage `jarvis_sessions_autonomes` est lu EN BASE à chaque passe — d'où

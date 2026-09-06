@@ -38,13 +38,11 @@ passe est déjà enregistrée, elle apparaîtra dans Paramètres › Le cockpit,
 c'est tout ce qu'on attend d'elle. Chaque tour de plus est du crédit dépensé pour
 rien — c'est exactement ce qu'il a demandé d'éviter.
 
-Puis **archive-toi**, si l'outil `archive_session` du serveur claude-code-remote
-est disponible (`get_session` sans identifiant décrit la session courante) :
-c'est la seconde moitié de sa consigne, « ne pas augmenter le nombre de session
-qui deviendrais sûrement inactive a la fin de la tâche ». Vingt-quatre sessions
-vides par jour dans sa liste, c'est exactement ce qu'il ne veut pas. Une session
-qui a TRAVAILLÉ ne s'archive pas : il doit pouvoir la relire. Si l'outil n'est
-pas là, ne cherche pas de détour — termine, simplement.
+Tu n'as rien d'autre à faire : tu es une session PERSISTANTE, réveillée à
+chaque tir, et tu ne t'archives pas. C'est la seconde moitié de sa consigne,
+« ne pas augmenter le nombre de session qui deviendrais sûrement inactive a la
+fin de la tâche » — une seule session réveillée vingt-quatre fois vaut mieux que
+vingt-quatre sessions ouvertes puis abandonnées.
 
 ## Si le verdict est `travaille`
 
@@ -102,11 +100,36 @@ passe suivante s'enregistre alors en `eteint` et ne fait rien d'autre.
 Le déclencheur lui-même vit dans ses Routines sur claude.ai : c'est là qu'il en
 change la cadence ou qu'il le supprime.
 
-## Le déclencheur
+## Le déclencheur, et le piège qui a coûté deux passes pour rien
 
-Routine `trig_01JNQzAFipU7KT7FXomtz5cp` — « Jarvis — session autonome
-(horaire) », créée le 6 sept. 2026, une fois par heure à la minute 30. Elle
-n'envoie ni notification ni e-mail : ce qui s'est passé se lit dans l'app,
-Paramètres › Le cockpit. Raphaël peut la mettre en pause ou la supprimer depuis
-ses Routines sur claude.ai ; l'interrupteur de l'app, lui, laisse la Routine
-tourner mais fait que chaque passe se retire aussitôt.
+Routine `trig_01AbpcwCgpLeVMTtyCfqRguQ` — « Jarvis — session autonome
+(horaire) », une fois par heure. Elle réveille **une session persistante**,
+`session_01HbJWrhPvY3kn3jzuCdyBWH`, qui porte le dépôt. Raphaël peut la mettre
+en pause ou la supprimer depuis ses Routines sur claude.ai ; l'interrupteur de
+l'app, lui, laisse la Routine tourner mais fait que chaque passe se retire
+aussitôt.
+
+**UNE ROUTINE QUI OUVRE UNE SESSION FRAÎCHE NE LUI DONNE PAS LE DÉPÔT.** C'est
+la première version de ce déclencheur, et elle a tiré deux fois pour rien avant
+qu'on s'en aperçoive : `create_trigger` avec `create_new_session_on_fire` pose
+un `sources: []` dans la session ouverte. Elle démarre donc dans un conteneur
+vide, sans `scripts/passe-autonome.ts`, sans `scripts/sql.sh`, sans CLAUDE.md.
+
+Et le piège est SILENCIEUX de trois façons à la fois : la Routine se déclare
+`SUCCEEDED` (la session a bien démarré et répondu), la session n'apparaît pas
+dans `list_sessions` (son identifiant est préfixé `cse_`, pas `session_`), et la
+seule trace visible est une absence — aucune ligne dans `passes_autonomes`. Vu
+de l'app, ça ressemble exactement à « il n'y avait rien à faire ».
+
+D'où la règle : **une Routine qui doit toucher au dépôt se rattache à une
+session existante** (`persistent_session_id`), créée avec `create_session` et
+son `source_url`. C'est d'ailleurs ce que font toutes les autres Routines de
+Raphaël. Et c'est la seule chose qui a réellement prouvé que le mécanisme
+fonctionne : le même script, lancé depuis une session qui a le dépôt, rend son
+verdict en une seconde et écrit sa ligne.
+
+**Comment le vérifier, plutôt que de le croire** : après un tir, la table
+`passes_autonomes` doit avoir une ligne de plus. Si elle n'en a pas, la session
+n'a pas pu lancer le script — regarde `get_session` sur l'identifiant que donne
+`last_run.session_id` de la Routine, et vérifie que son `session_context.sources`
+n'est pas vide.
