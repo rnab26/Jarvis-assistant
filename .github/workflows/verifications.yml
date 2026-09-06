@@ -177,6 +177,12 @@ jobs:
       - name: Retrouver quelqu'un dans le répertoire du téléphone
         run: node --experimental-strip-types scripts/verifier-contact-repertoire.ts
 
+      # Une session qui se retire à tort ne coûte rien : Raphaël en ouvre une
+      # lui-même. Une session qui démarre à tort dépense son crédit pendant
+      # qu'il dort, ou code un chantier qu'il voulait d'abord trancher.
+      - name: Une session autonome se retire quand il le faut
+        run: node --experimental-strip-types scripts/verifier-sessions-autonomes.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.

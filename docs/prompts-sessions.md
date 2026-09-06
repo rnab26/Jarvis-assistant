@@ -552,3 +552,24 @@ d'ouvrir une session sur un autre thème :
 3. Le cockpit a un budget de hauteur mesuré : si tu ajoutes une carte,
    `scripts/verifier-cockpit-web.mjs` la refusera tant que tu n'auras pas pris
    la place à quelque chose qui fait doublon.
+
+## Les sessions que personne n'ouvre
+
+Depuis le 6 sept. 2026, une session peut être ouverte par un déclencheur
+horaire et non par Raphaël (chantier `59d8587f`, sa réponse : « Oui en continue
+même la journee »). Elle suit `docs/session-autonome.md`, qui n'est pas un
+prompt à coller : c'est une consigne versionnée, relue et discutée comme du
+code.
+
+Ce que ça change pour les sessions ordinaires, celles que Raphaël ouvre :
+
+1. **Réserve ce que tu traites, tout de suite.** Une session autonome regarde
+   `claim_dev_item` avant de démarrer et se retire s'il y a une réservation
+   vivante. Une session qui travaille sans réserver est invisible pour elle —
+   et deux sessions partiront sur le même chantier.
+2. **Un chantier marqué `[LIBRE]` est une promesse.** C'est le seul marqueur
+   qu'une session sans personne derrière elle a le droit de prendre. Ne le pose
+   que sur un chantier réellement spécifié de bout en bout.
+3. Ce qui n'a rien à voir avec un chantier — un correctif de passage, une
+   trouvaille — n'est pas visible d'elle. Comme d'habitude : ça devient une
+   ligne de `dev_items`, pas une note dans `dev_log`.

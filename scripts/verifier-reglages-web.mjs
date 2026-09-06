@@ -171,6 +171,55 @@ try {
     "la plupart des tâches dictées n'ont qu'une date : sans ce réglage, elles sonneraient à une heure imposée",
   )
 
+  // ── Les sessions autonomes ──
+  // Ça dépense son crédit et ça pousse du code pendant qu'il dort : il doit
+  // pouvoir tout arrêter d'un geste, et distinguer « rien à faire cette nuit »
+  // de « le déclencheur ne tourne plus ».
+  const autonomes = page.locator("#autonomes")
+  const autonomesVide = page.locator("#autonomes-vide")
+  const autonomesSilence = page.locator("#autonomes-silence")
+  const autonomesPanne = page.locator("#autonomes-panne")
+
+  verifier(
+    "l'interrupteur des sessions autonomes est là, et allumé par défaut",
+    (await autonomes.getByLabel("Travailler sans moi").isVisible()) &&
+      (await autonomes.getByLabel("Travailler sans moi").isChecked()),
+    "sans lui, il ne peut arrêter les sessions qu'en nous le demandant",
+  )
+  verifier(
+    "ce que la dernière passe a livré se lit sans déplier",
+    await autonomes.getByText(/Sections repliables livrées/).first().isVisible(),
+    "sinon il découvre au réveil du code sans savoir d'où il vient",
+  )
+  verifier(
+    "une passe qui s'est retirée dit pourquoi",
+    await autonomes.getByText(/Une session travaille déjà/).isVisible(),
+  )
+
+  await autonomes.getByLabel("Travailler sans moi").click()
+  await pause(200)
+  verifier(
+    "l'éteindre le dit tout de suite à l'écran",
+    await autonomes.getByText("Éteint", { exact: true }).isVisible(),
+    "un interrupteur qui ne change rien à l'écran ne dit pas s'il a été pris en compte",
+  )
+  await autonomes.getByLabel("Travailler sans moi").click()
+  await pause(200)
+
+  verifier(
+    "aucune passe encore enregistrée : l'écran vide est traité",
+    await autonomesVide.getByText(/En attente de la première passe/).isVisible(),
+  )
+  verifier(
+    "deux jours de silence ne se lisent PAS comme « rien à faire »",
+    await autonomesSilence.getByText(/Plus rien ne passe/).isVisible(),
+    "c'est exactement le cas où le déclencheur est mort sans que personne le voie",
+  )
+  verifier(
+    "une lecture en échec ne se lit pas comme une absence de passe",
+    await autonomesPanne.getByText(/Impossible de lire les passes/).isVisible(),
+  )
+
   // ── La durée de conservation des conversations ──
   // Ce réglage EFFACE, à chaque phrase, sans corbeille. Ce qui compte à
   // l'écran n'est pas qu'il existe : c'est qu'il demande AVANT, et qu'il dise

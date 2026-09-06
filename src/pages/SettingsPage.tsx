@@ -8,6 +8,7 @@ import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
 import { CarteAutorisations } from "@/components/settings/Autorisations"
 import { BulleFlottante } from "@/components/settings/BulleFlottante"
 import { Cockpit } from "@/components/settings/Cockpit"
+import { SessionsAutonomes } from "@/components/settings/SessionsAutonomes"
 import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
@@ -110,9 +111,9 @@ const SECTIONS = {
   cockpit: {
     cle: "cockpit",
     titre: "Le cockpit",
-    resume: "Ce qui compte comme « livré » dans « Où j'en suis »",
+    resume: "Ce qui compte comme « livré », et les sessions qui travaillent sans toi",
     motsCles:
-      "cockpit chantier section où j'en suis livré aujourd'hui 24 heures 7 jours semaine bilan avancement bouge dort pour toi",
+      "cockpit chantier section où j'en suis livré aujourd'hui 24 heures 7 jours semaine bilan avancement bouge dort pour toi sessions autonomes automatique nuit absence routine déclencheur libre crédit",
   },
   apparence: {
     cle: "apparence",
@@ -945,6 +946,7 @@ export function SettingsPage() {
 
       <Section {...SECTIONS.cockpit} filtre={recherche}>
         <Cockpit />
+        <SessionsAutonomes />
       </Section>
 
       <Section {...SECTIONS.apparence} filtre={recherche}>

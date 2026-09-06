@@ -664,6 +664,66 @@ en même temps que les chantiers.
 et laisse le reste libre, pour qu'une autre session puisse avancer en
 parallèle au lieu d'attendre après toi.
 
+## Les sessions autonomes : ce qui avance pendant ses absences
+
+Livré le 6 sept. 2026 (chantier `59d8587f`). Sa demande dictée : « Tout les
+chantiers ne nécessitant pas l'action de traiter des chantiers disponibles a
+travailler doivent etres travailler seul afin de gagner du temps en
+developpement sur les temps mort de ma présence ». Sa réponse, le 6 sept. à
+00 h 05 : « **Oui en continue même la journee. Éviter de lancer une session si
+une autre en est deja en cours et est disponible** pour plusieurs raison : ne
+pas consommer trop de crédit claude code, ne pas augmenter le nombre de session
+qui deviendrais sûrement inactive a la fin de la tâche ».
+
+Un déclencheur horaire (une Routine, visible dans ses Routines sur claude.ai)
+ouvre une session fraîche. **Tout le reste existait déjà** — marqueurs,
+réservation, hook de démarrage, CI sur toutes les branches, `demander.sh` pour
+ne pas bloquer sur un arbitrage. Il ne manquait que quelqu'un pour ouvrir la
+session.
+
+- `docs/session-autonome.md` — la consigne que suit cette session. Versionnée
+  exprès : une consigne se relit avant de prendre effet, elle ne se lit pas
+  depuis une ligne de base que personne n'a revue.
+- `src/lib/passeAutonome.ts` — **la décision, pure**. Vérifiée hors ligne par
+  `scripts/verifier-sessions-autonomes.ts`.
+- `scripts/passe-autonome.ts` — le premier geste d'une session autonome, en UN
+  appel à la base : `--demarrer` répond `travaille` (code 0) ou se retire
+  (code 3). Un verdict autre que `travaille` veut dire « n'ouvre aucun
+  fichier » : chaque tour de plus est du crédit dépensé pour rien.
+- Migration `0024_passes_autonomes.sql` — la trace des passes, et
+  `etat_pour_passe_autonome()`.
+- `src/components/settings/SessionsAutonomes.tsx` — l'interrupteur et ce qui
+  s'est passé (Paramètres › Le cockpit).
+
+**Le marqueur `[LIBRE]` se lit en TypeScript, jamais en SQL**, et c'est le
+point à ne pas défaire. `marqueurDe` est la seule lecture des marqueurs du
+projet, celle que le cockpit affiche. En écrire une seconde en SQL, c'est
+accepter qu'elles divergent un jour — et le jour où elles divergent, une
+session autonome code un chantier qu'il voulait d'abord trancher avec nous.
+D'où une fonction SQL qui rend l'ÉTAT (réglage, réservations, passes ouvertes,
+chantiers avec leurs notes) et un module TypeScript qui décide.
+
+**Une passe qui se retire s'enregistre elle aussi**, et c'est voulu : sans ça
+« il n'y avait rien à faire cette nuit » et « le déclencheur ne tourne plus
+depuis trois jours » se ressemblent parfaitement. La carte le dit
+(« Plus rien ne passe » au-delà de 200 minutes de silence alors que c'est
+allumé). Ces passes vivent dans leur propre table et **pas dans `dev_log`** :
+le hook de démarrage n'injecte que les douze dernières entrées du journal, et
+une passe par heure chasserait en une demi-journée ses consignes, les questions
+qui attendent sa décision et les messages entre sessions.
+
+**Les sujets qu'une session autonome ne prend jamais**, même marqués `[LIBRE]` :
+contrôle du téléphone, accès aux applications, envoi de messages en son nom,
+clonage vocal, toute dépense. Ils se discutent avec lui, et une session ouverte
+par un déclencheur n'a personne à qui parler. On ratisse volontairement large —
+un chantier écarté à tort attend la prochaine session qu'il ouvre, ce qui ne
+coûte rien ; un chantier pris à tort part pendant qu'il dort.
+
+**Pour tout arrêter** : Paramètres › Le cockpit › Sessions autonomes. Le
+réglage `jarvis_sessions_autonomes` est lu EN BASE à chaque passe — d'où
+`ecrireAutonomie()` et pas un `localStorage.setItem`, qui resterait sur son
+téléphone et n'éteindrait rien du tout.
+
 ## Un artefact est un lieu de passage : ce qu'il répond va EN BASE
 
 Sa demande du 5 sept. 2026 au soir, après avoir répondu aux quatorze points
@@ -1381,6 +1441,7 @@ node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça e
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
+node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une session autonome se retire quand il le faut, sans réseau
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur

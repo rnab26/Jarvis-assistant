@@ -86,6 +86,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/ModeLive.tsx",
   },
   {
+    cle: "jarvis_sessions_autonomes",
+    ou: "Paramètres › Le cockpit › Sessions autonomes",
+    fichier: "src/components/settings/SessionsAutonomes.tsx",
+  },
+  {
     cle: "jarvis_theme",
     ou: "Paramètres › Apparence › Thème",
     fichier: "src/components/settings/Theme.tsx",

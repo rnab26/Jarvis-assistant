@@ -12,6 +12,8 @@ import { Notifications } from "@/components/settings/Notifications"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
 import { Section } from "@/components/settings/Section"
 import { Memoire } from "@/components/settings/Memoire"
+import { SessionsAutonomes } from "@/components/settings/SessionsAutonomes"
+import type { PasseAutonome } from "@/lib/passeAutonome"
 import { Theme } from "@/components/settings/Theme"
 import type { NotificationsApi } from "@/hooks/useNotifications"
 import type { MajWebApi } from "@/hooks/useMajWeb"
@@ -151,6 +153,52 @@ function updateFactice(status: UpdateStatus) {
     recheck: async (): Promise<Verdict> => ({ status, published: PUBLIEE }),
   }
 }
+
+/** Une journée ordinaire de passes : une qui a livré, deux qui se sont
+ * retirées. Les dates sont posées par rapport à MAINTENANT, sinon le banc
+ * afficherait « plus rien ne passe » dès le lendemain de son écriture. */
+const ilYA = (minutes: number) => new Date(Date.now() - minutes * 60000).toISOString()
+
+const PASSES_BANC: PasseAutonome[] = [
+  {
+    id: "p1",
+    branche: "claude/auto-0906",
+    verdict: "occupe",
+    raison: "Une session travaille déjà (claude/voix-0509) sur « Le micro n'entend rien ».",
+    item_id: null,
+    resume: null,
+    commit_hash: null,
+    demarre_at: ilYA(20),
+    fini_at: ilYA(20),
+  },
+  {
+    id: "p2",
+    branche: "claude/auto-0906",
+    verdict: "travaille",
+    raison: "Chantier pris : « Ranger les chantiers par section ».",
+    item_id: "00000000-0000-0000-0000-000000000001",
+    resume: "Sections repliables livrées, CI verte, commit 5a83a15.",
+    commit_hash: "5a83a15",
+    demarre_at: ilYA(90),
+    fini_at: ilYA(45),
+  },
+  {
+    id: "p3",
+    branche: "claude/auto-0906",
+    verdict: "rien_a_prendre",
+    raison: "Aucun chantier marqué [LIBRE] n'est disponible.",
+    item_id: null,
+    resume: null,
+    commit_hash: null,
+    demarre_at: ilYA(150),
+    fini_at: ilYA(150),
+  },
+]
+
+/** Le déclencheur ne tourne plus : la dernière passe est vieille de deux jours. */
+const PASSES_MUETTES: PasseAutonome[] = [
+  { ...PASSES_BANC[2], id: "p9", demarre_at: ilYA(60 * 48), fini_at: ilYA(60 * 48) },
+]
 
 function BancDesReglages() {
   const [prefs, setPrefs] = useState<PrefsNotifications>(PREFS_NOTIFS_DEFAUT)
@@ -301,6 +349,24 @@ function BancDesReglages() {
         <Memoire api={{ dates: null, erreur: "Le serveur ne répond pas." }} />
       </div>
 
+      {/* Les sessions autonomes, dans les trois états qui comptent. Le
+          dernier est celui qui trompe : rien depuis des heures alors que
+          c'est allumé ne veut pas dire « il n'y avait rien à faire », ça veut
+          dire que le déclencheur ne tourne plus — et les deux se ressemblent
+          parfaitement si la carte ne le dit pas. */}
+      <div id="autonomes">
+        <SessionsAutonomes api={{ passes: PASSES_BANC, loading: false, error: null }} />
+      </div>
+      <div id="autonomes-vide">
+        <SessionsAutonomes api={{ passes: [], loading: false, error: null }} />
+      </div>
+      <div id="autonomes-silence">
+        <SessionsAutonomes api={{ passes: PASSES_MUETTES, loading: false, error: null }} />
+      </div>
+      <div id="autonomes-panne">
+        <SessionsAutonomes api={{ passes: [], loading: false, error: "Le serveur ne répond pas." }} />
+      </div>
+
       <div id="theme">
         <Theme />
       </div>
@@ -336,7 +402,7 @@ function BancDesReglages() {
           ["Notifications", "Ce que Jarvis a le droit de faire sonner"],
           ["Ce que Jarvis utilise", "Applications par défaut, appui long sur le bouton"],
           ["Mémoire", "Combien de temps il garde tes conversations"],
-          ["Le cockpit", "Ce qui compte comme « livré » dans « Où j'en suis »"],
+          ["Le cockpit", "Ce qui compte comme « livré », et les sessions qui travaillent sans toi"],
           ["Apparence", "Thème clair ou sombre, image du cœur"],
           ["Comptes et connexions", "Google"],
         ].map(([titre, resume], i) => (
