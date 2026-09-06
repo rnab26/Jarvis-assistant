@@ -112,9 +112,56 @@ try {
   )
   verifier(
     "une vraie tâche qui parle d'un chantier de maçonnerie n'est PAS signalée",
-    (await page.getByText(/c'est une demande à Claude/).count()) === 1,
+    // Deux tâches du banc sont des demandes à Claude (« savoir combien il
+    // reste de credit » et « la latence du mode Live »), et deux seulement :
+    // ni les carreaux de la villa Dan, ni le spot de l'entrée.
+    (await page.getByText(/c'est une demande à Claude/).count()) === 2,
     "« commander les carreaux pour le chantier de la villa Dan » est une vraie tâche",
   )
+
+  // ── Les tâches égarées, rassemblées en tête de l'onglet ──
+  // « Je ne vois pas de quelles 7 lignes existantes tu parles » (6 sept.) :
+  // le signalement existait sur chaque ligne, mais réparti dans vingt-neuf
+  // tâches et douze catégories, il ne se trouvait que par hasard.
+  {
+    const egares = page.locator("#egares")
+    verifier(
+      "les tâches qui sont en fait des chantiers sont rassemblées en tête",
+      await egares.getByText(/demandes? à Claude/).first().isVisible(),
+      "il faudrait tomber dessus en faisant défiler la liste",
+    )
+    verifier(
+      "et une vraie tâche de maçonnerie n'y figure pas",
+      !(await egares.getByText("Commander les carreaux pour le chantier").isVisible()),
+      "Raphaël est dans l'immobilier : « chantier » y désigne un chantier de maçonnerie",
+    )
+    verifier(
+      "chaque ligne dit CE QUI l'a fait reconnaître",
+      await egares.getByText(/Ça commence par/).first().isVisible(),
+      "il devrait nous croire sur parole",
+    )
+    verifier(
+      "et prévient quand le chantier existe DÉJÀ dans le cockpit",
+      await egares.getByText("Ça existe peut-être déjà dans le cockpit").first().isVisible(),
+      "un appui créerait un doublon de quelque chose parfois déjà livré — quatre cas sur six dans ses vraies données",
+    )
+    verifier(
+      "dans ce cas, on lui propose de RANGER la tâche, pas d'en créer un second",
+      (await egares.getByRole("button", { name: "Ranger la tâche" }).first().isVisible()) &&
+        (await egares.getByRole("button", { name: "Créer quand même" }).first().isVisible()),
+      "créer reste possible : c'est lui qui juge",
+    )
+
+    const avant = await egares.getByText(/Ça commence par/).count()
+    await egares.getByRole("button", { name: "Ranger la tâche" }).nth(1).click()
+    await pause(400)
+    verifier(
+      "ranger la tâche la fait sortir de la liste SANS créer de chantier",
+      (await egares.getByText(/Ça commence par/).count()) === avant - 1 &&
+        (await page.locator("#chantiers-crees").innerText()).includes("aucun"),
+      `${avant} → ${await egares.getByText(/Ça commence par/).count()} · ${await page.locator("#chantiers-crees").innerText()}`,
+    )
+  }
 
   await page.getByRole("button", { name: "En faire un chantier" }).first().click()
   await pause(400)

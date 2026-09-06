@@ -12,7 +12,7 @@
  * lui un chantier de maçonnerie neuf fois sur dix. Un signalement à tort sur
  * « appeler le chantier de la villa Dan » rendrait la ligne inutilisable.
  */
-import { chantierDeguise } from "../src/lib/tacheOuChantier.ts"
+import { chantierDeguise, chantiersEgares } from "../src/lib/tacheOuChantier.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -92,6 +92,54 @@ verifier(
   "une amorce suivie de deux lettres ne signale rien",
   chantierDeguise("Un chantier : ok", null) === null,
   "« Ok » ne fait pas un titre de chantier",
+)
+
+console.log("\n— La liste rassemblée, celle qu'il voit en tête de l'onglet —")
+
+// Sa réponse du 6 sept. : « Je ne vois pas de quelles 7 lignes existantes tu
+// parles. » Le signalement était sur chaque ligne, réparti dans vingt-neuf
+// tâches et douze catégories. Ce qui suit garde la liste qui les rassemble.
+const tache = (id: string, title: string, notes: string | null = null, status = "todo") => ({
+  id,
+  title,
+  notes,
+  status,
+})
+
+{
+  const liste = chantiersEgares([
+    tache("1", "R un chantier : savoir combien il reste de credit"),
+    tache("2", "Acheter des boîtes de rangement pour le scooter"),
+    tache("3", "Appeler le chantier de la villa Dan"),
+    tache("4", "Pour Claude Code : automatiser l'envoi des chantiers"),
+  ])
+  verifier(
+    "elle rassemble les tâches égarées, et rien d'autre",
+    liste.length === 2 && liste.map((e) => e.tache.id).join(",") === "1,4",
+    liste.map((e) => e.tache.title).join(" | "),
+  )
+  verifier(
+    "et chacune porte ce qui l'a fait reconnaître",
+    liste.every((e) => e.indice.indice.length > 0 && e.indice.titre.length > 2),
+    "sans ça, il devrait nous croire sur parole",
+  )
+}
+
+verifier(
+  "une tâche DÉJÀ FAITE n'est plus proposée",
+  chantiersEgares([tache("1", "R un chantier : la latence du mode Live", null, "done")]).length === 0,
+  "on lui proposerait de ressortir du cockpit quelque chose qu'il a déjà réglé",
+)
+
+verifier(
+  "sans tâche égarée, la liste est vide et la carte ne s'affiche pas",
+  chantiersEgares([tache("1", "Appeler Amir"), tache("2", "Racheter un spot")]).length === 0,
+  "une carte « aucune tâche égarée » est une ligne de plus à lire pour rien",
+)
+
+verifier(
+  "sans aucune tâche du tout, rien non plus",
+  chantiersEgares([]).length === 0,
 )
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

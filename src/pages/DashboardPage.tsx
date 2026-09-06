@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { LoadError } from "@/components/LoadError"
 import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
+import { ChantiersEgares } from "@/components/tasks/ChantiersEgares"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
@@ -94,6 +95,22 @@ export function DashboardPage() {
           Ajouter
         </Button>
       </div>
+
+      {/* En tête, et seulement s'il y en a. Le signalement existait déjà sur
+          chaque ligne ; avec vingt-neuf tâches réparties par catégorie, il ne
+          se trouvait que par hasard — ses mots du 6 sept. : « je ne vois pas
+          de quelles 7 lignes existantes tu parles ». La carte porte sur TOUTES
+          ses tâches, pas sur ce que le filtre de catégorie laisse passer :
+          une tâche égarée dans une catégorie qu'il ne regarde pas est
+          précisément celle qu'il ne trouve jamais. */}
+      {!loading && !error && (
+        <ChantiersEgares
+          tasks={tasks}
+          devItems={devItemsState.devItems}
+          onEnFaireUnChantier={enFaireUnChantier}
+          onMarquerFaite={toggleStatus}
+        />
+      )}
 
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>

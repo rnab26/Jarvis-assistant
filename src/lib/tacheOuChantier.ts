@@ -104,6 +104,42 @@ export function chantierDeguise(titre: string, notes?: string | null): IndiceCha
   return null
 }
 
+/** Ce qu'il faut d'une tâche pour la juger : son titre et sa note. */
+export interface TacheComparable {
+  id: string
+  title: string
+  notes: string | null
+  status: string
+}
+
+export interface TacheEgaree<T extends TacheComparable> {
+  tache: T
+  indice: IndiceChantier
+}
+
+/**
+ * Toutes les tâches encore ouvertes qui sont en fait des demandes à Claude.
+ *
+ * POURQUOI CETTE LISTE EXISTE, et pas seulement l'étiquette sur la ligne.
+ * Le 5 sept., six de ses tâches étaient des chantiers ; chacune portait déjà
+ * son signalement. Le 6 sept. au matin, sa réponse tenait en une phrase :
+ * « Je ne vois pas de quelles 7 lignes existantes tu parles. » Avec
+ * vingt-neuf tâches réparties par catégorie, un signalement sur la ligne ne se
+ * trouve que si on tombe dessus. Il faut donc les RASSEMBLER.
+ *
+ * Une tâche FAITE n'en est plus une : on ne va pas lui proposer de ressortir
+ * du cockpit quelque chose qu'il a déjà réglé.
+ */
+export function chantiersEgares<T extends TacheComparable>(taches: T[]): TacheEgaree<T>[] {
+  const trouves: TacheEgaree<T>[] = []
+  for (const tache of taches) {
+    if (tache.status === "done") continue
+    const indice = chantierDeguise(tache.title, tache.notes)
+    if (indice) trouves.push({ tache, indice })
+  }
+  return trouves
+}
+
 /** Le texte débarrassé de son amorce, quelle qu'elle soit. */
 function retirerAmorce(texte: string): string {
   const propre = normaliserRecherche(texte)
