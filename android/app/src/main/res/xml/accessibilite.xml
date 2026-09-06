@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  La configuration du service qui permet a Jarvis d'appuyer sur l'ecran.
+
+  canRetrieveWindowContent est ce qui autorise a LIRE l'ecran : sans lui,
+  getRootInActiveWindow() rend toujours null et le service serait la sans rien
+  voir, en silence.
+
+  accessibilityEventTypes est volontairement reduit a typeWindowStateChanged :
+  Jarvis ne surveille pas l'ecran en continu, il le lit au moment ou une
+  commande vocale le demande. Ecouter tous les evenements reviendrait a
+  enregistrer ce que Raphael fait toute la journee, pour rien.
+
+  Pas de liste d applications ici : la capacite est GENERALE, c'est sa demande du 6 sept.
+  2026 (« pas que pour WhatsApp »). Les applications ou Jarvis n'a pas le
+  droit d'appuyer sont une liste NOIRE tenue cote application
+  (src/lib/listeNoire.ts) ; filtrer ici reviendrait a une liste blanche, et
+  c'est exactement ce qu'il a ecarte.
+-->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibilite_description"
+    android:notificationTimeout="100" />

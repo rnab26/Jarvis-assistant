@@ -12,6 +12,7 @@ import { SessionsAutonomes } from "@/components/settings/SessionsAutonomes"
 import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
+import { ControleEcran } from "@/components/settings/ControleEcran"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
@@ -940,6 +941,7 @@ export function SettingsPage() {
         <AssistantTelephone />
         <BulleFlottante />
         <AppsParDefaut />
+        <ControleEcran />
         <FenetreAnnulation />
       </Section>
 

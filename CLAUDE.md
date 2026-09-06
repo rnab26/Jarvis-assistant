@@ -592,6 +592,88 @@ choisie (`jarvis_app_appels`, avec repli si elle refuse l'intent), la carte
 qui se CHOISIT à l'écran, parce que Jarvis ne la demande jamais à l'oral —, et
 la permission se donne d'un geste depuis « Autorisations du téléphone ».
 
+## Appuyer sur l'écran à sa place : une capacité GÉNÉRALE, pas un bouton WhatsApp
+
+Livré le 6 sept. 2026 (chantier `3f3ad20b`). Sa demande, en deux temps. Le
+5 sept. : « j'aimerais pousser encore un peu plus loin pour savoir s'il peut
+défiler l'écran en lui disant "attends, vas-y lance la deuxième vidéo", et ça
+lance la deuxième vidéo. » Puis le 6, qui élargit : « il faut aussi que ça
+puisse faire une activation de clics tout simplement sur le téléphone à la
+demande orale, et ça ce n'est pas là pour n'importe quoi, **pas que pour
+WhatsApp** ».
+
+D'où UNE brique et pas deux, et la frontière entre ses morceaux compte :
+
+- `JarvisAccessibiliteService.java` — l'arbre de l'écran, le clic, le
+  défilement. Il ne DÉCIDE rien.
+- `src/lib/ecranTelephone.ts` — **pur** : quel élément répond à « la deuxième
+  vidéo », et surtout quand il ne faut appuyer sur RIEN.
+- `src/lib/listeNoire.ts` — **pur** : où Jarvis n'a pas le droit d'appuyer.
+- `src/lib/controleEcran.ts` — le pont et l'enchaînement complet.
+- `src/components/settings/ControleEcran.tsx` — l'état réel + la liste noire.
+
+### La règle de sûreté est dans le module pur, et elle ne se négocie pas
+
+Rien trouvé, deux éléments qui se valent, écran changé depuis la lecture : on
+ne clique sur RIEN et on le dit. **La moitié de `verifier-ecran.ts` vérifie ce
+silence, pas la détection** — un clic de travers dans une application ouverte
+est une action qu'on ne rattrape pas.
+
+Trois choses à ne pas défaire :
+
+1. **« La deuxième vidéo » n'est pas « le deuxième élément cliquable ».** Sur
+   une page de résultats YouTube, le premier cliquable est la loupe de
+   recherche : compter à partir d'elle décale tout d'un rang et lance la
+   mauvaise vidéo. Un rang dit sans autre précision ne compte donc que ce qui
+   est DANS une liste qui défile (`dansListe`, posé par le service quand un
+   ancêtre est `scrollable`) — le contenu, pas la barre d'outils. Ça marche
+   sans rien connaître de YouTube ni d'aucune autre application.
+2. **On ne départage pas deux libellés par leur longueur.** « Envoyer » gagne
+   contre « Envoyer un fichier » parce qu'il ne dit RIEN DE PLUS que ce qui a
+   été demandé, pas parce qu'il est plus court. La règle par la longueur, qui
+   est la bonne pour retrouver une application par son nom
+   (`trouverApplication`), choisirait ici « Supprimer ici » plutôt que
+   « Supprimer tout » au hasard.
+3. **`cliquer()` relit l'arbre et refuse si le libellé a changé de rang.**
+   Entre la lecture et le clic, une vidéo finit de charger, une notification
+   arrive. Sans cette relecture, on appuierait sur ce qui a glissé à la place.
+
+### Il n'y a PAS de fenêtre d'annulation ici, et ce n'est pas un oubli
+
+La fenêtre (`actionsTelephoneFenetre.ts`) est un bandeau affiché DANS Jarvis.
+Quand Jarvis appuie sur l'écran de YouTube, c'est YouTube qui est au premier
+plan : le bandeau n'est visible nulle part. L'afficher quand même donnerait le
+pire des deux mondes — trois secondes d'attente à chaque clic, et rien à voir
+ni à toucher. Les garde-fous réels sont les trois points ci-dessus, la liste
+noire, et le fait que Jarvis **dit à voix haute sur quoi il vient d'appuyer,
+nommément** — « reviens en arrière » étant lui-même une commande qu'il sait
+faire, c'est le vrai chemin de rattrapage, et il marche pendant qu'il regarde
+l'autre application.
+
+### La liste noire, telle qu'il l'a décidée le 3 sept.
+
+**Liste noire, pas liste blanche** : autorisé partout, interdit sur la banque,
+les portefeuilles et les mots de passe, qu'il complète à la voix
+(`block_screen_app`). C'est pour ça que `accessibilite.xml` ne déclare
+**aucune** liste d'applications : filtrer là serait une liste blanche.
+
+**Et les entrées d'origine se retirent.** Une liste imposée qu'on ne peut pas
+défaire finit par bloquer quelque chose de légitime sans recours.
+
+**Ce qui lui est dit une fois, en toutes lettres, dans la carte** : la liste
+est appliquée par NOTRE code — elle empêche vraiment Jarvis d'agir — mais le
+service d'accessibilité garde techniquement la visibilité sur l'écran. Aucune
+application ne peut se restreindre elle-même là-dessus.
+
+### Ce que ça ne fait pas, et qu'il ne faut pas présenter comme livré
+
+**Rien de tout ça n'est vérifié sur l'appareil** : il n'y a pas de SDK Android
+ici, la CI prouve que ça compile, pas que ça clique. Et le service ne
+s'active pas tout seul — c'est un accès spécial qu'il accorde une fois dans
+les réglages d'Android (Paramètres › Ce que Jarvis utilise › « Appuyer sur
+l'écran à ta place » y renvoie). **Il faut une vraie APK**, la mise à jour
+rapide ne remplace pas la coquille Android.
+
 ## La bulle flottante, et pourquoi il n'y a PAS d'interrupteur pour l'appui long
 
 Livrée le 5 sept. 2026 (chantier `f5621562`, partie b). Sa demande, quand je
@@ -1517,6 +1599,7 @@ node --experimental-strip-types scripts/verifier-musique.ts       # « je lance 
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
+node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone

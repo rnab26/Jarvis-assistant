@@ -136,6 +136,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/BulleFlottante.tsx",
   },
   {
+    cle: "jarvis_liste_noire",
+    ou: "Paramètres › Ce que Jarvis utilise › Appuyer sur l'écran à ta place",
+    fichier: "src/components/settings/ControleEcran.tsx",
+  },
+  {
     cle: "jarvis_delai_annulation",
     ou: "Paramètres › Ce que Jarvis utilise › Le temps de l'arrêter",
     fichier: "src/components/settings/FenetreAnnulation.tsx",

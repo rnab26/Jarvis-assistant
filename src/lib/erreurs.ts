@@ -156,6 +156,24 @@ export function erreurDepuisEcoute(
     }
   }
 
+  // Le contrôle de l'écran rate en silence par nature : Jarvis dit « je n'ai
+  // rien touché », et personne d'autre ne le sait. Le titre porte la FAMILLE
+  // et l'APPLICATION, jamais la phrase dictée — c'est lui qui fait l'empreinte
+  // de regroupement, et dix échecs sur YouTube doivent faire UNE ligne avec un
+  // compteur, pas dix lignes que personne ne lira.
+  if (evenement === "ecran_action") {
+    const resultat = texte("resultat")
+    const ratees = new Set(["introuvable", "ambigu", "rang_trop_grand", "refus", "ecran_change"])
+    if (!resultat || !ratees.has(resultat)) return null
+    const ou = texte("application") ?? texte("paquet") ?? "une application"
+    return {
+      categorie: resultat === "refus" || resultat === "ecran_change" ? "action" : "comprehension",
+      titre: `Jarvis n'a pas pu appuyer sur ce qui était demandé dans ${ou}`,
+      detail: `${resultat} — « ${texte("cible") ?? ""} »`,
+      source: "app",
+    }
+  }
+
   if (evenement === "service_mort") {
     return {
       categorie: "ecoute",

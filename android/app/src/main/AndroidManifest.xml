@@ -130,6 +130,34 @@
                 android:value="pastille flottante d assistance, affichee a la demande de l utilisateur" />
         </service>
 
+        <!-- Le service qui permet a Jarvis d'appuyer sur l'ecran a la place de
+             Raphael (chantiers 3f3ad20b et ed32cbcc). Sa demande du 6 sept.
+             2026 : « il faut aussi que ca puisse faire une activation de
+             clics tout simplement sur le telephone a la demande orale, et ca
+             ce n'est pas la pour n'importe quoi, pas que pour WhatsApp. »
+
+             BIND_ACCESSIBILITY_SERVICE n'est pas decorative : Android refuse
+             de se lier a un service d'accessibilite qui ne la declare pas, et
+             il n'apparait alors nulle part dans les reglages. Exporte parce
+             que c'est le systeme qui s'y lie, et cette permission de
+             signature est ce qui le protege.
+
+             Il ne s'active PAS a l'installation : c'est un acces special que
+             seul Raphael peut accorder, une fois, dans ses reglages Android.
+             La carte « Appuyer sur l'ecran a ta place » de Parametres lit
+             l'etat REEL et ouvre le bon ecran. -->
+        <service
+            android:name=".JarvisAccessibiliteService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibilite" />
+        </service>
+
         <receiver android:name=".JarvisWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

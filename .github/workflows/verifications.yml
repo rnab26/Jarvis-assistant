@@ -180,6 +180,13 @@ jobs:
       - name: Jarvis n'annonce jamais au passé ce qu'il n'a pas fait
         run: node --experimental-strip-types scripts/verifier-honnetete.ts
 
+      # Le contrôle de l'écran. La moitié de ces contrôles vérifie le SILENCE :
+      # quand l'élément désigné n'existe pas, ou que deux éléments se valent,
+      # on ne clique sur RIEN. Un clic de travers dans une application ouverte
+      # est une action qu'on ne rattrape pas.
+      - name: Appuyer sur l'écran à sa place, et refuser quand on n'est pas sûr
+        run: node --experimental-strip-types scripts/verifier-ecran.ts
+
       - name: Jarvis peut être choisi comme assistant du téléphone
         run: node --experimental-strip-types scripts/verifier-assistant.ts
 

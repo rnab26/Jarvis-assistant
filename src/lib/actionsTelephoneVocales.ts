@@ -13,6 +13,9 @@ import type { Contact } from "@/types/database"
 import { noterQuestionEnvoyee } from "@/lib/questionEnAttente"
 import { chercherContact } from "@/lib/chercherContact"
 import { lireRepertoire } from "@/lib/repertoire"
+import { agirSurEcran, reglagesListeNoire } from "@/lib/controleEcran"
+import type { CommandeEcran } from "@/lib/ecranTelephone"
+import { CLE_LISTE_NOIRE, entreeDepuisLaVoix, listeEffective } from "@/lib/listeNoire"
 
 /** Les catégories du téléphone où Jarvis doit choisir une application sans
  * qu'on la lui nomme à chaque fois — apprises une fois, retenues ensuite. */
@@ -42,6 +45,13 @@ export type ActionTelephone =
   | { action: "media_control"; media_command: CommandeMedia }
   | { action: "set_app_preference"; category: CategorieAppTelephone; app_name: string }
   | { action: "ask_ai"; question: string; app_name?: string }
+  /** Appuyer sur l'écran d'une autre application, faire défiler, revenir en
+   * arrière. La capacité générale du chantier 3f3ad20b — « pas que pour
+   * WhatsApp ». La décision « quel élément » est locale (ecranTelephone.ts). */
+  | { action: "screen_action"; screen_command: CommandeEcran; screen_target?: string }
+  /** « n'appuie jamais dans Bitwarden » : la liste noire se complète à la
+   * voix, c'est sa décision du 3 sept. */
+  | { action: "block_screen_app"; app_name: string }
 
 const SUR_LE_TELEPHONE_SEULEMENT =
   "Ça, je ne peux le faire que depuis l'application installée sur ton téléphone — ici je n'ai pas accès à tes autres applications."
@@ -485,6 +495,29 @@ export async function executerActionTelephone(
         }
         ecrireReglage(CLES_APP[action.category], trouvee.nom)
         return `Compris, j'utiliserai ${trouvee.nom} pour ${NOM_CATEGORIE[action.category]}.`
+      }
+
+      case "screen_action": {
+        // La capacité générale : lire l'écran, désigner, cliquer, défiler.
+        // Aucune fenêtre d'annulation ici, et c'est expliqué dans
+        // controleEcran.ts : le bandeau est affiché DANS Jarvis, invisible
+        // pendant que YouTube ou WhatsApp est au premier plan.
+        return await agirSurEcran(action.screen_command, action.screen_target)
+      }
+
+      case "block_screen_app": {
+        const entree = entreeDepuisLaVoix(action.app_name)
+        if (!entree) return "Je n'ai pas compris quelle application je dois laisser tranquille."
+        const reglages = reglagesListeNoire()
+        const deja = listeEffective(reglages).some(
+          (e) => e.motif.toLowerCase() === entree.motif.toLowerCase(),
+        )
+        if (deja) return `${entree.libelle} est déjà dans les applications où je n'appuie pas.`
+        ecrireReglage(
+          CLE_LISTE_NOIRE,
+          JSON.stringify({ ...reglages, ajouts: [...reglages.ajouts, entree] }),
+        )
+        return `C'est noté : je n'appuierai jamais sur l'écran de ${entree.libelle}. Tu peux revenir dessus dans Paramètres.`
       }
 
       case "ask_ai": {

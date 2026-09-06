@@ -6,4 +6,5 @@
     <string name="custom_url_scheme">com.raphael.jarvis</string>
     <string name="widget_taches_description">Ce qu\'il te reste à faire, avec le cœur de Jarvis. Appuie pour lui parler.</string>
     <string name="widget_coeur_description">Le cœur de Jarvis seul. Appuie dessus, il écoute.</string>
+    <string name="accessibilite_description">Permet a Jarvis d\'appuyer sur l\'ecran a ta place quand tu le lui demandes a la voix : lancer la deuxieme video, faire defiler, appuyer sur Envoyer. Jarvis ne lit l\'ecran qu\'au moment ou tu lui demandes quelque chose, et jamais dans les applications que tu as mises sur sa liste noire.</string>
 </resources>

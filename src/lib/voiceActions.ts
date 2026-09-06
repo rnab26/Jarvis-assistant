@@ -608,6 +608,8 @@ export async function executeVoiceAction(
     case "media_control":
     case "set_app_preference":
     case "ask_ai":
+    case "screen_action":
+    case "block_screen_app":
       return await executerActionTelephone(action, contacts)
 
     case "chat":
