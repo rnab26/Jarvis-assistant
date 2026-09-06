@@ -106,6 +106,14 @@ jobs:
       - name: Le moteur — quel fournisseur, quel modèle, quels seaux de quota
         run: node --experimental-strip-types scripts/verifier-moteur.ts
 
+      # « Savoir combien il me reste, et à combien de temps de discussion ça
+      # équivaut. » Sur l'offre gratuite il n'y a pas de solde, seulement des
+      # plafonds qui ne se lisent qu'une fois dépassés : la moitié de ces
+      # contrôles refuse qu'on invente un chiffre, l'autre moitié refuse qu'on
+      # l'alerte pour un refus par minute, qui se lève tout seul.
+      - name: Ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas
+        run: node --experimental-strip-types scripts/verifier-consommation.ts
+
       # « Une panne qui se lit comme une absence » : un rappel de mémoire qui
       # échoue rendait le même résultat qu'un rappel qui n'a rien trouvé. Ce
       # contrôle lit le code, parce que la règle porte sur sa forme.

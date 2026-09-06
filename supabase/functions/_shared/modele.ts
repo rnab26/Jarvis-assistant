@@ -22,6 +22,8 @@
 // les commandes courantes sans aucun modèle. Plus on en traite localement,
 // moins le moteur compte.
 
+import type { SupabaseClient } from "jsr:@supabase/supabase-js@2"
+
 /**
  * À quoi sert l'appel. Ce n'est PAS un nom de modèle : chaque fournisseur
  * traduit le rôle vers ce qu'il sait faire.
@@ -57,6 +59,16 @@ export interface AppelModele {
    * découvert en pleine conversation.
    */
   essai?: boolean
+  /**
+   * Où noter ce que l'appel a coûté (chantier 5ac4d12c, sa demande du 5 sept. :
+   * « savoir combien il me reste de crédit […] et le noter constamment »).
+   *
+   * Facultatif : le banc d'essai de `scripts/verifier-moteur.ts` appelle sans,
+   * et une Edge Function qui ne le passe pas marche exactement pareil. Ce qui
+   * est noté ne doit JAMAIS faire échouer ce qu'il observe — même règle que
+   * `signalerErreur`.
+   */
+  journal?: { supabase: SupabaseClient; userId: string }
 }
 
 export interface Consommation {
@@ -278,8 +290,13 @@ export async function appelerModele(appel: AppelModele): Promise<ResultatModele>
   const candidats = [modele, ...secours]
   let dernier: ResultatModele = {}
 
-  for (const candidat of candidats) {
+  for (const [rang, candidat] of candidats.entries()) {
+    const debut = Date.now()
     dernier = await tenterUnModele(f, { ...appel, modele: candidat, cle })
+    // Chaque candidat essayé laisse sa ligne, pas seulement celui qui répond :
+    // sinon un secours sollicité tous les jours reste invisible, et on ne
+    // découvre que le principal est mort qu'au moment où tout se tait.
+    noter(appel, f.nom, candidat, dernier, Date.now() - debut, rang)
     if (!dernier.echec) return { ...dernier, modele: candidat, fournisseur: f.nom }
     // Quota atteint ou modèle saturé : le suivant a son propre seau et sa
     // propre capacité. Toute autre erreur (400, 403…) vient de la requête ou
@@ -288,6 +305,58 @@ export async function appelerModele(appel: AppelModele): Promise<ResultatModele>
   }
 
   return { ...dernier, fournisseur: f.nom }
+}
+
+/**
+ * Note ce que l'appel a coûté, sans jamais gêner l'appel lui-même.
+ *
+ * Pas d'`await` chez l'appelant, erreurs avalées : la commande de Raphaël a
+ * déjà été exécutée et sa réponse déjà donnée quand on arrive ici. Une
+ * comptabilité qui casserait la commande qu'elle compte serait absurde.
+ */
+function noter(
+  appel: AppelModele,
+  fournisseur: string,
+  modele: string,
+  resultat: ResultatModele,
+  ms: number,
+  rang: number,
+): void {
+  if (!appel.journal) return
+  const e = resultat.echec
+  void appel.journal.supabase
+    .rpc("noter_appel_modele", {
+      p_fournisseur: fournisseur,
+      p_role: appel.role,
+      p_modele: modele,
+      p_statut: e ? e.statut : 200,
+      p_seau: e ? seauDuRefus(e) : null,
+      p_entree: resultat.consommation?.entree ?? null,
+      p_sortie: resultat.consommation?.sortie ?? null,
+      p_reflexion: resultat.consommation?.reflexion ?? null,
+      p_cache_lu: resultat.consommation?.cache_lu ?? null,
+      p_ms: ms,
+      p_essai: appel.essai === true,
+      // 0 = le principal. C'est le serveur qui le sait : le principal se règle
+      // par secret, et l'app ne peut pas lire les secrets.
+      p_rang: rang,
+    })
+    .then(() => {}, () => {})
+}
+
+/**
+ * Quel plafond a refusé — et c'est la distinction qui compte.
+ *
+ * Un 429 « par minute » se lève tout seul en soixante secondes ; un 429
+ * « par jour » laisse Jarvis muet jusqu'au lendemain. Les deux se ressemblent
+ * dans les journaux, et c'est ce qui a fait perdre du temps le 3 sept. : on
+ * croyait à une saturation passagère alors que le seau du JOUR était vide.
+ */
+export function seauDuRefus(echec: Echec): "minute" | "jour" | "autre" {
+  const id = echec.quota?.id ?? ""
+  if (/PerDay/i.test(id)) return "jour"
+  if (/PerMinute/i.test(id)) return "minute"
+  return "autre"
 }
 
 async function tenterUnModele(f: Fournisseur, appel: AppelResolu): Promise<ResultatModele> {

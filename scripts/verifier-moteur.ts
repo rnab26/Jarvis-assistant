@@ -95,6 +95,7 @@ const {
 } = await import("../supabase/functions/_shared/modele.ts")
 const { gemini } = await import("../supabase/functions/_shared/gemini.ts")
 const { anthropic } = await import("../supabase/functions/_shared/anthropic.ts")
+const { PLAFONDS_MESURES } = await import("../src/lib/consommationModele.ts")
 
 const OUTIL = {
   name: "outil",
@@ -333,6 +334,27 @@ const remiseAZero = (nouveaux: Record<string, string> = {}) => {
 
   remiseAZero()
   verifier("moteur configuré : aucun message", (await moteurNonConfigure(false)) === null)
+}
+
+// ── Un modèle mis en service a été mesuré ──────────────────────────────────
+// Les deux moitiés de la règle : le serveur choisit les modèles,
+// src/lib/consommationModele.ts dit à Raphaël ce qu'il lui reste. Si l'une
+// bouge sans l'autre, la carte affiche un chiffre qui parle d'un modèle qui ne
+// tourne plus — et il n'a aucun moyen de s'en apercevoir.
+{
+  remiseAZero()
+  const enService = new Set<string>()
+  for (const role of ["commande", "memoire"] as const) {
+    const { modele, secours } = gemini.modeles(role)
+    enService.add(modele)
+    for (const m of secours) enService.add(m)
+  }
+  const sansMesure = [...enService].filter((m) => !PLAFONDS_MESURES[m])
+  verifier(
+    "chaque modèle Gemini en service a un plafond mesuré",
+    sansMesure.length === 0,
+    `jamais mesuré(s) : ${sansMesure.join(", ")} — mets un modèle en service seulement après l'avoir essayé pour de vrai, sinon la carte « où j'en suis » parle dans le vide`,
+  )
 }
 
 // ── Les phrases dites à Raphaël ────────────────────────────────────────────

@@ -1127,6 +1127,57 @@ remplace `Deno` et `fetch` par des doublures et fait tourner le VRAI
 répartiteur. Un contrôle qui chercherait des mots dans un fichier resterait
 vert le jour où la bascule cesse de marcher.
 
+### « Combien il me reste, et à combien de temps de discussion » (6 sept. 2026)
+
+Chantier `5ac4d12c`, dicté le 5 sept. : « savoir combien il me reste de crédit
+et à combien de temps de discussion ça équivaut, et le noter constamment ».
+
+**Il n'y a pas de solde, et il ne faut pas en inventer un.** Jarvis tourne sur
+l'offre GRATUITE : ce qui existe, ce sont des plafonds en requêtes par minute
+et par jour, comptés par modèle et par projet — et ils ne sont publiés nulle
+part. Ils ne se lisent que dans le corps d'un 429, donc une fois dépassés. Un
+pourcentage inventé serait pire que pas de chiffre : il se lit comme une
+mesure, et il s'est déjà retrouvé sans Jarvis deux fois alors que tout avait
+l'air normal.
+
+Trois pièces, et la frontière compte :
+
+- Migration `0025_appels_modele.sql` — la table `appels_modele`,
+  `noter_appel_modele()` et `etat_consommation()`. **Avant ça il n'y avait
+  rien à afficher** : la consommation n'existait que dans les journaux de la
+  fonction, qui ne se lisent pas depuis son téléphone, ne se totalisent pas et
+  s'effacent.
+- `_shared/modele.ts` écrit une ligne par modèle ESSAYÉ, pas seulement par
+  celui qui répond — sinon un secours sollicité tous les jours reste invisible.
+  Sans `await`, erreurs avalées : une comptabilité ne doit jamais faire échouer
+  la commande qu'elle compte.
+- `src/lib/consommationModele.ts` — **pur**, vérifié par
+  `scripts/verifier-consommation.ts`. C'est lui qui décide quoi dire.
+
+Quatre choses à ne pas défaire :
+
+1. **Les appels de vérification (`essai`) ne comptent pas comme ses phrases.**
+   Une passe de `verifier-commande-vocale.mjs` en afficherait quarante qu'il
+   n'a jamais dites, et le chiffre ne voudrait plus rien dire le jour où il
+   compte dessus. La mémoire non plus : chaque phrase déclenche DEUX appels.
+2. **Le RANG du modèle (0 = principal) est écrit par le SERVEUR.** Le principal
+   se règle par le secret `GEMINI_MODELE`, que l'app ne peut pas lire :
+   comparer des noms de modèles côté app donnerait une page fausse en silence
+   le jour du changement — c'est-à-dire le jour où il faut savoir qu'on tourne
+   sur un secours.
+3. **On annonce un PLANCHER prouvé, jamais un plafond supposé.**
+   `PLAFONDS_MESURES` ne contient que ce qu'on a vu, avec sa date ; un modèle
+   absent le dit (« jamais mesuré »). Et `verifier-moteur.ts` refuse qu'un
+   modèle entre en service sans avoir été mesuré.
+4. **Un refus par MINUTE n'alerte pas.** C'est le fonctionnement normal quand
+   il enchaîne vite, ça se lève en soixante secondes, et un bandeau qui
+   s'allume tous les jours n'est plus lu — c'est la panne qu'on ne verra pas.
+   Seuls le quota du JOUR, le passage sur un secours et une latence au-delà de
+   8 s le dérangent.
+
+L'écran reste à faire : demande posée dans `dev_log` pour la session
+« Le cockpit ».
+
 ### Le code des Edge Functions est enfin typechecké (6 sept. 2026)
 
 Jusque-là, **rien** ne vérifiait `supabase/functions/**` : ni la CI (`npx tsc
@@ -1604,6 +1655,7 @@ node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèm
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
 node --experimental-strip-types scripts/verifier-moteur.ts        # quel fournisseur, quel modèle, quels seaux de quota — vrai répartiteur, fetch en doublure
+node --experimental-strip-types scripts/verifier-consommation.ts   # ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas, sans réseau
 npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
 node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau

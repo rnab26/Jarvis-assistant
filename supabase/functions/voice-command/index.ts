@@ -663,6 +663,10 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerBran
       // réponse sur les phrases qui demandent de croiser la liste de contacts.
       maxTokens: 4096,
       essai,
+      // Ce que la phrase coûte est noté en base (chantier 5ac4d12c) : les
+      // journaux de la fonction ne se lisent pas depuis son téléphone, ne se
+      // totalisent pas, et s'effacent.
+      journal: { supabase, userId: user.id },
     })
 
     if (echec || !args) {

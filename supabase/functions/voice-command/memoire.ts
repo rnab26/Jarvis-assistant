@@ -340,6 +340,7 @@ export async function memoriser(
       outil: OUTIL_EXTRACTION,
       maxTokens: 512,
       essai,
+      journal: { supabase, userId },
     })
 
     const faits: Souvenir[] = (args?.faits as Souvenir[] | undefined) ?? []
