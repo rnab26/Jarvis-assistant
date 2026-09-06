@@ -67,6 +67,15 @@ Lis-les vraiment avant de proposer quoi que ce soit. Une question dont la
 réponse est déjà dans les notes d'un chantier, dans le journal ou dans une
 fiche (voir plus bas) ne doit pas être reposée à Raphaël.
 
+**AVANT DE RÉÉCRIRE UNE NOTE, RELIS-LA — dans un appel SÉPARÉ, et lis vraiment
+le résultat.** `update dev_items set notes = …` écrase tout, et une note vit
+souvent depuis plusieurs sessions : elle porte les mots de Raphaël, ce qui a
+déjà été écarté, ce qui a été vérifié. Le 5 sept. puis le 6, deux notes ont
+été écrasées de cette façon — l'une contenait un retour de Raphaël qui n'était
+écrit nulle part ailleurs. Le `select` doit précéder l'`update`, pas
+l'accompagner : groupés dans le même appel, on lit le texte APRÈS l'avoir
+détruit. La bonne forme est d'ajouter à la note, pas de la remplacer.
+
 **En terminant un chantier**, marque-le fait et archive-le, avec une note
 qui référence le commit — c'est la pratique établie qui sert d'historique
 (visible directement dans l'app, section "Archivées" du cockpit) :
