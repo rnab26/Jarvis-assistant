@@ -12,6 +12,8 @@ import {
   passeParLaFenetre,
 } from "@/lib/actionsTelephoneFenetre"
 import { attendreOuAnnuler } from "@/lib/actionsTelephoneToast"
+import { marquerAnnonceParlee } from "@/lib/annonceDejaDite"
+import { arreterParler, parler } from "@/lib/parler"
 import { ecrireReglage } from "@/lib/reglages"
 import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
@@ -21,6 +23,7 @@ import { lireRepertoire } from "@/lib/repertoire"
 import { agirSurEcran, reglagesListeNoire } from "@/lib/controleEcran"
 import type { CommandeEcran } from "@/lib/ecranTelephone"
 import { CLE_LISTE_NOIRE, entreeDepuisLaVoix, listeEffective } from "@/lib/listeNoire"
+import { lireNotifications } from "@/lib/notificationsAndroid"
 
 /** Les catégories du téléphone où Jarvis doit choisir une application sans
  * qu'on la lui nomme à chaque fois — apprises une fois, retenues ensuite. */
@@ -57,6 +60,12 @@ export type ActionTelephone =
   /** « n'appuie jamais dans Bitwarden » : la liste noire se complète à la
    * voix, c'est sa décision du 3 sept. */
   | { action: "block_screen_app"; app_name: string }
+  /** Lire les notifications des AUTRES applications — chantier b1b6172d.
+   * Réponse de Raphaël, 5 sept. 2026 : « Oui, mais il ne s'en sert que si je
+   * le demande. » Jamais en tâche de fond, jamais stocké en base : voir
+   * src/lib/notificationsAndroid.ts. `app_name` filtre sur une application
+   * précise (« lis-moi mes mails ») ; sans lui, tout ce qui est affiché. */
+  | { action: "read_notifications"; app_name?: string }
 
 const SUR_LE_TELEPHONE_SEULEMENT =
   "Ça, je ne peux le faire que depuis l'application installée sur ton téléphone — ici je n'ai pas accès à tes autres applications."
@@ -305,8 +314,21 @@ export async function executerActionTelephone(
   const attente = delaiAnnulation()
   if (attente > 0 && passeParLaFenetre(action.action)) {
     const annonce = annonceAction(action.action, cibleAnnoncee(action, contacts))
+    // Dite tout de suite, SANS attendre la fin de la phrase pour lancer le
+    // décompte — sinon le délai d'annulation double (le temps de la dire,
+    // PUIS le décompte). Il est souvent en train de conduire ou de marcher :
+    // une fenêtre qu'on ne voit pas ne rattrape rien si elle n'est pas dite
+    // (chantier f44c6673). marquerAnnonceParlee évite que MicButton la relise
+    // une seconde fois quand la réponse finale répète les mêmes mots
+    // (« J'ouvre Waze. » à l'annonce, puis à nouveau après l'ouverture).
+    void parler(annonce)
+    marquerAnnonceParlee(annonce)
     const continuer = await attendreOuAnnuler(annonce, attente)
     if (!continuer) {
+      // Sans ça, l'annonce en cours (« J'ouvre Waze. ») continuerait de se
+      // dire par-dessus « D'accord, j'annule. » — une annulation doit
+      // couper la voix tout de suite, pas seulement l'action.
+      arreterParler()
       noterEcoute("action_annulee", { action: action.action })
       return "D'accord, j'annule."
     }
@@ -557,6 +579,13 @@ export async function executerActionTelephone(
         // controleEcran.ts : le bandeau est affiché DANS Jarvis, invisible
         // pendant que YouTube ou WhatsApp est au premier plan.
         return await agirSurEcran(action.screen_command, action.screen_target)
+      }
+
+      case "read_notifications": {
+        // Aucune fenêtre d'annulation ici : lire n'agit sur rien, ça ne se
+        // « défait » pas. Et ça ne passe pas non plus par passeParLaFenetre —
+        // ce n'est pas une action SORTANTE.
+        return await lireNotifications(action.app_name)
       }
 
       case "block_screen_app": {

@@ -703,6 +703,7 @@ export async function executeVoiceAction(
     case "ask_ai":
     case "screen_action":
     case "block_screen_app":
+    case "read_notifications":
       return await executerActionTelephone(action, contacts)
 
     case "chat":

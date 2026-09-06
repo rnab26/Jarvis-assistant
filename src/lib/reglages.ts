@@ -151,6 +151,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/FenetreAnnulation.tsx",
   },
   {
+    cle: "jarvis_lecture_notifications",
+    ou: "Paramètres › Ce que Jarvis utilise › Lire tes notifications",
+    fichier: "src/components/settings/LectureNotifications.tsx",
+  },
+  {
     cle: "jarvis_notifications",
     ou: "Paramètres › Notifications › Quand Jarvis te dérange",
     fichier: "src/components/settings/Notifications.tsx",

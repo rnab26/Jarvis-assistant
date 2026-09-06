@@ -15,6 +15,7 @@ import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
 import { ControleEcran } from "@/components/settings/ControleEcran"
+import { LectureNotifications } from "@/components/settings/LectureNotifications"
 import { ConnecteursIA } from "@/components/settings/ConnecteursIA"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
@@ -957,6 +958,7 @@ export function SettingsPage() {
         <AppsParDefaut />
         <ConnecteursIA />
         <ControleEcran />
+        <LectureNotifications />
         <FenetreAnnulation />
       </Section>
 
