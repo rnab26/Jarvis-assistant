@@ -85,7 +85,12 @@ par `scripts/verifier-sessions-autonomes.ts`. Elles ne sont pas à ta main :
 - **Jamais un sujet qu'il a mis à part** : contrôle du téléphone, accès aux
   applications, envoi de messages en son nom, clonage vocal, toute dépense. Ils
   se discutent avec lui, et une session ouverte par un déclencheur n'a personne à
-  qui parler.
+  qui parler. Ce filtre a laissé passer le service d'accessibilité qui
+  clique à sa place le 6 sept. 2026 à 10 h 15 (chantier `4d0ebdf3`) : ses motifs
+  étaient écrits d'après ce qu'on imaginait, pas d'après les titres du cockpit.
+  **Si un verdict `travaille` te propose un chantier qui touche visiblement l'un
+  de ces sujets, ne le prends pas** — le filtre est un filet, pas une preuve.
+  Ouvre plutôt le défaut comme chantier, avec la mesure sur ses vraies données.
 - **Jamais deux passes autonomes à la fois** : une seule, c'est sa consigne.
 - **Jamais une question posée et attendue.** Si tu butes sur un arbitrage,
   `scripts/demander.sh` pose la question dans son app et tu passes à autre

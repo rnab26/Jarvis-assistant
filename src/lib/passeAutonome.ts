@@ -109,26 +109,78 @@ export const PASSE_PERIMEE_MINUTES = 180
  *
  * Ce sont ceux que Raphaël a mis à part dans le CLAUDE.md du projet : accès
  * aux applications du téléphone, contrôle du téléphone, envoi de messages en
- * son nom, clonage vocal via un service payant. Ils se discutent avec lui
- * d'abord — et une session lancée par un déclencheur horaire n'a personne à
- * qui parler.
+ * son nom, clonage vocal via un service payant, toute dépense — et ses
+ * identifiants. Ils se discutent avec lui d'abord — et une session lancée par
+ * un déclencheur horaire n'a personne à qui parler.
  *
  * On ratisse volontairement large : un chantier écarté à tort attend la
  * prochaine session ouverte par Raphaël, ce qui ne coûte rien. Un chantier
  * pris à tort part en production pendant qu'il dort.
+ *
+ * CES MOTIFS SONT ÉCRITS D'APRÈS LES VRAIS TITRES DU COCKPIT, ET C'EST TOUTE
+ * LA DIFFÉRENCE. La première version ne l'était pas, et la passe autonome du
+ * 6 sept. 2026 à 10 h 15 a proposé « Permettre à Jarvis d'agir directement sur
+ * le téléphone comme s'il était l'utilisateur (contrôle des APPLICATIONS et
+ * actions sur commande) » : le motif cherchait « controle du telephone », le
+ * chantier disait « contrôle des applications », et le service d'accessibilité
+ * qui clique à sa place est sorti PREMIER de la file. Deux autres suivaient —
+ * « Assistant par défaut du téléphone + actions dans les apps », et « Mode
+ * entraînement », dont les notes disent « stocker ses identifiants chiffrés en
+ * base pour que Jarvis se connecte à sa place ».
+ *
+ * Le contrôle qui aurait dû l'attraper ne le pouvait pas : ses cinq cas
+ * d'essai étaient des PARAPHRASES des expressions régulières (« Permettre à
+ * Jarvis de prendre le contrôle du téléphone » reprend le motif « prendre le
+ * controle »). Il vérifiait que la regex se reconnaît elle-même. Les cas de
+ * `verifier-sessions-autonomes.ts` sont désormais les titres RÉELS, copiés du
+ * cockpit — comme `verifier-cockpit-reel.mjs` l'a déjà établi pour l'écran :
+ * les données inventées d'un banc sont trop sages.
+ *
+ * SI TU AJOUTES UN MOTIF, mesure-le sur ses vrais chantiers avant de le
+ * croire :
+ *   scripts/sql.sh "select id,title,theme,notes,status,priority,created_at,archived_at,claimed_by,claim_expires_at from dev_items where archived_at is null"
+ * puis passe chaque ligne à `sujetReserve`. Un motif jugé à l'œil sur des
+ * titres imaginés ne prouve rien.
  */
 const SUJETS_RESERVES: { motif: RegExp; sujet: string }[] = [
   { motif: /clonage vocal|elevenlabs|cloner (ma|sa) voix/, sujet: "le clonage vocal" },
-  { motif: /prendre le controle|controle du telephone|controler le telephone/, sujet: "le contrôle du téléphone" },
+  {
+    // « agir directement sur le téléphone comme s'il était l'utilisateur »,
+    // « contrôle des applications », « actions dans les apps », « activation de
+    // clics », « appuyer sur l'écran à sa place » : ce sont ses mots, pas les
+    // nôtres. Le service d'accessibilité et l'affichage par-dessus les autres
+    // applications sont les deux accès spéciaux qui rendent tout ça possible.
+    motif:
+      /prendre le controle|controle (du|des) (telephone|application)|controler (le telephone|les application)|agir .{0,40}(sur|dans) (le|son) telephone|comme s.il etait l.utilisateur|actions? (dans|sur) (les |l.)(app|ecran)|activation de clics|appu(yer|ie|is) .{0,20}(sur )?l.ecran|clique[rz]? .{0,20}(a sa place|pour (moi|lui))|faire defiler l.ecran|accessibilite|par-?dessus les autres app|piloter (le|son) telephone/,
+    sujet: "le contrôle du téléphone",
+  },
+  {
+    // Catégorie ABSENTE de la première version, et c'était le pire trou :
+    // « Mode entraînement » garde ses identifiants pour que Jarvis se connecte
+    // à sa place. Rien dans le filtre ne parlait de comptes ni de mots de passe.
+    motif:
+      /identifiants|mot de passe|mots de passe|se connect(e|er) (a sa place|pour lui)|navigateur pilote|coffre-?fort/,
+    sujet: "ses identifiants et ses comptes",
+  },
   { motif: /envoi de message|envoyer un (message|mail|e-mail|sms)|whatsapp|sms/, sujet: "l'envoi de messages en son nom" },
   { motif: /acces aux applications|autorisation.{0,20}application|application tierce/, sujet: "l'accès aux applications du téléphone" },
   { motif: /payant|abonnement|facture au jeton|carte bancaire/, sujet: "une dépense" },
 ]
 
 /** Le sujet réservé que touche ce chantier, ou null. */
+/**
+ * Combien de notes on lit. MESURÉ, pas choisi : à 400 caractères, « Bulle
+ * Jarvis flottante à l'écran » passait au travers — son titre ne dit pas de
+ * quel accès spécial il s'agit, et « une vue affichée par-dessus les autres
+ * apps » n'arrive qu'au 600e caractère. Une note de chantier s'ouvre presque
+ * toujours par le marqueur, la date et l'historique ; le périmètre réel vient
+ * après. Trop court, on ne lit que l'en-tête.
+ */
+export const NOTES_LUES = 1500
+
 export function sujetReserve(item: DevItem): string | null {
   const texte = normaliserRecherche(
-    `${item.title} ${item.theme ?? ""} ${(item.notes ?? "").slice(0, 400)}`,
+    `${item.title} ${item.theme ?? ""} ${(item.notes ?? "").slice(0, NOTES_LUES)}`,
   )
   for (const { motif, sujet } of SUJETS_RESERVES) {
     if (motif.test(texte)) return sujet

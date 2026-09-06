@@ -183,21 +183,89 @@ verifier(
 
 console.log("\n— Les sujets qu'il a mis à part, même marqués [LIBRE] —")
 
-const RESERVES: [string, string][] = [
-  ["Cloner la voix de Raphaël avec ElevenLabs", "clonage vocal"],
-  ["Permettre à Jarvis de prendre le contrôle du téléphone", "contrôle du téléphone"],
-  ["Envoyer un message WhatsApp à l'heure dite", "envoi de messages"],
-  ["Autorisation par application tierce", "accès aux applications"],
-  ["Géocodage payant pour les rappels de lieu", "dépense"],
+// CES TITRES SONT COPIÉS DU COCKPIT, MOT POUR MOT, et c'est tout l'intérêt.
+// La version d'avant en avait cinq, tous PARAPHRASÉS des expressions
+// régulières — « Permettre à Jarvis de prendre le contrôle du téléphone »
+// reprenait le motif « prendre le controle ». Elle vérifiait que la regex se
+// reconnaît elle-même, et elle est restée verte le 6 sept. 2026 pendant que la
+// passe autonome de 10 h 15 proposait le service d'accessibilité qui clique à
+// la place de Raphaël. Un contrôle doit viser la vraie donnée.
+//
+// Le second champ est un extrait des VRAIES notes quand c'est la note, et non
+// le titre, qui porte le sujet — c'est le cas de la bulle flottante, dont le
+// titre ne dit pas de quel accès spécial il s'agit.
+const RESERVES: { titre: string; notes?: string; pourquoi: string }[] = [
+  {
+    titre:
+      "Permettre à Jarvis d'agir directement sur le téléphone comme s'il était l'utilisateur (contrôle des applications et actions sur commande)",
+    pourquoi:
+      "le service d'accessibilité qui clique à sa place — le motif cherchait « controle du telephone », le chantier dit « contrôle des APPLICATIONS »",
+  },
+  {
+    titre: "Assistant par défaut du téléphone + actions dans les apps avec validation vocale",
+    pourquoi: "« actions dans les apps » : agir à sa place dans une autre application",
+  },
+  {
+    titre: "Mode entraînement : lui montrer une tâche, il la reproduit sur demande",
+    notes:
+      "[LIBRE] SA RÉPONSE : « Oui, garde mes identifiants. » La question lui a été posée avec son coût énoncé — stocker ses identifiants chiffrés en base pour que Jarvis se connecte à sa place.",
+    pourquoi:
+      "il détient les clés de ses comptes, et AUCUNE catégorie du filtre ne parlait d'identifiants avant le 6 sept.",
+  },
+  {
+    titre: "Bulle Jarvis flottante à l'écran, atteignable partout (sans écoute permanente)",
+    notes:
+      "[LIBRE] DEMANDE DE RAPHAEL, 3 sept. 2026. Ce chantier ne fait QUE la bulle : une vue affichee par-dessus les autres apps, sur laquelle il appuie pour parler.",
+    pourquoi: "afficher par-dessus les autres applications est un accès spécial d'Android",
+  },
+  {
+    titre: "Voix : conversation continue et voix naturelle via le compte ElevenLabs pro existant",
+    pourquoi: "clonage vocal via un service tiers payant",
+  },
+  {
+    titre: "WhatsApp : rédiger, corriger et valider à la voix, et programmer des envois",
+    pourquoi: "envoi de messages en son nom",
+  },
+  {
+    titre:
+      "Donner à Jarvis les autorisations d'accès aux applications du téléphone (mails, agenda, contacts, WhatsApp)",
+    pourquoi: "accès aux applications du téléphone",
+  },
+  {
+    titre: "Rappels déclenchés par ta position réelle : la clé de géocodage",
+    notes: "[LIBRE] Il faut une clé de géocodage Google, qui est payante au-delà du quota.",
+    pourquoi: "une dépense",
+  },
 ]
-for (const [titre] of RESERVES) {
-  const it = item(titre)
-  verifier(`« ${titre.slice(0, 40)}… » est écarté`, sujetReserve(it) !== null, "il a demandé à en parler d'abord")
+for (const { titre, notes, pourquoi } of RESERVES) {
+  const it = notes ? item(titre, { notes }) : item(titre)
+  verifier(
+    `« ${titre.slice(0, 44)}… » est écarté`,
+    sujetReserve(it) !== null,
+    `il a demandé à en parler d'abord : ${pourquoi}`,
+  )
   verifier(
     "   et la passe ne le prend pas",
     deciderPasse(etat({ chantiers: [it] }), MAINTENANT).verdict === "rien_a_prendre",
   )
 }
+
+// Le sujet doit aussi être trouvé quand il n'est PAS dans l'en-tête de la note :
+// une note de chantier s'ouvre par le marqueur, la date et l'historique, et le
+// périmètre réel vient après. À 400 caractères de lecture, la bulle flottante
+// passait au travers.
+verifier(
+  "un sujet mis à part est vu même loin dans la note, pas seulement dans l'en-tête",
+  sujetReserve(
+    item("Un chantier au titre anodin", {
+      notes:
+        "[LIBRE] " +
+        "Rappel de l'historique, des décisions déjà prises et de ce qui a été écarté. ".repeat(8) +
+        "Concrètement : Jarvis doit appuyer sur l'écran à sa place.",
+    }),
+  ) !== null,
+  "le périmètre d'une note arrive après son en-tête — le lire trop court revient à ne pas le lire",
+)
 
 // Le revers : écarter tout ce qui parle de près ou de loin d'une application
 // viderait la liste. Ces titres-là sont de vrais chantiers du cockpit.
