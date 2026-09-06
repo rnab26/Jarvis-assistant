@@ -61,6 +61,13 @@ jobs:
       - name: « Avec quelle application ? » en mode Live
         run: node --experimental-strip-types scripts/verifier-question-app-live.ts
 
+      # Une action qui ne rend aucune phrase laissait le modèle Live combler
+      # le silence — le 6 sept. il a comblé en annonçant que le message était
+      # parti. L'aveu qui la remplace ne doit affirmer NI succès NI échec :
+      # on ne sait pas, et c'est justement ce qu'il faut dire.
+      - name: Une action muette ne devient ni un silence ni un mensonge
+        run: node --experimental-strip-types scripts/verifier-retour-vide.ts
+
       - name: L'envoi d'un chantier à Claude Code
         run: node --experimental-strip-types scripts/verifier-envoi-chantier.ts
 
