@@ -537,7 +537,7 @@ export function CockpitBoard({
           qu'on peut faire, elle dit sur combien de chantiers — sinon on
           applique une action à une sélection qu'on ne voit plus. */}
       {enSelection && choisis.length > 0 && (
-        <div className="sticky bottom-2 z-10 flex flex-col gap-2 rounded-lg border bg-background/95 p-2 shadow-lg backdrop-blur">
+        <div className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-10 flex flex-col gap-2 rounded-lg border bg-background/95 p-2 shadow-lg backdrop-blur">
           <p className="text-xs font-medium">
             {choisis.length} chantier{choisis.length > 1 ? "s" : ""} — les traiter ensemble
           </p>

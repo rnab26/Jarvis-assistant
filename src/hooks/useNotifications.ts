@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { LocalNotifications } from "@capacitor/local-notifications"
+import { PushNotifications } from "@capacitor/push-notifications"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { phraseAnnonce, raisonDuSilence } from "@/lib/notifications/annonceVocale"
@@ -285,6 +286,64 @@ export function useNotifications(
       if (channel) supabase.removeChannel(channel)
     }
   }, [userId, prefs.bloque])
+
+  // Le jeton d'appareil FCM : ce qui permet à Jarvis de sonner APP FERMÉE
+  // (chantier 76a6a595). Enregistré une fois par ouverture de session,
+  // jamais recopié dans les réglages — c'est un identifiant d'installation,
+  // pas une préférence, et son sort suit la table push_tokens (RLS par
+  // compte), pas localStorage.
+  useEffect(() => {
+    if (!userId || !notificationsDisponibles()) return
+    let annule = false
+
+    async function enregistrer() {
+      try {
+        const permission = await PushNotifications.checkPermissions()
+        let receive = permission.receive
+        if (receive === "prompt" || receive === "prompt-with-rationale") {
+          receive = (await PushNotifications.requestPermissions()).receive
+        }
+        if (receive !== "granted") return
+        await PushNotifications.register()
+      } catch {
+        // Le push n'est qu'un complément aux notifications locales, qui
+        // restent le principal app ouverte : un échec ici ne doit rien
+        // casser d'autre.
+      }
+    }
+
+    const poigneeEnregistrement = PushNotifications.addListener("registration", (jeton) => {
+      if (annule || !userId) return
+      supabase
+        .from("push_tokens")
+        .upsert(
+          { token: jeton.value, user_id: userId, plateforme: "android" },
+          { onConflict: "token" },
+        )
+        .then(
+          () => {},
+          () => {},
+        )
+    })
+    // Appui sur une notification reçue app fermée : même route que les
+    // notifications locales, pour arriver au même endroit qu'un appui sur
+    // "chantiers livrés" ou "session bloquée" pendant que l'app tourne.
+    const poigneeAppui = PushNotifications.addListener(
+      "pushNotificationActionPerformed",
+      (action) => {
+        const route = (action.notification.data as { route?: string } | undefined)?.route
+        if (route) navigate(route)
+      },
+    )
+
+    void enregistrer()
+
+    return () => {
+      annule = true
+      poigneeEnregistrement.then((h) => h.remove()).catch(() => {})
+      poigneeAppui.then((h) => h.remove()).catch(() => {})
+    }
+  }, [userId, navigate])
 
   const setPrefs = useCallback((partiel: Partial<PrefsNotifications>) => {
     setPrefsState((precedent) => {

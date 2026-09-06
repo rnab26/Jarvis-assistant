@@ -8,6 +8,7 @@ import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
+import { ThemesNonDeclares } from "@/components/cockpit/ThemesNonDeclares"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDevLog } from "@/hooks/useDevLog"
@@ -132,6 +133,14 @@ export function CockpitPage() {
       {/* Silencieuse quand il n'y a rien à dire. Placée avant le journal :
           un doublon coûte une session entière, il vaut d'être vu tôt. */}
       <DoublonsTrouves devItems={devItems} onArchive={archiveDevItem} onRestore={restoreDevItems} />
+
+      {/* Silencieuse quand tous les thèmes ont leur section : signale une
+          dérive, ne la corrige jamais toute seule (le bouton fait le geste). */}
+      <ThemesNonDeclares
+        devItems={devItems}
+        sections={devSectionsState.sections}
+        onDeclarer={(nom) => devSectionsState.addSection(nom)}
+      />
 
       <ErreursJarvis
         erreursState={erreursState}
