@@ -89,7 +89,7 @@ export const anthropic: Fournisseur = {
       model: appel.modele,
       max_tokens: appel.maxTokens,
       system: appel.systeme,
-      messages: [{ role: "user", content: appel.texte }],
+      messages: [{ role: "user", content: contenuUtilisateur(appel) }],
       tools: [
         {
           name: appel.outil.name,
@@ -146,6 +146,27 @@ export const anthropic: Fournisseur = {
       return { echec: { statut: 0, texte: String(err) } }
     }
   },
+}
+
+/**
+ * Le message de l'utilisateur, avec sa pièce jointe quand il y en a une.
+ *
+ * DEUX TYPES DE BLOC, ET ILS NE SONT PAS INTERCHANGEABLES : un PDF se passe en
+ * bloc « document », une image en bloc « image ». Se tromper fait rejeter la
+ * requête en 400, et la panne se lirait comme « le moteur ne sait pas lire ce
+ * document » alors qu'il sait très bien.
+ *
+ * Le document vient AVANT le texte, comme le recommande la référence.
+ */
+function contenuUtilisateur(appel: AppelResolu): unknown {
+  if (!appel.document) return appel.texte
+  const { mimeType, base64 } = appel.document
+  const source = { type: "base64", media_type: mimeType, data: base64 }
+  const piece =
+    mimeType === "application/pdf"
+      ? { type: "document", source }
+      : { type: "image", source }
+  return [piece, { type: "text", text: appel.texte }]
 }
 
 /** `{"type":"error","error":{"type":"rate_limit_error",…}}` → « rate_limit_error ». */

@@ -49,6 +49,16 @@ export interface AppelModele {
   systeme: string
   /** Ce que l'utilisateur a dit. */
   texte: string
+  /**
+   * Un document à lire EN PLUS du texte : un PDF, une image.
+   *
+   * Ajouté le 6 sept. 2026 pour le chantier 73f06a28 (« lire un lien ou un PDF
+   * qu'on lui envoie »). Les deux moteurs savent le faire nativement, et c'est
+   * bien mieux que d'extraire le texte nous-mêmes : un devis ou un bail sont
+   * des documents MIS EN PAGE, et un extracteur maison en perdrait les
+   * tableaux, donc les montants.
+   */
+  document?: { mimeType: string; base64: string }
   /** L'outil que le modèle DOIT appeler : sa réponse est le contenu de l'appel. */
   outil: OutilDeclare
   maxTokens: number

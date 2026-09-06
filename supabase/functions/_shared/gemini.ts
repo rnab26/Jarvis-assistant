@@ -202,7 +202,19 @@ export const gemini: Fournisseur = {
   async unEssai(appel: AppelResolu): Promise<ReponseFournisseur> {
     const corps = {
       systemInstruction: { parts: [{ text: appel.systeme }] },
-      contents: [{ role: "user", parts: [{ text: appel.texte }] }],
+      // Le document AVANT le texte : la référence recommande de poser la
+      // pièce d'abord et la question ensuite, le modèle s'y réfère mieux.
+      contents: [
+        {
+          role: "user",
+          parts: [
+            ...(appel.document
+              ? [{ inlineData: { mimeType: appel.document.mimeType, data: appel.document.base64 } }]
+              : []),
+            { text: appel.texte },
+          ],
+        },
+      ],
       tools: [
         {
           functionDeclarations: [

@@ -694,6 +694,55 @@ trois.
 à l'envers : viser la mauvaise liste, retirer le message d'application
 introuvable ou la déclaration `<queries>` le fait rougir.
 
+## Lire un lien ou un PDF qu'on lui partage (6 sept. 2026)
+
+Chantier `73f06a28`. Sa demande du 3 sept. allait plus loin que le lien : « pour
+l'entraîner et pour pouvoir le faire travailler sur des tâches que je lui
+demanderais et notamment des tâches répétitives, il faut qu'il puisse pousser
+et développer ses capacités. »
+
+Le partage depuis une autre application existait depuis le 5 sept., mais il ne
+faisait que RANGER : un bail de vingt pages atterrissait entier dans Documents,
+et il fallait le lire soi-même. Maintenant `useShareReceiver` envoie ce qui
+arrive à la fonction `lire-document`, qui en rend l'essentiel — montants, dates,
+ce que ça engage — et range un document dont la première ligne est la réponse.
+
+- `_shared/lienSur.ts` — **le garde-fou SSRF, désormais PARTAGÉ.** Il vivait
+  dans `google-gmail/lien.ts` ; un second appelant est arrivé, et deux copies
+  d'une protection de sécurité, c'est la garantie qu'on n'en corrigera qu'une.
+  https seul, aucune adresse interne, **redirections revalidées une par une**
+  (le premier saut est public, le second ne l'est pas — c'est le contournement
+  classique), taille plafonnée. `lien.ts` ne garde que ce qui est propre au
+  REÇU : une page HTML n'en est pas un.
+- `_shared/pageTexte.ts` — **pur**. Retire d'abord les blocs qui contiennent du
+  texte sans en être (script, style, nav, footer), préfère `<main>`/`<article>`,
+  et transforme les fins de bloc en retours à la ligne — sans quoi un libellé
+  se soude à son montant et on lit n'importe quoi.
+- `_shared/modele.ts` porte maintenant un `document` facultatif. **Un PDF part
+  TEL QUEL au modèle**, on n'en extrait pas le texte : un devis est un document
+  MIS EN PAGE, un extracteur maison en perdrait les tableaux, donc les montants.
+- `src/lib/partageALire.ts` — **pur** : lien, texte à résumer, ou simplement à
+  ranger.
+
+Quatre choses à ne pas défaire :
+
+1. **Quand on n'a pas trouvé de contenu, on le DIT** (`assezDeTexte`). Une page
+   rendue en JavaScript ou derrière un mur de connexion ne donne que des menus ;
+   en tirer un résumé produirait quelque chose de plausible et de faux, et rien
+   ne le signalerait. C'est la moitié des contrôles.
+2. **Un partage COURT ne part pas au modèle.** « penser aux carreaux » n'a rien
+   à résumer, et le quota est ce qui l'a laissé sans Jarvis deux fois.
+3. **On garde toujours ce qu'il a partagé**, même quand la lecture échoue.
+   Échouer à résumer ne doit jamais revenir à perdre ce qu'il nous a donné.
+4. **Ce qui n'a pas pu être lu est écrit** (champ `incertitudes`, et la mention
+   de troncature). Un résumé qui tait ce qu'il a manqué se lit comme complet.
+
+Vérifié pour de vrai le 6 sept. sur la fonction déployée, pas seulement
+typechecké : un devis rendu avec ses treize montants recopiés sans un arrondi,
+une vraie page publique lue et résumée en français avec la troncature signalée,
+et les deux garde-fous (adresse de métadonnées, http en clair) qui refusent
+avec un message lisible.
+
 ## Chercher passe par les IA de son téléphone, jamais par une API
 
 Sa décision du 5 sept. 2026, à ne pas rouvrir : « je ne veux pas payer, je
@@ -1949,6 +1998,7 @@ node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Rapha
 node --experimental-strip-types scripts/verifier-moteur.ts        # quel fournisseur, quel modèle, quels seaux de quota — vrai répartiteur, fetch en doublure
 node --experimental-strip-types scripts/verifier-consommation.ts   # ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas, sans réseau
 node --experimental-strip-types scripts/verifier-veille-modele.ts # on ne change pas de modèle à la légère, sans réseau
+node --experimental-strip-types scripts/verifier-lire-document.ts # lire un lien ou un PDF partagé, et refuser de résumer une coquille, sans réseau
 npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
 node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau

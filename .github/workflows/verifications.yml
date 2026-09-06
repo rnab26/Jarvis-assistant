@@ -128,6 +128,14 @@ jobs:
       - name: On ne change pas de modèle à la légère
         run: node --experimental-strip-types scripts/verifier-veille-modele.ts
 
+      # Lire un lien ou un PDF qu'on partage à Jarvis. Ce qui rate là rate en
+      # SILENCE : d'une page dont on n'aurait gardé que le menu, le modèle sort
+      # un résumé plausible et faux. Ces contrôles gardent aussi le garde-fou
+      # SSRF, désormais PARTAGÉ avec les reçus de Gmail — le casser ici le
+      # casserait pour les deux.
+      - name: Ce que Jarvis lit d'une page, et ce qu'il refuse de résumer
+        run: node --experimental-strip-types scripts/verifier-lire-document.ts
+
       # « Une panne qui se lit comme une absence » : un rappel de mémoire qui
       # échoue rendait le même résultat qu'un rappel qui n'a rien trouvé. Ce
       # contrôle lit le code, parce que la règle porte sur sa forme.
