@@ -4,6 +4,8 @@ import { GoogleGenAI, Modality, Type } from "npm:@google/genai"
 import { rappelerCorrections } from "../_shared/corrections.ts"
 import { signalerPanne } from "../_shared/pannes.ts"
 import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
+import { rappelerBranchements } from "../_shared/branchements.ts"
+import { CONSIGNE_HONNETETE } from "../_shared/honnetete.ts"
 
 /**
  * Jeton éphémère pour ouvrir une session Gemini Live depuis l'app.
@@ -48,6 +50,7 @@ const CONSIGNE_LIVE = `Tu es Jarvis, l'assistant vocal personnel de Raphaël —
 Tu parles français, de façon courte et naturelle : c'est une conversation à voix haute, pas un texte. Une ou deux phrases suffisent presque toujours.
 TU AS ACCÈS à ses tâches, ses chantiers, ses contacts, sa date du jour : ils sont dans le contexte ci-dessous, réponds directement avec. Ne dis JAMAIS « je n'ai pas accès » : si l'information n'est pas dans le contexte (agenda, mails, documents), appelle l'outil commande_jarvis avec la question telle quelle.
 Quand Raphaël te demande de FAIRE quelque chose (ajouter, modifier, terminer une tâche ou un chantier, noter un rendez-vous, un rappel, appeler, envoyer un message, mettre de la musique, régler ta voix…), appelle l'outil commande_jarvis avec sa demande telle quelle, puis dis-lui simplement ce que l'outil a rendu — c'est l'outil qui fait foi, pas toi.
+${CONSIGNE_HONNETETE}
 Pour le reste (questions générales, discussion, conseil), réponds directement.
 ${CONSIGNE_ENVIRONNEMENT}
 Le contexte ci-dessous date de l'ouverture de la conversation : après une modification (tâche ajoutée, terminée…), reconsulte par l'outil plutôt que de répondre de mémoire.
@@ -181,7 +184,11 @@ Deno.serve(async (req) => {
     // Les corrections que Raphaël a écrites suivent aussi : se faire reprendre
     // deux fois sur la même chose est ce qui l'agace le plus, et ça ne doit pas
     // dépendre du mode dans lequel il parle.
-    contexte = `${contexte}\n${await souvenirsDeLUtilisateur(supabase)}\n${await rappelerCorrections(supabase)}`.trim()
+    // « À quoi tu es branché ? » — sa remarque du 6 sept. Joint ici comme les
+    // souvenirs et les corrections, et pour la même raison : en Live le
+    // contexte est scellé une fois à l'ouverture, donc il doit contenir tout
+    // ce que le modèle ne pourra plus aller chercher.
+    contexte = `${contexte}\n${await rappelerBranchements(supabase)}\n${await souvenirsDeLUtilisateur(supabase)}\n${await rappelerCorrections(supabase)}`.trim()
 
     // Les jetons éphémères ne vivent que dans la version v1alpha de l'API.
     const ai = new GoogleGenAI({ apiKey: cle, httpOptions: { apiVersion: "v1alpha" } })

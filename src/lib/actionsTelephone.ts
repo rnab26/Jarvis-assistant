@@ -31,7 +31,10 @@ interface ActionsTelephonePlugin {
     paquet?: string
     recherche?: string
   }): Promise<{ resultat?: ResultatOuverture }>
-  preparerWhatsApp(options: { texte: string; numero?: string }): Promise<void>
+  preparerWhatsApp(options: { texte: string; numero?: string; paquet?: string }): Promise<void>
+  /** Les WhatsApp réellement installés : l'ordinaire, celui d'affaires, ou
+   * les deux. Quand les deux sont là, on demande — on ne devine pas. */
+  listerApplicationsWhatsApp(): Promise<{ applications: ApplicationInstallee[] }>
   preparerSms(options: { texte: string; numero?: string }): Promise<void>
   envoyerTexte(options: { paquet: string; texte: string }): Promise<void>
   composer(options: { numero: string; paquet?: string }): Promise<{ direct: boolean }>

@@ -321,21 +321,72 @@ public class ActionsTelephonePlugin extends Plugin {
     public void preparerWhatsApp(PluginCall call) {
         String texte = call.getString("texte", "");
         String numero = call.getString("numero");
+        // Le paquet visé, choisi par Raphaël dans Paramètres. Par défaut le
+        // WhatsApp ordinaire — jamais « la première application qui répond ».
+        String paquet = call.getString("paquet");
+        if (paquet == null || paquet.isEmpty()) paquet = WHATSAPP;
 
         if (numero != null && !numero.isEmpty()) {
+            // LE BUG DU 6 SEPT. 2026 ÉTAIT ICI, et pas sur l'autre branche :
+            // ce chemin-là n'a JAMAIS visé d'application. Un lien wa.me est
+            // une adresse https ordinaire, que WhatsApp ET WhatsApp Business
+            // déclarent toutes les deux — Android choisissait, et le message
+            // de Raphaël partait dans Business. L'autre branche, elle, posait
+            // bien setPackage depuis le début : c'est ce qui rendait le
+            // symptôme incompréhensible.
             String propre = numero.replaceAll("[^0-9+]", "").replace("+", "");
             String url = "https://wa.me/" + propre;
             if (!texte.isEmpty()) url += "?text=" + Uri.encode(texte);
             Intent conversation = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            if (lancer(conversation, call, "WhatsApp ne s'est pas ouvert.")) call.resolve();
-            return;
+            conversation.setPackage(paquet);
+            conversation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                getContext().startActivity(conversation);
+                call.resolve();
+                return;
+            } catch (Exception ignore) {
+                // Ce WhatsApp-là ne gère pas le lien (ou n'est plus installé) :
+                // on retombe sur le partage, qui vise le même paquet.
+            }
         }
 
         Intent partage = new Intent(Intent.ACTION_SEND);
         partage.setType("text/plain");
         partage.putExtra(Intent.EXTRA_TEXT, texte);
-        partage.setPackage("com.whatsapp");
+        partage.setPackage(paquet);
         if (lancer(partage, call, "WhatsApp n'est pas installé sur ce téléphone.")) call.resolve();
+    }
+
+    /** Les deux WhatsApp qu'Android distingue, et que Raphaël a tous les deux. */
+    private static final String WHATSAPP = "com.whatsapp";
+    private static final String WHATSAPP_BUSINESS = "com.whatsapp.w4b";
+
+    /**
+     * Les applications WhatsApp réellement installées.
+     *
+     * Sert à la carte « Tes applications par défaut » : quand les deux sont
+     * là et qu'il n'a rien choisi, on le lui DEMANDE au lieu de prendre la
+     * première — c'est exactement ce qui envoyait ses messages dans Business
+     * le 6 sept. 2026.
+     */
+    @PluginMethod
+    public void listerApplicationsWhatsApp(PluginCall call) {
+        PackageManager pm = getContext().getPackageManager();
+        JSArray apps = new JSArray();
+        for (String paquet : new String[] { WHATSAPP, WHATSAPP_BUSINESS }) {
+            try {
+                android.content.pm.ApplicationInfo info = pm.getApplicationInfo(paquet, 0);
+                JSObject app = new JSObject();
+                app.put("nom", String.valueOf(pm.getApplicationLabel(info)));
+                app.put("paquet", paquet);
+                apps.put(app);
+            } catch (Exception absente) {
+                // Pas installée : rien à proposer pour celle-là.
+            }
+        }
+        JSObject res = new JSObject();
+        res.put("applications", apps);
+        call.resolve(res);
     }
 
     /**

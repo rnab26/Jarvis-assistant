@@ -67,6 +67,15 @@ Lis-les vraiment avant de proposer quoi que ce soit. Une question dont la
 réponse est déjà dans les notes d'un chantier, dans le journal ou dans une
 fiche (voir plus bas) ne doit pas être reposée à Raphaël.
 
+**AVANT DE RÉÉCRIRE UNE NOTE, RELIS-LA — dans un appel SÉPARÉ, et lis vraiment
+le résultat.** `update dev_items set notes = …` écrase tout, et une note vit
+souvent depuis plusieurs sessions : elle porte les mots de Raphaël, ce qui a
+déjà été écarté, ce qui a été vérifié. Le 5 sept. puis le 6, deux notes ont
+été écrasées de cette façon — l'une contenait un retour de Raphaël qui n'était
+écrit nulle part ailleurs. Le `select` doit précéder l'`update`, pas
+l'accompagner : groupés dans le même appel, on lit le texte APRÈS l'avoir
+détruit. La bonne forme est d'ajouter à la note, pas de la remplacer.
+
 **En terminant un chantier**, marque-le fait et archive-le, avec une note
 qui référence le commit — c'est la pratique établie qui sert d'historique
 (visible directement dans l'app, section "Archivées" du cockpit) :
@@ -474,6 +483,75 @@ Pas d'autorisation par application tierce, et c'est explicite dans sa
 demande : ouvrir une app et lui passer un texte marche déjà sans permission,
 pour n'importe laquelle, sans code par app.
 
+
+## Jarvis n'annonce JAMAIS au passé ce qu'il n'a pas constaté
+
+Ses mots, 6 sept. 2026 : « il me dit qu'il a envoyé un message alors que ce
+n'est pas vrai. […] sur WhatsApp, ça prépare le message mais il n'y a rien qui
+est envoyé. » Le reste de ce qu'il signale, ce sont des choses qui ne marchent
+pas ; celle-ci est une chose qui MENT, et elle ruine la confiance dans tout ce
+qui marche.
+
+**Le journal a déplacé le diagnostic, et c'est la leçon à garder.** À 05:53:04
+l'outil a rendu « Message prêt pour Mel Ma Femme ❤ sur WhatsApp, tu n'as plus
+qu'à envoyer » — **notre phrase était honnête**. C'est le MODÈLE qui l'a
+remise au passé en la disant à voix haute. Corriger le texte de l'application
+n'aurait rien changé. Et il était en mode **Live** : une règle écrite seulement
+dans `voice-command` aurait été vraie au micro et fausse en Live.
+
+D'où `supabase/functions/_shared/honnetete.ts` — **une seule source**, importée
+par `voice-command` ET `live-jeton`, comme `environnement.ts` et
+`corrections.ts`. Quatre points, et il faut les quatre : préparer n'est pas
+envoyer ; reprendre le retour de l'outil TEL QUEL au lieu de le reformuler ;
+dire qu'on n'a pas eu de retour quand l'outil ne rend rien (à 05:50:56 et
+05:53:14 il rendait une chaîne VIDE, et le modèle comblait) ; trois issues,
+trois phrases — préparé, fait, échoué.
+
+`scripts/verifier-honnetete.ts` garde la règle ET son arrivée dans les deux
+consignes, plus deux contrôles bout-en-bout sur la fonction déployée.
+
+**Limite connue, à ne pas présenter comme réglée** : `onCommande` peut encore
+rendre une chaîne vide (`src/lib/live/sessionLive.ts`, alimenté par
+`MicButton`). La consigne dit au modèle quoi faire de ce vide, mais la vraie
+correction est de ne jamais le produire — chantier ouvert.
+
+## « À quoi tu es branché ? » — l'état RÉEL, pas la description de l'app
+
+Sa remarque du 6 sept. 2026 : « Jarvis ne connaît toujours pas son propre
+environnement sur certains points. Par exemple quand je lui demande à quoi il
+est branché. »
+
+`environnement.ts` décrit l'APPLICATION — ses onglets, ses cartes. C'est un
+texte figé, le même pour tout le monde. `_shared/branchements.ts` dit l'ÉTAT de
+SON installation : compte Google et ce qu'il autorise, applications choisies,
+mode Live. **Tout se lit en base** — ses réglages y sont recopiés depuis la
+migration 0014 —, donc sans rien demander à l'app et sans toucher au contexte
+que MicButton envoie. Joint par `voice-command` ET `live-jeton` (en Live le
+contexte est scellé à l'ouverture : ce qui n'y est pas ne se rattrape plus).
+
+**Ce que le serveur NE VOIT PAS, le bloc le dit en toutes lettres** : les
+autorisations Android, le service d'accessibilité, la version installée. Ils
+vivent sur l'appareil. Jarvis répond « je ne peux pas les voir, regarde dans
+Paramètres » — inventer une réponse ici serait exactement le défaut corrigé
+juste au-dessus.
+
+Court, et sans titre vide : chaque phrase envoie déjà ~45 000 caractères.
+
+## WhatsApp ou WhatsApp Business : on ne devine pas
+
+Le 6 sept., ses messages partaient dans WhatsApp Business. `preparerWhatsApp`
+posait pourtant `setPackage("com.whatsapp")` — **mais sur l'autre branche**.
+Le chemin utilisé quand on connaît le numéro ouvre un lien `wa.me`, une adresse
+https ordinaire que les DEUX WhatsApp déclarent : Android choisissait. C'est ce
+qui rendait le symptôme incompréhensible, et pourquoi il fallait établir quel
+chemin servait avant de corriger quoi que ce soit.
+
+Les deux branches visent maintenant le même paquet, `com.whatsapp.w4b` est
+déclaré dans `<queries>` (sans quoi on ne peut pas savoir qu'il est installé),
+et **quand les deux sont là sans qu'il ait choisi, Jarvis DEMANDE** au lieu de
+prendre le premier : se tromper d'application, c'est un message écrit dans une
+app qu'il n'ouvre jamais, sans que rien ne le signale. La ligne WhatsApp de
+« Tes applications par défaut » ne s'affiche que s'il en a vraiment deux.
 
 ## Appeler quelqu'un : deux garde-fous, écrits après un vrai appel au répondeur
 
@@ -1434,6 +1512,7 @@ node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
+node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau

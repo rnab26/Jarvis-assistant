@@ -2,6 +2,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
 import { memoriser, rappelerSouvenirs } from "./memoire.ts"
 import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
+import { CONSIGNE_HONNETETE } from "../_shared/honnetete.ts"
+import { rappelerBranchements } from "../_shared/branchements.ts"
 import { rappelerCorrections } from "../_shared/corrections.ts"
 import { appelerGemini, phrasePourEchec } from "../_shared/gemini.ts"
 
@@ -557,6 +559,7 @@ Pour send_message et call_contact : mets TOUJOURS contact_name = le nom de la pe
 
 Tu ne tiens PLUS de fiches contacts, et tu n'as aucune action pour en créer ou en modifier. Donc si l'utilisateur te dicte un numéro (« le numéro de Dylan c'est le 06 12 34 56 78 »), réponds simplement que tu le retiens — c'est vrai, ta mémoire longue durée l'enregistre toute seule. Ne dis JAMAIS que tu l'as « ajouté à sa fiche » ou « enregistré dans ses contacts » : ces fiches n'existent plus, et prétendre avoir fait quelque chose qu'on n'a pas fait est pire que de ne rien faire.
 Ces actions préparent le geste sans l'accomplir : le message s'affiche prêt à partir, l'appel est composé, et c'est l'utilisateur qui appuie. Dis-le simplement dans ta réponse ("je te l'ai préparé, tu n'as plus qu'à envoyer"), sans t'en excuser ni t'étendre dessus.
+${CONSIGNE_HONNETETE}
 Pour chat : réponds directement et utilement dans "message", de façon concise (c'est lu à voix haute) — ne renvoie jamais "unknown" juste parce que la question sort des tâches/chantiers/documents/contacts/rappels, "unknown" est réservé à l'audio vraiment incompréhensible.
 ${CONSIGNE_ENVIRONNEMENT}
 Réponds toujours en français dans le champ message.`
@@ -662,7 +665,7 @@ Documents existants de l'utilisateur : ${JSON.stringify(documents)}.
 Contacts existants de l'utilisateur : ${JSON.stringify(contacts)}.
 Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
 Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?? [])}.
-Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerCorrections(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
+Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerBranchements(supabase)}${await rappelerCorrections(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
 
     const {
       args,
