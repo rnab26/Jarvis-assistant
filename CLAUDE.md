@@ -1235,6 +1235,52 @@ raison qu'au-dessus. La purge à sept jours ne bouge pas, c'est le choix de
 Raphaël. Les échanges antérieurs reçoivent leur empreinte tout seuls, quelques
 lignes à chaque phrase (`rattraperEmpreintes`) — pas de script à lancer.
 
+## Jarvis constate ses propres échecs (`src/lib/retours.ts`)
+
+Sa demande du 3 sept. 2026, avec son exemple : « mets-moi la musique de Booba,
+Dolce Camara » — Jarvis demande le lecteur, ouvre Apple Music, ne lance pas le
+titre. Raphaël répond « tu n'as pas lancé la musique que je t'ai demandée ».
+**Cet échec-là ne levait aucune exception** : l'action avait « réussi », et le
+seul témoin était une phrase de reproche qui partait dans le vide.
+
+Trois signaux, et c'est tout : une action qui **lève** (l'échec certain, signalé
+depuis le `catch` d'`executerActions` avant que l'erreur remonte) ; une demande
+que Raphaël **redit** dans la minute ; et une **plainte** (« tu n'as pas… »,
+« ça n'a pas marché », « ce n'est pas ce que je t'ai demandé »), attribuée au
+tour précédent gardé dans `dernierTourRef`.
+
+**Pas de second registre** : tout passe par `signalerErreur` et `jarvis_erreurs`
+(migration 0019). Deux registres d'erreurs côte à côte, c'est la garantie que
+personne ne regardera ni l'un ni l'autre. Ces lignes n'ont pas de `correction`,
+donc elles ne partent PAS au modèle (`correctionsUtiles` exige une correction
+écrite) : elles ne gonflent pas la consigne.
+
+**Le titre porte la FAMILLE d'action et sa cible, jamais la phrase dictée.**
+C'est le titre qui fait l'empreinte de regroupement côté base : dix échecs sur
+la musique font UNE ligne avec un compteur, et non dix lignes que personne ne
+lira. C'est la demande explicite de Raphaël — « se corriger de façon GLOBALE,
+par contexte, pas par phrase ». Corollaire dans `cibleDeLAction` : l'application
+et le contact sont des cibles, le titre d'une tâche non — il change à chaque
+phrase et ferait une ligne par échec.
+
+**Ce qui est volontairement absent, et ne doit pas être ajouté : « non ».** Un
+« non » sec répond presque toujours à une question de précision (« Tu veux dire
+la villa Dan ? »), c'est-à-dire le fonctionnement NORMAL du dialogue. Même
+raison pour la redite après un `clarify` : il vient de demander une précision,
+on la lui donne. La moitié des contrôles de `verifier-retours.ts` vérifie le
+SILENCE, pas la détection — un registre bruyant n'est plus lu du tout, ce qui
+est pire que pas de détecteur.
+
+**Le rapport aux sessions** (le point 4 de sa demande) passe par le bloc de
+démarrage : le hook injecte les échecs `comprehension`/`action` vus au moins
+deux fois, **sans correction et sans chantier** — c'est-à-dire exactement ce
+que personne n'a pris. **Aucun chantier n'est créé automatiquement**, et c'est
+une décision, pas un oubli : un chantier auto-généré sans note de correction
+serait une seconde vue, plus pauvre, d'une ligne que les sessions lisent déjà
+au démarrage — dans l'écran dont il dit lui-même qu'il ne sait plus « où mettre
+le nez ». La question lui est posée dans le cockpit ; s'il tranche l'inverse,
+la place est prête.
+
 ## Ce que Raphaël reprend à Jarvis lui revient
 
 `supabase/functions/_shared/corrections.ts` — **une seule source**, importée
@@ -1292,6 +1338,7 @@ node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèm
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
+node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
 node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau

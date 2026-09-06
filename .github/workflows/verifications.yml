@@ -89,6 +89,13 @@ jobs:
       - name: Une panne de la mémoire ne se lit pas comme une absence
         run: node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts
 
+      # Jarvis constate ses propres échecs. La moitié de ces contrôles vérifie
+      # le SILENCE : un détecteur trop large remplit le registre des erreurs
+      # avec le fonctionnement normal du dialogue, et un registre bruyant n'est
+      # plus lu du tout — pire que pas de détecteur.
+      - name: Jarvis constate ses échecs, et se tait le reste du temps
+        run: node --experimental-strip-types scripts/verifier-retours.ts
+
       # Ce réglage commande une SUPPRESSION sans corbeille, à chaque phrase.
       # Le contrôle lit LES DEUX moitiés — le bouton de Paramètres et la
       # fonction SQL — et refuse qu'elles divergent : une valeur que l'app

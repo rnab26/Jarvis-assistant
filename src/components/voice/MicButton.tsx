@@ -18,6 +18,8 @@ import {
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
+import { signalerErreur } from "@/lib/erreurs"
+import { cibleDeLAction, echecDeLAction, echecSignalePar, type TourJarvis } from "@/lib/retours"
 import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appPreferee,
@@ -219,6 +221,39 @@ export function MicButton({
     enregistrerEchangeLocal(transcript, reponse)
   }
 
+  // Le tour précédent, pour pouvoir lui attribuer un reproche.
+  //
+  // « Tu n'as pas lancé la musique que je t'ai demandée » — l'exemple vécu de
+  // Raphaël le 3 sept. : aucune exception n'avait été levée, l'action avait
+  // « réussi », et ce reproche partait dans le vide. C'est le SEUL témoin d'un
+  // échec que Jarvis croit être une réussite (chantier 25a58902).
+  const dernierTourRef = useRef<TourJarvis | null>(null)
+
+  /** Ce que la phrase courante dit du tour précédent — le plus souvent rien. */
+  function constaterEchec(phrase: string, source: "voix" | "live") {
+    const echec = echecSignalePar(phrase, dernierTourRef.current, Date.now())
+    if (!echec) return
+    // Une fois signalé, on oublie le tour : sinon deux reproches d'affilée sur
+    // la même chose compteraient deux fois, et le registre exagérerait.
+    dernierTourRef.current = null
+    signalerErreur(echec.categorie, echec.titre, {
+      detail: echec.detail,
+      contexte: echec.contexte,
+      source,
+    })
+  }
+
+  /** Retient ce qui vient d'être fait, au cas où la phrase suivante le conteste. */
+  function retenirLeTour(transcript: string, actions: VoiceAction[], reponse: string | null) {
+    dernierTourRef.current = {
+      transcript,
+      actions: actions.map((a) => a.action),
+      cible: cibleDeLAction(actions[0] as unknown as Record<string, unknown>),
+      reponse,
+      at: Date.now(),
+    }
+  }
+
   /**
    * Envoie un transcript à la Edge Function et renvoie les actions à exécuter.
    * Une phrase peut en contenir plusieurs ("ajoute une tâche et marque
@@ -340,6 +375,10 @@ export function MicButton({
     originalTranscript = transcript,
     round = 0,
   ): Promise<boolean> {
+    // Seulement au premier tour : les tours suivants rejouent une phrase
+    // construite par l'app (question de précision, préférence d'application),
+    // pas une phrase de Raphaël — les prendre pour une redite serait faux.
+    if (round === 0) constaterEchec(transcript, "voix")
     setStatus("processing")
     const actions = await resolveTranscript(transcript)
 
@@ -386,6 +425,7 @@ export function MicButton({
 
     const reply = await executerActions(actions, originalTranscript)
     tracerSiLocale(transcript, reply)
+    retenirLeTour(transcript, actions, reply)
 
     setLastReply(reply)
     setStatus("speaking")
@@ -429,6 +469,20 @@ export function MicButton({
         // compte Google pas encore branché, accès retiré, Google qui refuse.
         // Ces messages-là sont écrits pour être dits — les avaler ferait
         // croire que Jarvis n'a pas entendu la demande.
+        // Une action qui lève, c'est un échec sans le moindre doute : on le
+        // range avant de laisser l'erreur remonter, sinon elle ne laisse
+        // qu'un message rouge de cinq secondes à l'écran.
+        const echec = echecDeLAction(
+          action.action,
+          cibleDeLAction(action as unknown as Record<string, unknown>),
+          originalTranscript,
+          e,
+        )
+        signalerErreur(echec.categorie, echec.titre, {
+          detail: echec.detail,
+          contexte: echec.contexte,
+          source: "voix",
+        })
         if (e instanceof AgendaError) reponses.push(e.message)
         else throw e
       }
@@ -509,6 +563,7 @@ export function MicButton({
       onReponse: (texte) => setLastReply(texte),
       onCommande: async (demande) => {
         setLastUserText(demande)
+        constaterEchec(demande, "live")
 
         // Une question « avec quelle application ? » posée au tour précédent
         // attend peut-être sa réponse ici (chantier d3b6eeb4).
@@ -544,6 +599,7 @@ export function MicButton({
 
         const reponse = await derniersRef.current.executerActions(actions, aRejouer)
         tracerSiLocale(aRejouer, reponse)
+        retenirLeTour(aRejouer, actions, reponse)
         return reponse
       },
       onEtat: (etat, detail) => {
