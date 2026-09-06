@@ -14,6 +14,10 @@ interface TaskListProps {
   onEnFaireUnChantier?: (task: Task, titre: string, notes: string | null) => Promise<void>
   /** Pour dire, sur une ligne dépliée, ce que Jarvis fera sonner et quand. */
   prefsNotifs?: PrefsNotifications
+  /** Relancer l'envoi d'une tâche restée en attente (réseau coupé). */
+  onRelancerEnvoi?: (id: string) => void
+  /** Retirer une dictée de la file d'attente. */
+  onOublierEnAttente?: (id: string) => void
 }
 
 const NO_CATEGORY_LABEL = "Sans catégorie"
@@ -26,6 +30,8 @@ export function TaskList({
   onDelete,
   onEnFaireUnChantier,
   prefsNotifs,
+  onRelancerEnvoi,
+  onOublierEnAttente,
 }: TaskListProps) {
   const categoryById = new Map(categories.map((c) => [c.id, c.name]))
   const groups = new Map<string, Task[]>()
@@ -75,6 +81,8 @@ export function TaskList({
                   onUpdate={onUpdate}
                   onDelete={onDelete}
                   prefsNotifs={prefsNotifs}
+                  onRelancerEnvoi={onRelancerEnvoi}
+                  onOublierEnAttente={onOublierEnAttente}
                   onEnFaireUnChantier={
                     onEnFaireUnChantier
                       ? (titre, notes) => onEnFaireUnChantier(task, titre, notes)

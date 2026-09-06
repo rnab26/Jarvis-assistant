@@ -516,6 +516,40 @@ Tu prends le CADRAGE : les chantiers marqués [À CADRER AVEC RAPHAËL AVANT DE 
 Ne touche pas à : src/components/voice/MicButton.tsx, src/lib/live/**, src/hooks/useSpeechRecognition.ts, supabase/functions/live-jeton/**, scripts/harness/**, scripts/verifier-ecoute-web.mjs : la session Voix et écoute (claude/cockpit-chantiers-ikfpnq) y travaille.
 ```
 
+---
+
+# Trois fronts du 5 septembre 2026 au soir
+
+Ouverts par la session `claude/verify-sql-auto-access` après cette phrase de
+Raphaël : « il y a des chantiers ouverts de partout, mais je ne sais pas ce qui
+avance, ce qui n'avance pas ». Les sessions sont lancées automatiquement, il n'a
+aucun prompt à coller — le découpage ci-dessous est là pour que les sessions
+suivantes sachent qui possède quoi.
+
+| Front | Branche | Fichiers qui lui appartiennent |
+|---|---|---|
+| **Le téléphone** | `claude/telephone-actions-0509` | `android/**`, `capacitor.config.ts`, `patches/**`, `src/lib/commandeLocale.ts`, `voiceActions.ts`, `actionsTelephone*.ts`, `supabase/functions/voice-command/**` (**seule à déployer cette fonction**), `scripts/verifier-commande-locale.ts`, `verifier-commande-vocale.mjs` |
+| **Voix et écoute** | `claude/voix-ecoute-0509` | hooks vocaux (`useSpeechRecognition`, `useSpeechSynthesis`, `useWakeWordSetting`, `useDialogueSetting`, `useVoiceSetting`), `src/lib/motCle.ts`, `dialogueTour.ts`, `dialoguePrefs.ts`, `voicePrefs.ts`, `journalEcoute.ts`, `src/lib/live/**`, `src/components/voice/MicButton.tsx`, `supabase/functions/live-jeton/**`, `scripts/verifier-dialogue.ts`, `verifier-mot-cle.ts`, `verifier-ecoute-web.mjs`, `verifier-fin-conversation.ts`, `verifier-live-*.mjs` |
+| **Le cockpit** | `claude/cockpit-lisible-0509` | `src/components/cockpit/**`, `settings/**`, `ConfirmerAction.tsx`, `src/hooks/useDevItems.ts`, `useDevLog.ts`, `useTasks.ts`, `src/lib/journalBord.ts`, `marqueurChantier.ts`, `themeChantier.ts`, `doublonChantier.ts`, `suggestionTheme.ts`, `annulation.ts`, `reglages.ts`, `supabase/migrations/**`, `.claude/hooks/session-start.sh`, `verifier-cockpit-web.mjs`, `verifier-sections.ts`, `verifier-reglages*` |
+
+La règle de passage n'a pas changé : une session qui a besoin d'une action
+vocale nouvelle **ne touche pas** `commandeLocale.ts` ni `voice-command/` — elle
+écrit sa demande dans `dev_log` (`kind = 'question'`) et le front « Le
+téléphone » l'ajoute. Deux sessions dans ces fichiers en même temps, c'est un
+déploiement qui écrase l'autre et Jarvis muet.
+
+## Ce qui a changé dans la consigne, et pourquoi
+
+**Aucune session de ce soir ne publie de fiche ni ne pose de question à
+Raphaël.** Quatre fiches étaient ouvertes en même temps, ses réponses étaient
+éparpillées entre elles, et deux d'entre elles lui ont posé **la même question
+le même soir** — il y a répondu deux choses différentes (la conservation des
+conversations ; la lecture qui fait foi est écrite dans la note du chantier
+`5ca5c4a3`, avec sa justification). Un manque de décision devient désormais un
+chantier `[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]`, et la session passe au
+suivant. Le chantier `85ae62b5` existe pour que ses réponses vivent dans son
+app plutôt que dans des artefacts qu'il faut aller relire un par un.
+
 
 ## Le front « Le cockpit » du 5 sept. au soir — claude/cockpit-lisible-0509
 

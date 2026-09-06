@@ -8,6 +8,7 @@ import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
 import { CarteAutorisations } from "@/components/settings/Autorisations"
 import { BulleFlottante } from "@/components/settings/BulleFlottante"
 import { Cockpit } from "@/components/settings/Cockpit"
+import { Consommation, useConsommation } from "@/components/settings/Consommation"
 import { MoteurDeLangue } from "@/components/settings/MoteurDeLangue"
 import { SessionsAutonomes } from "@/components/settings/SessionsAutonomes"
 import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
@@ -103,6 +104,13 @@ const SECTIONS = {
     resume: "Applications par défaut, appui long sur le bouton",
     motsCles:
       "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android bulle flottante pastille par-dessus superposition délai annuler arrêter avant d'agir mal entendu",
+  },
+  consommation: {
+    cle: "consommation",
+    titre: "Ce que Jarvis consomme",
+    resume: "Phrases et jetons du jour, et la marge qu'il reste",
+    motsCles:
+      "consommation credit quota jetons tokens gemini plafond limite gratuit combien il reste phrases modele secours lenteur temps de reponse cout",
   },
   memoire: {
     cle: "memoire",
@@ -474,6 +482,10 @@ export function SettingsPage() {
   // Les dates des conversations gardées : la carte « Mémoire » en a besoin
   // pour annoncer combien une purge effacerait, avant qu'il confirme.
   const datesEchanges = useDatesEchanges()
+  // Ce que Jarvis a consommé aujourd'hui : sa demande du 5 sept., « savoir
+  // combien il me reste de crédit et à combien de temps de discussion ça
+  // équivaut ».
+  const consommationState = useConsommation()
   const {
     wakeWordState,
     dialogueState,
@@ -946,6 +958,10 @@ export function SettingsPage() {
         <ConnecteursIA />
         <ControleEcran />
         <FenetreAnnulation />
+      </Section>
+
+      <Section {...SECTIONS.consommation} filtre={recherche}>
+        <Consommation api={consommationState} />
       </Section>
 
       <Section {...SECTIONS.memoire} filtre={recherche}>

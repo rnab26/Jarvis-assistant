@@ -2110,6 +2110,7 @@ node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les do
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, et le repère « déjà vu », sans réseau
 ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà vu » suit son compte : non-recul côté SQL et cloisonnement RLS
+node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâche dictée hors réseau ne se perd pas et ne se dédouble pas, sans réseau
 node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une session autonome se retire quand il le faut, sans réseau
 node --experimental-strip-types scripts/verifier-historique-chantier.ts  # une note complétée n'est pas une note écrasée, sans réseau
 ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce qu'on y a écrit : trigger, restauration tracée, RLS

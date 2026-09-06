@@ -220,6 +220,67 @@ try {
     await autonomesPanne.getByText(/Impossible de lire les passes/).isVisible(),
   )
 
+  // ── Ce que Jarvis a consommé aujourd'hui ──
+  // Sa demande du 5 sept. : « savoir combien il me reste de crédit et à
+  // combien de temps de discussion ça équivaut ». La moitié des contrôles qui
+  // suivent vérifie un SILENCE, et c'est le point : il n'y a pas de solde sur
+  // l'offre gratuite, et un chiffre inventé se lirait comme une mesure.
+  const conso = page.locator("#conso")
+  const consoSecours = page.locator("#conso-secours")
+  const consoVide = page.locator("#conso-vide")
+  const consoPanne = page.locator("#conso-panne")
+
+  verifier(
+    "la carte dit ses phrases du jour et ses jetons",
+    (await conso.getByText("40 phrases").isVisible()) &&
+      (await conso.getByText(/de jetons/).isVisible()),
+  )
+  verifier(
+    "et ce qu'on sait vraiment de la marge, sans jamais inventer de plafond",
+    await conso.getByText(/au moins 100 phrases passent dans une journée, mesuré/).isVisible(),
+    "les plafonds ne se lisent que dans le corps d'un 429, donc une fois dépassés",
+  )
+  {
+    // LE CONTRÔLE QUI COMPTE LE PLUS : aucun solde, aucun pourcentage. Un
+    // chiffre en euros ou en % se lit comme une mesure, et il s'est déjà
+    // retrouvé sans Jarvis deux fois alors que tout avait l'air normal.
+    const texte = (await conso.innerText()).replace(/\s+/g, " ")
+    verifier(
+      "aucun solde en argent, aucun pourcentage d'un plafond supposé",
+      !/[%€$]|\d+\s*(euros?|crédits? restants?)/i.test(texte),
+      `la carte affiche : ${texte.slice(0, 120)}…`,
+    )
+    verifier(
+      "un refus « par minute » est affiché mais ne lève AUCUNE alerte",
+      /4 refus/.test(texte) && /ça se lève tout seul en une minute/.test(texte),
+      "c'est le fonctionnement normal quand il enchaîne : un bandeau quotidien n'est plus lu",
+    )
+  }
+  verifier(
+    "aucune alerte sur une journée ordinaire",
+    (await conso.locator(".text-destructive").count()) === 0,
+    "sinon la vraie alerte, le jour venu, ne se distinguerait plus du décor",
+  )
+
+  verifier(
+    "quand ses phrases passent par un secours, la carte le dit",
+    (await consoSecours.getByText("sur un secours").isVisible()) &&
+      (await consoSecours.getByText(/le modèle principal ne répond pas/).isVisible()),
+    "le rang vient du serveur : l'app ne peut pas lire le secret GEMINI_MODELE",
+  )
+
+  verifier(
+    "une journée sans phrase le dit, sans faire croire à une panne",
+    (await consoVide.getByText("Aucune phrase aujourd'hui.").isVisible()) &&
+      (await consoVide.getByText(/ne veut pas dire que Jarvis n'a jamais servi/).isVisible()),
+  )
+
+  verifier(
+    "une lecture en échec ne se lit PAS comme « rien consommé »",
+    await consoPanne.getByText(/Ce n'est pas « rien consommé »/).isVisible(),
+    "ce serait le rassurer juste avant un quota vide",
+  )
+
   // ── La durée de conservation des conversations ──
   // Ce réglage EFFACE, à chaque phrase, sans corbeille. Ce qui compte à
   // l'écran n'est pas qu'il existe : c'est qu'il demande AVANT, et qu'il dise
@@ -575,8 +636,8 @@ try {
     })
 
     verifier(
-      "les neuf autres sections sont bien repliées",
-      mesures.nbBarres === 9,
+      "les dix autres sections sont bien repliées",
+      mesures.nbBarres === 10,
       `${mesures.nbBarres} barres repliées trouvées`,
     )
     verifier(

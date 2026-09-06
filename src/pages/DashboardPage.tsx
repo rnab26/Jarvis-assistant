@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { LoadError } from "@/components/LoadError"
 import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
 import { ChantiersEgares } from "@/components/tasks/ChantiersEgares"
+import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
@@ -23,6 +24,10 @@ export function DashboardPage() {
     deleteTask,
     toggleStatus,
     addCategory,
+    fileEnAttente,
+    fileIllisible,
+    relancerEnvoi,
+    oublierEnAttente,
   } = tasksState
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [newCategoryName, setNewCategoryName] = useState("")
@@ -112,6 +117,12 @@ export function DashboardPage() {
         />
       )}
 
+      {/* Ce qu'il a dicté sans réseau. La carte ne s'affiche PAS quand il n'y
+          a rien : un bandeau « 0 en attente » use le signal qui doit servir le
+          jour où il y en a. Elle est au-dessus de la liste et pas dedans,
+          parce que le filtre de catégorie ne doit pas pouvoir la masquer. */}
+      <EnAttenteDenvoi file={fileEnAttente} illisible={fileIllisible} />
+
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>
       ) : error ? (
@@ -125,6 +136,8 @@ export function DashboardPage() {
           onDelete={deleteTask}
           onEnFaireUnChantier={enFaireUnChantier}
           prefsNotifs={notificationsState.prefs}
+          onRelancerEnvoi={relancerEnvoi}
+          onOublierEnAttente={oublierEnAttente}
         />
       )}
     </div>

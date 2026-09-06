@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/sonner"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskItem } from "@/components/tasks/TaskItem"
 import { ChantiersEgares } from "@/components/tasks/ChantiersEgares"
+import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
+import type { ElementEnAttente } from "@/lib/fileEnAttente"
 import { Button } from "@/components/ui/button"
 import { PREFS_NOTIFS_DEFAUT } from "@/lib/notifications/prefs"
 import type { DevItem, Task } from "@/types/database"
@@ -97,6 +99,56 @@ const CHANTIERS: DevItem[] = [
   },
 ]
 
+/**
+ * Ce qu'il a dicté sans réseau. Deux états, et le second est celui qui trompe :
+ * une tâche qu'on renvoie encore, et une qu'on a cessé de renvoyer — celle-là
+ * n'est PAS enregistrée, et rien ne doit laisser croire le contraire.
+ */
+const EN_ATTENTE: ElementEnAttente[] = [
+  {
+    id: "f1",
+    cible: "tasks",
+    contenu: {},
+    libelle: "acheter du pain",
+    creeA: Date.now() - 60_000,
+    essais: 1,
+    dernierEchec: "Failed to fetch",
+    dernierEssaiA: Date.now() - 30_000,
+  },
+]
+
+const EN_ATTENTE_BLOQUE: ElementEnAttente[] = [
+  { ...EN_ATTENTE[0], id: "f2", libelle: "relancer le notaire", essais: 5 },
+]
+
+/** Les mêmes, telles qu'elles apparaissent DANS la liste. */
+const TACHES_EN_ATTENTE: Task[] = [
+  {
+    ...TACHES[0],
+    id: "f1",
+    title: "acheter du pain",
+    notes: null,
+    due_date: null,
+    due_time: null,
+    status: "todo",
+    enAttente: true,
+    echecEnvoi: "Failed to fetch",
+    envoiBloque: false,
+  },
+  {
+    ...TACHES[0],
+    id: "f2",
+    title: "relancer le notaire",
+    notes: null,
+    due_date: null,
+    due_time: null,
+    status: "todo",
+    enAttente: true,
+    echecEnvoi: "Failed to fetch",
+    envoiBloque: true,
+  },
+]
+
 function BancDesTaches() {
   const [taches, setTaches] = useState<Task[]>(TACHES)
   const [chantiersCrees, setChantiersCrees] = useState<string[]>([])
@@ -148,6 +200,37 @@ function BancDesTaches() {
         />
       ))}
       {taches.length === 0 && <p id="vide">Plus aucune tâche.</p>}
+
+      {/* La carte de résumé, dans ses trois états. Le premier vérifie un
+          SILENCE : rien en attente, rien à l'écran. */}
+      <div id="attente-rien">
+        <EnAttenteDenvoi file={[]} />
+      </div>
+      <div id="attente">
+        <EnAttenteDenvoi file={EN_ATTENTE} />
+      </div>
+      <div id="attente-bloque">
+        <EnAttenteDenvoi file={EN_ATTENTE_BLOQUE} />
+      </div>
+      <div id="attente-illisible">
+        <EnAttenteDenvoi file={[]} illisible />
+      </div>
+
+      {/* Et les lignes elles-mêmes : c'est là qu'il agit. */}
+      <div id="lignes-attente">
+        {TACHES_EN_ATTENTE.map((t) => (
+          <TaskItem
+            key={t.id}
+            task={t}
+            categories={[]}
+            onToggle={rien}
+            onUpdate={rien}
+            onDelete={rien}
+            onRelancerEnvoi={(id) => setChantiersCrees((l) => [...l, `relance:${id}`])}
+            onOublierEnAttente={(id) => setChantiersCrees((l) => [...l, `oubli:${id}`])}
+          />
+        ))}
+      </div>
     </div>
   )
 }

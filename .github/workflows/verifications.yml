@@ -279,6 +279,13 @@ jobs:
       - name: Un chantier garde ce qu'on y a écrit
         run: node --experimental-strip-types scripts/verifier-historique-chantier.ts
 
+      # Il dicte en voiture : le reseau coupe n'est pas le cas rare. Ce qui se
+      # verifie ici peut etre FAUX EN SILENCE — un renvoi qui cree un doublon,
+      # une file qui grossit sans fin, un abandon que personne ne voit — et la
+      # moitie des controles porte sur ce qu'on NE dit PAS.
+      - name: Une tâche dictée hors réseau ne se perd pas, et ne se dédouble pas
+        run: node --experimental-strip-types scripts/verifier-file-en-attente.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.

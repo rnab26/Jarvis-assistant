@@ -78,6 +78,88 @@ try {
   await page.goto(`${BASE}/scripts/harness/taches.html`)
   await page.waitForSelector("text=Appeler le plombier")
 
+  // ── Ce qu'il a dicté sans réseau ─────────────────────────────────────────
+  // Sa crainte du chantier b5411c23, et la règle du 6 sept. : « on n'annonce
+  // jamais au passé ce qu'on n'a pas constaté — ni à l'oral, ni dans un toast,
+  // ni dans une étiquette d'écran ». La moitié de ces contrôles vérifie donc
+  // ce qui NE doit PAS être dit.
+  {
+    const rien = page.locator("#attente-rien")
+    verifier(
+      "rien en attente : la carte ne s'affiche pas du tout",
+      (await rien.locator("*").count()) === 0,
+      "un bandeau « 0 en attente » use le signal qui doit servir le jour où il y en a",
+    )
+
+    const attente = page.locator("#attente")
+    verifier(
+      "une dictée non enregistrée se voit",
+      await attente.getByText(/1 chose en attente d'envoi/).isVisible(),
+    )
+    const texte = (await attente.innerText()).replace(/\s+/g, " ")
+    verifier(
+      "et on ne lui dit JAMAIS que c'est enregistré",
+      !/\b(c'est|est|a été|j'ai)\s+(bien\s+)?enregistr/i.test(texte) &&
+        /pas encore enregistr/i.test(texte),
+      `la carte affiche : ${texte.slice(0, 140)}`,
+    )
+    verifier(
+      "elle dit ce qui va se passer, et quand",
+      /dès que tu as du réseau/.test(texte),
+    )
+
+    const bloque = page.locator("#attente-bloque")
+    verifier(
+      "un envoi abandonné ne se lit pas comme une simple attente",
+      await bloque.getByText(/n'a pas pu être enregistrée après plusieurs essais/).isVisible(),
+    )
+
+    const illisible = page.locator("#attente-illisible")
+    verifier(
+      "un tampon illisible ne se lit PAS comme « rien en attente »",
+      await illisible.getByText(/Ce n'est pas « rien en attente » : je ne sais pas/).isVisible(),
+      "lui dire que tout va bien alors qu'on n'en sait rien est la panne qu'on supprime",
+    )
+  }
+
+  {
+    // Sur la LIGNE, c'est là qu'il agit.
+    const lignes = page.locator("#lignes-attente")
+    verifier(
+      "la ligne porte l'étiquette « en attente d'envoi »",
+      await lignes.getByText("en attente d'envoi").isVisible(),
+    )
+    verifier(
+      "et celle qu'on a cessé de renvoyer dit « pas enregistrée »",
+      await lignes.getByText("pas enregistrée", { exact: true }).isVisible(),
+    )
+    verifier(
+      "la raison du blocage est écrite en clair",
+      await lignes.getByText(/Pas enregistrée après plusieurs essais : Failed to fetch/).isVisible(),
+      "« ça n'a pas marché » sans dire pourquoi ne permet ni de comprendre ni de rattraper",
+    )
+    verifier(
+      "aucune case à cocher sur une ligne qui n'existe pas encore en base",
+      (await lignes.getByLabel("Marquer comme faite").count()) === 0,
+      "la cocher échouerait à coup sûr : un contrôle mort ne doit pas s'afficher",
+    )
+    verifier(
+      "il peut réessayer d'un appui",
+      await lignes.getByLabel("Réessayer d'enregistrer").first().isVisible(),
+    )
+
+    // Abandonner détruit la dictée : ça demande avant, comme partout ailleurs.
+    await lignes.getByLabel("Abandonner").first().click()
+    await pause(300)
+    verifier(
+      "abandonner une dictée demande confirmation",
+      await page.getByText(/n'a jamais été enregistrée/).isVisible(),
+      "sans ça, sa dictée disparaît au premier appui, à trois millimètres du bouton Réessayer",
+    )
+    await page.getByRole("button", { name: "Annuler" }).last().click()
+    await pause(300)
+  }
+
   await page.getByRole("button", { name: "Supprimer" }).first().click()
   await pause(300)
   verifier(
