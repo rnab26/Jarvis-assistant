@@ -187,6 +187,12 @@ jobs:
       - name: Jarvis n'annonce jamais au passé ce qu'il n'a pas fait
         run: node --experimental-strip-types scripts/verifier-honnetete.ts
 
+      # Le téléchargement de l'APK. Le 6 sept. 2026 il est resté devant
+      # « 0.0 Mo reçus… » pendant que plus aucun correctif natif ne pouvait
+      # lui parvenir : ce contrôle garde qu'aucun chemin ne redevienne muet.
+      - name: Le téléchargement de l'APK ne peut plus rester muet
+        run: node --experimental-strip-types scripts/verifier-telechargement-apk.ts
+
       # Les connecteurs d'IA : « je n'ai pas pu regarder » ne doit jamais se
       # lire comme « tu n'as aucune application d'IA », et la liste des IA
       # connues met en avant sans jamais limiter.

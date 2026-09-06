@@ -174,6 +174,19 @@ export function erreurDepuisEcoute(
     }
   }
 
+  // La mise à jour de l'APK. Le 6 sept. 2026, Raphaël est resté devant
+  // « 0.0 Mo reçus… » sans que rien nulle part n'en garde la trace : le
+  // diagnostic a dû se faire depuis GitHub, à l'aveugle. Ici l'échec se
+  // regroupe par cause, et il se voit dans le cockpit.
+  if (evenement === "maj_apk" && texte("etape") === "echec") {
+    return {
+      categorie: "systeme",
+      titre: "Le téléchargement de la nouvelle version n'a pas abouti",
+      detail: texte("detail"),
+      source: "app",
+    }
+  }
+
   if (evenement === "service_mort") {
     return {
       categorie: "ecoute",

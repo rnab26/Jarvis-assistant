@@ -1628,6 +1628,7 @@ ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout e
 node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
 node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
+node --experimental-strip-types scripts/verifier-telechargement-apk.ts  # télécharger l'APK : aucun chemin ne peut rester muet, sans réseau
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
 node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton « Autoriser » n'est jamais mort, sans réseau
 node --experimental-strip-types scripts/verifier-musique.ts       # « je lance » n'est dit que si ça joue vraiment, sans réseau
@@ -2080,6 +2081,47 @@ de preuve à un chantier qui ne marchait pas. Et **un contrôle doit être essay
 supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle lit
 maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
 Playwright du 4 sept.
+
+## Télécharger l'APK : DownloadManager ne peut pas être le seul chemin
+
+Le 6 sept. 2026, Raphaël ne pouvait plus mettre à jour DU TOUT — « installée
+build 206, publiée 207 », il appuie, « Téléchargement… », la barre vide,
+« 0.0 Mo reçus » indéfiniment. **C'est le blocage qui bloque tous les
+autres** : tant qu'il tient, aucun correctif touchant `android/` ne lui
+parvient.
+
+**La cause exacte n'a pas pu être établie d'ici** (aucun SDK Android, et le
+défaut vit dans une application SYSTÈME d'Android). Ce qui a été corrigé, ce
+sont les trois façons dont ce chemin pouvait rester MUET — et c'est ça, le
+vrai défaut :
+
+1. `enqueue()` n'était pas protégé. Sur Samsung et Xiaomi, l'application
+   « Gestionnaire de téléchargement » se désactive : `getSystemService` rend
+   null ou `enqueue()` lève, et la promesse n'était alors ni résolue ni
+   rejetée — l'écran restait sur « Téléchargement… » pour toujours.
+2. `STATUS_PAUSED` n'émettait aucune progression. Une attente du Wi-Fi se
+   lisait donc exactement comme un plantage : le dernier « 0.0 Mo » restait
+   figé à l'écran. Il est émis, avec sa raison en clair.
+3. Zéro octet reçu faisait attendre **dix minutes**. Vingt secondes sans le
+   moindre octet, et on cesse d'attendre.
+
+**Et il y a désormais deux chemins de repli, dans cet ordre.** Le premier est
+dans `telechargerNousMemes()` : une simple `HttpURLConnection`, aucun service
+système, aucune application tierce. Le second est le lien direct ouvert dans
+son navigateur (`ouvrirLienExterne`) — un `<a href download>` ordinaire ne
+sort jamais de la WebView, Capacitor l'intercepte.
+
+`scripts/verifier-telechargement-apk.ts` (dans la CI) lit le code, faute de
+SDK : il tient les quatre règles ci-dessus. **Essayé à l'envers, et deux de
+ses contrôles étaient d'abord faux** — chercher `STATUS_PAUSED` n'importe où
+restait vert quand on le retirait de la condition d'émission, et chercher
+`ouvrirDansLeNavigateur` trouvait la définition de la fonction alors que son
+`onClick` avait disparu. Même piège que `Filesystem.mkdir` le 4 sept. : un
+contrôle doit viser l'APPEL, pas la présence du mot.
+
+**Le compteur `download_count` de la release ne prouve rien à lui seul** :
+republier l'asset le remet à zéro. Vérifié le 6 sept. — il valait 0 sur un
+fichier mis en ligne trois minutes plus tôt.
 
 ## L'assistant du téléphone : ce qui qualifie Jarvis, et ce qui ne se peut pas
 
