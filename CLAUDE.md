@@ -1811,6 +1811,26 @@ plutôt que de le laisser deviner. Depuis le 6 sept., elle regarde `service`
 `candidat` : se fier à `candidat` seul lui disait « Jarvis peut être choisi »
 devant une liste où il n'était pas.
 
+### Prouver qu'une déclaration a bien atteint l'APK, sans téléphone
+
+Un manifeste juste dans le dépôt ne prouve rien : c'est la coquille Android
+publiée qui compte, et la mise à jour rapide ne la remplace pas. La release
+se lit d'ici, et c'est la meilleure preuve atteignable sans appareil :
+
+```bash
+curl -sSL -o app.apk https://github.com/rnab26/Jarvis-assistant/releases/download/latest-debug/app-debug.apk
+unzip -o -q app.apk AndroidManifest.xml 'res/xml/*'
+strings -el AndroidManifest.xml | grep -F JarvisVoiceInteractionService   # manifeste : UTF-16
+strings -a  res/xml/interaction_service.xml | grep -F recognitionService  # ressource : UTF-8
+```
+
+**Le piège, payé le 6 sept. : les deux ne s'encodent pas pareil.** Le
+manifeste binaire se lit avec `strings -el` (UTF-16), la ressource XML
+compilée avec `strings -a` (UTF-8). Utiliser `-el` sur la seconde ne rend
+RIEN — et « rien » se lit exactement comme « la déclaration est absente ».
+Vérifié sur la build 192 : les trois services, la permission, la meta-data et
+les quatre attributs du XML y sont tous.
+
 **Deux chemins qui n'existent pas, vérifiés : ne les retente pas.** L'action
 qui mène pile sur l'écran du choix (`MANAGE_DEFAULT_APP` + `EXTRA_ROLE_NAME`)
 est protégée par la permission de signature `MANAGE_ROLE_HOLDERS` ; et le rôle
