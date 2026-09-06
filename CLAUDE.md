@@ -1268,11 +1268,185 @@ du compromis (Google se réserve d'utiliser les contenus de l'offre gratuite
 pour améliorer ses produits, relecture humaine comprise). Les options
 écartées : Haiku 4.5 (moitié prix, privé), rester sur Sonnet 5.
 
-Tout ce qui est propre à Gemini vit dans `supabase/functions/_shared/gemini.ts`
-— un seul endroit pour la forme de la requête, les erreurs et les nouveaux
-essais. `index.ts` et `memoire.ts` ne font qu'appeler `appelerGemini()`.
-Les phrases d'erreur y sont alignées mot pour mot avec
-`src/lib/erreurServeurVocal.ts` : changer l'une, c'est changer l'autre.
+### Changer de moteur est un SECRET à poser, plus une réécriture (6 sept. 2026)
+
+Chantier `2c54c62f`. Sa crainte, le 3 sept. : « il va bien falloir qu'on trouve
+une solution stable », après avoir tout reperdu une fois. **Le constat, lui,
+est rassurant et il faut le lui redire plutôt que le reconstruire : rien de ce
+qui fait Jarvis ne vit dans le modèle.** La consigne, le schéma d'outil, la
+mémoire, ses réglages, ses corrections sont dans notre code et dans la base ;
+rien n'est entraîné ni affiné. Changer de moteur ne peut rien lui faire perdre.
+
+`supabase/functions/_shared/modele.ts` porte l'interface commune et le SEUL
+endroit qui décide quel moteur répond. `gemini.ts` et `anthropic.ts` sont deux
+implémentations derrière elle. `index.ts` et `memoire.ts` appellent
+`appelerModele()` et demandent un **RÔLE** (`commande` / `memoire`), jamais un
+nom de modèle.
+
+Trois secrets, et plus une ligne de code à toucher :
+
+| Secret | Ce qu'il fait |
+| --- | --- |
+| `FOURNISSEUR` | `gemini` (défaut) ou `anthropic` |
+| `GEMINI_MODELE`, `GEMINI_MODELE_MEMOIRE` | le modèle de chaque rôle |
+| `GEMINI_SECOURS`, `GEMINI_SECOURS_MEMOIRE` | ses secours, séparés par des virgules |
+
+**`GEMINI_SECOURS` est la sortie du chantier `0edec0c4`** : les secours étaient
+écrits en dur, donc en changer demandait un redéploiement — c'est-à-dire
+attendre, pendant que Jarvis se tait. Ils se posent maintenant à chaud.
+
+Quatre choses à ne pas défaire :
+
+1. **Rien ne bascule TOUT SEUL vers un moteur payant.** `Fournisseur.gratuit`
+   existe pour ça : Raphaël a quitté l'API Anthropic en découvrant sa clé à
+   sec, sans avoir jamais choisi de payer. Une clé Anthropic présente ne suffit
+   pas — il faut qu'il pose `FOURNISSEUR=anthropic` lui-même. Ni un secours, ni
+   la promotion automatique du chantier `66a7a233` ne doivent franchir ça.
+2. **Un seul fournisseur est chargé par appel**, celui qui sert. Charger les
+   deux ferait dépendre Jarvis d'un moteur qu'il n'utilise pas : un import
+   cassé côté Anthropic tuerait la commande vocale alors que Gemini répondait.
+3. **La commande et la mémoire ne partagent JAMAIS un modèle.** C'est le rôle
+   qui porte cette séparation. Un troisième appelant qui demanderait
+   « commande » pour autre chose referait l'erreur du 3 sept.
+4. **Les phrases d'erreur ne nomment aucun fournisseur** (« le moteur », jamais
+   « Gemini ») : sinon une bascule obligerait à republier l'app pour rester
+   vraie, et elle mentirait entre les deux. Elles sont alignées **mot pour
+   mot** avec `src/lib/erreurServeurVocal.ts` — `scripts/verifier-moteur.ts`
+   refuse qu'elles divergent, à une exception près qu'il nomme lui-même.
+
+**Le mode Live reste Gemini, quel que soit `FOURNISSEUR`** : `live-jeton` mint
+un jeton pour l'API Gemini Live, qui est un produit Google sans équivalent
+ailleurs dans notre pile. Ce n'est pas un oubli.
+
+`scripts/verifier-moteur.ts` (dans la CI, sans réseau) ne lit pas le code : il
+remplace `Deno` et `fetch` par des doublures et fait tourner le VRAI
+répartiteur. Un contrôle qui chercherait des mots dans un fichier resterait
+vert le jour où la bascule cesse de marcher.
+
+### « Combien il me reste, et à combien de temps de discussion » (6 sept. 2026)
+
+Chantier `5ac4d12c`, dicté le 5 sept. : « savoir combien il me reste de crédit
+et à combien de temps de discussion ça équivaut, et le noter constamment ».
+
+**Il n'y a pas de solde, et il ne faut pas en inventer un.** Jarvis tourne sur
+l'offre GRATUITE : ce qui existe, ce sont des plafonds en requêtes par minute
+et par jour, comptés par modèle et par projet — et ils ne sont publiés nulle
+part. Ils ne se lisent que dans le corps d'un 429, donc une fois dépassés. Un
+pourcentage inventé serait pire que pas de chiffre : il se lit comme une
+mesure, et il s'est déjà retrouvé sans Jarvis deux fois alors que tout avait
+l'air normal.
+
+Trois pièces, et la frontière compte :
+
+- Migration `0025_appels_modele.sql` — la table `appels_modele`,
+  `noter_appel_modele()` et `etat_consommation()`. **Avant ça il n'y avait
+  rien à afficher** : la consommation n'existait que dans les journaux de la
+  fonction, qui ne se lisent pas depuis son téléphone, ne se totalisent pas et
+  s'effacent.
+- `_shared/modele.ts` écrit une ligne par modèle ESSAYÉ, pas seulement par
+  celui qui répond — sinon un secours sollicité tous les jours reste invisible.
+  Sans `await`, erreurs avalées : une comptabilité ne doit jamais faire échouer
+  la commande qu'elle compte.
+- `src/lib/consommationModele.ts` — **pur**, vérifié par
+  `scripts/verifier-consommation.ts`. C'est lui qui décide quoi dire.
+
+Quatre choses à ne pas défaire :
+
+1. **Les appels de vérification (`essai`) ne comptent pas comme ses phrases.**
+   Une passe de `verifier-commande-vocale.mjs` en afficherait quarante qu'il
+   n'a jamais dites, et le chiffre ne voudrait plus rien dire le jour où il
+   compte dessus. La mémoire non plus : chaque phrase déclenche DEUX appels.
+2. **Le RANG du modèle (0 = principal) est écrit par le SERVEUR.** Le principal
+   se règle par le secret `GEMINI_MODELE`, que l'app ne peut pas lire :
+   comparer des noms de modèles côté app donnerait une page fausse en silence
+   le jour du changement — c'est-à-dire le jour où il faut savoir qu'on tourne
+   sur un secours.
+3. **On annonce un PLANCHER prouvé, jamais un plafond supposé.**
+   `PLAFONDS_MESURES` ne contient que ce qu'on a vu, avec sa date ; un modèle
+   absent le dit (« jamais mesuré »). Et `verifier-moteur.ts` refuse qu'un
+   modèle entre en service sans avoir été mesuré.
+4. **Un refus par MINUTE n'alerte pas.** C'est le fonctionnement normal quand
+   il enchaîne vite, ça se lève en soixante secondes, et un bandeau qui
+   s'allume tous les jours n'est plus lu — c'est la panne qu'on ne verra pas.
+   Seuls le quota du JOUR, le passage sur un secours et une latence au-delà de
+   8 s le dérangent.
+
+L'écran reste à faire : demande posée dans `dev_log` pour la session
+« Le cockpit ».
+
+### La veille des modèles : passer tout seul au meilleur (6 sept. 2026)
+
+Chantier `66a7a233`. Ses mots du 5 sept. : « s'il y a des mises à jour qui sont
+faites pour quelque chose de plus évolué, évidemment qu'il faut que nous aussi
+on fasse les mises à jour automatiques en interne sans que forcément je puisse
+le demander à chaque fois manuellement. » Et sa limite du même soir : « il ne
+faut pas changer les voix tout seul » — **ceci ne concerne QUE le modèle de
+langue**, jamais la reconnaissance vocale ni la voix de synthèse.
+
+- Migration `0026_veille_modeles.sql` — `moteur_choisi` (ce qui tourne, avec de
+  quoi revenir en arrière), `essais_modele` (ce que chaque essai réel a donné,
+  par jour), `veilles_modele` (les passes, y compris celles qui ne font rien).
+- `_shared/veilleModele.ts` — **la décision, pure**, vérifiée par
+  `scripts/verifier-veille-modele.ts`.
+- `_shared/controlesModele.ts` — six phrases dont la bonne réponse ne se
+  discute pas. C'est un ÉCHANTILLON, pas la vraie consigne de 26 000
+  caractères : la recopier ferait une seconde source de vérité.
+- `supabase/functions/moteur-veille/` — la passe. **Déployée.**
+- Paramètres › Le cockpit › Le moteur de langue (`jarvis_moteur_auto`).
+
+**Ce que ce mécanisme REFUSE compte plus que ce qu'il accepte**, et rien de
+tout ça ne doit être assoupli sans refaire la mesure :
+
+1. **Deux jours DIFFÉRENTS de réussite.** Une seule bonne nuit ne prouve rien :
+   les trois modèles morts le 4 sept. répondaient parfaitement la veille.
+2. **Répondre n'est pas obéir** : un modèle qui n'appelle pas l'outil, ou qui
+   rate un seul contrôle, est écarté.
+3. **Plafond journalier ≥ 200 et plafond/minute ≥ 10.** Un modèle à 20 par
+   jour a tué la mémoire en silence ; un modèle à 5 par minute
+   (`gemini-3-flash-preview`, mesuré) ne tient pas une rafale.
+4. **Jamais un modèle de la mémoire**, ni un moteur PAYANT, ni par-dessus un
+   secret posé à la main.
+5. **Sept jours de repos** entre deux promotions.
+6. **On ne promeut pas tant qu'on ne sait pas observer le résultat** : sous
+   20 appels réels vus sur sept jours, le retour arrière automatique serait
+   aveugle. C'est une précondition qui se garde toute seule — elle reste vraie
+   tant que `voice-command` n'écrit pas dans `appels_modele`.
+7. **Le retour arrière passe AVANT la promotion**, et zéro appel ne veut pas
+   dire que tout va bien : ça veut dire qu'on ne sait rien.
+
+**Pas de pg_cron ni de pg_net, et c'est une décision** : les installer donnerait
+à sa base la capacité d'appeler l'extérieur, ce qui est un choix de sécurité
+qui lui appartient. La passe est donc réveillée **paresseusement** après une
+phrase, comme `purger_echanges` — au plus une fois par fenêtre de six heures et
+par instance, sans `await`, jamais depuis un appel de vérification, jamais
+après un échec du moteur. `moteur-veille` est écrite pour pouvoir être appelée
+pour rien : c'est elle qui répond « trop tôt ».
+
+Pour la voir travailler sans attendre :
+
+```bash
+curl -sS -X POST https://bexiyvmdbxcwxasgslxp.supabase.co/functions/v1/moteur-veille \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "content-type: application/json" -d '{}'
+scripts/sql.sh "select verdict, detail, demarre_at from veilles_modele order by demarre_at desc limit 5"
+```
+
+### Le code des Edge Functions est enfin typechecké (6 sept. 2026)
+
+Jusque-là, **rien** ne vérifiait `supabase/functions/**` : ni la CI (`npx tsc
+-b` ne couvre que `src` et `scripts/harness`), ni les sessions (pas de Deno
+installé dans l'environnement). Une faute de frappe dans `voice-command` ne se
+voyait donc qu'après déploiement — chez Raphaël, sous la forme d'un Jarvis
+muet.
+
+```bash
+npx tsc -p supabase/functions/tsconfig.json
+```
+
+`supabase/functions/deno.d.ts` donne à `tsc` le minimum qui lui manque : le
+global `Deno`, et les spécificateurs `jsr:` / `npm:`. Les bibliothèques
+externes y sont volontairement typées large — on ne vérifie pas le SDK de
+Google, on vérifie que nos fichiers se tiennent entre eux. **Lance-le avant de
+pousser quoi que ce soit sous `supabase/functions/`.**
 
 Le coût, même à zéro, se surveille : la limite de l'offre gratuite se compte
 en requêtes et en jetons par minute, et chaque phrase envoie ~45 000
@@ -1302,11 +1476,36 @@ concernée** ; une fonction jetable de dix lignes déployée puis supprimée suf
 (et garde la clé côté Supabase, là où le classificateur de permissions ne
 bloque pas — il refuse toute commande shell qui porte un secret en clair).
 
-Les cinq seaux en place, chacun essayé pour de vrai avant d'être écrit :
-commande — principal `gemini-3.1-flash-lite`, secours `gemini-3.5-flash` puis
-`gemini-3.6-flash` ; mémoire — principal `gemini-3.5-flash-lite`, secours
-`gemini-3.7-flash`. La mémoire ne touche JAMAIS aux modèles de la commande :
-c'est ce qui a rendu Jarvis muet le 3 sept.
+Les cinq seaux en place, chacun essayé pour de vrai avant d'être écrit
+(`_shared/gemini.ts` porte le détail des mesures) : commande — principal
+`gemini-3.1-flash-lite`, secours `gemini-3.1-flash-lite-preview` puis
+`gemini-3-flash-preview` ; mémoire — principal `gemini-3.5-flash-lite`,
+secours `gemini-3.7-flash`. La mémoire ne touche JAMAIS aux modèles de la
+commande : c'est ce qui a rendu Jarvis muet le 3 sept.
+
+**Les secours de la commande ont changé le 6 sept.** (chantier `0edec0c4`), et
+la raison est double : `gemini-3.5-flash` et `gemini-3.6-flash` étaient
+plafonnés à 20 requêtes par jour chacun — le filet valait 40 phrases — et
+surtout, remesurés ce jour-là, ils répondaient en **13,8 s et 22,2 s** alors
+que **l'app abandonne à 25 s**. Un secours à 22 s ne sauve rien. Les
+remplaçants répondent en 1 à 2 s, et `gemini-3.1-flash-lite-preview` a encaissé
+41 appels dans la journée sans plafond journalier.
+
+**Le piège qu'il faut refaire à chaque fois qu'on change un secours** : deux
+modèles peuvent partager un compteur sans que leur nom le dise. On le prouve
+en saturant la MINUTE de l'un puis en appelant l'autre dans la foulée — s'il
+répond, les seaux sont distincts. Fait le 6 sept. pour
+`gemini-3.1-flash-lite-preview` face au principal (932 ms juste après quatre
+refus « PerMinute »). Sans ça, un « preview » du même numéro aurait très bien
+pu ne servir à rien.
+
+**Deux plafonds différents se cachent derrière le même 429 :**
+`GenerateRequestsPerMinutePerProjectPerModel` se lève tout seul en une minute,
+`…PerDay…` laisse Jarvis muet jusqu'au lendemain. Lis toujours le `quotaId`.
+Et la limite/minute varie énormément d'un modèle à l'autre : 15 pour
+`gemini-3.1-flash-lite-preview`, **5** pour `gemini-3-flash-preview` — un
+modèle à 5/minute ne tient pas une rafale, il ne peut être que dernier
+recours.
 
 ### Un contrôle rouge n'est pas forcément un bug
 
@@ -1335,11 +1534,17 @@ Un modèle qui répond n'est donc pas un modèle utilisable : regarde la ligne
 réel. Un `flash` n'a pas du tout le même plafond qu'un `flash-lite` — c'est ce
 qui a fait remettre la mémoire sur `gemini-3.5-flash-lite`.
 
-Et dans `_shared/gemini.ts`, `STATUTS_CHANGER_DE_MODELE` vaut **404, 429, 503**
-— trois façons de dire « ce modèle-là ne répond pas », toutes les trois
-réglées en passant au suivant, jamais en insistant. Le 503 y a été ajouté ce
-jour-là : on rejouait trois fois le modèle saturé puis on abandonnait sans
-jamais essayer les secours, qui eux répondaient.
+Et dans `_shared/modele.ts` (il vivait dans `gemini.ts` avant le 6 sept.),
+`STATUTS_CHANGER_DE_MODELE` vaut **404, 429, 503, 529** — quatre façons de dire
+« ce modèle-là ne répond pas », toutes réglées en passant au suivant, jamais en
+insistant. Le 503 y a été ajouté le 4 sept. : on rejouait trois fois le modèle
+saturé puis on abandonnait sans jamais essayer les secours, qui eux
+répondaient. Le 529 est le « overloaded » d'Anthropic.
+
+Le **0** de `STATUTS_A_REESSAYER` n'est pas un statut HTTP : c'est notre code
+pour une coupure réseau, passagère par nature. L'oublier ferait abandonner
+Jarvis au premier hoquet de connexion, sans que rien ne le dise — un contrôle
+de `verifier-moteur.ts` garde ce cas.
 
 ### Les vérifications ne puisent plus dans le quota de Raphaël
 
@@ -1701,6 +1906,10 @@ node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
+node --experimental-strip-types scripts/verifier-moteur.ts        # quel fournisseur, quel modèle, quels seaux de quota — vrai répartiteur, fetch en doublure
+node --experimental-strip-types scripts/verifier-consommation.ts   # ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas, sans réseau
+node --experimental-strip-types scripts/verifier-veille-modele.ts # on ne change pas de modèle à la légère, sans réseau
+npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
 node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation

@@ -5,7 +5,7 @@ import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
 import { CONSIGNE_HONNETETE } from "../_shared/honnetete.ts"
 import { rappelerBranchements } from "../_shared/branchements.ts"
 import { rappelerCorrections } from "../_shared/corrections.ts"
-import { appelerGemini, phrasePourEchec } from "../_shared/gemini.ts"
+import { appelerModele, moteurNonConfigure, phrasePourEchec } from "../_shared/modele.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -486,6 +486,12 @@ const VOICE_ACTION_TOOL = {
   },
 }
 
+// Les noms de modèles ne vivent plus ici : ils sont propres au fournisseur, et
+// c'est lui qui les porte (supabase/functions/_shared/gemini.ts), avec les
+// mesures et les pièges qui les ont fait choisir. On demande un RÔLE
+// (« commande »), pas un modèle — c'est ce qui permet de changer de moteur en
+// posant un secret, sans redéployer et sans toucher à ce fichier.
+
 /**
  * Tout ce qui ne change JAMAIS d'un appel à l'autre : le rôle, les sept
  * domaines, et les règles de traduction d'une phrase en action.
@@ -498,38 +504,6 @@ const VOICE_ACTION_TOOL = {
  * par minute, moins de jetons par phrase veut dire plus de phrases avant
  * de buter sur la limite. N'y insère jamais une donnée variable.
  */
-/** Voir le commentaire sur `modele` dans l'appel, plus bas. */
-// gemini-3.5-flash-lite a tenu ce rôle jusqu'au 4 sept. 2026, où il a
-// commencé à répondre 503 « This model is currently experiencing high demand »
-// en continu, sur les DEUX clés du projet — donc Jarvis muet chez Raphaël.
-// gemini-3.1-flash-lite est de la même famille (Lite = ~640 ms, la latence ne
-// s'entend pas) et répond, mesuré le jour même par un appel réel sur les deux
-// clés. Il n'est plus le modèle de la mémoire, qui a bougé de son côté : les
-// seaux restent distincts.
-const MODELE_PAR_DEFAUT = "gemini-3.1-flash-lite"
-
-/** Essayés dans l'ordre si la minute du premier est saturée : le quota gratuit
- * est compté PAR MODÈLE, donc basculer rend la main tout de suite là où
- * attendre coûte plusieurs secondes. */
-// Des seaux RÉELLEMENT distincts, ce qui n'était pas le cas avant :
-// « gemini-flash-lite-latest » est un ALIAS de gemini-3.5-flash-lite, donc le
-// même compteur — le premier secours ne servait à rien. Et
-// gemini-3.1-flash-lite était en même temps le modèle de la mémoire, qui
-// vidait le seau de son côté. Le 3 sept. les 500 requêtes du jour sont
-// parties, et Jarvis est resté muet.
-//
-// On descend maintenant vers des modèles d'une autre génération et d'un autre
-// gabarit : trois compteurs séparés. Plus lents que le Lite, mais un Jarvis
-// qui répond en trois secondes vaut mieux qu'un Jarvis qui se tait.
-//
-// PIÈGE VÉRIFIÉ LE 4 SEPT. 2026 : la liste rendue par ListModels n'est PAS une
-// autorisation. Les deux clés annoncent gemini-2.5-flash et
-// gemini-2.5-flash-lite, et generateContent les refuse toutes les deux en 404
-// « no longer available to new users ». Un secours écrit d'après la liste, ou
-// de mémoire, ne se voit donc qu'en production. Les trois modèles ci-dessous
-// ont été essayés pour de vrai, avec chaque clé, avant d'être écrits ici.
-const SECOURS = ["gemini-3.5-flash", "gemini-3.6-flash"]
-
 const CONSIGNES = `Tu es l'assistant vocal de Jarvis, qui gère huit domaines pour l'utilisateur :
 1. Ses tâches personnelles/clients, organisées par catégorie.
 2. Le cockpit de développement de Jarvis lui-même (les chantiers/fonctionnalités à coder pour l'assistant) — utilise ce domaine quand l'utilisateur parle explicitement de "chantier", de développer/coder Jarvis, du "cockpit", ou d'une fonctionnalité de l'app elle-même.
@@ -652,17 +626,17 @@ Deno.serve(async (req: Request) => {
     // également gratuites, sur une fonction qui exige déjà d'être connecté.
     // Il n'ouvre aucun accès et ne change rien à la réponse rendue.
     const essai = req.headers.get("x-jarvis-essai") === "1"
-    const cleEssai = Deno.env.get("GEMINI_API_KEY_TEST")
-    const cleGemini = (essai && cleEssai) || Deno.env.get("GEMINI_API_KEY")
-    if (!cleGemini) {
+    // Quel secret porte la clé dépend du fournisseur choisi : c'est lui qui le
+    // dit, pas ce fichier. On échoue ici, avant tout appel HTTP, et en NOMMANT
+    // le secret manquant — une panne qui ne se nomme pas se cherche pendant des
+    // heures. La trace « clé test / normale » est posée par `appelerModele`.
+    const moteurManquant = await moteurNonConfigure(essai)
+    if (moteurManquant) {
       return new Response(
-        JSON.stringify({ error: "GEMINI_API_KEY non configurée côté serveur." }),
+        JSON.stringify({ error: moteurManquant }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       )
     }
-    // Sans cette trace, une clé de test absente est invisible : les contrôles
-    // passent au vert en vidant quand même le quota de Raphaël.
-    if (essai) console.log("clé", cleEssai ? "test" : "normale (GEMINI_API_KEY_TEST absente)")
 
     // Ce qui change à chaque appel, et seulement ça : placé APRÈS les
     // consignes pour ne pas invalider leur cache.
@@ -683,26 +657,12 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerBran
       consommation,
       echec,
       modele: modeleUtilise,
-    } = await appelerGemini({
-      // Réglable par le secret GEMINI_MODELE, sans redéployer : les quotas de
-      // l'offre gratuite ne sont publiés nulle part (visibles seulement dans
-      // AI Studio) et diffèrent par modèle.
-      //
-      // Mesures du 3 sept. 2026, sur la vraie API :
-      // - gemini-3.8-flash est plafonné à 20 requêtes PAR JOUR et renvoie 429
-      //   dès le premier appel : le nommer en tête laissait Jarvis muet.
-      // - gemini-3.5-flash-lite répond en ~640 ms et passe les vingt-cinq
-      //   contrôles de scripts/verifier-commande-vocale.mjs, « appeler un
-      //   contact » compris (rejoué sur la fonction déployée après la fusion).
-      // - gemini-3.5-flash répond en ~3 s : la latence s'entend, et Raphaël
-      //   la signale déjà comme une gêne.
-      // D'où ce défaut. Une session avait mesuré cinq échecs sur le Lite au
-      // moment de la bascule ; ce n'est pas reproductible ici, elle visait
-      // probablement l'alias « gemini-flash-lite-latest » et non cette
-      // version figée. Pas d'alias « latest » en tête, justement : un
-      // changement de modèle doit être un choix, pas une surprise un matin.
-      modele: Deno.env.get("GEMINI_MODELE") || MODELE_PAR_DEFAUT,
-      secours: SECOURS,
+    } = await appelerModele({
+      // Un RÔLE, pas un nom de modèle : le fournisseur choisi traduit
+      // « commande » vers son propre modèle et ses propres secours, réglables
+      // par secrets. La commande et la mémoire gardent ainsi des seaux de
+      // quota séparés — c'est ce partage qui a rendu Jarvis muet le 3 sept.
+      role: "commande",
       // Les consignes d'abord, le contexte ensuite : voir CONSIGNES.
       systeme: `${CONSIGNES}\n\n${contexte}`,
       texte: transcript,
@@ -713,7 +673,11 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerBran
       // vingt-cinq contrôles tombaient — la réflexion mangeait la place de la
       // réponse sur les phrases qui demandent de croiser la liste de contacts.
       maxTokens: 4096,
-      cle: cleGemini,
+      essai,
+      // Ce que la phrase coûte est noté en base (chantier 5ac4d12c) : les
+      // journaux de la fonction ne se lisent pas depuis son téléphone, ne se
+      // totalisent pas, et s'effacent.
+      journal: { supabase, userId: user.id },
     })
 
     if (echec || !args) {
@@ -778,7 +742,7 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerBran
       user.id,
       transcript,
       (actions.find((a) => typeof a.message === "string")?.message as string) ?? null,
-      cleGemini,
+      essai,
     )
     const runtime = globalThis as unknown as { EdgeRuntime?: { waitUntil: (p: Promise<unknown>) => void } }
     if (runtime.EdgeRuntime?.waitUntil) runtime.EdgeRuntime.waitUntil(rangement)
