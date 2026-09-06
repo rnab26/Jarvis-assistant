@@ -26,6 +26,15 @@ jobs:
       # `tsc --noEmit` à la racine ne vérifie PAS l'app et dit « OK » à tort.
       - run: npx tsc -b
 
+      # Et il ne couvre QUE `src` : jusqu'au 6 sept. 2026, rien ne typecheckait
+      # les Edge Functions. Ni en CI, ni dans les sessions (pas de Deno
+      # installé). Une faute de frappe dans voice-command ne se voyait donc
+      # qu'après déploiement, c'est-à-dire chez Raphaël, sous la forme d'un
+      # Jarvis muet. `supabase/functions/deno.d.ts` donne à tsc le minimum
+      # qu'il lui manque pour lire ce code.
+      - name: Le code des Edge Functions se tient
+        run: npx tsc -p supabase/functions/tsconfig.json
+
       - name: Les réglages sont déclarés et réglables
         run: node --experimental-strip-types scripts/verifier-reglages.ts
 
@@ -96,6 +105,28 @@ jobs:
       # du quota à chaque phrase.
       - name: Les corrections de Raphaël arrivent jusqu'au modèle
         run: node --experimental-strip-types scripts/verifier-corrections.ts
+
+      # Changer de moteur doit rester un secret à poser, jamais une réécriture
+      # — et surtout, rien ne doit basculer TOUT SEUL vers un moteur payant :
+      # Raphaël a quitté l'API Anthropic en découvrant sa clé à sec. Le
+      # contrôle fait tourner le vrai répartiteur avec un `fetch` en doublure.
+      - name: Le moteur — quel fournisseur, quel modèle, quels seaux de quota
+        run: node --experimental-strip-types scripts/verifier-moteur.ts
+
+      # « Savoir combien il me reste, et à combien de temps de discussion ça
+      # équivaut. » Sur l'offre gratuite il n'y a pas de solde, seulement des
+      # plafonds qui ne se lisent qu'une fois dépassés : la moitié de ces
+      # contrôles refuse qu'on invente un chiffre, l'autre moitié refuse qu'on
+      # l'alerte pour un refus par minute, qui se lève tout seul.
+      - name: Ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas
+        run: node --experimental-strip-types scripts/verifier-consommation.ts
+
+      # Ce mécanisme-là décide TOUT SEUL, la nuit, de changer le modèle de
+      # Jarvis. La moitié des contrôles vérifie qu'il NE promeut PAS : un
+      # mécanisme qui adopte trop facilement est pire qu'un qui n'adopte
+      # jamais — le second se remarque, le premier casse une nuit au hasard.
+      - name: On ne change pas de modèle à la légère
+        run: node --experimental-strip-types scripts/verifier-veille-modele.ts
 
       # « Une panne qui se lit comme une absence » : un rappel de mémoire qui
       # échoue rendait le même résultat qu'un rappel qui n'a rien trouvé. Ce
