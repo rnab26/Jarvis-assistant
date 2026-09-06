@@ -797,6 +797,12 @@ par un déclencheur n'a personne à qui parler. On ratisse volontairement large 
 un chantier écarté à tort attend la prochaine session qu'il ouvre, ce qui ne
 coûte rien ; un chantier pris à tort part pendant qu'il dort.
 
+Le déclencheur est la Routine `trig_01JNQzAFipU7KT7FXomtz5cp`, une fois par
+heure. **Une session qu'elle ouvre n'hérite pas forcément des outils
+`mcp__github__*`** : dans ce cas elle ne peut pas lire la CI, et
+`docs/session-autonome.md` lui dit de lancer elle-même, en entier, ce que la CI
+lance — ce sont les mêmes scripts — puis de l'écrire dans `dev_log`.
+
 **Pour tout arrêter** : Paramètres › Le cockpit › Sessions autonomes. Le
 réglage `jarvis_sessions_autonomes` est lu EN BASE à chaque passe — d'où
 `ecrireAutonomie()` et pas un `localStorage.setItem`, qui resterait sur son

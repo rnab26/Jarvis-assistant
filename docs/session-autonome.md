@@ -50,6 +50,15 @@ rien — c'est exactement ce qu'il a demandé d'éviter.
    en dur.
 3. **Ne fusionne rien tant que les deux workflows ne sont pas verts.** Personne
    ne regarde par-dessus ton épaule ; la CI est la seule relecture.
+
+   *Si tu n'as pas d'accès GitHub* (une session ouverte par un déclencheur peut
+   ne pas hériter des outils `mcp__github__*`) : lance toi-même, en entier, ce
+   que la CI lance — `npx tsc -b`, tous les `scripts/verifier-*.ts` hors réseau
+   listés dans `.github/workflows/verifications.yml`, et les parcours navigateur
+   de `verifications-navigateur.yml`. Ce sont exactement les mêmes scripts. Puis
+   écris dans `dev_log` que la vérification a été faite en local faute d'accès à
+   la CI, pour que la session suivante le sache. Ne fusionne jamais sans l'un
+   ou l'autre.
 4. Archive le chantier avec le hash du commit, comme d'habitude.
 5. **Écris dans `dev_log`** ce que tu as fait. Sans ça il découvre au réveil du
    code qu'il n'a pas demandé, sans savoir d'où il vient.
@@ -84,3 +93,12 @@ passe suivante s'enregistre alors en `eteint` et ne fait rien d'autre.
 
 Le déclencheur lui-même vit dans ses Routines sur claude.ai : c'est là qu'il en
 change la cadence ou qu'il le supprime.
+
+## Le déclencheur
+
+Routine `trig_01JNQzAFipU7KT7FXomtz5cp` — « Jarvis — session autonome
+(horaire) », créée le 6 sept. 2026, une fois par heure à la minute 30. Elle
+n'envoie ni notification ni e-mail : ce qui s'est passé se lit dans l'app,
+Paramètres › Le cockpit. Raphaël peut la mettre en pause ou la supprimer depuis
+ses Routines sur claude.ai ; l'interrupteur de l'app, lui, laisse la Routine
+tourner mais fait que chaque passe se retire aussitôt.
