@@ -930,7 +930,10 @@ export function SettingsPage() {
       </Section>
 
       <Section {...SECTIONS.notifications} filtre={recherche}>
-        <Notifications api={notificationsState} />
+        {/* Les tâches viennent d'ici : la carte dit combien d'entre elles
+            feront réellement sonner quelque chose, avec le calcul qui
+            programme les alarmes. */}
+        <Notifications api={notificationsState} taches={tasksState.tasks} />
       </Section>
 
       <Section {...SECTIONS.apps} filtre={recherche}>

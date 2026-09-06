@@ -1,4 +1,4 @@
-import { ArrowRightLeft, Pencil, Trash2 } from "lucide-react"
+import { ArrowRightLeft, BellOff, BellRing, Pencil, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { lireEcheance } from "@/lib/echeance"
+import { rappelDeLaTache } from "@/lib/notifications/plan"
 import { chantierDeguise } from "@/lib/tacheOuChantier"
+import type { PrefsNotifications } from "@/lib/notifications/prefs"
 import type { Category, Task, TaskInput } from "@/types/database"
 
 /**
@@ -35,6 +37,9 @@ interface TaskItemProps {
   /** Créer le chantier correspondant, quand cette « tâche » n'en est pas une.
    * Absent = la proposition ne s'affiche pas (banc d'essai, écran réduit). */
   onEnFaireUnChantier?: (titre: string, notes: string | null) => Promise<void>
+  /** Les réglages de notification, pour dire si CETTE tâche fera sonner
+   * quelque chose. Absents = on ne dit rien plutôt que de deviner. */
+  prefsNotifs?: PrefsNotifications
 }
 
 export function TaskItem({
@@ -44,6 +49,7 @@ export function TaskItem({
   onUpdate,
   onDelete,
   onEnFaireUnChantier,
+  prefsNotifs,
 }: TaskItemProps) {
   const [deplie, setDeplie] = useState(false)
   const [enCours, setEnCours] = useState(false)
@@ -140,6 +146,19 @@ export function TaskItem({
           </Button>
         </div>
       )}
+      {/* CE QUI VA RÉELLEMENT SONNER, et quand — sa question du chantier
+          336be5fb : « est-ce que ces dates d'échéance correspondent au rappel
+          qui pourrait lancer à Jarvis de me faire un rappel oral ? »
+          Mesuré le 6 sept. sur ses trente tâches : vingt-deux n'ont aucune
+          date et ne sonneront jamais, quatre sont en retard. Rien ne le
+          disait. Le texte vient de `rappelDeLaTache`, qui passe par la
+          fonction QUI PROGRAMME VRAIMENT les alarmes : ce qu'il lit ici est
+          ce qui se passera, pas une seconde interprétation de la même règle.
+          Seulement une fois la ligne dépliée : trente lignes qui répètent
+          « aucun rappel » sont un mur, pas une réponse. */}
+      {deplie && prefsNotifs && !isDone && (
+        <RappelDeLaLigne task={task} prefs={prefsNotifs} />
+      )}
       {task.notes && (
         // Alignée sous le titre, pas sous la case : la note appartient au
         // titre. Deux lignes au plus, sinon une note dictée d'un trait occupe
@@ -153,5 +172,51 @@ export function TaskItem({
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * Une ligne qui dit ce que Jarvis fera, ou ne fera pas, pour cette tâche.
+ *
+ * On n'annonce jamais un rappel qu'on n'a pas constaté programmable : quand il
+ * n'y en aura pas, on dit POURQUOI, et ce qu'il faut faire pour qu'il y en ait
+ * un. « Aucun rappel » sans raison se lit comme une panne.
+ */
+function RappelDeLaLigne({ task, prefs }: { task: Task; prefs: PrefsNotifications }) {
+  const rappel = rappelDeLaTache(task, prefs, new Date())
+
+  if (rappel.sonnera) {
+    const quand = rappel.quand.toLocaleString("fr-FR", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    return (
+      <p className="ml-6 text-xs text-muted-foreground">
+        <BellRing className="mr-1 inline size-3 align-[-1px]" />
+        Jarvis te préviendra {quand.replace(":", " h ")}
+        {rappel.silencieux && " — en silencieux, c'est dans tes heures de silence"}.
+      </p>
+    )
+  }
+
+  const RAISONS: Record<typeof rappel.raison, string> = {
+    faite: "",
+    sans_date: "Aucun rappel : cette tâche n'a pas de date. Ajoute-en une avec le crayon.",
+    passee:
+      "Aucun rappel : l'échéance est passée. Seul le point du matin la mentionnera, s'il est activé.",
+    coupe: "Aucun rappel : les rappels d'échéance sont coupés dans Paramètres › Notifications.",
+    date_illisible: "Aucun rappel : la date de cette tâche est illisible. Corrige-la avec le crayon.",
+  }
+  const texte = RAISONS[rappel.raison]
+  if (!texte) return null
+
+  return (
+    <p className="ml-6 text-xs text-muted-foreground">
+      <BellOff className="mr-1 inline size-3 align-[-1px]" />
+      {texte}
+    </p>
   )
 }

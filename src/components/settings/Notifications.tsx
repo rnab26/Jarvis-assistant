@@ -14,7 +14,9 @@ import {
 } from "@/components/ui/select"
 import type { NotificationsApi } from "@/hooks/useNotifications"
 import { ReglagesSysteme } from "@/lib/reglagesSystemePlugin"
-import { CHOIX_AVANT_MIN } from "@/lib/notifications/prefs"
+import { CHOIX_AVANT_MIN, type PrefsNotifications } from "@/lib/notifications/prefs"
+import { bilanRappels } from "@/lib/notifications/plan"
+import type { Task } from "@/types/database"
 
 /** "aujourd'hui à 14 h 30", "demain à 09 h 15", "ven. 6 sept. à 09 h 15" —
  * la prochaine notification se lit d'un coup d'œil, sans calculer. */
@@ -79,7 +81,7 @@ function ChoixHeure({
  * banc d'essai de monter cette carte hors de Supabase et de la parcourir sur
  * un écran de téléphone (scripts/harness/reglages.tsx).
  */
-export function Notifications({ api }: { api: NotificationsApi }) {
+export function Notifications({ api, taches = [] }: { api: NotificationsApi; taches?: Task[] }) {
   const { prefs, pret, setPrefs, etat, programmees, demander, ouvrirAlarmes, tester, effacerTout } =
     api
   const [occupe, setOccupe] = useState(false)
@@ -342,6 +344,16 @@ export function Notifications({ api }: { api: NotificationsApi }) {
               )}
             </Interrupteur>
 
+            {/* COMBIEN DE SES TÂCHES SONNERONT VRAIMENT — sa question du
+                chantier 336be5fb : « les taches hors cockpit n'ont que des
+                dates d'échéance, est-ce que ça correspond au rappel ? »
+                Mesuré le 6 sept. sur ses trente tâches ouvertes : vingt-deux
+                sans date, quatre en retard, quatre qui sonneront. Rien ne le
+                disait, et « 12 notifications programmées » juste en dessous ne
+                répond pas à la question — ce compte-là mélange les échéances,
+                les points du matin et le reste. */}
+            <BilanDesRappels taches={taches} prefs={prefs} />
+
             <div className="flex flex-col gap-2 rounded-lg border p-3">
               <p className="text-sm">
                 {programmees.total === 0
@@ -399,5 +411,53 @@ export function Notifications({ api }: { api: NotificationsApi }) {
         </p>
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * Ce que ses tâches déclencheront réellement.
+ *
+ * Le calcul passe par `bilanRappels`, donc par la fonction QUI PROGRAMME les
+ * alarmes : ce qui est écrit ici est ce qui se passera. Une seconde lecture
+ * de la même règle finirait par dire autre chose, et c'est l'écran qui
+ * mentirait.
+ *
+ * Silencieux quand il n'y a aucune tâche : un « 0 sur 0 » n'apprend rien.
+ */
+function BilanDesRappels({ taches, prefs }: { taches: Task[]; prefs: PrefsNotifications }) {
+  const bilan = bilanRappels(taches, prefs, new Date())
+  if (bilan.total === 0) return null
+
+  return (
+    <div className="flex flex-col gap-1 rounded-lg border p-3">
+      <p className="text-sm">
+        Sur tes {bilan.total} tâches à faire,{" "}
+        <span className="font-medium">
+          {bilan.sonneront} {bilan.sonneront > 1 ? "sonneront" : "sonnera"}
+        </span>
+        .
+      </p>
+      {bilan.coupe ? (
+        <p className="text-xs text-destructive">
+          Les rappels d'échéance sont coupés juste au-dessus : aucune tâche ne te préviendra.
+        </p>
+      ) : (
+        <>
+          {bilan.sansDate > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {bilan.sansDate} n'{bilan.sansDate > 1 ? "ont" : "a"} pas de date — sans date, Jarvis
+              n'a aucun moment où te prévenir.
+            </p>
+          )}
+          {bilan.enRetard > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {bilan.enRetard} {bilan.enRetard > 1 ? "sont en retard" : "est en retard"} : rien
+              n'est programmé dans le passé, sinon tout sonnerait d'un coup à l'ouverture de l'app.
+              Seul le point du matin les mentionne.
+            </p>
+          )}
+        </>
+      )}
+    </div>
   )
 }

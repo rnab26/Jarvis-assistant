@@ -125,6 +125,81 @@ export function momentDeLaTache(task: Task, prefs: PrefsNotifications): Date | n
   return new Date(base.getTime() - prefs.avantMin * 60_000)
 }
 
+/**
+ * Est-ce que cette tâche fera sonner quelque chose, et quand ?
+ *
+ * SA QUESTION, dictée le 5 sept. (chantier 336be5fb) : « Les taches a faire
+ * hors cockpit n'ont que des dates decheances, est-ce qu'elles correspondent
+ * au rappel qui pourrait lancer a jarvis de me faire un rappel oral par
+ * notifications ? Déterminer et régler cette question. »
+ *
+ * MESURÉ SUR SES 30 TÂCHES OUVERTES le 6 sept. 2026, et c'est la vraie
+ * réponse : 22 n'ont AUCUNE date et ne sonneront donc jamais, 4 sont déjà en
+ * retard (rien n'est programmé dans le passé — Android les ferait toutes
+ * sonner d'un coup à la prochaine ouverture), et 4 seulement déclencheront un
+ * rappel. Il ne pouvait pas le savoir : rien ne le disait nulle part.
+ *
+ * Cette fonction ne calcule RIEN de neuf. Elle passe par `momentDeLaTache`,
+ * exactement celle qui programme les alarmes, et se contente d'expliquer son
+ * résultat. Deux calculs séparés finiraient par dire deux choses différentes,
+ * et c'est l'écran qui mentirait — c'est justement ce qu'on veut éviter.
+ */
+export type RaisonSansRappel = "faite" | "sans_date" | "passee" | "coupe" | "date_illisible"
+
+export type RappelTache =
+  | { sonnera: true; quand: Date; silencieux: boolean }
+  | { sonnera: false; raison: RaisonSansRappel }
+
+export function rappelDeLaTache(
+  task: Task,
+  prefs: PrefsNotifications,
+  maintenant: Date,
+): RappelTache {
+  if (task.status !== "todo") return { sonnera: false, raison: "faite" }
+  if (!task.due_date) return { sonnera: false, raison: "sans_date" }
+  // Le réglage passe avant tout le reste : coupé, aucune tâche ne sonne, et
+  // annoncer une heure serait un mensonge.
+  if (!prefs.echeance) return { sonnera: false, raison: "coupe" }
+
+  const quand = momentDeLaTache(task, prefs)
+  if (!quand) return { sonnera: false, raison: "date_illisible" }
+  if (quand.getTime() <= maintenant.getTime()) return { sonnera: false, raison: "passee" }
+
+  return { sonnera: true, quand, silencieux: dansLaPlageSilencieuse(quand, prefs) }
+}
+
+/**
+ * Combien de ses tâches feront réellement sonner quelque chose.
+ *
+ * Sert à répondre une fois pour toutes, dans Paramètres › Notifications, à la
+ * question qu'il pose : sur trente tâches, combien me préviendront ?
+ */
+export interface BilanRappels {
+  total: number
+  sonneront: number
+  sansDate: number
+  enRetard: number
+  coupe: boolean
+}
+
+export function bilanRappels(
+  tasks: Task[],
+  prefs: PrefsNotifications,
+  maintenant: Date,
+): BilanRappels {
+  const ouvertes = tasks.filter((t) => t.status === "todo")
+  let sonneront = 0
+  let sansDate = 0
+  let enRetard = 0
+  for (const task of ouvertes) {
+    const rappel = rappelDeLaTache(task, prefs, maintenant)
+    if (rappel.sonnera) sonneront++
+    else if (rappel.raison === "sans_date") sansDate++
+    else if (rappel.raison === "passee") enRetard++
+  }
+  return { total: ouvertes.length, sonneront, sansDate, enRetard, coupe: !prefs.echeance }
+}
+
 /** "14 h 30" — la même façon de dire l'heure que le reste de l'app. */
 function heureLisible(d: Date): string {
   return d

@@ -75,6 +75,27 @@ function pontFactice(
   }
 }
 
+/** Sa situation réelle, en petit : quelques tâches datées, beaucoup sans
+ * date, quelques retards. Mesuré chez lui le 6 sept. : 4 sonneront, 22 sans
+ * date, 4 en retard — et rien ne le disait. */
+const TACHES_BILAN = [
+  { id: "b1", due_date: new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10), due_time: "09:00" },
+  { id: "b2", due_date: new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10), due_time: null },
+  { id: "b3", due_date: new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10), due_time: null },
+  { id: "b4", due_date: null, due_time: null },
+  { id: "b5", due_date: null, due_time: null },
+  { id: "b6", due_date: null, due_time: null },
+].map((t) => ({
+  ...t,
+  user_id: "banc",
+  category_id: null,
+  title: `Tâche ${t.id}`,
+  notes: null,
+  status: "todo" as const,
+  created_at: "2026-09-04T10:00:00Z",
+  updated_at: "2026-09-04T10:00:00Z",
+}))
+
 const ETAT_AUTORISE: EtatNotifications = {
   disponible: true,
   autorise: true,
@@ -230,6 +251,7 @@ function BancDesReglages() {
       <div id="notifs-ok">
         <Section titre="Notifications" cle="banc-ok" ouverteParDefaut>
           <Notifications
+            taches={TACHES_BILAN}
             api={notifsFactices(ETAT_AUTORISE, PREFS_NOTIFS_DEFAUT, 12, setPrefs, prefs)}
           />
         </Section>

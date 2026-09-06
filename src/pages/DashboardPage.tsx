@@ -11,7 +11,7 @@ import { useJarvisData } from "@/contexts/JarvisDataContext"
 import type { Task } from "@/types/database"
 
 export function DashboardPage() {
-  const { tasksState, devItemsState } = useJarvisData()
+  const { tasksState, devItemsState, notificationsState } = useJarvisData()
   const {
     tasks,
     categories,
@@ -124,6 +124,7 @@ export function DashboardPage() {
           onUpdate={updateTask}
           onDelete={deleteTask}
           onEnFaireUnChantier={enFaireUnChantier}
+          prefsNotifs={notificationsState.prefs}
         />
       )}
     </div>

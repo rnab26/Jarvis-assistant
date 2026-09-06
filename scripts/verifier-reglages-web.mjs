@@ -291,6 +291,24 @@ try {
     await memoirePanne.getByText(/n'a pas pu être chargée/).isVisible(),
   )
 
+  // ── Combien de SES tâches sonneront vraiment ──
+  // Sa question du chantier 336be5fb : « les taches hors cockpit n'ont que des
+  // dates d'échéance, est-ce que ça correspond au rappel ? » Mesuré chez lui
+  // le 6 sept. : 4 sonneront sur 30, 22 n'ont pas de date, 4 sont en retard.
+  // « 12 notifications programmées », juste en dessous, ne répond pas à ça :
+  // ce compte mélange les échéances, les points du matin et le reste.
+  verifier(
+    "la carte dit combien de ses tâches feront réellement sonner quelque chose",
+    await ok.getByText(/Sur tes 6 tâches à faire/).isVisible(),
+    "il ne pouvait pas savoir si ses dates d'échéance déclenchaient quoi que ce soit",
+  )
+  verifier(
+    "et pourquoi les autres ne sonneront pas",
+    (await ok.getByText(/n'ont pas de date/).isVisible()) &&
+      (await ok.getByText(/est en retard|sont en retard/).isVisible()),
+    "« 2 sur 6 » sans explication laisse la question entière",
+  )
+
   // ── Ce qui est programmé se voit, et s'annule en le demandant ──
   verifier(
     "le nombre de notifications programmées s'affiche",

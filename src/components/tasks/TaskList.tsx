@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TaskItem } from "@/components/tasks/TaskItem"
+import type { PrefsNotifications } from "@/lib/notifications/prefs"
 import type { Category, Task, TaskInput } from "@/types/database"
 
 interface TaskListProps {
@@ -11,6 +12,8 @@ interface TaskListProps {
   /** Transformer une « tâche » qui est en fait une demande à Claude en
    * chantier du cockpit. Absent = la proposition ne s'affiche pas. */
   onEnFaireUnChantier?: (task: Task, titre: string, notes: string | null) => Promise<void>
+  /** Pour dire, sur une ligne dépliée, ce que Jarvis fera sonner et quand. */
+  prefsNotifs?: PrefsNotifications
 }
 
 const NO_CATEGORY_LABEL = "Sans catégorie"
@@ -22,6 +25,7 @@ export function TaskList({
   onUpdate,
   onDelete,
   onEnFaireUnChantier,
+  prefsNotifs,
 }: TaskListProps) {
   const categoryById = new Map(categories.map((c) => [c.id, c.name]))
   const groups = new Map<string, Task[]>()
@@ -70,6 +74,7 @@ export function TaskList({
                   onToggle={onToggle}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
+                  prefsNotifs={prefsNotifs}
                   onEnFaireUnChantier={
                     onEnFaireUnChantier
                       ? (titre, notes) => onEnFaireUnChantier(task, titre, notes)

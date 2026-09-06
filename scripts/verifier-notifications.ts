@@ -25,6 +25,8 @@ import {
   ID_TEST,
   isoLocal,
   momentDeLaTache,
+  rappelDeLaTache,
+  bilanRappels,
   MAX_PROGRAMMEES,
   PLAGE_ECHEANCE,
   planifierEcheances,
@@ -496,6 +498,109 @@ function tache(partiel: Partial<Task>): Task {
     "un point du matin très chargé est écourté, pas lu pendant une minute",
     !!long && long.length <= 600 && long.endsWith("…"),
     `${long?.length} caractères`,
+  )
+}
+
+// ─────── « Est-ce que ça sonnera vraiment ? », et pourquoi quand c'est non ───────
+//
+// Sa question du chantier 336be5fb : « les taches a faire hors cockpit n'ont
+// que des dates decheances, est-ce qu'elles correspondent au rappel qui
+// pourrait lancer a jarvis de me faire un rappel oral ? » MESURÉ le 6 sept.
+// sur ses trente tâches ouvertes : vingt-deux sans date, quatre en retard,
+// quatre qui sonneront. Rien ne le disait nulle part.
+//
+// Ce qui compte ici : quand la réponse est NON, elle dit pourquoi. « Aucun
+// rappel » sans raison se lit comme une panne, et il rouvrirait le sujet.
+{
+  const futur = tache({ due_date: isoLocal(new Date(MAINTENANT.getTime() + 2 * 86_400_000)), due_time: "14:00" })
+  const r = rappelDeLaTache(futur, PREFS_NOTIFS_DEFAUT, MAINTENANT)
+  verifier("une tâche à venir sonnera, et on sait quand", r.sonnera && r.quand > MAINTENANT)
+
+  verifier(
+    "et l'heure annoncée est CELLE QUI PROGRAMME l'alarme, pas un second calcul",
+    r.sonnera && r.quand.getTime() === momentDeLaTache(futur, PREFS_NOTIFS_DEFAUT)!.getTime(),
+    "deux calculs finiraient par dire deux choses, et c'est l'écran qui mentirait",
+  )
+
+  const sansDate = rappelDeLaTache(tache({ due_date: null }), PREFS_NOTIFS_DEFAUT, MAINTENANT)
+  verifier(
+    "sans date, on dit que c'est la date qui manque",
+    !sansDate.sonnera && sansDate.raison === "sans_date",
+    "vingt-deux de ses tâches sont dans ce cas : « aucun rappel » sans raison se lit comme une panne",
+  )
+
+  const passee = rappelDeLaTache(
+    tache({ due_date: isoLocal(new Date(MAINTENANT.getTime() - 3 * 86_400_000)) }),
+    PREFS_NOTIFS_DEFAUT,
+    MAINTENANT,
+  )
+  verifier(
+    "en retard, on dit que rien n'est programmé dans le passé",
+    !passee.sonnera && passee.raison === "passee",
+    "sinon Android ferait sonner toutes les tâches en retard d'un coup à l'ouverture",
+  )
+
+  const coupe = rappelDeLaTache(futur, { ...PREFS_NOTIFS_DEFAUT, echeance: false }, MAINTENANT)
+  verifier(
+    "rappels coupés dans Paramètres : on ne promet aucune heure",
+    !coupe.sonnera && coupe.raison === "coupe",
+    "annoncer une heure alors que le réglage est coupé serait un mensonge",
+  )
+
+  verifier(
+    "une tâche faite ne promet rien",
+    rappelDeLaTache(tache({ status: "done", due_date: isoLocal(MAINTENANT) }), PREFS_NOTIFS_DEFAUT, MAINTENANT).sonnera === false,
+  )
+
+  const illisible = rappelDeLaTache(tache({ due_date: "2026-13-45" }), PREFS_NOTIFS_DEFAUT, MAINTENANT)
+  verifier(
+    "une date illisible est dite illisible, pas silencieusement ignorée",
+    !illisible.sonnera && illisible.raison === "date_illisible",
+  )
+
+  // Les heures de silence ne suppriment rien : le rappel part sur un canal
+  // muet. Le dire, sinon il croirait à une panne au réveil.
+  const nuit = tache({ due_date: isoLocal(new Date(MAINTENANT.getTime() + 86_400_000)), due_time: "23:30" })
+  const rNuit = rappelDeLaTache(nuit, { ...PREFS_NOTIFS_DEFAUT, silenceNuit: true, silenceDebut: "22:30", silenceFin: "07:30", avantMin: 0 }, MAINTENANT)
+  verifier(
+    "un rappel qui tombe la nuit est annoncé comme silencieux, pas comme absent",
+    rNuit.sonnera && rNuit.silencieux,
+    "il le trouverait au réveil et croirait à un rappel raté",
+  )
+}
+
+// ─────────────── Le bilan : combien de ses tâches sonneront ───────────────
+{
+  const jour = (n: number) => isoLocal(new Date(MAINTENANT.getTime() + n * 86_400_000))
+  const taches = [
+    tache({ id: "a", due_date: jour(2) }),
+    tache({ id: "b", due_date: jour(5), due_time: "09:00" }),
+    tache({ id: "c", due_date: null }),
+    tache({ id: "d", due_date: null }),
+    tache({ id: "e", due_date: jour(-3) }),
+    tache({ id: "f", status: "done", due_date: jour(1) }),
+  ]
+  const bilan = bilanRappels(taches, PREFS_NOTIFS_DEFAUT, MAINTENANT)
+  verifier(
+    "le bilan ne compte que les tâches à faire",
+    bilan.total === 5,
+    `${bilan.total} au lieu de 5 — une tâche faite n'attend plus rien`,
+  )
+  verifier("il compte celles qui sonneront", bilan.sonneront === 2, `${bilan.sonneront}`)
+  verifier("celles qui n'ont pas de date", bilan.sansDate === 2, `${bilan.sansDate}`)
+  verifier("et celles qui sont en retard", bilan.enRetard === 1, `${bilan.enRetard}`)
+  verifier(
+    "rappels coupés : plus rien ne sonne, et le bilan le dit",
+    (() => {
+      const b = bilanRappels(taches, { ...PREFS_NOTIFS_DEFAUT, echeance: false }, MAINTENANT)
+      return b.coupe && b.sonneront === 0
+    })(),
+    "il croirait que ses rappels fonctionnent alors qu'ils sont coupés",
+  )
+  verifier(
+    "sans aucune tâche, il n'y a rien à annoncer",
+    bilanRappels([], PREFS_NOTIFS_DEFAUT, MAINTENANT).total === 0,
+    "un « 0 sur 0 » n'apprend rien",
   )
 }
 

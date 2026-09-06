@@ -6,6 +6,7 @@ import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskItem } from "@/components/tasks/TaskItem"
 import { ChantiersEgares } from "@/components/tasks/ChantiersEgares"
 import { Button } from "@/components/ui/button"
+import { PREFS_NOTIFS_DEFAUT } from "@/lib/notifications/prefs"
 import type { DevItem, Task } from "@/types/database"
 
 /**
@@ -46,6 +47,14 @@ const TACHES: Task[] = [
   // Une seconde demande à Claude, elle aussi déjà présente dans le cockpit :
   // le cas le plus fréquent dans ses vraies données (quatre sur six).
   tache("t5", "R un chantier sur la latence du mode Live"),
+  // Une tâche datée dans le futur : c'est elle qui doit dire QUAND Jarvis
+  // préviendra. Et « Racheter un spot », sans date, doit dire pourquoi il ne
+  // préviendra pas — vingt-deux de ses trente tâches sont dans ce cas.
+  {
+    ...tache("t6", "Programmer l'intervention Avihai"),
+    due_date: new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10),
+    due_time: "14:00",
+  },
 ]
 
 /**
@@ -129,6 +138,7 @@ function BancDesTaches() {
           onDelete={async (id) => {
             setTaches((liste) => liste.filter((x) => x.id !== id))
           }}
+          prefsNotifs={PREFS_NOTIFS_DEFAUT}
           onEnFaireUnChantier={async (titre) => {
             setChantiersCrees((liste) => [...liste, titre])
             setTaches((liste) =>

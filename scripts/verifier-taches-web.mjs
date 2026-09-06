@@ -163,6 +163,27 @@ try {
     )
   }
 
+  // ── Ce qui va RÉELLEMENT sonner, et quand ──
+  // Sa question du chantier 336be5fb. Mesuré sur ses trente tâches le
+  // 6 sept. : vingt-deux sans date, quatre en retard, quatre qui sonneront —
+  // et rien ne le disait nulle part.
+  await page.getByRole("button", { name: "Programmer l'intervention Avihai" }).click()
+  await pause(250)
+  verifier(
+    "une tâche datée dit QUAND Jarvis préviendra",
+    await page.getByText(/Jarvis te préviendra/).isVisible(),
+    "il ne pouvait pas savoir si une date d'échéance déclenchait quoi que ce soit",
+  )
+  await page.getByRole("button", { name: "Racheter un spot pour l'entrée de la maison" }).click()
+  await pause(250)
+  verifier(
+    "et une tâche sans date dit POURQUOI elle ne sonnera pas",
+    await page.getByText(/n'a pas de date/).isVisible(),
+    "« aucun rappel » sans raison se lit comme une panne",
+  )
+  await page.getByRole("button", { name: "Racheter un spot pour l'entrée de la maison" }).click()
+  await pause(150)
+
   await page.getByRole("button", { name: "En faire un chantier" }).first().click()
   await pause(400)
   verifier(
