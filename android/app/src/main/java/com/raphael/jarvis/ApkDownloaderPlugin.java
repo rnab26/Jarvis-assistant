@@ -16,6 +16,10 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 /**
  * Télécharge et installe la dernière APK sans passer par un navigateur :
@@ -36,6 +40,18 @@ public class ApkDownloaderPlugin extends Plugin {
     /** Filet de sécurité : au-delà, on rend la main plutôt que de laisser
      * le bouton bloqué sur "Téléchargement..." indéfiniment. */
     private static final long TIMEOUT_MS = 10 * 60 * 1000;
+    /**
+     * Au-delà de ce délai SANS LE MOINDRE OCTET, on cesse d'attendre
+     * DownloadManager et on télécharge nous-mêmes.
+     *
+     * Raphael, 6 sept. 2026 : « Telechargement... », la barre vide, « 0.0 Mo
+     * recus » indefiniment, et cote GitHub le compteur de telechargements de
+     * l'APK a zero — sa requete n'atteignait jamais le serveur. Dix minutes a
+     * regarder une barre vide ne sont pas un etat, c'est une panne muette :
+     * vingt secondes suffisent largement pour que le premier octet arrive
+     * d'une release GitHub, meme en 3G.
+     */
+    private static final long DELAI_SANS_OCTET_MS = 20 * 1000;
 
     @PluginMethod
     public void hasInstallPermission(PluginCall call) {
@@ -95,8 +111,23 @@ public class ApkDownloaderPlugin extends Plugin {
         // réinstalle l'ancienne APK en croyant se mettre à jour.
         request.addRequestHeader("Cache-Control", "no-cache");
 
-        DownloadManager downloadManager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
-        long downloadId = downloadManager.enqueue(request);
+        // ENQUEUE PROTEGE. Sur Samsung et Xiaomi, l'application systeme
+        // « Gestionnaire de telechargement » se desactive : getSystemService
+        // rend alors null, ou enqueue() leve. Sans ce garde, la promesse ne
+        // se resolvait ni ne se rejetait — l'ecran restait sur
+        // « Telechargement... » pour toujours, et c'est exactement ce qu'il a
+        // vu. On ne s'arrete pas la pour autant : on telecharge nous-memes.
+        final DownloadManager downloadManager =
+            (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+        long id;
+        try {
+            if (downloadManager == null) throw new IllegalStateException("indisponible");
+            id = downloadManager.enqueue(request);
+        } catch (Throwable e) {
+            telechargerNousMemes(call, url, targetFile, "gestionnaire_indisponible");
+            return;
+        }
+        final long downloadId = id;
 
         // Interrogation périodique plutôt qu'un BroadcastReceiver sur
         // ACTION_DOWNLOAD_COMPLETE : ce broadcast est émis par l'app
@@ -133,11 +164,36 @@ public class ApkDownloaderPlugin extends Plugin {
                 // progression côté app. La taille totale n'est parfois pas
                 // connue tout de suite (réponse chunkée) : on ne prétend pas
                 // avoir un pourcentage avant de l'avoir vraiment.
-                if (status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PENDING) {
+                // STATUS_PAUSED etait le grand absent, et c'est lui qui gele
+                // l'ecran : en pause, aucun evenement n'etait emis, donc le
+                // dernier « 0.0 Mo recus » restait affiche tel quel pendant
+                // dix minutes. On l'emet, avec la RAISON, pour que la pause
+                // se lise comme une pause et pas comme un plantage.
+                if (status == DownloadManager.STATUS_RUNNING
+                        || status == DownloadManager.STATUS_PENDING
+                        || status == DownloadManager.STATUS_PAUSED) {
                     JSObject progres = new JSObject();
                     progres.put("recus", recus);
                     progres.put("total", total);
+                    progres.put("enPause", status == DownloadManager.STATUS_PAUSED);
+                    if (status == DownloadManager.STATUS_PAUSED) {
+                        progres.put("pourquoi", raisonDePause(reason));
+                    }
                     notifyListeners("progression", progres);
+                }
+
+                // RIEN N'EST ARRIVE. Vingt secondes sans un octet : ce n'est
+                // pas un reseau lent, c'est un telechargement qui ne partira
+                // pas. On abandonne DownloadManager et on le fait nous-memes
+                // plutot que de le laisser devant une barre vide.
+                if (recus <= 0 && System.currentTimeMillis() - debut > DELAI_SANS_OCTET_MS) {
+                    try {
+                        downloadManager.remove(downloadId);
+                    } catch (Throwable ignore) {
+                        // rien a faire : au pire la ligne reste dans la file
+                    }
+                    telechargerNousMemes(call, url, targetFile, "aucun_octet");
+                    return;
                 }
 
                 if (status == DownloadManager.STATUS_SUCCESSFUL) {
@@ -145,24 +201,152 @@ public class ApkDownloaderPlugin extends Plugin {
                     return;
                 }
                 if (status == DownloadManager.STATUS_FAILED) {
-                    call.reject("Le téléchargement a échoué (code " + reason + ").");
+                    telechargerNousMemes(call, url, targetFile, "echec_" + reason);
                     return;
                 }
                 // -1 = aucune ligne pour cet identifiant. Juste après
                 // enqueue() la ligne existe déjà, mais on laisse une marge
                 // plutôt que d'échouer sur une course de départ.
                 if (status == -1 && System.currentTimeMillis() - debut > 5000) {
-                    call.reject("Le téléchargement a disparu de la file d'attente d'Android.");
+                    telechargerNousMemes(call, url, targetFile, "absent_de_la_file");
                     return;
                 }
                 if (System.currentTimeMillis() - debut > TIMEOUT_MS) {
-                    downloadManager.remove(downloadId);
+                    try {
+                        downloadManager.remove(downloadId);
+                    } catch (Throwable ignore) {
+                        // rien a faire
+                    }
                     call.reject("Le téléchargement n'a pas abouti dans le temps imparti.");
                     return;
                 }
                 handler.postDelayed(this, POLL_MS);
             }
         });
+    }
+
+    /** Ce qu'une pause de DownloadManager veut dire, en francais. Un code
+     * numerique ne lui apprend rien ; « ton telephone attend le Wi-Fi » lui
+     * dit quoi faire. */
+    private String raisonDePause(int reason) {
+        switch (reason) {
+            case DownloadManager.PAUSED_WAITING_FOR_NETWORK:
+                return "en attente du reseau";
+            case DownloadManager.PAUSED_QUEUED_FOR_WIFI:
+                return "en attente du Wi-Fi";
+            case DownloadManager.PAUSED_WAITING_TO_RETRY:
+                return "nouvel essai en cours";
+            default:
+                return "en pause";
+        }
+    }
+
+    /**
+     * LE REPLI QUI NE DEPEND DE RIEN : on telecharge nous-memes.
+     *
+     * Pourquoi il existe. Le 6 sept. 2026, Raphael ne pouvait plus mettre a
+     * jour du tout : « Telechargement... », la barre vide, « 0.0 Mo recus »
+     * indefiniment. Tant que ca tenait, AUCUN correctif touchant le natif ne
+     * pouvait lui parvenir — c'est le blocage qui bloque tous les autres.
+     * DownloadManager est une application systeme separee, qui peut etre
+     * desactivee, mise en pause par un reglage d'economie de donnees, ou
+     * simplement ne jamais demarrer. Elle est pratique quand elle marche ;
+     * elle ne peut pas etre le seul chemin.
+     *
+     * Ici il n'y a rien d'autre qu'une connexion HTTPS et un fichier : pas
+     * d'application tierce, pas de service systeme, pas de notification. Les
+     * redirections de GitHub (release -> objects.githubusercontent.com) sont
+     * suivies par HttpURLConnection, et la progression est emise comme celle
+     * de DownloadManager, pour que l'ecran ne change pas de langage en cours
+     * de route.
+     */
+    private void telechargerNousMemes(PluginCall call, String url, File cible, String pourquoi) {
+        JSObject avis = new JSObject();
+        avis.put("pourquoi", pourquoi);
+        notifyListeners("repli", avis);
+
+        new Thread(() -> {
+            HttpURLConnection connexion = null;
+            try {
+                File dossier = cible.getParentFile();
+                if (dossier != null && !dossier.exists() && !dossier.mkdirs()) {
+                    call.reject("Impossible de creer le dossier de telechargement.");
+                    return;
+                }
+                connexion = (HttpURLConnection) new URL(url).openConnection();
+                connexion.setInstanceFollowRedirects(true);
+                connexion.setConnectTimeout(20000);
+                connexion.setReadTimeout(30000);
+                connexion.setRequestProperty("Cache-Control", "no-cache");
+                connexion.connect();
+
+                int code = connexion.getResponseCode();
+                if (code < 200 || code >= 300) {
+                    call.reject("GitHub a repondu " + code + " au telechargement direct.");
+                    return;
+                }
+                long total = connexion.getContentLength();
+
+                try (InputStream entree = connexion.getInputStream();
+                     FileOutputStream sortie = new FileOutputStream(cible)) {
+                    byte[] tampon = new byte[64 * 1024];
+                    long recus = 0;
+                    long derniereAnnonce = 0;
+                    int lus;
+                    while ((lus = entree.read(tampon)) != -1) {
+                        sortie.write(tampon, 0, lus);
+                        recus += lus;
+                        // Une annonce tous les 200 Ko : assez pour que la
+                        // barre avance visiblement, assez peu pour ne pas
+                        // noyer le pont Capacitor a chaque bloc de 64 Ko.
+                        if (recus - derniereAnnonce >= 200_000) {
+                            derniereAnnonce = recus;
+                            JSObject progres = new JSObject();
+                            progres.put("recus", recus);
+                            progres.put("total", total);
+                            notifyListeners("progression", progres);
+                        }
+                    }
+                    sortie.flush();
+                }
+
+                final File fichier = cible;
+                new Handler(Looper.getMainLooper()).post(() -> lancerInstallation(call, fichier));
+            } catch (Throwable e) {
+                // On NOMME les deux echecs : celui de DownloadManager et le
+                // notre. Sans le premier, on rediagnostiquerait a l'aveugle la
+                // prochaine fois.
+                String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                call.reject("Le telechargement n'a pas abouti (" + pourquoi + ", puis " + detail + ").");
+            } finally {
+                if (connexion != null) connexion.disconnect();
+            }
+        }).start();
+    }
+
+    /**
+     * Ouvre un lien dans le navigateur du telephone.
+     *
+     * Le dernier recours, celui qui ne depend ni de DownloadManager ni de
+     * nous : il telecharge l'APK depuis son navigateur et l'ouvre a la main.
+     * Un <a href download> ordinaire ne suffit pas dans l'app empaquetee —
+     * Capacitor l'intercepte et le lien ne sort jamais de la WebView.
+     */
+    @PluginMethod
+    public void ouvrirLienExterne(PluginCall call) {
+        String url = call.getString("url");
+        if (url == null || url.isEmpty()) {
+            call.reject("URL manquante.");
+            return;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Aucun navigateur n'a repondu.");
+        }
     }
 
     private void lancerInstallation(PluginCall call, File apk) {

@@ -67,6 +67,97 @@
             </intent-filter>
         </activity>
 
+        <!-- Ce qui rend Jarvis CHOISISSABLE comme assistant du telephone
+             (chantier 7b8e68a7). Le 5 sept. on avait declare une activite
+             exportee repondant a ACTION_ASSIST : c'est l'une des deux
+             branches qu'AOSP accepte, mais la liste de Samsung ne montre que
+             l'autre — un vrai VoiceInteractionService. Constate par Raphael
+             le 6 sept. au matin, captures a l'appui : il suit le chemin
+             jusqu'au bout et Jarvis n'y est pas.
+
+             La permission BIND_VOICE_INTERACTION n'est PAS decorative :
+             VoiceInteractionServiceInfo compare `si.permission` a cette
+             chaine exacte et refuse tout le service sinon, en silence. Les
+             deux services sont exportes parce que c'est le systeme qui s'y
+             lie, et cette permission de signature est ce qui les protege. -->
+        <service
+            android:name=".JarvisVoiceInteractionService"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".JarvisVoiceInteractionSessionService"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
+            android:exported="true" />
+
+        <!-- Un moteur de reconnaissance qui ne reconnait rien : Android
+             refuse le VoiceInteractionService dont le XML ne declare pas de
+             recognitionService (« No recognitionService specified »), et
+             Jarvis disparait de la liste sans le moindre message. Jarvis
+             ecoute par le plugin, qui vise le moteur de Google. -->
+        <service
+            android:name=".JarvisRecognitionService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
+
+        <!-- La bulle flottante (chantier f5621562). Service de premier plan
+             parce qu'une vue posée par WindowManager vit dans le processus de
+             l'app : sans lui, Android tue ce processus en arriere-plan et la
+             bulle disparait au bout de quelques minutes, en silence.
+             foregroundServiceType "specialUse" : aucun des types prevus par
+             Android (localisation, lecture de media, appel) ne decrit une
+             pastille posee a l'ecran ; la propriete en dessous dit lequel
+             c'est, comme Android l'exige depuis la version 14. -->
+        <service
+            android:name=".BulleService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="pastille flottante d assistance, affichee a la demande de l utilisateur" />
+        </service>
+
+        <!-- Le service qui permet a Jarvis d'appuyer sur l'ecran a la place de
+             Raphael (chantiers 3f3ad20b et ed32cbcc). Sa demande du 6 sept.
+             2026 : « il faut aussi que ca puisse faire une activation de
+             clics tout simplement sur le telephone a la demande orale, et ca
+             ce n'est pas la pour n'importe quoi, pas que pour WhatsApp. »
+
+             BIND_ACCESSIBILITY_SERVICE n'est pas decorative : Android refuse
+             de se lier a un service d'accessibilite qui ne la declare pas, et
+             il n'apparait alors nulle part dans les reglages. Exporte parce
+             que c'est le systeme qui s'y lie, et cette permission de
+             signature est ce qui le protege.
+
+             Il ne s'active PAS a l'installation : c'est un acces special que
+             seul Raphael peut accorder, une fois, dans ses reglages Android.
+             La carte « Appuyer sur l'ecran a ta place » de Parametres lit
+             l'etat REEL et ouvre le bon ecran. -->
+        <service
+            android:name=".JarvisAccessibiliteService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibilite" />
+        </service>
+
         <receiver android:name=".JarvisWidgetProvider" android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -111,6 +202,16 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- La bulle flottante : afficher une pastille par-dessus les autres
+         applications. Accès spécial, jamais accordé par une fenêtre de
+         demande — il se donne dans un écran de réglages d'Android, et
+         l'interrupteur de Paramètres y renvoie. Désactivée par défaut.
+         FOREGROUND_SERVICE et sa variante « usage particulier » vont avec le
+         service qui tient la bulle en vie. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- Mise à jour de l'app : installer l'APK téléchargé par
          ApkDownloaderPlugin, sans passer par un navigateur. -->
@@ -163,6 +264,14 @@
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />
         </intent>
+        <!-- Les applications capables de PASSER l'appel, pas seulement de le
+             composer : c'est parmi celles-la qu'il choisit son application
+             d'appel par defaut, pour ne plus voir le selecteur
+             « Terminer l'action avec… » a chaque appel. -->
+        <intent>
+            <action android:name="android.intent.action.CALL" />
+            <data android:scheme="tel" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="smsto" />
@@ -179,9 +288,21 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- Les lecteurs de musique qui ne declarent pas
+             MEDIA_PLAY_FROM_SEARCH : sans cette ligne ils sont invisibles, et
+             la liste de Parametres est fausse — « il n'y a pas les
+             applications qu'il y a » (6 sept. 2026). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_MUSIC" />
+        </intent>
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
         <package android:name="com.whatsapp" />
+        <!-- WhatsApp Business : sans cette ligne on ne peut pas savoir qu'elle
+             est installee, donc pas la proposer au choix — et c'est elle qui
+             recevait ses messages le 6 sept. 2026. -->
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 </manifest>

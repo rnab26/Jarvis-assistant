@@ -9,7 +9,7 @@
 // dans `echanges` puis disparaît — c'est le choix de Raphaël.
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2"
-import { appelerGemini } from "../_shared/gemini.ts"
+import { appelerModele } from "../_shared/modele.ts"
 import { signalerPanne } from "../_shared/pannes.ts"
 import {
   type CandidatSouvenir,
@@ -21,48 +21,21 @@ import {
 } from "./dedoublonnage.ts"
 
 /**
- * Un modèle DIFFÉRENT de celui de la commande vocale, exprès : les quotas
- * de l'offre gratuite sont comptés par modèle. Chaque phrase de Raphaël
- * déclenche deux appels (comprendre, puis mémoriser) ; sur le même modèle,
- * la mémoire consommerait la moitié du quota de Jarvis. Trier des faits
- * n'en demande pas plus. Réglable par le secret GEMINI_MODELE_MEMOIRE.
- */
-// gemini-2.5-flash-lite est mort le 4 sept. 2026 : 404 « no longer available
-// to new users », sur les deux clés. La mémorisation échouait donc en silence
-// — c'est sa nature, elle ne doit jamais déranger l'utilisateur — et personne
-// ne l'aurait vu.
-//
-// Son remplaçant, gemini-3.7-flash, s'est révélé pire le même jour, et de
-// façon tout aussi invisible : mesuré par un appel réel, son plafond gratuit
-// est de VINGT requêtes par jour et par projet (« Quota exceeded for metric
-// generate_content_free_tier_requests, limit: 20 »). Autrement dit, la mémoire
-// de Jarvis s'arrêtait après vingt phrases dans la journée, sans un mot.
-//
-// gemini-3.5-flash-lite répond (essayé pour de vrai avec la clé de test le
-// 4 sept.) et n'est plus utilisé nulle part ailleurs : il a tenu le rôle de
-// modèle principal de la COMMANDE jusqu'à ce matin, où il s'est mis à répondre
-// 503 ; la commande est passée à gemini-3.1-flash-lite. Les seaux restent donc
-// distincts, ce qui est tout l'objet de ce réglage — et un 503 sur la mémoire
-// ne coûte qu'un souvenir, pas la parole de Jarvis.
-const MODELE_EXTRACTION = Deno.env.get("GEMINI_MODELE_MEMOIRE") || "gemini-3.5-flash-lite"
-
-/**
- * UN SECOURS, ET UN SEUL — pris HORS de la chaîne de la commande vocale.
+ * LA MÉMOIRE N'UTILISE JAMAIS UN MODÈLE DE LA COMMANDE, et cette règle a été
+ * payée cher — elle ne bouge pas.
  *
- * La mémoire partageait exactement les modèles de la commande, à l'envers :
- * elle démarrait sur gemini-3.1-flash-lite, qui est le modèle principal de la
- * commande, et basculait ensuite sur les autres. Deux consommateurs sur les
- * mêmes seaux. Le 3 sept. à 21h28 le seau du JOUR était vide et Jarvis est
- * resté muet — alors que la mémoire, elle, n'est qu'un confort : elle retient
- * des faits pour plus tard, et son échec ne se voit pas dans l'instant.
+ * Les quotas de l'offre gratuite sont comptés par modèle. Chaque phrase de
+ * Raphaël déclenche deux appels (comprendre, puis mémoriser) : sur le même
+ * modèle, la mémoire consomme la moitié du quota de Jarvis. Le 3 sept. 2026 à
+ * 21h28 le seau du JOUR était vide et Jarvis est resté muet, alors que la
+ * mémoire n'est qu'un confort — elle retient des faits pour plus tard, et son
+ * échec ne se voit pas dans l'instant.
  *
- * Le 4 sept. la règle « aucun secours » a été essayée, et elle allait trop
- * loin dans l'autre sens : le modèle unique était plafonné à vingt requêtes
- * par jour, donc la mémoire mourait chaque matin. Un secours, oui — mais
- * jamais un modèle de la commande. Perdre un souvenir coûte infiniment moins
- * cher que rendre Jarvis muet, et cette règle-là ne bouge pas.
+ * Le rôle « memoire » porte cette séparation : le fournisseur choisi lui donne
+ * son propre modèle et ses propres secours (voir `_shared/gemini.ts`, qui garde
+ * les mesures ayant fait choisir chacun). Un troisième appelant qui demanderait
+ * le rôle « commande » ici referait exactement l'erreur du 3 sept.
  */
-const SECOURS_EXTRACTION: string[] = ["gemini-3.7-flash"]
 
 /** Modèle embarqué dans les Edge Functions Supabase : gratuit, sur place. */
 const MODELE_EMBEDDING = "gte-small"
@@ -338,7 +311,8 @@ export async function memoriser(
   userId: string,
   transcript: string,
   reponse: string | null,
-  cleGemini: string,
+  /** Vrai quand l'appel vient de nos vérifications : voir `AppelModele.essai`. */
+  essai = false,
 ): Promise<void> {
   try {
     // L'empreinte est calculée ICI, à l'écriture : c'est elle qui rend
@@ -359,14 +333,14 @@ export async function memoriser(
     // à la main. Gratuit (modèle local) et borné.
     await rattraperEmpreintes(supabase)
 
-    const { args } = await appelerGemini({
-      modele: MODELE_EXTRACTION,
-      secours: SECOURS_EXTRACTION,
+    const { args } = await appelerModele({
+      role: "memoire",
       systeme: CONSIGNE_EXTRACTION,
       texte: `Raphaël a dit : « ${transcript} »\n${reponse ? `Jarvis a répondu : « ${reponse} »` : ""}`,
       outil: OUTIL_EXTRACTION,
       maxTokens: 512,
-      cle: cleGemini,
+      essai,
+      journal: { supabase, userId },
     })
 
     const faits: Souvenir[] = (args?.faits as Souvenir[] | undefined) ?? []

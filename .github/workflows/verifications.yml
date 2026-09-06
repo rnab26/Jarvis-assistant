@@ -26,6 +26,15 @@ jobs:
       # `tsc --noEmit` à la racine ne vérifie PAS l'app et dit « OK » à tort.
       - run: npx tsc -b
 
+      # Et il ne couvre QUE `src` : jusqu'au 6 sept. 2026, rien ne typecheckait
+      # les Edge Functions. Ni en CI, ni dans les sessions (pas de Deno
+      # installé). Une faute de frappe dans voice-command ne se voyait donc
+      # qu'après déploiement, c'est-à-dire chez Raphaël, sous la forme d'un
+      # Jarvis muet. `supabase/functions/deno.d.ts` donne à tsc le minimum
+      # qu'il lui manque pour lire ce code.
+      - name: Le code des Edge Functions se tient
+        run: npx tsc -p supabase/functions/tsconfig.json
+
       - name: Les réglages sont déclarés et réglables
         run: node --experimental-strip-types scripts/verifier-reglages.ts
 
@@ -44,8 +53,43 @@ jobs:
       - name: Les commandes comprises sans modèle
         run: node --experimental-strip-types scripts/verifier-commande-locale.ts
 
+      # Sa demande du 6 sept., capture à l'appui : la fenêtre d'installation
+      # d'Android par-dessus un « Conversation en cours ». On suspend la VEILLE
+      # pendant une mise à jour — et RIEN de plus : un appui sur le cœur reste
+      # obéi. La moitié des contrôles garde ce « uniquement ».
+      - name: Jarvis se tait pendant une mise à jour, et rien de plus
+        run: node --experimental-strip-types scripts/verifier-maj-ecoute.ts
+
       - name: La clôture de la conversation à la voix
         run: node --experimental-strip-types scripts/verifier-fin-conversation.ts
+
+      # Le registre des erreurs n'avait qu'une ligne ouverte, et c'était une
+      # fausse alerte : 363 rafales de veille dans une pièce calme signalées
+      # comme des pannes. Ce contrôle garde la frontière dans les DEUX sens —
+      # ne plus crier sur un silence, ne jamais se taire sur une vraie panne.
+      - name: Ce qui finit dans le registre des erreurs, et ce qui n'y finit pas
+        run: node --experimental-strip-types scripts/verifier-raison-ecoute.ts
+
+      # Le cas qui compte : quand il NE répond PAS à « avec quelle
+      # application ? », sa phrase suivante ne doit surtout pas être
+      # enregistrée comme son application préférée — ce serait invisible et
+      # définitif.
+      - name: « Avec quelle application ? » en mode Live
+        run: node --experimental-strip-types scripts/verifier-question-app-live.ts
+
+      # Une action qui ne rend aucune phrase laissait le modèle Live combler
+      # le silence — le 6 sept. il a comblé en annonçant que le message était
+      # parti. L'aveu qui la remplace ne doit affirmer NI succès NI échec :
+      # on ne sait pas, et c'est justement ce qu'il faut dire.
+      - name: Une action muette ne devient ni un silence ni un mensonge
+        run: node --experimental-strip-types scripts/verifier-retour-vide.ts
+
+      # « La musique ne se coupe pas, mais il a du mal à entendre » — ses mots
+      # du 6 sept. On baisse le son des autres apps pendant qu'il parle, et on
+      # le remonte sur TOUTES les sorties. Surtout : PAS pendant la veille,
+      # sinon une rafale toutes les 1 à 8 s ferait pomper sa musique sans arrêt.
+      - name: La musique baisse pendant qu'il parle, et remonte à tous les coups
+        run: node --experimental-strip-types scripts/verifier-baisser-son.ts
 
       - name: L'envoi d'un chantier à Claude Code
         run: node --experimental-strip-types scripts/verifier-envoi-chantier.ts
@@ -69,14 +113,65 @@ jobs:
       - name: Les corrections de Raphaël arrivent jusqu'au modèle
         run: node --experimental-strip-types scripts/verifier-corrections.ts
 
+      # Changer de moteur doit rester un secret à poser, jamais une réécriture
+      # — et surtout, rien ne doit basculer TOUT SEUL vers un moteur payant :
+      # Raphaël a quitté l'API Anthropic en découvrant sa clé à sec. Le
+      # contrôle fait tourner le vrai répartiteur avec un `fetch` en doublure.
+      - name: Le moteur — quel fournisseur, quel modèle, quels seaux de quota
+        run: node --experimental-strip-types scripts/verifier-moteur.ts
+
+      # « Savoir combien il me reste, et à combien de temps de discussion ça
+      # équivaut. » Sur l'offre gratuite il n'y a pas de solde, seulement des
+      # plafonds qui ne se lisent qu'une fois dépassés : la moitié de ces
+      # contrôles refuse qu'on invente un chiffre, l'autre moitié refuse qu'on
+      # l'alerte pour un refus par minute, qui se lève tout seul.
+      - name: Ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas
+        run: node --experimental-strip-types scripts/verifier-consommation.ts
+
+      # Ce mécanisme-là décide TOUT SEUL, la nuit, de changer le modèle de
+      # Jarvis. La moitié des contrôles vérifie qu'il NE promeut PAS : un
+      # mécanisme qui adopte trop facilement est pire qu'un qui n'adopte
+      # jamais — le second se remarque, le premier casse une nuit au hasard.
+      - name: On ne change pas de modèle à la légère
+        run: node --experimental-strip-types scripts/verifier-veille-modele.ts
+
       # « Une panne qui se lit comme une absence » : un rappel de mémoire qui
       # échoue rendait le même résultat qu'un rappel qui n'a rien trouvé. Ce
       # contrôle lit le code, parce que la règle porte sur sa forme.
       - name: Une panne de la mémoire ne se lit pas comme une absence
         run: node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts
 
+      # Jarvis constate ses propres échecs. La moitié de ces contrôles vérifie
+      # le SILENCE : un détecteur trop large remplit le registre des erreurs
+      # avec le fonctionnement normal du dialogue, et un registre bruyant n'est
+      # plus lu du tout — pire que pas de détecteur.
+      - name: Jarvis constate ses échecs, et se tait le reste du temps
+        run: node --experimental-strip-types scripts/verifier-retours.ts
+
+      # Ce réglage commande une SUPPRESSION sans corbeille, à chaque phrase.
+      # Le contrôle lit LES DEUX moitiés — le bouton de Paramètres et la
+      # fonction SQL — et refuse qu'elles divergent : une valeur que l'app
+      # écrit et que le SQL ne comprend pas vaudrait « sans limite » en
+      # silence, et le réglage ne servirait plus à rien.
+      - name: La durée de conservation des conversations
+        run: node --experimental-strip-types scripts/verifier-retention.ts
+
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
+
+      # Les quatre nombres par section de « Où j'en suis ». Ce qui se joue là
+      # est faux EN SILENCE : un chantier compté comme avançant alors que la
+      # session qui l'avait pris s'est arrêtée, une question sans réponse qui
+      # n'apparaît nulle part. On lit la réponse, et on la croit.
+      - name: « Où j'en suis », en tête du cockpit
+        run: node --experimental-strip-types scripts/verifier-ou-jen-suis.ts
+
+      # Une question posée par une session doit REVENIR à Raphaël, et sa
+      # réponse repartir vers les sessions sous une forme lisible des années
+      # après. La fiche du 5 sept. n'enregistrait que les champs de texte, et
+      # affichait « 0 / 14 » pendant qu'il répondait : personne ne l'a vu.
+      - name: Ce qui attend sa décision, et ce qu'il répond
+        run: node --experimental-strip-types scripts/verifier-decisions.ts
 
       - name: La section suggérée à la saisie
         run: node --experimental-strip-types scripts/verifier-suggestion-theme.ts
@@ -84,14 +179,112 @@ jobs:
       - name: « Ça existe déjà » à la saisie d'un chantier
         run: node --experimental-strip-types scripts/verifier-doublon-chantier.ts
 
+      - name: Les doublons déjà en base
+        run: node --experimental-strip-types scripts/verifier-doublons-existants.ts
+
+      - name: Une tâche perso qui est en fait un chantier
+        run: node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts
+
       - name: Ce qui a bougé depuis le dernier passage
         run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
 
       - name: L'aller-retour avec une IA installée sur le téléphone
         run: node --experimental-strip-types scripts/verifier-aller-retour-ia.ts
 
+      # Un bouton « Autoriser » sur une autorisation qu'Android ne
+      # redemandera plus jamais est un bouton mort, et rien à l'écran ne le
+      # dit. Ce contrôle lit aussi le plugin Android : une ligne du catalogue
+      # qu'il ne connaît pas afficherait « Pas encore » pour toujours.
+      # « je lance » suivi de rien : le repli silencieux sur l'ouverture nue
+      # de l'app faisait mentir Jarvis à chaque demande de musique.
+      - name: Lancer une musique dit ce qui s'est vraiment passé
+        run: node --experimental-strip-types scripts/verifier-musique.ts
+
+      # Une demande redite à la voix ne doit pas créer un second chantier —
+      # et une demande NEUVE ne doit jamais être refusée pour trois mots
+      # communs : la perdre en silence serait bien pire que le doublon.
+      - name: Dicter deux fois ne crée pas deux chantiers
+        run: node --experimental-strip-types scripts/verifier-doublon-vocal.ts
+
+      # Le garde-fou des commandes mal entendues ne doit jamais redevenir la
+      # confirmation bloquante que Raphaël a écartée.
+      - name: La fenêtre d'annulation des actions du téléphone
+        run: node --experimental-strip-types scripts/verifier-fenetre-annulation.ts
+
+      # La bulle : un interrupteur ne doit jamais dire « Activé » au-dessus
+      # d'un écran vide, et un service de premier plan sans type refuse de
+      # démarrer depuis Android 14, sans le moindre message.
+      - name: La bulle flottante
+        run: node --experimental-strip-types scripts/verifier-bulle.ts
+
+      # Quand une déclaration du VoiceInteractionService manque, Android
+      # rejette le service EN SILENCE : Jarvis disparaît de la liste des
+      # assistants et rien, nulle part, ne dit pourquoi.
+      # « Il me dit qu'il a envoyé un message alors que ce n'est pas vrai. »
+      # Une chose qui ment ruine la confiance dans tout ce qui marche.
+      - name: Jarvis n'annonce jamais au passé ce qu'il n'a pas fait
+        run: node --experimental-strip-types scripts/verifier-honnetete.ts
+
+      # Le téléchargement de l'APK. Le 6 sept. 2026 il est resté devant
+      # « 0.0 Mo reçus… » pendant que plus aucun correctif natif ne pouvait
+      # lui parvenir : ce contrôle garde qu'aucun chemin ne redevienne muet.
+      - name: Le téléchargement de l'APK ne peut plus rester muet
+        run: node --experimental-strip-types scripts/verifier-telechargement-apk.ts
+
+      # Où atterrit ce qu'il dicte. La moitié de ces contrôles vérifie le
+      # REFUS : « ajoute un chantier pour refaire la salle de bain » a les
+      # mêmes mots que « mets-le en chantier », et la prendre pour une
+      # correction déplacerait la ligne précédente au lieu de créer celle-ci.
+      - name: Une dictée atterrit au bon endroit, et se corrige d'un mot
+        run: node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts
+
+      # Les applications proposées doivent être celles du TÉLÉPHONE. Une
+      # liste écrite dans le code est fausse le jour où il installe autre
+      # chose — et « en aucun cas il y a Waze » est exactement ça.
+      - name: Les applications par défaut sont celles qui sont installées
+        run: node --experimental-strip-types scripts/verifier-apps-par-defaut.ts
+
+      # Les connecteurs d'IA : « je n'ai pas pu regarder » ne doit jamais se
+      # lire comme « tu n'as aucune application d'IA », et la liste des IA
+      # connues met en avant sans jamais limiter.
+      - name: Les applications d'IA déjà installées
+        run: node --experimental-strip-types scripts/verifier-apps-ia.ts
+
+      # Le contrôle de l'écran. La moitié de ces contrôles vérifie le SILENCE :
+      # quand l'élément désigné n'existe pas, ou que deux éléments se valent,
+      # on ne clique sur RIEN. Un clic de travers dans une application ouverte
+      # est une action qu'on ne rattrape pas.
+      - name: Appuyer sur l'écran à sa place, et refuser quand on n'est pas sûr
+        run: node --experimental-strip-types scripts/verifier-ecran.ts
+
+      - name: Jarvis peut être choisi comme assistant du téléphone
+        run: node --experimental-strip-types scripts/verifier-assistant.ts
+
+      - name: Les autorisations du téléphone
+        run: node --experimental-strip-types scripts/verifier-autorisations.ts
+
       - name: Retrouver quelqu'un dans le répertoire du téléphone
         run: node --experimental-strip-types scripts/verifier-contact-repertoire.ts
+
+      # Une session qui se retire à tort ne coûte rien : Raphaël en ouvre une
+      # lui-même. Une session qui démarre à tort dépense son crédit pendant
+      # qu'il dort, ou code un chantier qu'il voulait d'abord trancher.
+      - name: Une session autonome se retire quand il le faut
+        run: node --experimental-strip-types scripts/verifier-sessions-autonomes.ts
+
+      # Deux notes de chantier ont ete ecrasees les 5 et 6 sept., dont une
+      # portant un retour de Raphael ecrit nulle part ailleurs. Ce qui se
+      # verifie ici : distinguer une note completee d'une note ecrasee, et
+      # se taire le reste du temps.
+      - name: Un chantier garde ce qu'on y a écrit
+        run: node --experimental-strip-types scripts/verifier-historique-chantier.ts
+
+      # Il dicte en voiture : le reseau coupe n'est pas le cas rare. Ce qui se
+      # verifie ici peut etre FAUX EN SILENCE — un renvoi qui cree un doublon,
+      # une file qui grossit sans fin, un abandon que personne ne voit — et la
+      # moitie des controles porte sur ce qu'on NE dit PAS.
+      - name: Une tâche dictée hors réseau ne se perd pas, et ne se dédouble pas
+        run: node --experimental-strip-types scripts/verifier-file-en-attente.ts
 
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une

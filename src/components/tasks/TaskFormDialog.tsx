@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { chantiersProches } from "@/lib/doublonChantier"
 import type { Category, Task, TaskInput } from "@/types/database"
 
 const NO_CATEGORY = "none"
@@ -28,6 +29,10 @@ interface TaskFormDialogProps {
   task?: Task
   onSubmit: (input: TaskInput) => Promise<void>
   trigger: React.ReactNode
+  /** Les tâches déjà là, pour prévenir d'une redite pendant la frappe. Le
+   * cockpit le fait depuis le 4 sept. ; la liste de tâches, non — et trois
+   * « racheter un spot pour l'entrée de la maison » identiques y dormaient. */
+  taches?: Task[]
 }
 
 export function TaskFormDialog({
@@ -35,6 +40,7 @@ export function TaskFormDialog({
   task,
   onSubmit,
   trigger,
+  taches = [],
 }: TaskFormDialogProps) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState(task?.title ?? "")
@@ -43,6 +49,11 @@ export function TaskFormDialog({
   const [dueTime, setDueTime] = useState(task?.due_time?.slice(0, 5) ?? "")
   const [categoryId, setCategoryId] = useState(task?.category_id ?? NO_CATEGORY)
   const [submitting, setSubmitting] = useState(false)
+
+  // Uniquement à la CRÉATION : sur une modification, la tâche se ressemblerait
+  // forcément à elle-même. Le module est celui du cockpit, rendu générique —
+  // il compare des titres, il ne sait pas de quoi il parle.
+  const proches = task ? [] : chantiersProches(title, taches.filter((t) => t.status !== "done"), 3)
 
   useEffect(() => {
     if (open) {
@@ -96,6 +107,21 @@ export function TaskFormDialog({
                 onChange={(e) => setTitle(e.target.value)}
               />
             </div>
+            {/* Prévient, ne bloque pas : il peut vouloir deux tâches proches.
+                Se tait dès qu'il n'y a qu'un mot courant en commun — un
+                avertissement qui se déclenche à tort n'est plus lu du tout. */}
+            {proches.length > 0 && (
+              <div className="flex flex-col gap-1 rounded-lg border border-dashed p-2.5">
+                <p className="text-xs font-medium">
+                  Tu as déjà {proches.length === 1 ? "une tâche proche" : "des tâches proches"} :
+                </p>
+                {proches.map((p) => (
+                  <p key={p.item.id} className="truncate text-xs text-muted-foreground">
+                    · {p.item.title}
+                  </p>
+                ))}
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <Label htmlFor="category">Catégorie</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>

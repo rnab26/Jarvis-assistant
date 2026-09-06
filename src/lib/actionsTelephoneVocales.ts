@@ -1,15 +1,30 @@
 import { Capacitor } from "@capacitor/core"
-import { ActionsTelephone, trouverApplication, type CommandeMedia } from "@/lib/actionsTelephone"
+import {
+  ActionsTelephone,
+  trouverApplication,
+  type ApplicationInstallee,
+  type CommandeMedia,
+} from "@/lib/actionsTelephone"
+import { phraseMusique, type ResultatOuverture } from "@/lib/actionsTelephoneMusique"
+import {
+  annonceAction,
+  delaiAnnulation,
+  passeParLaFenetre,
+} from "@/lib/actionsTelephoneFenetre"
+import { attendreOuAnnuler } from "@/lib/actionsTelephoneToast"
 import { ecrireReglage } from "@/lib/reglages"
 import { noterEcoute } from "@/lib/journalEcoute"
 import type { Contact } from "@/types/database"
 import { noterQuestionEnvoyee } from "@/lib/questionEnAttente"
 import { chercherContact } from "@/lib/chercherContact"
 import { lireRepertoire } from "@/lib/repertoire"
+import { agirSurEcran, reglagesListeNoire } from "@/lib/controleEcran"
+import type { CommandeEcran } from "@/lib/ecranTelephone"
+import { CLE_LISTE_NOIRE, entreeDepuisLaVoix, listeEffective } from "@/lib/listeNoire"
 
 /** Les catégories du téléphone où Jarvis doit choisir une application sans
  * qu'on la lui nomme à chaque fois — apprises une fois, retenues ensuite. */
-export type CategorieAppTelephone = "musique" | "navigation" | "messages" | "ia"
+export type CategorieAppTelephone = "musique" | "navigation" | "messages" | "ia" | "appels"
 
 /** Les actions vocales qui sortent de Jarvis pour aller dans une autre app. */
 export type ActionTelephone =
@@ -35,6 +50,13 @@ export type ActionTelephone =
   | { action: "media_control"; media_command: CommandeMedia }
   | { action: "set_app_preference"; category: CategorieAppTelephone; app_name: string }
   | { action: "ask_ai"; question: string; app_name?: string }
+  /** Appuyer sur l'écran d'une autre application, faire défiler, revenir en
+   * arrière. La capacité générale du chantier 3f3ad20b — « pas que pour
+   * WhatsApp ». La décision « quel élément » est locale (ecranTelephone.ts). */
+  | { action: "screen_action"; screen_command: CommandeEcran; screen_target?: string }
+  /** « n'appuie jamais dans Bitwarden » : la liste noire se complète à la
+   * voix, c'est sa décision du 3 sept. */
+  | { action: "block_screen_app"; app_name: string }
 
 const SUR_LE_TELEPHONE_SEULEMENT =
   "Ça, je ne peux le faire que depuis l'application installée sur ton téléphone — ici je n'ai pas accès à tes autres applications."
@@ -42,18 +64,41 @@ const SUR_LE_TELEPHONE_SEULEMENT =
 /** Exportées pour que Paramètres puisse afficher et effacer ces préférences :
  * elles étaient fixées une fois à la voix, puis invisibles et impossibles à
  * changer. Seule source de vérité pour ces clés — ne les recopie pas. */
-export const CLES_APP: Record<"musique" | "navigation" | "ia", string> = {
+export const CLES_APP: Record<"musique" | "navigation" | "ia" | "appels", string> = {
   musique: "jarvis_app_musique",
   navigation: "jarvis_app_navigation",
   ia: "jarvis_app_ia",
+  // Ajoutée le 5 sept. 2026 au soir : sans application d'appel visée, Android
+  // affiche « Terminer l'action avec… » dès que deux applications savent
+  // téléphoner. Il a ZoiPer en plus du téléphone — c'était l'un des deux
+  // appuis qu'il devait encore faire pour qu'un appel parte.
+  appels: "jarvis_app_appels",
 }
 export const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
+
+/**
+ * Lequel des deux WhatsApp, quand les deux sont installés.
+ *
+ * Raphaël, 6 sept. 2026 : « sur WhatsApp, ça prépare le message mais il n'y a
+ * rien qui est envoyé » — et le message partait dans WhatsApp Business, pas
+ * dans celui où il écrit. Le paquet est retenu ici plutôt que deviné : prendre
+ * « la première application qui répond » est précisément ce qui a échoué.
+ */
+export const CLE_APP_WHATSAPP = "jarvis_app_whatsapp"
+
+export function paquetWhatsAppPrefere(): string | null {
+  try {
+    return localStorage.getItem(CLE_APP_WHATSAPP)
+  } catch {
+    return null
+  }
+}
 
 /** L'application que Raphaël a retenue pour la musique, la navigation ou une
  * IA tierce, si on la lui a déjà demandée une fois. Lu par MicButton pour
  * savoir s'il faut la lui demander avant d'exécuter — seule source de
  * vérité pour "quelle app pour X", avec CLES_APP ci-dessus. */
-export function appPreferee(categorie: "musique" | "navigation" | "ia"): string | null {
+export function appPreferee(categorie: "musique" | "navigation" | "ia" | "appels"): string | null {
   try {
     return localStorage.getItem(CLES_APP[categorie])
   } catch {
@@ -73,6 +118,7 @@ export function canalMessagesPrefere(): "whatsapp" | "sms" | null {
 }
 
 const NOM_CATEGORIE: Record<CategorieAppTelephone, string> = {
+  appels: "les appels",
   musique: "la musique",
   navigation: "les itinéraires",
   messages: "les messages",
@@ -85,6 +131,35 @@ const NOM_CATEGORIE: Record<CategorieAppTelephone, string> = {
 export function questionAppPreferee(categorie: CategorieAppTelephone): string {
   if (categorie === "messages") return "Tu préfères WhatsApp ou les SMS pour tes messages ?"
   return `Quelle application utilises-tu pour ${NOM_CATEGORIE[categorie]} ?`
+}
+
+/**
+ * Les applications qui savent vraiment ouvrir un ITINÉRAIRE, telles que le
+ * téléphone les déclare.
+ *
+ * On demande au système l'intent RÉEL qui sera lancé (`geo:`), jamais une
+ * liste devinée : c'est la cause racine que Raphaël a signalée deux fois le
+ * 6 sept. 2026 — WhatsApp Business le matin, Waze absent l'après-midi. On
+ * supposait au lieu de regarder.
+ *
+ * Repli sur la liste générale quand l'APK installée est antérieure à cette
+ * méthode : une interface récente peut tourner dans une ancienne coquille
+ * depuis la mise à jour rapide, et il vaut mieux une liste large qu'un échec.
+ */
+async function appsItineraire(): Promise<ApplicationInstallee[]> {
+  try {
+    return (await ActionsTelephone.listerApplicationsItineraire()).applications ?? []
+  } catch {
+    return (await ActionsTelephone.listerApplications()).applications ?? []
+  }
+}
+
+async function appsMusique(): Promise<ApplicationInstallee[]> {
+  try {
+    return (await ActionsTelephone.listerApplicationsMusique()).applications ?? []
+  } catch {
+    return (await ActionsTelephone.listerApplications()).applications ?? []
+  }
 }
 
 /** Le numéro d'un contact, ou celui que Raphaël a dicté à voix haute. */
@@ -151,6 +226,60 @@ function dureeLisible(secondes: number): string {
 }
 
 /**
+ * Lequel des deux WhatsApp utiliser.
+ *
+ * « à_choisir » n'est pas un échec : c'est la seule réponse honnête quand les
+ * deux sont installés et qu'il n'a rien dit. Deviner, c'est un message écrit
+ * dans une application qu'il n'ouvre jamais — et il l'a vécu.
+ */
+async function quelWhatsApp(): Promise<
+  { etat: "ok"; paquet: string | null } | { etat: "a_choisir"; phrase: string }
+> {
+  const retenu = paquetWhatsAppPrefere()
+  if (retenu) return { etat: "ok", paquet: retenu }
+
+  let installes: { nom: string; paquet: string }[] = []
+  try {
+    installes = (await ActionsTelephone.listerApplicationsWhatsApp()).applications ?? []
+  } catch {
+    // APK antérieure à cette méthode : on garde le comportement par défaut du
+    // plugin, qui vise le WhatsApp ordinaire.
+    return { etat: "ok", paquet: null }
+  }
+
+  if (installes.length > 1) {
+    return {
+      etat: "a_choisir",
+      phrase: `Tu as ${installes.map((a) => a.nom).join(" et ")} sur ton téléphone, et je ne sais pas lequel tu utilises. Choisis-le dans Paramètres, « Tes applications par défaut », et je m'en souviendrai.`,
+    }
+  }
+  return { etat: "ok", paquet: installes[0]?.paquet ?? null }
+}
+
+/**
+ * Ce que l'annonce nomme : l'application, la personne, la destination.
+ *
+ * C'est le seul mot qui permet de repérer une commande mal entendue.
+ * « J'ouvre une application » ne dit rien ; « J'ouvre מכבי » se corrige en
+ * une seconde — c'est exactement ce qui est arrivé le 5 sept.
+ */
+function cibleAnnoncee(action: ActionTelephone, contacts: Contact[]): string | null {
+  switch (action.action) {
+    case "open_app":
+      return action.app_name || (action.music_query ? appPreferee("musique") : null)
+    case "call_contact":
+    case "send_message":
+      return nomDe(contacts, action.contact_id) ?? action.contact_name ?? action.phone_number ?? null
+    case "navigate_to":
+      return action.destination
+    case "ask_ai":
+      return action.app_name || appPreferee("ia")
+    default:
+      return null
+  }
+}
+
+/**
  * Exécute une action dans une autre application du téléphone et renvoie la
  * phrase que Jarvis dira.
  *
@@ -167,6 +296,21 @@ export async function executerActionTelephone(
   contacts: Contact[],
 ): Promise<string> {
   if (!Capacitor.isNativePlatform()) return SUR_LE_TELEPHONE_SEULEMENT
+
+  // La fenêtre d'annulation, pour les seules actions qui SORTENT de Jarvis.
+  // Rien n'attend son accord : le décompte fini, ça part. C'est le compromis
+  // du chantier 3f3ad20b — il a écarté toute confirmation bloquante, mais
+  // quatre commandes mal entendues le 5 sept. ont ouvert des applications au
+  // hasard, et il n'avait aucun moyen de les arrêter.
+  const attente = delaiAnnulation()
+  if (attente > 0 && passeParLaFenetre(action.action)) {
+    const annonce = annonceAction(action.action, cibleAnnoncee(action, contacts))
+    const continuer = await attendreOuAnnuler(annonce, attente)
+    if (!continuer) {
+      noterEcoute("action_annulee", { action: action.action })
+      return "D'accord, j'annule."
+    }
+  }
 
   try {
     switch (action.action) {
@@ -205,11 +349,28 @@ export async function executerActionTelephone(
           })
         }
 
-        await ActionsTelephone.ouvrirApplication({ paquet, recherche: action.music_query })
+        const retour = await ActionsTelephone.ouvrirApplication({
+          paquet,
+          recherche: action.music_query,
+        })
         if (action.music_query) {
-          return nomAffiche
-            ? `Je lance ${action.music_query} sur ${nomAffiche}.`
-            : `Je lance ${action.music_query}.`
+          // Le résultat réel part aussi dans le journal : c'est la seule
+          // façon de savoir, depuis ici, ce qui se passe sur SON téléphone
+          // sans avoir à le lui demander. Une APK antérieure à ce correctif
+          // ne renvoie rien : on le note tel quel plutôt que de supposer.
+          const resultat: ResultatOuverture | "inconnu" = retour?.resultat ?? "inconnu"
+          noterEcoute("musique_resultat", {
+            resultat,
+            requete: action.music_query,
+            app_choisie: nomAffiche || null,
+            paquet_trouve: paquet ?? null,
+          })
+          if (resultat === "inconnu") {
+            return nomAffiche
+              ? `Je lance ${action.music_query} sur ${nomAffiche}.`
+              : `Je lance ${action.music_query}.`
+          }
+          return phraseMusique(resultat, action.music_query, nomAffiche || null)
         }
         return `J'ouvre ${nomAffiche}.`
       }
@@ -244,9 +405,19 @@ export async function executerActionTelephone(
         if (canal === "sms") {
           await ActionsTelephone.preparerSms({ texte: action.message_text, numero: numero ?? undefined })
         } else {
+          // LEQUEL des deux WhatsApp ? Le 6 sept. 2026, ses messages
+          // partaient dans WhatsApp Business : le chemin « lien wa.me » ne
+          // visait aucune application, et Android choisissait. On vise
+          // maintenant celui qu'il a retenu — et quand les deux sont
+          // installés sans qu'il ait choisi, on DEMANDE au lieu de prendre le
+          // premier : se tromper d'application, c'est un message qui n'arrive
+          // jamais, sans que rien ne le dise.
+          const choix = await quelWhatsApp()
+          if (choix.etat === "a_choisir") return choix.phrase
           await ActionsTelephone.preparerWhatsApp({
             texte: action.message_text,
             numero: numero ?? undefined,
+            paquet: choix.paquet ?? undefined,
           })
         }
 
@@ -278,7 +449,18 @@ export async function executerActionTelephone(
         // Première fois : on demande la permission d'appeler, pour ne pas se
         // contenter éternellement de composer alors qu'il a demandé mieux.
         await ActionsTelephone.demanderPermissionAppel().catch(() => ({ granted: false }))
-        const { direct } = await ActionsTelephone.composer({ numero })
+        // L'application d'appel qu'il a choisie, s'il en a choisi une : sans
+        // elle, Android affiche son sélecteur « Terminer l'action avec… » à
+        // chaque appel, et il faut un appui de plus. Même mécanisme que la
+        // musique et les itinéraires — une seule carte de réglages pour les
+        // quatre, pas un second chemin.
+        let paquetAppel: string | undefined
+        const appAppels = appPreferee("appels")
+        if (appAppels) {
+          const { applications } = await ActionsTelephone.listerApplications()
+          paquetAppel = trouverApplication(applications, appAppels)?.paquet
+        }
+        const { direct } = await ActionsTelephone.composer({ numero, paquet: paquetAppel })
         const qui = nom ?? "le numéro"
         if (direct) return nom ? `J'appelle ${nom}.` : "J'appelle."
         return `J'ai composé ${qui}, appuie pour lancer l'appel — autorise les appels dans les réglages si tu veux que je le fasse directement.`
@@ -315,11 +497,23 @@ export async function executerActionTelephone(
         let paquet: string | undefined
         const preferee = appPreferee("navigation")
         if (preferee) {
-          const { applications } = await ActionsTelephone.listerApplications()
-          paquet = trouverApplication(applications, preferee)?.paquet
+          paquet = trouverApplication(await appsItineraire(), preferee)?.paquet
+          // DEMANDER PUIS NE RIEN FAIRE EST PIRE QUE NE PAS DEMANDER. Sa
+          // remarque du 6 sept. : « il a une certaine logique de me demander
+          // pour un itinéraire quelle application j'utilise, mais il ne sait
+          // pas la lancer. » Avant, une préférence qui ne correspondait à
+          // aucune application installée retombait en silence sur le
+          // sélecteur d'Android, et Jarvis annonçait quand même « je t'ouvre
+          // l'itinéraire ».
+          if (!paquet) {
+            noterEcoute("app_introuvable", { categorie: "navigation", preferee })
+            return `Tu m'as dit d'utiliser ${preferee} pour les itinéraires, mais je ne la trouve pas parmi celles qui savent en ouvrir un sur ton téléphone. Choisis-en une dans Paramètres, « Tes applications par défaut ».`
+          }
         }
         await ActionsTelephone.itineraire({ destination: action.destination, paquet })
-        return `Je t'ouvre l'itinéraire vers ${action.destination}.`
+        return preferee
+          ? `Je t'ouvre l'itinéraire vers ${action.destination} dans ${preferee}.`
+          : `Je t'ouvre l'itinéraire vers ${action.destination}.`
       }
 
       case "media_control": {
@@ -340,13 +534,44 @@ export async function executerActionTelephone(
             : "Compris, je passerai par WhatsApp pour tes messages."
         }
 
-        const { applications } = await ActionsTelephone.listerApplications()
-        const trouvee = trouverApplication(applications, action.app_name)
+        // La liste PAR USAGE, pas « toutes les applications » : en retenir
+        // une qui ne répond pas à l'intent ne changerait rien une fois
+        // choisie, et rien ne le dirait.
+        const candidates =
+          action.category === "navigation"
+            ? await appsItineraire()
+            : action.category === "musique"
+              ? await appsMusique()
+              : ((await ActionsTelephone.listerApplications()).applications ?? [])
+        const trouvee = trouverApplication(candidates, action.app_name)
         if (!trouvee) {
           return `Je ne trouve pas d'application qui s'appelle "${action.app_name}" sur ton téléphone.`
         }
         ecrireReglage(CLES_APP[action.category], trouvee.nom)
         return `Compris, j'utiliserai ${trouvee.nom} pour ${NOM_CATEGORIE[action.category]}.`
+      }
+
+      case "screen_action": {
+        // La capacité générale : lire l'écran, désigner, cliquer, défiler.
+        // Aucune fenêtre d'annulation ici, et c'est expliqué dans
+        // controleEcran.ts : le bandeau est affiché DANS Jarvis, invisible
+        // pendant que YouTube ou WhatsApp est au premier plan.
+        return await agirSurEcran(action.screen_command, action.screen_target)
+      }
+
+      case "block_screen_app": {
+        const entree = entreeDepuisLaVoix(action.app_name)
+        if (!entree) return "Je n'ai pas compris quelle application je dois laisser tranquille."
+        const reglages = reglagesListeNoire()
+        const deja = listeEffective(reglages).some(
+          (e) => e.motif.toLowerCase() === entree.motif.toLowerCase(),
+        )
+        if (deja) return `${entree.libelle} est déjà dans les applications où je n'appuie pas.`
+        ecrireReglage(
+          CLE_LISTE_NOIRE,
+          JSON.stringify({ ...reglages, ajouts: [...reglages.ajouts, entree] }),
+        )
+        return `C'est noté : je n'appuierai jamais sur l'écran de ${entree.libelle}. Tu peux revenir dessus dans Paramètres.`
       }
 
       case "ask_ai": {
@@ -356,7 +581,7 @@ export async function executerActionTelephone(
         // geste, ne l'accomplit pas à sa place.
         const nomCible = action.app_name || appPreferee("ia") || undefined
         if (!nomCible) {
-          return "Je ne sais pas encore à quelle IA la poser. Dis-le-moi une fois et je m'en souviendrai."
+          return "Je ne sais pas encore à quelle application poser la question. Dis-le-moi une fois (« utilise Perplexity pour l'IA »), ou choisis-la dans Paramètres, « Tes applications d'IA »."
         }
 
         const { applications } = await ActionsTelephone.listerApplications()

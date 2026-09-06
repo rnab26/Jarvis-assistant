@@ -94,31 +94,186 @@ public class ActionsTelephonePlugin extends Plugin {
     }
 
     /**
+     * Les applications capables de PASSER un appel.
+     *
+     * Pas la même chose que « les applications installées » : c'est parmi
+     * celles-ci qu'il choisit son application d'appel par défaut, dans
+     * Paramètres. Sans ce choix, Android affiche « Terminer l'action avec… »
+     * à chaque appel dès qu'il y en a deux — il a ZoiPer en plus du
+     * téléphone, et c'était l'un des deux appuis qu'il devait encore faire le
+     * 5 sept. 2026 pour qu'un appel parte.
+     *
+     * On interroge le système sur l'intent RÉEL qui sera lancé, pas sur une
+     * liste devinée : une application qui n'y répond pas ne servirait à rien
+     * une fois choisie.
+     */
+    @PluginMethod
+    public void listerApplicationsAppel(PluginCall call) {
+        PackageManager pm = getContext().getPackageManager();
+        Intent appel = new Intent(Intent.ACTION_CALL, Uri.parse("tel:0000000000"));
+
+        JSArray apps = new JSArray();
+        List<String> vus = new ArrayList<>();
+        for (ResolveInfo info : pm.queryIntentActivities(appel, 0)) {
+            String paquet = info.activityInfo.packageName;
+            if (vus.contains(paquet)) continue;
+            vus.add(paquet);
+            JSObject app = new JSObject();
+            app.put("nom", String.valueOf(info.loadLabel(pm)));
+            app.put("paquet", paquet);
+            apps.put(app);
+        }
+        JSObject res = new JSObject();
+        res.put("applications", apps);
+        call.resolve(res);
+    }
+
+    /** Le corps commun des listes par usage : on interroge le systeme sur
+     * l'intent REEL qui sera lance, jamais sur une liste ecrite dans le code.
+     * Une application qui n'y repond pas ne servirait a rien une fois
+     * choisie — et c'est exactement le defaut qu'il a signale le 6 sept. :
+     * « il n'y a pas les applications qu'il y a ». */
+    private void repondreAvecLesApps(PluginCall call, Intent... intents) {
+        PackageManager pm = getContext().getPackageManager();
+        JSArray apps = new JSArray();
+        List<String> vus = new ArrayList<>();
+        for (Intent intent : intents) {
+            for (ResolveInfo info : pm.queryIntentActivities(intent, 0)) {
+                String paquet = info.activityInfo.packageName;
+                if (vus.contains(paquet)) continue;
+                vus.add(paquet);
+                JSObject app = new JSObject();
+                app.put("nom", String.valueOf(info.loadLabel(pm)));
+                app.put("paquet", paquet);
+                apps.put(app);
+            }
+        }
+        JSObject res = new JSObject();
+        res.put("applications", apps);
+        call.resolve(res);
+    }
+
+    /**
+     * Les applications capables d'ouvrir un ITINERAIRE.
+     *
+     * Raphael, 6 sept. 2026 : « il a une certaine logique de me demander pour
+     * un itineraire quelle application j'utilise, mais il ne sait pas la
+     * lancer. [...] en aucun cas il y a Waze. Il n'y a pas les applications
+     * qu'il y a. » Il n'y avait aucune liste a l'ecran pour les itineraires :
+     * la ligne de Parametres montrait la valeur retenue et un bouton
+     * « Oublier », rien de plus. Impossible de voir ce qui existe, impossible
+     * de choisir.
+     *
+     * On interroge donc le systeme sur `geo:` — l'intent que
+     * `itineraire()` lance vraiment.
+     */
+    @PluginMethod
+    public void listerApplicationsItineraire(PluginCall call) {
+        repondreAvecLesApps(call, new Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=test")));
+    }
+
+    /**
+     * Les applications capables de recevoir une demande de MUSIQUE.
+     *
+     * Deux intents, et il faut les deux : celles qui savent jouer une
+     * recherche (MEDIA_PLAY_FROM_SEARCH — le vrai « lance du Brassens ») et
+     * celles qui se declarent simplement comme lecteurs de musique. Les
+     * secondes ne savent pas lancer une lecture toutes seules, mais elles
+     * s'ouvrent, et il doit pouvoir les choisir : c'est SON telephone.
+     */
+    @PluginMethod
+    public void listerApplicationsMusique(PluginCall call) {
+        Intent joue = new Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH);
+        Intent lecteur = new Intent(Intent.ACTION_MAIN);
+        lecteur.addCategory(Intent.CATEGORY_APP_MUSIC);
+        repondreAvecLesApps(call, joue, lecteur);
+    }
+
+    /**
+     * Les liens de recherche des applications de musique courantes.
+     *
+     * Deuxième chance quand l'application ne déclare pas l'intent « joue ça »
+     * (MEDIA_PLAY_FROM_SEARCH). Ils n'ouvrent pas la lecture : ils ouvrent
+     * l'écran de recherche de l'app SUR la requête, ce qui laisse un seul
+     * appui à faire au lieu de tout retaper. C'est franchement moins bien que
+     * la lecture directe, et c'est pour ça qu'on le DIT à Raphaël au lieu de
+     * lui annoncer « je lance » comme avant.
+     */
+    private String lienRecherche(String paquet, String requete) {
+        String q = Uri.encode(requete);
+        switch (paquet) {
+            case "com.spotify.music":
+                return "spotify:search:" + q;
+            case "com.google.android.apps.youtube.music":
+                return "https://music.youtube.com/search?q=" + q;
+            case "com.apple.android.music":
+                return "https://music.apple.com/search?term=" + q;
+            case "deezer.android.app":
+                return "deezer://www.deezer.com/search/" + q;
+            case "com.google.android.youtube":
+                return "https://www.youtube.com/results?search_query=" + q;
+            default:
+                return null;
+        }
+    }
+
+    /**
      * Ouvre une application, et lui demande de jouer quelque chose si une
      * recherche est fournie.
      *
-     * L'intent « joue ça » (INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) est celui que
-     * les apps de musique déclarent pour l'assistant du téléphone : Spotify,
-     * YouTube Music et consorts démarrent directement la lecture. Si aucune ne
-     * le comprend, on se rabat sur l'ouverture simple plutôt que d'échouer.
+     * TROIS ISSUES POSSIBLES, ET ON DIT LAQUELLE. C'est tout l'objet du
+     * correctif du 5 sept. 2026 : Raphaël, « depuis le début j'essaie de
+     * lancer une musique avec un titre particulier […] ça ne fonctionne
+     * pas ». Le code se rabattait en SILENCE sur l'ouverture de l'app, et
+     * Jarvis répondait « je lance » pendant que rien ne jouait. Personne ne
+     * pouvait le voir d'ici : ni les journaux ni la réponse ne distinguaient
+     * les deux cas.
+     *
+     *   « lecture »   l'app a accepté « joue ça » — la lecture démarre.
+     *   « recherche » elle ne le déclare pas, on a ouvert sa recherche sur
+     *                 la requête : un appui reste à faire.
+     *   « ouverture » on n'a pu que l'ouvrir, rien n'est joué.
      */
     @PluginMethod
     public void ouvrirApplication(PluginCall call) {
         String paquet = call.getString("paquet");
         String recherche = call.getString("recherche");
         PackageManager pm = getContext().getPackageManager();
+        JSObject res = new JSObject();
 
         if (recherche != null && !recherche.isEmpty()) {
             Intent lecture = new Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH);
             lecture.putExtra(android.app.SearchManager.QUERY, recherche);
+            // Recherche libre (« mets du Miles Davis ») plutôt qu'un artiste
+            // ou un album identifié : c'est ce que la documentation d'Android
+            // demande de poser pour que l'app sache quoi faire de la requête.
+            lecture.putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*");
             if (paquet != null && !paquet.isEmpty()) lecture.setPackage(paquet);
             lecture.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
                 getContext().startActivity(lecture);
-                call.resolve();
+                res.put("resultat", "lecture");
+                call.resolve(res);
                 return;
             } catch (Exception ignore) {
-                // Aucune app de musique n'a déclaré cet intent : on ouvre l'app.
+                // Cette app ne déclare pas « joue ça » : on essaie sa recherche.
+            }
+
+            if (paquet != null && !paquet.isEmpty()) {
+                String lien = lienRecherche(paquet, recherche);
+                if (lien != null) {
+                    Intent vers = new Intent(Intent.ACTION_VIEW, Uri.parse(lien));
+                    vers.setPackage(paquet);
+                    vers.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try {
+                        getContext().startActivity(vers);
+                        res.put("resultat", "recherche");
+                        call.resolve(res);
+                        return;
+                    } catch (Exception ignore) {
+                        // Lien refusé aussi : il reste l'ouverture nue.
+                    }
+                }
             }
         }
 
@@ -131,7 +286,10 @@ public class ActionsTelephonePlugin extends Plugin {
             call.reject("Cette application n'est pas installée sur le téléphone.");
             return;
         }
-        if (lancer(ouverture, call, "Impossible d'ouvrir cette application.")) call.resolve();
+        if (lancer(ouverture, call, "Impossible d'ouvrir cette application.")) {
+            res.put("resultat", "ouverture");
+            call.resolve(res);
+        }
     }
 
     /**
@@ -224,21 +382,72 @@ public class ActionsTelephonePlugin extends Plugin {
     public void preparerWhatsApp(PluginCall call) {
         String texte = call.getString("texte", "");
         String numero = call.getString("numero");
+        // Le paquet visé, choisi par Raphaël dans Paramètres. Par défaut le
+        // WhatsApp ordinaire — jamais « la première application qui répond ».
+        String paquet = call.getString("paquet");
+        if (paquet == null || paquet.isEmpty()) paquet = WHATSAPP;
 
         if (numero != null && !numero.isEmpty()) {
+            // LE BUG DU 6 SEPT. 2026 ÉTAIT ICI, et pas sur l'autre branche :
+            // ce chemin-là n'a JAMAIS visé d'application. Un lien wa.me est
+            // une adresse https ordinaire, que WhatsApp ET WhatsApp Business
+            // déclarent toutes les deux — Android choisissait, et le message
+            // de Raphaël partait dans Business. L'autre branche, elle, posait
+            // bien setPackage depuis le début : c'est ce qui rendait le
+            // symptôme incompréhensible.
             String propre = numero.replaceAll("[^0-9+]", "").replace("+", "");
             String url = "https://wa.me/" + propre;
             if (!texte.isEmpty()) url += "?text=" + Uri.encode(texte);
             Intent conversation = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-            if (lancer(conversation, call, "WhatsApp ne s'est pas ouvert.")) call.resolve();
-            return;
+            conversation.setPackage(paquet);
+            conversation.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                getContext().startActivity(conversation);
+                call.resolve();
+                return;
+            } catch (Exception ignore) {
+                // Ce WhatsApp-là ne gère pas le lien (ou n'est plus installé) :
+                // on retombe sur le partage, qui vise le même paquet.
+            }
         }
 
         Intent partage = new Intent(Intent.ACTION_SEND);
         partage.setType("text/plain");
         partage.putExtra(Intent.EXTRA_TEXT, texte);
-        partage.setPackage("com.whatsapp");
+        partage.setPackage(paquet);
         if (lancer(partage, call, "WhatsApp n'est pas installé sur ce téléphone.")) call.resolve();
+    }
+
+    /** Les deux WhatsApp qu'Android distingue, et que Raphaël a tous les deux. */
+    private static final String WHATSAPP = "com.whatsapp";
+    private static final String WHATSAPP_BUSINESS = "com.whatsapp.w4b";
+
+    /**
+     * Les applications WhatsApp réellement installées.
+     *
+     * Sert à la carte « Tes applications par défaut » : quand les deux sont
+     * là et qu'il n'a rien choisi, on le lui DEMANDE au lieu de prendre la
+     * première — c'est exactement ce qui envoyait ses messages dans Business
+     * le 6 sept. 2026.
+     */
+    @PluginMethod
+    public void listerApplicationsWhatsApp(PluginCall call) {
+        PackageManager pm = getContext().getPackageManager();
+        JSArray apps = new JSArray();
+        for (String paquet : new String[] { WHATSAPP, WHATSAPP_BUSINESS }) {
+            try {
+                android.content.pm.ApplicationInfo info = pm.getApplicationInfo(paquet, 0);
+                JSObject app = new JSObject();
+                app.put("nom", String.valueOf(pm.getApplicationLabel(info)));
+                app.put("paquet", paquet);
+                apps.put(app);
+            } catch (Exception absente) {
+                // Pas installée : rien à proposer pour celle-là.
+            }
+        }
+        JSObject res = new JSObject();
+        res.put("applications", apps);
+        call.resolve(res);
     }
 
     /**
@@ -297,8 +506,36 @@ public class ActionsTelephonePlugin extends Plugin {
         boolean peutAppeler = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CALL_PHONE)
             == PackageManager.PERMISSION_GRANTED;
 
-        Intent appel = new Intent(peutAppeler ? Intent.ACTION_CALL : Intent.ACTION_DIAL,
-            Uri.parse("tel:" + propre));
+        // Viser l'application d'appel qu'il a choisie. SANS ça, Android
+        // affiche « Terminer l'action avec… » dès que deux applications
+        // savent téléphoner — il a ZoiPer en plus du téléphone, et aucune
+        // application par défaut. C'était le PREMIER des deux appuis qu'il
+        // devait encore faire le 5 sept. 2026 ; le second était l'écran
+        // d'appel lui-même, faute de permission CALL_PHONE.
+        String paquet = call.getString("paquet");
+        Uri tel = Uri.parse("tel:" + propre);
+        String action = peutAppeler ? Intent.ACTION_CALL : Intent.ACTION_DIAL;
+
+        if (paquet != null && !paquet.isEmpty()) {
+            Intent vise = new Intent(action, tel);
+            vise.setPackage(paquet);
+            vise.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                getContext().startActivity(vise);
+                JSObject res = new JSObject();
+                res.put("direct", peutAppeler);
+                res.put("application", paquet);
+                call.resolve(res);
+                return;
+            } catch (Exception ignore) {
+                // L'application choisie ne sait pas répondre à cet intent (ou
+                // a été désinstallée) : on repasse par le chemin normal
+                // plutôt que d'échouer. Le sélecteur d'Android réapparaîtra,
+                // ce qui est moins bien mais reste utilisable.
+            }
+        }
+
+        Intent appel = new Intent(action, tel);
         if (lancer(appel, call, "Aucune application de téléphone n'a répondu.")) {
             JSObject res = new JSObject();
             res.put("direct", peutAppeler);

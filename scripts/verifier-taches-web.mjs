@@ -78,6 +78,88 @@ try {
   await page.goto(`${BASE}/scripts/harness/taches.html`)
   await page.waitForSelector("text=Appeler le plombier")
 
+  // ── Ce qu'il a dicté sans réseau ─────────────────────────────────────────
+  // Sa crainte du chantier b5411c23, et la règle du 6 sept. : « on n'annonce
+  // jamais au passé ce qu'on n'a pas constaté — ni à l'oral, ni dans un toast,
+  // ni dans une étiquette d'écran ». La moitié de ces contrôles vérifie donc
+  // ce qui NE doit PAS être dit.
+  {
+    const rien = page.locator("#attente-rien")
+    verifier(
+      "rien en attente : la carte ne s'affiche pas du tout",
+      (await rien.locator("*").count()) === 0,
+      "un bandeau « 0 en attente » use le signal qui doit servir le jour où il y en a",
+    )
+
+    const attente = page.locator("#attente")
+    verifier(
+      "une dictée non enregistrée se voit",
+      await attente.getByText(/1 chose en attente d'envoi/).isVisible(),
+    )
+    const texte = (await attente.innerText()).replace(/\s+/g, " ")
+    verifier(
+      "et on ne lui dit JAMAIS que c'est enregistré",
+      !/\b(c'est|est|a été|j'ai)\s+(bien\s+)?enregistr/i.test(texte) &&
+        /pas encore enregistr/i.test(texte),
+      `la carte affiche : ${texte.slice(0, 140)}`,
+    )
+    verifier(
+      "elle dit ce qui va se passer, et quand",
+      /dès que tu as du réseau/.test(texte),
+    )
+
+    const bloque = page.locator("#attente-bloque")
+    verifier(
+      "un envoi abandonné ne se lit pas comme une simple attente",
+      await bloque.getByText(/n'a pas pu être enregistrée après plusieurs essais/).isVisible(),
+    )
+
+    const illisible = page.locator("#attente-illisible")
+    verifier(
+      "un tampon illisible ne se lit PAS comme « rien en attente »",
+      await illisible.getByText(/Ce n'est pas « rien en attente » : je ne sais pas/).isVisible(),
+      "lui dire que tout va bien alors qu'on n'en sait rien est la panne qu'on supprime",
+    )
+  }
+
+  {
+    // Sur la LIGNE, c'est là qu'il agit.
+    const lignes = page.locator("#lignes-attente")
+    verifier(
+      "la ligne porte l'étiquette « en attente d'envoi »",
+      await lignes.getByText("en attente d'envoi").isVisible(),
+    )
+    verifier(
+      "et celle qu'on a cessé de renvoyer dit « pas enregistrée »",
+      await lignes.getByText("pas enregistrée", { exact: true }).isVisible(),
+    )
+    verifier(
+      "la raison du blocage est écrite en clair",
+      await lignes.getByText(/Pas enregistrée après plusieurs essais : Failed to fetch/).isVisible(),
+      "« ça n'a pas marché » sans dire pourquoi ne permet ni de comprendre ni de rattraper",
+    )
+    verifier(
+      "aucune case à cocher sur une ligne qui n'existe pas encore en base",
+      (await lignes.getByLabel("Marquer comme faite").count()) === 0,
+      "la cocher échouerait à coup sûr : un contrôle mort ne doit pas s'afficher",
+    )
+    verifier(
+      "il peut réessayer d'un appui",
+      await lignes.getByLabel("Réessayer d'enregistrer").first().isVisible(),
+    )
+
+    // Abandonner détruit la dictée : ça demande avant, comme partout ailleurs.
+    await lignes.getByLabel("Abandonner").first().click()
+    await pause(300)
+    verifier(
+      "abandonner une dictée demande confirmation",
+      await page.getByText(/n'a jamais été enregistrée/).isVisible(),
+      "sans ça, sa dictée disparaît au premier appui, à trois millimètres du bouton Réessayer",
+    )
+    await page.getByRole("button", { name: "Annuler" }).last().click()
+    await pause(300)
+  }
+
   await page.getByRole("button", { name: "Supprimer" }).first().click()
   await pause(300)
   verifier(
@@ -97,13 +179,136 @@ try {
     await page.getByText("Appeler le plombier").first().isVisible(),
   )
 
+  // ── Une « tâche » qui est en fait une demande à Claude ──
+  // Au 5 sept. 2026, six de ses tâches étaient dans ce cas, dont une qui
+  // n'existait NULLE PART ailleurs : sa demande dormait dans sa liste de
+  // courses depuis sa dictée, invisible de toutes les sessions.
+  verifier(
+    "une demande à Claude est signalée sur sa ligne",
+    await page.getByText(/c'est une demande à Claude, pas une tâche/).first().isVisible(),
+  )
+  verifier(
+    "et la ligne dit CE QUI l'a fait reconnaître",
+    await page.getByText(/Ça commence par/).first().isVisible(),
+    "sans l'indice, il faudrait me croire sur parole",
+  )
+  verifier(
+    "une vraie tâche qui parle d'un chantier de maçonnerie n'est PAS signalée",
+    // Deux tâches du banc sont des demandes à Claude (« savoir combien il
+    // reste de credit » et « la latence du mode Live »), et deux seulement :
+    // ni les carreaux de la villa Dan, ni le spot de l'entrée.
+    (await page.getByText(/c'est une demande à Claude/).count()) === 2,
+    "« commander les carreaux pour le chantier de la villa Dan » est une vraie tâche",
+  )
+
+  // ── Les tâches égarées, rassemblées en tête de l'onglet ──
+  // « Je ne vois pas de quelles 7 lignes existantes tu parles » (6 sept.) :
+  // le signalement existait sur chaque ligne, mais réparti dans vingt-neuf
+  // tâches et douze catégories, il ne se trouvait que par hasard.
+  {
+    const egares = page.locator("#egares")
+    verifier(
+      "les tâches qui sont en fait des chantiers sont rassemblées en tête",
+      await egares.getByText(/demandes? à Claude/).first().isVisible(),
+      "il faudrait tomber dessus en faisant défiler la liste",
+    )
+    verifier(
+      "et une vraie tâche de maçonnerie n'y figure pas",
+      !(await egares.getByText("Commander les carreaux pour le chantier").isVisible()),
+      "Raphaël est dans l'immobilier : « chantier » y désigne un chantier de maçonnerie",
+    )
+    verifier(
+      "chaque ligne dit CE QUI l'a fait reconnaître",
+      await egares.getByText(/Ça commence par/).first().isVisible(),
+      "il devrait nous croire sur parole",
+    )
+    verifier(
+      "et prévient quand le chantier existe DÉJÀ dans le cockpit",
+      await egares.getByText("Ça existe peut-être déjà dans le cockpit").first().isVisible(),
+      "un appui créerait un doublon de quelque chose parfois déjà livré — quatre cas sur six dans ses vraies données",
+    )
+    verifier(
+      "dans ce cas, on lui propose de RANGER la tâche, pas d'en créer un second",
+      (await egares.getByRole("button", { name: "Ranger la tâche" }).first().isVisible()) &&
+        (await egares.getByRole("button", { name: "Créer quand même" }).first().isVisible()),
+      "créer reste possible : c'est lui qui juge",
+    )
+
+    const avant = await egares.getByText(/Ça commence par/).count()
+    await egares.getByRole("button", { name: "Ranger la tâche" }).nth(1).click()
+    await pause(400)
+    verifier(
+      "ranger la tâche la fait sortir de la liste SANS créer de chantier",
+      (await egares.getByText(/Ça commence par/).count()) === avant - 1 &&
+        (await page.locator("#chantiers-crees").innerText()).includes("aucun"),
+      `${avant} → ${await egares.getByText(/Ça commence par/).count()} · ${await page.locator("#chantiers-crees").innerText()}`,
+    )
+  }
+
+  // ── Ce qui va RÉELLEMENT sonner, et quand ──
+  // Sa question du chantier 336be5fb. Mesuré sur ses trente tâches le
+  // 6 sept. : vingt-deux sans date, quatre en retard, quatre qui sonneront —
+  // et rien ne le disait nulle part.
+  await page.getByRole("button", { name: "Programmer l'intervention Avihai" }).click()
+  await pause(250)
+  verifier(
+    "une tâche datée dit QUAND Jarvis préviendra",
+    await page.getByText(/Jarvis te préviendra/).isVisible(),
+    "il ne pouvait pas savoir si une date d'échéance déclenchait quoi que ce soit",
+  )
+  await page.getByRole("button", { name: "Racheter un spot pour l'entrée de la maison" }).click()
+  await pause(250)
+  verifier(
+    "et une tâche sans date dit POURQUOI elle ne sonnera pas",
+    await page.getByText(/n'a pas de date/).isVisible(),
+    "« aucun rappel » sans raison se lit comme une panne",
+  )
+  await page.getByRole("button", { name: "Racheter un spot pour l'entrée de la maison" }).click()
+  await pause(150)
+
+  await page.getByRole("button", { name: "En faire un chantier" }).first().click()
+  await pause(400)
+  verifier(
+    "le chantier est créé avec un titre débarrassé de l'amorce",
+    (await page.locator("#chantiers-crees").innerText()).includes(
+      "Savoir combien il reste de credit",
+    ),
+    await page.locator("#chantiers-crees").innerText(),
+  )
+  verifier(
+    "et la tâche est marquée faite, jamais supprimée",
+    (await page.getByText("R un chantier : savoir combien il reste de credit").count()) > 0,
+    "c'est SA liste : il doit retrouver ce qu'il a dicté",
+  )
+
+  // ── « Ça existe déjà » à la saisie d'une tâche ──
+  // Trois « racheter un spot pour l'entrée de la maison » identiques
+  // dormaient dans sa liste : le cockpit prévenait, l'onglet Tâches non.
+  await page.getByRole("button", { name: "Nouvelle tâche" }).click()
+  await pause(300)
+  await page.getByLabel("Titre").fill("Racheter un spot pour l'entrée")
+  await pause(300)
+  verifier(
+    "à la saisie, une tâche déjà présente est signalée",
+    await page.getByText(/Tu as déjà une tâche proche|Tu as déjà des tâches proches/).isVisible(),
+  )
+  await page.getByLabel("Titre").fill("Réserver le restaurant de samedi")
+  await pause(300)
+  verifier(
+    "et rien n'est signalé quand la tâche est nouvelle",
+    (await page.getByText(/Tu as déjà/).count()) === 0,
+    "un avertissement qui se déclenche à tort n'est plus lu du tout",
+  )
+  await page.keyboard.press("Escape")
+  await pause(300)
+
   await page.getByRole("button", { name: "Supprimer" }).first().click()
   await pause(300)
   await page.getByRole("button", { name: "Supprimer", exact: true }).last().click()
   await pause(400)
   verifier(
     "confirmer supprime pour de bon",
-    await page.locator("#vide").isVisible(),
+    (await page.getByText("Appeler le plombier").count()) === 0,
     "la tâche est toujours là après confirmation",
   )
 } finally {

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Meta-data attendue de tout RecognitionService.
+
+  selectableAsDefault="false" est la seule ligne qui compte ici, et elle a ete
+  ajoutee le 6 sept. 2026 apres avoir vu, dans le journal d'ecoute de Raphael,
+  « com.raphael.jarvis » apparaitre parmi les moteurs de reconnaissance de son
+  telephone. Ce moteur NE RECONNAIT RIEN : il n'existe que pour satisfaire la
+  declaration qu'Android exige du VoiceInteractionService (voir
+  interaction_service.xml). Qu'il puisse etre choisi comme moteur par defaut
+  rendrait Jarvis sourd, sans le moindre message.
+
+  L'attribut est celui d'AOSP, releve dans core/res/res/values/attrs.xml :
+  RecognitionService.selectableAsDefault, booleen, vrai par defaut. Le systeme
+  s'en sert dans findAvailRecognizer (VoiceInteractionManagerService) pour
+  ecarter les moteurs qui ne veulent pas etre choisis.
+-->
+<recognition-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:selectableAsDefault="false" />

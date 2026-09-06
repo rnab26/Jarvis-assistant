@@ -67,6 +67,15 @@ Lis-les vraiment avant de proposer quoi que ce soit. Une question dont la
 réponse est déjà dans les notes d'un chantier, dans le journal ou dans une
 fiche (voir plus bas) ne doit pas être reposée à Raphaël.
 
+**AVANT DE RÉÉCRIRE UNE NOTE, RELIS-LA — dans un appel SÉPARÉ, et lis vraiment
+le résultat.** `update dev_items set notes = …` écrase tout, et une note vit
+souvent depuis plusieurs sessions : elle porte les mots de Raphaël, ce qui a
+déjà été écarté, ce qui a été vérifié. Le 5 sept. puis le 6, deux notes ont
+été écrasées de cette façon — l'une contenait un retour de Raphaël qui n'était
+écrit nulle part ailleurs. Le `select` doit précéder l'`update`, pas
+l'accompagner : groupés dans le même appel, on lit le texte APRÈS l'avoir
+détruit. La bonne forme est d'ajouter à la note, pas de la remplacer.
+
 **En terminant un chantier**, marque-le fait et archive-le, avec une note
 qui référence le commit — c'est la pratique établie qui sert d'historique
 (visible directement dans l'app, section "Archivées" du cockpit) :
@@ -189,10 +198,38 @@ livrés, chantiers ouverts, messages des sessions (les siens ne comptent pas).
 Deux choix à ne pas défaire : la date de visite n'est enregistrée QUE quand il
 appuie sur « Vu » — mise à jour toute seule à l'affichage, le bandeau
 disparaîtrait avant d'avoir été lu ; et la première ouverture n'annonce rien,
-faute de repère, plutôt que de présenter tout le cockpit comme nouveau. La clé
-`jarvis_cockpit_vu` est volontairement locale (déclarée dans
-`STOCKAGE_LOCAL_ASSUME`) : c'est un repère de lecture propre à l'écran, pas
-une préférence.
+faute de repère, plutôt que de présenter tout le cockpit comme nouveau.
+
+**Le repère suit son COMPTE, plus son écran** (chantier `ae0f3a7b`, 6 sept.).
+Il était local, avec pour raison écrite « la retrouver sur un autre appareil
+n'aurait aucun sens » — et c'était faux pour lui : il utilise l'app ET le site
+dans la même matinée. Il appuyait sur « Vu » sur le téléphone, et le site lui
+réannonçait les quatorze mêmes chantiers livrés.
+
+- La base porte la vérité (table `visites_cockpit`, migration 0025) ; le
+  localStorage reste le chemin RAPIDE, parce que le cockpit s'affiche avant que
+  le réseau ait répondu et qu'un bandeau qui apparaît puis disparaît est pire
+  que pas de bandeau.
+- **Le repère ne recule jamais**, et c'est le SQL qui le garantit
+  (`marquer_cockpit_vu` fait un `greatest`), pas le client : deux écrans
+  ouverts, celui qu'on quitte en dernier ne doit pas effacer le passage de
+  l'autre.
+- **Une panne de lecture ne se lit pas comme « tu n'as jamais rien vu »**
+  (`repereApresLecture` dans `src/lib/cockpitVu.ts`) — sinon le bandeau
+  réannonce six semaines de travail à quelqu'un qui vient de tout regarder.
+  Et quand l'écriture échoue, le bandeau le DIT : « ce Vu ne vaut que sur cet
+  écran ».
+- `ANON_KEY=... node scripts/verifier-visite-cockpit.mjs` couvre ce que le hors
+  ligne ne peut pas : le non-recul côté SQL et le cloisonnement RLS.
+
+**Et une troisième catégorie de clé est née avec lui : `MIROIR_EN_BASE`**
+(`src/lib/reglages.ts`). Une donnée qui doit suivre son compte sans être une
+préférence ne va ni dans `REGLAGES` — qui obligerait à lui offrir un contrôle
+dans Paramètres, et un réglage « date de ta dernière visite » n'a aucun sens —
+ni dans `STOCKAGE_LOCAL_ASSUME`, dont la raison écrite dirait le contraire de
+ce que fait le code. `verifier-reglages.ts` exige que la table annoncée existe
+vraiment dans une migration : sans ça, la clé promettrait un partage entre ses
+écrans que personne ne réalise.
 
 ### Ce qu'on voit en ouvrant le cockpit, mesuré et pas supposé
 
@@ -212,11 +249,63 @@ premier écran :
 - La fenêtre d'envoi ne montre le thème, la priorité et le bouton qu'une fois
   qu'il a écrit quelque chose : sa règle, « une étape à la fois, ne montre pas
   un contrôle qui appartient à une étape avant qu'elle soit atteinte ».
+- `scripts/verifier-cockpit-reel.mjs` le monte sur les VRAIES données, lues à
+  l'instant. Les données inventées d'un banc sont trop sages : le 5 sept., ce
+  banc-là a trouvé ce que l'autre ne pouvait pas voir — la carte « Ce qui
+  attend ta décision » faisait 616 points de haut pour UN point (un
+  « pourquoi » d'un paragraphe, trois options, un champ, une photo) et
+  repoussait le tableau à 1 382 points, là où le banc inventé en montrait 200.
+  Il ne tourne pas dans la CI (il lit la base) : lance-le à la main après avoir
+  touché au cockpit.
 - `scripts/verifier-cockpit-web.mjs` monte le cockpit à SA VRAIE TAILLE
   (`?volume=1` : 83 chantiers, 9 sections) et un jour ordinaire
   (`&calme=1`) : tout ce qui rend une liste lisible se vérifie sur quatre
   chantiers et se casse sur quatre-vingts. C'est ce banc-là qui a trouvé les
   1 632 points ; ne le retire pas en ajoutant une carte au cockpit.
+
+### « Où j'en suis » : quatre nombres par section, en tête du cockpit
+
+Chantier `18a0aff1`, 5 sept. 2026. Ses mots : « je ne sais plus où mettre le
+nez. Je travaille de tous les côtés et toi aussi et il y a des chantiers
+ouverts de partout, mais je ne sais pas ce qui avance, ce qui n'avance pas. »
+
+**Ce n'était pas un manque d'information.** Tout était déjà en base — la
+réservation, `archived_at`, les marqueurs, les questions de `dev_log`. Le
+cockpit montrait TOUT et ne répondait à RIEN. `src/lib/ouJenSuis.ts` (pur,
+`scripts/verifier-ou-jen-suis.ts`) en tire quatre nombres par section :
+
+- **bouge** — réservation en cours, non expirée ;
+- **livré** — archivé dans la fenêtre choisie (réglage, plus bas) ;
+- **pour toi** — marqueur `[À CADRER]` / `[A FAIRE PAR RAPHAEL]`, ou une
+  question de session sans `answered_at` ;
+- **dort** — ouvert, personne dessus, aucun marqueur bloquant.
+
+**Les quatre ne forment pas une partition, et c'est voulu.** Un `[BLOQUÉ PAR]`,
+un `[REPORTÉ]`, un `[DOUBLON]` n'est ni endormi ni en attente de lui : il n'est
+compté nulle part. Et une **réservation expirée** n'est comptée ni dans
+« bouge » (personne n'est dessus) ni dans « dort » (le chantier affiche encore
+« Prise par… », donc aucune session ne le prendra) : elle ressort à part, avec
+le bouton pour la libérer. **N'ajoute pas une cinquième colonne** — on
+relirait un tableau au lieu de lire une réponse.
+
+**Ce bloc a un BUDGET DE HAUTEUR, et il est mesuré.** Le résumé par section
+commençait à 482 points du haut (390 × 844, un jour ordinaire). Il n'a pas
+bougé : `verifier-cockpit-web.mjs` refuse qu'il descende plus bas. La place a
+été **prise à ce qui faisait doublon**, pas ajoutée en bas de la pile — la
+fenêtre d'envoi est devenue repliable (222 → 56 points), la carte « Qui
+travaille en ce moment » a été absorbée (`SessionsAuTravail.tsx` supprimé), et
+le journal de bord ne s'ouvre plus tout seul quand une question attend (elle
+est comptée dans « pour toi », qui dit sur quel chantier elle porte). Un jour
+chargé, le tableau est passé de 850 à 502 points. **Si tu ajoutes une carte au
+cockpit, prends sa place quelque part.**
+
+Le seul réglage introduit est la fenêtre de la colonne « livré » (Paramètres ›
+Le cockpit, `jarvis_cockpit_fenetre`, défaut « aujourd'hui ») : « aujourd'hui »
+veut dire depuis minuit LOCAL, et à une heure du matin le travail de la soirée
+tomberait à zéro au moment précis où il vient voir ce qui s'est passé.
+
+Le filtre du tableau vit désormais dans `CockpitPage`, pas dans
+`CockpitBoard` : une ligne de « Où j'en suis » doit pouvoir l'imposer.
 
 ### Les marqueurs des notes sont visibles dans l'app (`src/lib/marqueurChantier.ts`)
 
@@ -233,6 +322,46 @@ le ou les crochets qui ouvrent les notes, jamais ailleurs. Une note longue
 cite souvent un autre chantier en écrivant « [LIBRE] » au passage — le prendre
 pour le marqueur du chantier ferait démarrer une session sur un sujet qu'il
 voulait cadrer d'abord. Le contrôle hors réseau garde exactement ce cas.
+
+### Un chantier garde ce qu'on y a écrit (migration 0027)
+
+Initiative d'une session le 6 sept. 2026, chantier `765b3d02`. La raison est
+écrite quelques sections plus haut, dans ce fichier même : « Le 5 sept. puis le
+6, deux notes ont été écrasées de cette façon — l'une contenait un retour de
+Raphaël qui n'était écrit nulle part ailleurs. » La parade était une consigne
+(« relis la note dans un appel SÉPARÉ »), et une consigne qu'aucun mécanisme ne
+soutient finit par être oubliée : c'est arrivé deux fois en deux jours.
+
+**Un TRIGGER, pas une écriture côté app**, et c'est le point à ne pas défaire :
+les notes sont réécrites depuis l'app, la commande vocale, `scripts/sql.sh` et
+les sessions Claude Code. Un seul de ces chemins oublié, et la trace manque
+précisément le jour où on en a besoin. `dev_items_historique` +
+`tracer_changement_dev_item()`.
+
+**Les réservations ne sont PAS tracées.** `claim_dev_item` tourne à chaque
+passe autonome, toutes les heures : les enregistrer noierait en un jour les
+changements qui comptent. Le trigger ne regarde que `title`, `notes`, `status`,
+`priority`, `theme`, `archived_at`.
+
+**Restaurer une note laisse elle-même une trace** (`restaurer_note_chantier`),
+sinon on remplace une perte par une autre. Et on ne restaure QUE des notes :
+rendre un ancien statut sans le dire ferait mentir le tableau.
+
+Côté écran, dans la carte DÉPLIÉE et replié par défaut, chargé seulement quand
+on l'ouvre — soixante cartes qui interrogeraient la base au montage rendraient
+le cockpit inutilisable pour une information que personne ne regarde la plupart
+du temps. Le budget de hauteur du tableau n'a donc pas bougé.
+
+`src/lib/historiqueChantier.ts` (pur) tient la seule distinction qui compte :
+une note **complétée** (l'ancienne y est encore) n'a rien à récupérer ; une
+note **réécrite** en a tout. Seule la seconde propose « Revenir à cette note »,
+et seule une perte de plus de 200 caractères mérite qu'on prévienne — un
+signalement qui se déclenche à tort n'est plus lu du tout.
+
+Deux contrôles : `verifier-historique-chantier.ts` (hors ligne, la lecture) et
+`ANON_KEY=... node scripts/verifier-historique-reel.mjs` (le trigger depuis
+n'importe quel chemin, le silence sur les réservations, la restauration tracée,
+le cloisonnement RLS, et la suppression qui emporte l'historique).
 
 ### Un chantier porte sa conversation
 
@@ -259,6 +388,55 @@ bloque rien et se tait dès qu'il n'y a qu'un mot courant en commun — un
 avertissement qui se déclenche à tort n'est plus lu du tout. Elle n'attrape
 que la redite littérale : deux demandes qui disent la même chose avec un autre
 vocabulaire ne se ressemblent pas pour elle, et c'est écrit dans son en-tête.
+
+### Et les doublons DÉJÀ en base (`src/lib/doublonsExistants.ts`)
+
+La fenêtre d'envoi ne voit que ce qu'on tape. Un chantier **dicté à la voix**
+n'entre pas par là : le 5 sept., deux « Sous-sections pour sessions multiples
+Claude Code » cohabitaient dans sa base, mot pour mot. La carte « Ça existe
+déjà » du cockpit les signale, propose d'archiver le plus récent (avec
+confirmation et « Annuler »), et **ne s'affiche pas du tout** quand il n'y a
+rien.
+
+**Les deux mesures ne sont pas la même, et il ne faut pas les confondre.** À la
+saisie, le recouvrement est rapporté au PLUS COURT des deux textes, exprès,
+pour attraper une phrase à peine commencée. Appliquée à des titres complets,
+cette mesure sort **14 paires sur les 192 chantiers réels, dont une seule
+vraie**. La mesure symétrique (Jaccard sur les deux titres) en sort 7 à 0,30,
+2 à 0,50, et exactement 1 à 0,60 — la bonne. D'où `SEUIL_DOUBLON = 0,60`, et
+la consigne de refaire la mesure sur des données réelles avant de le baisser.
+
+**Piège du banc d'essai, à connaître avant d'ajouter des données factices :**
+`motsUtiles()` retire les chiffres. Les 83 chantiers du mode `?volume=1` ne
+variaient que par un numéro — ils étaient donc tous identiques à la
+comparaison, et la carte en signalait cinq qui n'existaient que dans le banc.
+Un jeu d'essai doit être distinct **après normalisation**, pas seulement à
+l'œil : trois listes de longueurs premières entre elles (11, 12, 13) donnent
+83 titres dont aucune paire ne se ressemble.
+
+### Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
+
+Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
+Claude** — la commande vocale avait compris « ajoute une tâche » là où il
+disait « ajoute un chantier ». L'une d'elles, « connexion entre mon Jarvis et
+celui de Mélissa », n'existait nulle part ailleurs : sa demande dormait dans sa
+liste de courses depuis sa dictée, invisible de toutes les sessions.
+
+L'onglet Tâches signale ces lignes, dit **ce qui les a fait reconnaître**, et
+propose « en faire un chantier ». La tâche est alors marquée **faite, jamais
+supprimée** : c'est sa liste, il doit retrouver ce qu'il a dicté.
+
+**Ce qui compte le plus est ce qu'il ne faut PAS signaler.** Raphaël est dans
+l'immobilier : chez lui « chantier » veut d'abord dire maçonnerie. « Appeler le
+chantier de la villa Dan », « commander les carreaux pour le chantier » sont de
+vraies tâches, et quatre contrôles gardent ce cas. Seules les tournures qui
+**annoncent une demande faite à Claude** sont retenues. Mesure sur ses 29
+tâches réelles : 6 signalées, 6 justes, 0 à tort.
+
+`doublonChantier.ts` sert maintenant aux deux listes (`EntreeComparable` :
+un titre, des notes, rien de plus) — trois « racheter un spot pour l'entrée »
+identiques dormaient dans ses tâches pendant que le cockpit prévenait depuis
+des jours.
 
 ### Les actions groupées et le « Annuler »
 
@@ -322,6 +500,400 @@ retirés (commits `8d5441c`, `24185f7`).
 
 La table `contacts` n'est pas supprimée (vide, sans coût, et une suppression de
 table ne se défait pas) : à faire seulement sur sa demande explicite.
+
+## Les autorisations du téléphone : un seul écran, jamais par surprise
+
+Livré le 5 sept. 2026 (chantier `e399b670`). Sa demande : « quand on installe
+l'application, on fait une sélection directement des autorisations via le
+téléphone directement ». Et la moitié qu'on oublie en la lisant vite : il
+REFUSE qu'on recopie ses données (contacts, applications) dans l'environnement
+de Jarvis. Une autorisation de LECTURE, donnée une fois ; rien n'est importé.
+
+Trois pièces, et la frontière entre elles compte :
+
+- `src/lib/autorisationsTelephone.ts` — le catalogue, dit **par l'usage**
+  (« appeler et écrire à tes contacts », pas READ_CONTACTS), et les décisions
+  pures : que demander, quel bouton afficher, quoi écrire. Vérifiable sans
+  téléphone.
+- `android/.../AutorisationsPlugin.java` — l'état réel, la demande groupée,
+  et l'ouverture du bon écran d'Android.
+- `src/components/settings/Autorisations.tsx` — la liste, **partagée** entre
+  l'écran de premier lancement (`src/components/PremierLancement.tsx`, monté
+  dans `ProtectedShell`) et la carte de Paramètres. Deux écrans qui diraient
+  la même chose autrement finiraient par ne plus la dire pareil.
+
+Quatre choses à ne pas défaire :
+
+1. **Un refus définitif n'affiche jamais « Autoriser ».** Android ne
+   réaffiche plus la fenêtre après un refus — le bouton serait mort, et rien
+   ne le dirait. C'est le piège déjà vécu avec les notifications. La ligne
+   envoie vers les réglages système, et dit pourquoi.
+2. **La position en arrière-plan ne part JAMAIS dans le même lot que la
+   position.** À partir d'Android 11 le système rejette le lot entier, sans
+   afficher la moindre fenêtre : sur le téléphone ça se lit comme un refus de
+   Raphaël. Elle se demande seule, après.
+3. **L'état des notifications se lit avec `areNotificationsEnabled()`**, pas
+   avec `checkSelfPermission` : avant Android 13 la permission n'existe pas,
+   et il peut couper les notifications depuis les réglages sans qu'elle
+   change.
+4. **Quand Android ne dit pas l'état, on le dit** (« Non vérifiable »,
+   `connue: false`) au lieu d'annoncer un refus qui n'en est peut-être pas
+   un — certaines surcouches constructeur répondent de travers sur les accès
+   spéciaux.
+
+L'ASSISTANT DU TÉLÉPHONE n'est PAS dans cette liste, et il ne faut pas l'y
+remettre : c'est un rôle Android, pas une autorisation, et une application ne
+peut ni se l'attribuer ni se le retirer. Il a sa carte à lui, qui lit l'état
+réel par `RoleManager` — Paramètres › Ce que Jarvis utilise › « L'appui long
+sur la touche latérale ».
+
+Pas d'autorisation par application tierce, et c'est explicite dans sa
+demande : ouvrir une app et lui passer un texte marche déjà sans permission,
+pour n'importe laquelle, sans code par app.
+
+
+## Jarvis n'annonce JAMAIS au passé ce qu'il n'a pas constaté
+
+Ses mots, 6 sept. 2026 : « il me dit qu'il a envoyé un message alors que ce
+n'est pas vrai. […] sur WhatsApp, ça prépare le message mais il n'y a rien qui
+est envoyé. » Le reste de ce qu'il signale, ce sont des choses qui ne marchent
+pas ; celle-ci est une chose qui MENT, et elle ruine la confiance dans tout ce
+qui marche.
+
+**Le journal a déplacé le diagnostic, et c'est la leçon à garder.** À 05:53:04
+l'outil a rendu « Message prêt pour Mel Ma Femme ❤ sur WhatsApp, tu n'as plus
+qu'à envoyer » — **notre phrase était honnête**. C'est le MODÈLE qui l'a
+remise au passé en la disant à voix haute. Corriger le texte de l'application
+n'aurait rien changé. Et il était en mode **Live** : une règle écrite seulement
+dans `voice-command` aurait été vraie au micro et fausse en Live.
+
+D'où `supabase/functions/_shared/honnetete.ts` — **une seule source**, importée
+par `voice-command` ET `live-jeton`, comme `environnement.ts` et
+`corrections.ts`. Quatre points, et il faut les quatre : préparer n'est pas
+envoyer ; reprendre le retour de l'outil TEL QUEL au lieu de le reformuler ;
+dire qu'on n'a pas eu de retour quand l'outil ne rend rien (à 05:50:56 et
+05:53:14 il rendait une chaîne VIDE, et le modèle comblait) ; trois issues,
+trois phrases — préparé, fait, échoué.
+
+`scripts/verifier-honnetete.ts` garde la règle ET son arrivée dans les deux
+consignes, plus deux contrôles bout-en-bout sur la fonction déployée.
+
+**Limite connue, à ne pas présenter comme réglée** : `onCommande` peut encore
+rendre une chaîne vide (`src/lib/live/sessionLive.ts`, alimenté par
+`MicButton`). La consigne dit au modèle quoi faire de ce vide, mais la vraie
+correction est de ne jamais le produire — chantier ouvert.
+
+## « À quoi tu es branché ? » — l'état RÉEL, pas la description de l'app
+
+Sa remarque du 6 sept. 2026 : « Jarvis ne connaît toujours pas son propre
+environnement sur certains points. Par exemple quand je lui demande à quoi il
+est branché. »
+
+`environnement.ts` décrit l'APPLICATION — ses onglets, ses cartes. C'est un
+texte figé, le même pour tout le monde. `_shared/branchements.ts` dit l'ÉTAT de
+SON installation : compte Google et ce qu'il autorise, applications choisies,
+mode Live. **Tout se lit en base** — ses réglages y sont recopiés depuis la
+migration 0014 —, donc sans rien demander à l'app et sans toucher au contexte
+que MicButton envoie. Joint par `voice-command` ET `live-jeton` (en Live le
+contexte est scellé à l'ouverture : ce qui n'y est pas ne se rattrape plus).
+
+**Ce que le serveur NE VOIT PAS, le bloc le dit en toutes lettres** : les
+autorisations Android, le service d'accessibilité, la version installée. Ils
+vivent sur l'appareil. Jarvis répond « je ne peux pas les voir, regarde dans
+Paramètres » — inventer une réponse ici serait exactement le défaut corrigé
+juste au-dessus.
+
+Court, et sans titre vide : chaque phrase envoie déjà ~45 000 caractères.
+
+## WhatsApp ou WhatsApp Business : on ne devine pas
+
+Le 6 sept., ses messages partaient dans WhatsApp Business. `preparerWhatsApp`
+posait pourtant `setPackage("com.whatsapp")` — **mais sur l'autre branche**.
+Le chemin utilisé quand on connaît le numéro ouvre un lien `wa.me`, une adresse
+https ordinaire que les DEUX WhatsApp déclarent : Android choisissait. C'est ce
+qui rendait le symptôme incompréhensible, et pourquoi il fallait établir quel
+chemin servait avant de corriger quoi que ce soit.
+
+Les deux branches visent maintenant le même paquet, `com.whatsapp.w4b` est
+déclaré dans `<queries>` (sans quoi on ne peut pas savoir qu'il est installé),
+et **quand les deux sont là sans qu'il ait choisi, Jarvis DEMANDE** au lieu de
+prendre le premier : se tromper d'application, c'est un message écrit dans une
+app qu'il n'ouvre jamais, sans que rien ne le signale. La ligne WhatsApp de
+« Tes applications par défaut » ne s'affiche que s'il en a vraiment deux.
+
+## Appeler quelqu'un : deux garde-fous, écrits après un vrai appel au répondeur
+
+Le 5 sept. 2026 à 21 h 07, Raphaël a dit « appelle ma femme ». La
+reconnaissance a écrit « Jarvis appelle mail ». L'appel est parti vers
++972544151000 — le répondeur. C'est exactement l'erreur que `chercherContact.ts`
+dit vouloir éviter depuis le début : « composer le numéro de quelqu'un d'autre
+est le genre d'erreur qu'on ne rattrape pas. »
+
+**Ce que le journal a montré, et qui change le diagnostic** : la réponse est
+venue de `commandeLocale.ts` (`source: "locale"`), pas du serveur. La consigne
+du modèle, qui sait distinguer un prénom d'un mot-clé, n'a jamais été
+consultée. Un correctif écrit uniquement dans le prompt n'aurait rien changé.
+**Avant de corriger une commande vocale, regarde d'où la réponse est venue.**
+
+Deux garde-fous, dans `src/lib/chercherContact.ts`, et il faut les deux :
+
+1. **Les entrées SYSTÈME du répertoire ne sont pas des personnes.** La
+   messagerie de l'opérateur porte des noms faits de mots courants (« Voice
+   Mail »), donc elle gagne contre un prénom mal entendu. Elles sont sorties
+   AVANT toute comparaison. Cette liste est forcément incomplète — d'où le
+   second.
+2. **Un seul mot dit, et c'est un mot d'APPAREIL** (mail, message, sms, appel,
+   téléphone…) : ce n'est pas quelqu'un qu'on a nommé, c'est une commande mal
+   entendue. On ne compose rien, et `commandeLocale.ts` rend la main au
+   serveur, qui demandera.
+
+**Ce qui ne doit JAMAIS entrer dans `MOTS_APPAREIL`** : les façons de désigner
+une personne. « femme », « frère », « maman », « docteur » restent valides —
+« appelle ma femme » trouve « Mel Ma Femme ❤ », et un contrôle le garde.
+
+**Et il fallait encore deux appuis pour qu'un appel parte.** Le premier était
+le sélecteur « Terminer l'action avec… » d'Android — il a ZoiPer en plus du
+téléphone, et aucune application par défaut ; le second, l'écran d'appel,
+faute de permission `CALL_PHONE`. D'où : `composer()` vise l'application
+choisie (`jarvis_app_appels`, avec repli si elle refuse l'intent), la carte
+« Tes applications par défaut » a une ligne **Appels** — la seule des quatre
+qui se CHOISIT à l'écran, parce que Jarvis ne la demande jamais à l'oral —, et
+la permission se donne d'un geste depuis « Autorisations du téléphone ».
+
+## Une dictée qui part au mauvais endroit se corrige d'un mot
+
+Sa demande du 6 sept. 2026 : « Si jarvis a un doute ou est-ce qu'il faut
+déposer une requête ou un chantier il faut qu'il donne une supposition a
+raphael ou bien raphael lui indique lui meme ou la placer. »
+
+Ce qui existait (`tacheOuChantier.ts`, la carte de l'onglet Tâches) est du
+RATTRAPAGE : ça répare après coup, parfois des jours plus tard — une de ses
+demandes a dormi dans sa liste de courses, invisible de toutes les sessions.
+`src/lib/ouVaCetteDictee.ts` (pur) traite l'INSTANT de la dictée.
+
+- **On annonce, on ne demande pas.** Sa règle du 5 sept. tient : rien
+  n'attend sa réponse. Jarvis range au mieux, DIT ce qui l'a fait pencher, et
+  la correction reste possible — le compromis de `actionsTelephoneFenetre.ts`.
+- **La correction DÉPLACE, elle ne recrée pas**, et n'efface qu'après avoir
+  écrit ailleurs : l'inverse perdrait sa dictée si la seconde écriture échoue,
+  et recréer sans effacer laisserait l'originale dans la mauvaise liste.
+- **Elle est reconnue SUR L'APPAREIL** (`commandeLocale.ts`) : c'est une
+  reprise dite dans la foulée, un aller-retour au modèle coûterait une seconde
+  et une chance de plus de la comprendre comme une nouvelle demande.
+- **Une seule règle de reconnaissance**, `chantierDeguise`, mesurée sur ses
+  vraies lignes. Une seconde divergerait, et l'onglet Tâches ne dirait plus la
+  même chose que la voix du même titre.
+- **Le sens inverse n'est PAS détecté**, et c'est voulu : rien ne le mesure.
+  La correction, elle, marche dans les deux sens.
+
+**La moitié de `verifier-ou-va-cette-dictee.ts` vérifie le REFUS** : « ajoute
+un chantier pour refaire la salle de bain » porte exactement les mêmes mots
+que « mets-le en chantier ». La prendre pour une correction déplacerait la
+ligne précédente AU LIEU de créer celle-ci — on perdrait sa demande et on
+abîmerait la précédente, d'un coup.
+
+## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
+
+Raphaël, 6 sept. 2026 : « il a une certaine logique de me demander pour un
+itinéraire quelle application j'utilise, mais il ne sait pas la lancer. Il me
+dit que je peux voir dans l'application à quelle application il a
+l'autorisation — sauf qu'en aucun cas il y a Waze. Il n'y a pas les
+applications qu'il y a. »
+
+**Même cause racine que WhatsApp Business le matin même** : on supposait au
+lieu de regarder. Trois défauts distincts dans cette phrase, et il fallait les
+trois.
+
+1. **Il n'y avait AUCUNE liste** pour les itinéraires ni la musique. Ces
+   lignes de « Tes applications par défaut » montraient la valeur retenue et
+   un bouton « Oublier », rien d'autre — seule la ligne Appels avait un vrai
+   sélecteur. `listerApplicationsItineraire()` et `listerApplicationsMusique()`
+   interrogent maintenant le système sur l'intent RÉELLEMENT lancé (`geo:`,
+   `MEDIA_PLAY_FROM_SEARCH` + `CATEGORY_APP_MUSIC`), et `LigneAvecChoix`
+   remplace les trois lignes. `CATEGORY_APP_MUSIC` a dû être ajouté aux
+   `<queries>` : sans ça, un lecteur de musique est invisible depuis
+   Android 11, en silence.
+2. **Demander puis ne rien lancer est pire que ne pas demander.** Une
+   préférence qui ne correspondait à aucune application installée retombait en
+   silence sur le sélecteur d'Android, et Jarvis annonçait quand même « je
+   t'ouvre l'itinéraire ». Il le DIT maintenant, et renvoie vers la carte.
+3. **Il renvoyait vers le mauvais écran.** « Autorisations du téléphone » ne
+   parle que de ce que le système laisse faire — il n'y a aucune application
+   dedans. La consigne l'interdit explicitement, et un contrôle bout-en-bout
+   le vérifie.
+
+`scripts/verifier-apps-par-defaut.ts` (CI) tient les trois, et il a été essayé
+à l'envers : viser la mauvaise liste, retirer le message d'application
+introuvable ou la déclaration `<queries>` le fait rougir.
+
+## Chercher passe par les IA de son téléphone, jamais par une API
+
+Sa décision du 5 sept. 2026, à ne pas rouvrir : « je ne veux pas payer, je
+veux profiter des applications que je paye déjà ». Et le mécanisme, qu'il a
+décrit lui-même : « dans les paramètres on branche toutes nos applications
+d'IA disponibles sur notre téléphone et on valide une application favorite
+pour les recherches web […] ou bien si je mentionne le nom d'une autre
+application ça lance via l'application citée ».
+
+**IL N'Y A RIEN À BRANCHER, et c'est le point qu'on se remet à chercher.**
+Android n'offre à aucune application le moyen d'interroger le compte d'une
+autre, et l'abonnement grand public de Perplexity ne donne pas accès à son API
+(vérifié le 5 sept. : les crédits inclus dans Pro ont été retirés). Ce qui
+marche est gratuit et existait déjà : `ask_ai` envoie la question à
+l'application par un intent, elle répond avec SON abonnement, il rapporte la
+réponse par le partage Android (`allerRetourIA.ts`).
+
+`src/lib/appsIA.ts` (pur) reconnaît donc les IA parmi les applications
+installées, et `ConnecteursIA.tsx` les montre. **Aucun état « connecté »
+n'est inventé** : la seule chose enregistrée est la favorite, dans
+`jarvis_app_ia` — la clé qui existait déjà, qui était fixée à l'oral et
+invisible dans Paramètres (c'est elle qui a fait écrire la règle des
+réglages). La ligne « Question à une IA » a quitté « Tes applications par
+défaut » dans le même travail : deux façons de régler la même chose finissent
+par ne plus dire pareil.
+
+Deux règles que `verifier-apps-ia.ts` tient : la liste des IA connues MET EN
+AVANT, elle ne limite jamais (« en vrai on peut même le faire pour toutes les
+applis ») ; et hors de l'app on dit « je n'ai pas pu regarder », jamais « tu
+n'as aucune application d'IA » — la même distinction que `repertoire.ts` pour
+les contacts.
+
+Côté consigne : « cherche X » part vers la favorite, « cherche X sur Y » vers
+l'application citée, et **« sur internet » n'est pas un nom d'application**.
+
+## Appuyer sur l'écran à sa place : une capacité GÉNÉRALE, pas un bouton WhatsApp
+
+Livré le 6 sept. 2026 (chantier `3f3ad20b`). Sa demande, en deux temps. Le
+5 sept. : « j'aimerais pousser encore un peu plus loin pour savoir s'il peut
+défiler l'écran en lui disant "attends, vas-y lance la deuxième vidéo", et ça
+lance la deuxième vidéo. » Puis le 6, qui élargit : « il faut aussi que ça
+puisse faire une activation de clics tout simplement sur le téléphone à la
+demande orale, et ça ce n'est pas là pour n'importe quoi, **pas que pour
+WhatsApp** ».
+
+D'où UNE brique et pas deux, et la frontière entre ses morceaux compte :
+
+- `JarvisAccessibiliteService.java` — l'arbre de l'écran, le clic, le
+  défilement. Il ne DÉCIDE rien.
+- `src/lib/ecranTelephone.ts` — **pur** : quel élément répond à « la deuxième
+  vidéo », et surtout quand il ne faut appuyer sur RIEN.
+- `src/lib/listeNoire.ts` — **pur** : où Jarvis n'a pas le droit d'appuyer.
+- `src/lib/controleEcran.ts` — le pont et l'enchaînement complet.
+- `src/components/settings/ControleEcran.tsx` — l'état réel + la liste noire.
+
+### La règle de sûreté est dans le module pur, et elle ne se négocie pas
+
+Rien trouvé, deux éléments qui se valent, écran changé depuis la lecture : on
+ne clique sur RIEN et on le dit. **La moitié de `verifier-ecran.ts` vérifie ce
+silence, pas la détection** — un clic de travers dans une application ouverte
+est une action qu'on ne rattrape pas.
+
+Trois choses à ne pas défaire :
+
+1. **« La deuxième vidéo » n'est pas « le deuxième élément cliquable ».** Sur
+   une page de résultats YouTube, le premier cliquable est la loupe de
+   recherche : compter à partir d'elle décale tout d'un rang et lance la
+   mauvaise vidéo. Un rang dit sans autre précision ne compte donc que ce qui
+   est DANS une liste qui défile (`dansListe`, posé par le service quand un
+   ancêtre est `scrollable`) — le contenu, pas la barre d'outils. Ça marche
+   sans rien connaître de YouTube ni d'aucune autre application.
+2. **On ne départage pas deux libellés par leur longueur.** « Envoyer » gagne
+   contre « Envoyer un fichier » parce qu'il ne dit RIEN DE PLUS que ce qui a
+   été demandé, pas parce qu'il est plus court. La règle par la longueur, qui
+   est la bonne pour retrouver une application par son nom
+   (`trouverApplication`), choisirait ici « Supprimer ici » plutôt que
+   « Supprimer tout » au hasard.
+3. **`cliquer()` relit l'arbre et refuse si le libellé a changé de rang.**
+   Entre la lecture et le clic, une vidéo finit de charger, une notification
+   arrive. Sans cette relecture, on appuierait sur ce qui a glissé à la place.
+
+### Il n'y a PAS de fenêtre d'annulation ici, et ce n'est pas un oubli
+
+La fenêtre (`actionsTelephoneFenetre.ts`) est un bandeau affiché DANS Jarvis.
+Quand Jarvis appuie sur l'écran de YouTube, c'est YouTube qui est au premier
+plan : le bandeau n'est visible nulle part. L'afficher quand même donnerait le
+pire des deux mondes — trois secondes d'attente à chaque clic, et rien à voir
+ni à toucher. Les garde-fous réels sont les trois points ci-dessus, la liste
+noire, et le fait que Jarvis **dit à voix haute sur quoi il vient d'appuyer,
+nommément** — « reviens en arrière » étant lui-même une commande qu'il sait
+faire, c'est le vrai chemin de rattrapage, et il marche pendant qu'il regarde
+l'autre application.
+
+### La liste noire, telle qu'il l'a décidée le 3 sept.
+
+**Liste noire, pas liste blanche** : autorisé partout, interdit sur la banque,
+les portefeuilles et les mots de passe, qu'il complète à la voix
+(`block_screen_app`). C'est pour ça que `accessibilite.xml` ne déclare
+**aucune** liste d'applications : filtrer là serait une liste blanche.
+
+**Et les entrées d'origine se retirent.** Une liste imposée qu'on ne peut pas
+défaire finit par bloquer quelque chose de légitime sans recours.
+
+**Ce qui lui est dit une fois, en toutes lettres, dans la carte** : la liste
+est appliquée par NOTRE code — elle empêche vraiment Jarvis d'agir — mais le
+service d'accessibilité garde techniquement la visibilité sur l'écran. Aucune
+application ne peut se restreindre elle-même là-dessus.
+
+### Ce que ça ne fait pas, et qu'il ne faut pas présenter comme livré
+
+**Rien de tout ça n'est vérifié sur l'appareil** : il n'y a pas de SDK Android
+ici, la CI prouve que ça compile, pas que ça clique. Et le service ne
+s'active pas tout seul — c'est un accès spécial qu'il accorde une fois dans
+les réglages d'Android (Paramètres › Ce que Jarvis utilise › « Appuyer sur
+l'écran à ta place » y renvoie). **Il faut une vraie APK**, la mise à jour
+rapide ne remplace pas la coquille Android.
+
+## La bulle flottante, et pourquoi il n'y a PAS d'interrupteur pour l'appui long
+
+Livrée le 5 sept. 2026 (chantier `f5621562`, partie b). Sa demande, quand je
+lui proposais de CHOISIR entre l'appui long et la bulle : « oui et aussi
+l'option bulle flottante, les deux doivent être disponibles tant que ce n'est
+pas fonctionnel à 100 %, et simplement par possibilité de changer à tout
+moment. » Les deux coexistent donc, et l'un ne remplace pas l'autre.
+
+`BulleService.java` (la pastille, posée par WindowManager), `BullePlugin.java`
+(l'état réel et le démarrage), `src/lib/bulleFlottante.ts` (le pont et les
+décisions pures), `src/components/settings/BulleFlottante.tsx`.
+
+Quatre choses à ne pas défaire :
+
+1. **Un service de PREMIER PLAN, pas un service ordinaire.** Une vue posée par
+   WindowManager vit dans le processus de l'app ; sans lui, Android tue ce
+   processus en arrière-plan et la bulle disparaît au bout de quelques
+   minutes, en silence. Et depuis Android 14 un service de premier plan sans
+   `foregroundServiceType` refuse de démarrer — d'où `specialUse` et sa
+   propriété dans le manifeste.
+2. **`FLAG_NOT_FOCUSABLE`.** Sans lui, la bulle vole le clavier : taper un
+   message dans WhatsApp devient impossible tant qu'elle est affichée.
+3. **L'état vient du SYSTÈME, jamais du réglage.** L'autorisation « afficher
+   par-dessus les autres applications » se retire depuis Android sans que
+   l'app en sache rien, et un appui long sur la bulle la range sans passer par
+   Paramètres. Un interrupteur qui affiche ce que le réglage prétend dirait
+   « Activé » au-dessus d'un écran vide.
+4. **Il n'y a PAS d'interrupteur pour l'appui long à côté, et ce n'est pas un
+   oubli.** C'est le rôle `android.app.role.ASSISTANT`, déclaré
+   `requestable="false"` dans le `roles.xml` d'AOSP : une application ne peut
+   ni se l'attribuer ni se le retirer, et l'écran qui y mène directement est
+   protégé par une permission de signature. Un interrupteur y serait soit
+   décoratif, soit menteur. Sa carte à lui (« L'appui long sur la touche
+   latérale ») lit l'état réel par `RoleManager` et ouvre le meilleur écran
+   système atteignable.
+
+## Une commande mal entendue reste rattrapable, sans jamais poser de question
+
+`src/lib/actionsTelephoneFenetre.ts` (pur) + `actionsTelephoneToast.ts` (le
+bandeau). Raphaël a ÉCARTÉ la confirmation que je proposais, le 5 sept. :
+« aucune limite dans le sens où il doit faire tout ce que je demande sans
+limite ». Ce module ne la réintroduit pas : rien n'attend son accord, le
+décompte fini l'action part toute seule.
+
+Ce qui reste vrai malgré sa décision : une commande MAL ENTENDUE n'est pas une
+commande demandée — le 5 sept. entre 17 h 59 et 18 h 20, quatre tentatives ont
+ouvert deux fois l'application מכבי. Jarvis annonce donc ce qu'il fait, en
+NOMMANT la cible (c'est le seul mot qui permet de repérer l'erreur), et laisse
+quelques secondes. Seules les actions qui SORTENT vers une autre application y
+passent ; `media_control` et `set_alarm` non, sans quoi Jarvis serait lent
+partout. Le délai est un réglage, et « Immédiat » est disponible en un appui.
 
 ## Supprimer demande toujours, partout dans l'app
 
@@ -421,6 +993,117 @@ en même temps que les chantiers.
 et laisse le reste libre, pour qu'une autre session puisse avancer en
 parallèle au lieu d'attendre après toi.
 
+## Les sessions autonomes : ce qui avance pendant ses absences
+
+Livré le 6 sept. 2026 (chantier `59d8587f`). Sa demande dictée : « Tout les
+chantiers ne nécessitant pas l'action de traiter des chantiers disponibles a
+travailler doivent etres travailler seul afin de gagner du temps en
+developpement sur les temps mort de ma présence ». Sa réponse, le 6 sept. à
+00 h 05 : « **Oui en continue même la journee. Éviter de lancer une session si
+une autre en est deja en cours et est disponible** pour plusieurs raison : ne
+pas consommer trop de crédit claude code, ne pas augmenter le nombre de session
+qui deviendrais sûrement inactive a la fin de la tâche ».
+
+Un déclencheur horaire (une Routine, visible dans ses Routines sur claude.ai)
+ouvre une session fraîche. **Tout le reste existait déjà** — marqueurs,
+réservation, hook de démarrage, CI sur toutes les branches, `demander.sh` pour
+ne pas bloquer sur un arbitrage. Il ne manquait que quelqu'un pour ouvrir la
+session.
+
+- `docs/session-autonome.md` — la consigne que suit cette session. Versionnée
+  exprès : une consigne se relit avant de prendre effet, elle ne se lit pas
+  depuis une ligne de base que personne n'a revue.
+- `src/lib/passeAutonome.ts` — **la décision, pure**. Vérifiée hors ligne par
+  `scripts/verifier-sessions-autonomes.ts`.
+- `scripts/passe-autonome.ts` — le premier geste d'une session autonome, en UN
+  appel à la base : `--demarrer` répond `travaille` (code 0) ou se retire
+  (code 3). Un verdict autre que `travaille` veut dire « n'ouvre aucun
+  fichier » : chaque tour de plus est du crédit dépensé pour rien.
+- Migration `0024_passes_autonomes.sql` — la trace des passes, et
+  `etat_pour_passe_autonome()`.
+- `src/components/settings/SessionsAutonomes.tsx` — l'interrupteur et ce qui
+  s'est passé (Paramètres › Le cockpit).
+
+**Le marqueur `[LIBRE]` se lit en TypeScript, jamais en SQL**, et c'est le
+point à ne pas défaire. `marqueurDe` est la seule lecture des marqueurs du
+projet, celle que le cockpit affiche. En écrire une seconde en SQL, c'est
+accepter qu'elles divergent un jour — et le jour où elles divergent, une
+session autonome code un chantier qu'il voulait d'abord trancher avec nous.
+D'où une fonction SQL qui rend l'ÉTAT (réglage, réservations, passes ouvertes,
+chantiers avec leurs notes) et un module TypeScript qui décide.
+
+**Une passe qui se retire s'enregistre elle aussi**, et c'est voulu : sans ça
+« il n'y avait rien à faire cette nuit » et « le déclencheur ne tourne plus
+depuis trois jours » se ressemblent parfaitement. La carte le dit
+(« Plus rien ne passe » au-delà de 200 minutes de silence alors que c'est
+allumé). Ces passes vivent dans leur propre table et **pas dans `dev_log`** :
+le hook de démarrage n'injecte que les douze dernières entrées du journal, et
+une passe par heure chasserait en une demi-journée ses consignes, les questions
+qui attendent sa décision et les messages entre sessions.
+
+**Les sujets qu'une session autonome ne prend jamais**, même marqués `[LIBRE]` :
+contrôle du téléphone, accès aux applications, envoi de messages en son nom,
+clonage vocal, toute dépense. Ils se discutent avec lui, et une session ouverte
+par un déclencheur n'a personne à qui parler. On ratisse volontairement large —
+un chantier écarté à tort attend la prochaine session qu'il ouvre, ce qui ne
+coûte rien ; un chantier pris à tort part pendant qu'il dort.
+
+**Et ce filtre a déjà laissé passer le pire, le 6 sept. 2026 à 10 h 15**
+(chantier `4d0ebdf3`). La passe a rendu « travaille » sur `3f3ad20b` — « agir
+directement sur le téléphone comme s'il était l'utilisateur (contrôle des
+APPLICATIONS) », c'est-à-dire le service d'accessibilité qui clique à sa place.
+Le motif cherchait « controle du telephone » ; le titre disait « contrôle des
+applications ». Deux autres suivaient dans la file, dont « Mode entraînement »,
+dont les notes disent « stocker ses identifiants chiffrés en base pour que
+Jarvis se connecte à sa place » — aucune catégorie ne parlait d'identifiants.
+
+Le contrôle censé garder ça était vert, et il ne pouvait qu'être vert : ses
+cinq cas d'essai étaient des **paraphrases des expressions régulières**
+(« Permettre à Jarvis de prendre le contrôle du téléphone » reprend le motif
+« prendre le controle »). Il vérifiait que la regex se reconnaît elle-même.
+C'est le piège déjà payé par le sélecteur Playwright et par `Filesystem.mkdir`
+le 4 sept. : **un contrôle doit viser la VRAIE donnée, et être essayé à
+l'envers avant d'être cru.** Les cas de `verifier-sessions-autonomes.ts` sont
+désormais des titres copiés du cockpit, et remettre l'ancien filtre fait
+tomber neuf vérifications.
+
+Deux points à ne pas défaire. `NOTES_LUES` vaut **1500** caractères et pas
+400 : une note s'ouvre par le marqueur, la date et l'historique, et le
+périmètre réel vient après — à 400, « Bulle Jarvis flottante » passait au
+travers, son titre ne disant pas de quel accès spécial il s'agit. Et les faux
+positifs ne se « corrigent » pas : le filtre écarte aujourd'hui trois chantiers
+à tort, c'est le prix écrit du paragraphe ci-dessus. Si tu ajoutes un motif,
+mesure-le sur ses vrais chantiers (la marche à suivre est en tête de
+`SUJETS_RESERVES`) plutôt que de le juger à l'œil sur des titres imaginés.
+
+Le déclencheur est la Routine `trig_01AbpcwCgpLeVMTtyCfqRguQ`, une fois par
+heure, et elle réveille **une session persistante qui porte le dépôt**
+(`session_01HbJWrhPvY3kn3jzuCdyBWH`).
+
+**Une Routine qui ouvre une session FRAÎCHE ne lui donne pas le dépôt**, et
+c'est la première version de ce déclencheur : deux tirs pour rien, le 6 sept.
+`create_trigger` avec `create_new_session_on_fire` pose un `sources: []` — la
+session démarre dans un conteneur vide, sans `scripts/`, sans CLAUDE.md. Le
+piège est silencieux trois fois : la Routine se déclare `SUCCEEDED`, la session
+n'apparaît pas dans `list_sessions` (identifiant préfixé `cse_`), et la seule
+trace est une absence de ligne dans `passes_autonomes` — ce qui, dans l'app,
+ressemble exactement à « il n'y avait rien à faire ». Toute Routine qui doit
+toucher au dépôt se rattache donc à une session existante
+(`persistent_session_id`), comme le font déjà toutes les autres Routines de
+Raphaël. Après un tir, la vérification est une ligne de plus dans
+`passes_autonomes` ; sinon, `get_session` sur `last_run.session_id` et regarder
+si `session_context.sources` est vide.
+
+**Une session autonome n'hérite pas forcément des outils `mcp__github__*`** :
+dans ce cas elle ne peut pas lire la CI, et `docs/session-autonome.md` lui dit
+de lancer elle-même, en entier, ce que la CI lance — ce sont les mêmes
+scripts — puis de l'écrire dans `dev_log`.
+
+**Pour tout arrêter** : Paramètres › Le cockpit › Sessions autonomes. Le
+réglage `jarvis_sessions_autonomes` est lu EN BASE à chaque passe — d'où
+`ecrireAutonomie()` et pas un `localStorage.setItem`, qui resterait sur son
+téléphone et n'éteindrait rien du tout.
+
 ## Un artefact est un lieu de passage : ce qu'il répond va EN BASE
 
 Sa demande du 5 sept. 2026 au soir, après avoir répondu aux quatorze points
@@ -453,10 +1136,77 @@ cliquables, un commentaire par question et les photos dans le Storage Supabase.
 Le jour où il est livré, **on cesse de publier des fiches pour lui poser des
 questions**.
 
-## Plusieurs questions à Raphaël : une fiche, pas un mur de texte
+## Une question à Raphaël : `scripts/demander.sh`, plus jamais un artefact
 
-Dès que tu as **plus de deux ou trois questions** à lui poser, ne les empile pas
-dans un message : publie un **artefact** qu'il remplit au pouce. Il travaille
+**Livré le 5 sept. 2026 (chantier `85ae62b5`). C'est la règle courante ; tout
+ce qui suit sur les fiches est de l'histoire, gardé pour ses réponses passées.**
+
+```bash
+scripts/demander.sh --question "On garde le mot-à-mot combien de temps ?" \
+  --pourquoi "Supprimer est irréversible, garder ne l'est pas." \
+  --chantier 5ca5c4a3-19c6-44f4-8846-b53f9e4d7ee1 \
+  --option "Sans limite|Rien n'est jamais supprimé.|recommande" \
+  --option "30 jours|Un mois glissant, puis on efface."
+
+# Ce qu'il doit FAIRE, lui, et non décider :
+scripts/demander.sh --action --question "Dépose GOOGLE_GEOCODING_API_KEY dans les secrets Supabase" \
+  --pourquoi "Sans elle, les rappels de lieu ne savent pas géocoder une adresse."
+```
+
+La question devient une ligne de `dev_log` (colonnes `pourquoi`, `options`,
+`etat`, `photo_chemin`, migration 0022). Elle s'affiche **en tête de son
+cockpit** — carte « Ce qui attend ta décision », sous « Où j'en suis » — avec
+les options cliquables, un **champ de commentaire par question**, un bouton
+photo par question, et pour une action les trois états **Fait / Pas encore /
+Ça bloque**. Sa réponse repart dans `dev_log` en `kind = 'reponse'`, et le hook
+de démarrage l'injecte dans **chaque** session suivante, dans deux blocs
+dédiés : « Ce qui attend une DÉCISION de Raphaël » et « Ce que Raphaël a
+répondu ». Une capture jointe se récupère avec `scripts/photo.sh <chemin>`.
+
+**Chaque point arrive REPLIÉ sur sa question**, et c'est mesuré : déplié, un
+seul point (question, pourquoi, trois options, champ de commentaire, photo,
+bouton) fait 616 points de haut sur un écran de téléphone et repoussait le
+tableau des chantiers à 1 382. Replié, la carte entière en fait 200. La
+question, elle, reste lisible sans ouvrir — c'est elle qui lui dit lequel
+ouvrir — et l'état d'une action se lit sur la ligne repliée.
+
+**Pourquoi on a arrêté les fiches**, ses mots du 5 sept. : « les artefacts ont
+trop de durée de vie limitée et je te colle des réponses détaillées quand
+c'était nécessaire ». Une fiche vit hors du dépôt ET hors de la base : la
+session suivante ne sait même pas qu'elle existe si personne n'a collé son URL
+ici. Ce soir-là, deux fiches lui ont posé LA MÊME question et il a répondu deux
+choses différentes.
+
+**On n'a PAS ouvert de table `decisions`.** Elle aurait fait ce que `dev_log`
+fait déjà — une session demande, il répond, `answered_at` referme — et il y
+aurait eu deux endroits où chercher une question, avec la moitié dans chacun.
+Ce qui manquait tenait en quatre colonnes. Même raison pour la réponse : elle
+s'écrit en toutes lettres (le LIBELLÉ de l'option, pas sa clé), dans une entrée
+de journal ordinaire, lisible telle quelle des années après même si le code qui
+a posé la question a disparu.
+
+**Une seule règle décide de ce qui l'attend**, `enAttenteDeRaphael` dans
+`src/lib/journalDestinataire.ts` : elle sert à la fois à la carte où il répond
+et à la colonne « pour toi » de « Où j'en suis ». Deux lectures différentes du
+même message, c'est exactement ce qui lui a fait répondre deux fois. Une
+question adressée à une AUTRE session (« Pour la session … ») n'en fait pas
+partie.
+
+Avant de poser une question : **relis les notes du chantier, le journal et le
+bloc de démarrage**. Une question à laquelle il a déjà répondu et qu'on repose
+est ce qui l'épuise le plus.
+
+## Historique : les fiches d'avant le 5 sept. (ne plus en publier)
+
+### Plusieurs questions à Raphaël : ce que les fiches faisaient
+
+**Ne publie plus de fiche : passe par `scripts/demander.sh`, ci-dessus.** Cette
+section reste parce que ses réponses passées y sont, et parce qu'elle dit ce
+qu'une bonne question doit porter — c'est ce que la carte du cockpit reprend.
+
+Ce qu'on faisait avant : dès qu'il y avait **plus de deux ou trois questions**,
+ne pas les empiler dans un message mais publier un **artefact** qu'il remplit
+au pouce. Il travaille
 souvent depuis son téléphone, et répondre point par point dans une
 conversation lui fait perdre le fil.
 
@@ -618,11 +1368,185 @@ du compromis (Google se réserve d'utiliser les contenus de l'offre gratuite
 pour améliorer ses produits, relecture humaine comprise). Les options
 écartées : Haiku 4.5 (moitié prix, privé), rester sur Sonnet 5.
 
-Tout ce qui est propre à Gemini vit dans `supabase/functions/_shared/gemini.ts`
-— un seul endroit pour la forme de la requête, les erreurs et les nouveaux
-essais. `index.ts` et `memoire.ts` ne font qu'appeler `appelerGemini()`.
-Les phrases d'erreur y sont alignées mot pour mot avec
-`src/lib/erreurServeurVocal.ts` : changer l'une, c'est changer l'autre.
+### Changer de moteur est un SECRET à poser, plus une réécriture (6 sept. 2026)
+
+Chantier `2c54c62f`. Sa crainte, le 3 sept. : « il va bien falloir qu'on trouve
+une solution stable », après avoir tout reperdu une fois. **Le constat, lui,
+est rassurant et il faut le lui redire plutôt que le reconstruire : rien de ce
+qui fait Jarvis ne vit dans le modèle.** La consigne, le schéma d'outil, la
+mémoire, ses réglages, ses corrections sont dans notre code et dans la base ;
+rien n'est entraîné ni affiné. Changer de moteur ne peut rien lui faire perdre.
+
+`supabase/functions/_shared/modele.ts` porte l'interface commune et le SEUL
+endroit qui décide quel moteur répond. `gemini.ts` et `anthropic.ts` sont deux
+implémentations derrière elle. `index.ts` et `memoire.ts` appellent
+`appelerModele()` et demandent un **RÔLE** (`commande` / `memoire`), jamais un
+nom de modèle.
+
+Trois secrets, et plus une ligne de code à toucher :
+
+| Secret | Ce qu'il fait |
+| --- | --- |
+| `FOURNISSEUR` | `gemini` (défaut) ou `anthropic` |
+| `GEMINI_MODELE`, `GEMINI_MODELE_MEMOIRE` | le modèle de chaque rôle |
+| `GEMINI_SECOURS`, `GEMINI_SECOURS_MEMOIRE` | ses secours, séparés par des virgules |
+
+**`GEMINI_SECOURS` est la sortie du chantier `0edec0c4`** : les secours étaient
+écrits en dur, donc en changer demandait un redéploiement — c'est-à-dire
+attendre, pendant que Jarvis se tait. Ils se posent maintenant à chaud.
+
+Quatre choses à ne pas défaire :
+
+1. **Rien ne bascule TOUT SEUL vers un moteur payant.** `Fournisseur.gratuit`
+   existe pour ça : Raphaël a quitté l'API Anthropic en découvrant sa clé à
+   sec, sans avoir jamais choisi de payer. Une clé Anthropic présente ne suffit
+   pas — il faut qu'il pose `FOURNISSEUR=anthropic` lui-même. Ni un secours, ni
+   la promotion automatique du chantier `66a7a233` ne doivent franchir ça.
+2. **Un seul fournisseur est chargé par appel**, celui qui sert. Charger les
+   deux ferait dépendre Jarvis d'un moteur qu'il n'utilise pas : un import
+   cassé côté Anthropic tuerait la commande vocale alors que Gemini répondait.
+3. **La commande et la mémoire ne partagent JAMAIS un modèle.** C'est le rôle
+   qui porte cette séparation. Un troisième appelant qui demanderait
+   « commande » pour autre chose referait l'erreur du 3 sept.
+4. **Les phrases d'erreur ne nomment aucun fournisseur** (« le moteur », jamais
+   « Gemini ») : sinon une bascule obligerait à republier l'app pour rester
+   vraie, et elle mentirait entre les deux. Elles sont alignées **mot pour
+   mot** avec `src/lib/erreurServeurVocal.ts` — `scripts/verifier-moteur.ts`
+   refuse qu'elles divergent, à une exception près qu'il nomme lui-même.
+
+**Le mode Live reste Gemini, quel que soit `FOURNISSEUR`** : `live-jeton` mint
+un jeton pour l'API Gemini Live, qui est un produit Google sans équivalent
+ailleurs dans notre pile. Ce n'est pas un oubli.
+
+`scripts/verifier-moteur.ts` (dans la CI, sans réseau) ne lit pas le code : il
+remplace `Deno` et `fetch` par des doublures et fait tourner le VRAI
+répartiteur. Un contrôle qui chercherait des mots dans un fichier resterait
+vert le jour où la bascule cesse de marcher.
+
+### « Combien il me reste, et à combien de temps de discussion » (6 sept. 2026)
+
+Chantier `5ac4d12c`, dicté le 5 sept. : « savoir combien il me reste de crédit
+et à combien de temps de discussion ça équivaut, et le noter constamment ».
+
+**Il n'y a pas de solde, et il ne faut pas en inventer un.** Jarvis tourne sur
+l'offre GRATUITE : ce qui existe, ce sont des plafonds en requêtes par minute
+et par jour, comptés par modèle et par projet — et ils ne sont publiés nulle
+part. Ils ne se lisent que dans le corps d'un 429, donc une fois dépassés. Un
+pourcentage inventé serait pire que pas de chiffre : il se lit comme une
+mesure, et il s'est déjà retrouvé sans Jarvis deux fois alors que tout avait
+l'air normal.
+
+Trois pièces, et la frontière compte :
+
+- Migration `0025_appels_modele.sql` — la table `appels_modele`,
+  `noter_appel_modele()` et `etat_consommation()`. **Avant ça il n'y avait
+  rien à afficher** : la consommation n'existait que dans les journaux de la
+  fonction, qui ne se lisent pas depuis son téléphone, ne se totalisent pas et
+  s'effacent.
+- `_shared/modele.ts` écrit une ligne par modèle ESSAYÉ, pas seulement par
+  celui qui répond — sinon un secours sollicité tous les jours reste invisible.
+  Sans `await`, erreurs avalées : une comptabilité ne doit jamais faire échouer
+  la commande qu'elle compte.
+- `src/lib/consommationModele.ts` — **pur**, vérifié par
+  `scripts/verifier-consommation.ts`. C'est lui qui décide quoi dire.
+
+Quatre choses à ne pas défaire :
+
+1. **Les appels de vérification (`essai`) ne comptent pas comme ses phrases.**
+   Une passe de `verifier-commande-vocale.mjs` en afficherait quarante qu'il
+   n'a jamais dites, et le chiffre ne voudrait plus rien dire le jour où il
+   compte dessus. La mémoire non plus : chaque phrase déclenche DEUX appels.
+2. **Le RANG du modèle (0 = principal) est écrit par le SERVEUR.** Le principal
+   se règle par le secret `GEMINI_MODELE`, que l'app ne peut pas lire :
+   comparer des noms de modèles côté app donnerait une page fausse en silence
+   le jour du changement — c'est-à-dire le jour où il faut savoir qu'on tourne
+   sur un secours.
+3. **On annonce un PLANCHER prouvé, jamais un plafond supposé.**
+   `PLAFONDS_MESURES` ne contient que ce qu'on a vu, avec sa date ; un modèle
+   absent le dit (« jamais mesuré »). Et `verifier-moteur.ts` refuse qu'un
+   modèle entre en service sans avoir été mesuré.
+4. **Un refus par MINUTE n'alerte pas.** C'est le fonctionnement normal quand
+   il enchaîne vite, ça se lève en soixante secondes, et un bandeau qui
+   s'allume tous les jours n'est plus lu — c'est la panne qu'on ne verra pas.
+   Seuls le quota du JOUR, le passage sur un secours et une latence au-delà de
+   8 s le dérangent.
+
+L'écran reste à faire : demande posée dans `dev_log` pour la session
+« Le cockpit ».
+
+### La veille des modèles : passer tout seul au meilleur (6 sept. 2026)
+
+Chantier `66a7a233`. Ses mots du 5 sept. : « s'il y a des mises à jour qui sont
+faites pour quelque chose de plus évolué, évidemment qu'il faut que nous aussi
+on fasse les mises à jour automatiques en interne sans que forcément je puisse
+le demander à chaque fois manuellement. » Et sa limite du même soir : « il ne
+faut pas changer les voix tout seul » — **ceci ne concerne QUE le modèle de
+langue**, jamais la reconnaissance vocale ni la voix de synthèse.
+
+- Migration `0026_veille_modeles.sql` — `moteur_choisi` (ce qui tourne, avec de
+  quoi revenir en arrière), `essais_modele` (ce que chaque essai réel a donné,
+  par jour), `veilles_modele` (les passes, y compris celles qui ne font rien).
+- `_shared/veilleModele.ts` — **la décision, pure**, vérifiée par
+  `scripts/verifier-veille-modele.ts`.
+- `_shared/controlesModele.ts` — six phrases dont la bonne réponse ne se
+  discute pas. C'est un ÉCHANTILLON, pas la vraie consigne de 26 000
+  caractères : la recopier ferait une seconde source de vérité.
+- `supabase/functions/moteur-veille/` — la passe. **Déployée.**
+- Paramètres › Le cockpit › Le moteur de langue (`jarvis_moteur_auto`).
+
+**Ce que ce mécanisme REFUSE compte plus que ce qu'il accepte**, et rien de
+tout ça ne doit être assoupli sans refaire la mesure :
+
+1. **Deux jours DIFFÉRENTS de réussite.** Une seule bonne nuit ne prouve rien :
+   les trois modèles morts le 4 sept. répondaient parfaitement la veille.
+2. **Répondre n'est pas obéir** : un modèle qui n'appelle pas l'outil, ou qui
+   rate un seul contrôle, est écarté.
+3. **Plafond journalier ≥ 200 et plafond/minute ≥ 10.** Un modèle à 20 par
+   jour a tué la mémoire en silence ; un modèle à 5 par minute
+   (`gemini-3-flash-preview`, mesuré) ne tient pas une rafale.
+4. **Jamais un modèle de la mémoire**, ni un moteur PAYANT, ni par-dessus un
+   secret posé à la main.
+5. **Sept jours de repos** entre deux promotions.
+6. **On ne promeut pas tant qu'on ne sait pas observer le résultat** : sous
+   20 appels réels vus sur sept jours, le retour arrière automatique serait
+   aveugle. C'est une précondition qui se garde toute seule — elle reste vraie
+   tant que `voice-command` n'écrit pas dans `appels_modele`.
+7. **Le retour arrière passe AVANT la promotion**, et zéro appel ne veut pas
+   dire que tout va bien : ça veut dire qu'on ne sait rien.
+
+**Pas de pg_cron ni de pg_net, et c'est une décision** : les installer donnerait
+à sa base la capacité d'appeler l'extérieur, ce qui est un choix de sécurité
+qui lui appartient. La passe est donc réveillée **paresseusement** après une
+phrase, comme `purger_echanges` — au plus une fois par fenêtre de six heures et
+par instance, sans `await`, jamais depuis un appel de vérification, jamais
+après un échec du moteur. `moteur-veille` est écrite pour pouvoir être appelée
+pour rien : c'est elle qui répond « trop tôt ».
+
+Pour la voir travailler sans attendre :
+
+```bash
+curl -sS -X POST https://bexiyvmdbxcwxasgslxp.supabase.co/functions/v1/moteur-veille \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "content-type: application/json" -d '{}'
+scripts/sql.sh "select verdict, detail, demarre_at from veilles_modele order by demarre_at desc limit 5"
+```
+
+### Le code des Edge Functions est enfin typechecké (6 sept. 2026)
+
+Jusque-là, **rien** ne vérifiait `supabase/functions/**` : ni la CI (`npx tsc
+-b` ne couvre que `src` et `scripts/harness`), ni les sessions (pas de Deno
+installé dans l'environnement). Une faute de frappe dans `voice-command` ne se
+voyait donc qu'après déploiement — chez Raphaël, sous la forme d'un Jarvis
+muet.
+
+```bash
+npx tsc -p supabase/functions/tsconfig.json
+```
+
+`supabase/functions/deno.d.ts` donne à `tsc` le minimum qui lui manque : le
+global `Deno`, et les spécificateurs `jsr:` / `npm:`. Les bibliothèques
+externes y sont volontairement typées large — on ne vérifie pas le SDK de
+Google, on vérifie que nos fichiers se tiennent entre eux. **Lance-le avant de
+pousser quoi que ce soit sous `supabase/functions/`.**
 
 Le coût, même à zéro, se surveille : la limite de l'offre gratuite se compte
 en requêtes et en jetons par minute, et chaque phrase envoie ~45 000
@@ -652,11 +1576,36 @@ concernée** ; une fonction jetable de dix lignes déployée puis supprimée suf
 (et garde la clé côté Supabase, là où le classificateur de permissions ne
 bloque pas — il refuse toute commande shell qui porte un secret en clair).
 
-Les cinq seaux en place, chacun essayé pour de vrai avant d'être écrit :
-commande — principal `gemini-3.1-flash-lite`, secours `gemini-3.5-flash` puis
-`gemini-3.6-flash` ; mémoire — principal `gemini-3.5-flash-lite`, secours
-`gemini-3.7-flash`. La mémoire ne touche JAMAIS aux modèles de la commande :
-c'est ce qui a rendu Jarvis muet le 3 sept.
+Les cinq seaux en place, chacun essayé pour de vrai avant d'être écrit
+(`_shared/gemini.ts` porte le détail des mesures) : commande — principal
+`gemini-3.1-flash-lite`, secours `gemini-3.1-flash-lite-preview` puis
+`gemini-3-flash-preview` ; mémoire — principal `gemini-3.5-flash-lite`,
+secours `gemini-3.7-flash`. La mémoire ne touche JAMAIS aux modèles de la
+commande : c'est ce qui a rendu Jarvis muet le 3 sept.
+
+**Les secours de la commande ont changé le 6 sept.** (chantier `0edec0c4`), et
+la raison est double : `gemini-3.5-flash` et `gemini-3.6-flash` étaient
+plafonnés à 20 requêtes par jour chacun — le filet valait 40 phrases — et
+surtout, remesurés ce jour-là, ils répondaient en **13,8 s et 22,2 s** alors
+que **l'app abandonne à 25 s**. Un secours à 22 s ne sauve rien. Les
+remplaçants répondent en 1 à 2 s, et `gemini-3.1-flash-lite-preview` a encaissé
+41 appels dans la journée sans plafond journalier.
+
+**Le piège qu'il faut refaire à chaque fois qu'on change un secours** : deux
+modèles peuvent partager un compteur sans que leur nom le dise. On le prouve
+en saturant la MINUTE de l'un puis en appelant l'autre dans la foulée — s'il
+répond, les seaux sont distincts. Fait le 6 sept. pour
+`gemini-3.1-flash-lite-preview` face au principal (932 ms juste après quatre
+refus « PerMinute »). Sans ça, un « preview » du même numéro aurait très bien
+pu ne servir à rien.
+
+**Deux plafonds différents se cachent derrière le même 429 :**
+`GenerateRequestsPerMinutePerProjectPerModel` se lève tout seul en une minute,
+`…PerDay…` laisse Jarvis muet jusqu'au lendemain. Lis toujours le `quotaId`.
+Et la limite/minute varie énormément d'un modèle à l'autre : 15 pour
+`gemini-3.1-flash-lite-preview`, **5** pour `gemini-3-flash-preview` — un
+modèle à 5/minute ne tient pas une rafale, il ne peut être que dernier
+recours.
 
 ### Un contrôle rouge n'est pas forcément un bug
 
@@ -685,11 +1634,17 @@ Un modèle qui répond n'est donc pas un modèle utilisable : regarde la ligne
 réel. Un `flash` n'a pas du tout le même plafond qu'un `flash-lite` — c'est ce
 qui a fait remettre la mémoire sur `gemini-3.5-flash-lite`.
 
-Et dans `_shared/gemini.ts`, `STATUTS_CHANGER_DE_MODELE` vaut **404, 429, 503**
-— trois façons de dire « ce modèle-là ne répond pas », toutes les trois
-réglées en passant au suivant, jamais en insistant. Le 503 y a été ajouté ce
-jour-là : on rejouait trois fois le modèle saturé puis on abandonnait sans
-jamais essayer les secours, qui eux répondaient.
+Et dans `_shared/modele.ts` (il vivait dans `gemini.ts` avant le 6 sept.),
+`STATUTS_CHANGER_DE_MODELE` vaut **404, 429, 503, 529** — quatre façons de dire
+« ce modèle-là ne répond pas », toutes réglées en passant au suivant, jamais en
+insistant. Le 503 y a été ajouté le 4 sept. : on rejouait trois fois le modèle
+saturé puis on abandonnait sans jamais essayer les secours, qui eux
+répondaient. Le 529 est le « overloaded » d'Anthropic.
+
+Le **0** de `STATUTS_A_REESSAYER` n'est pas un statut HTTP : c'est notre code
+pour une coupure réseau, passagère par nature. L'oublier ferait abandonner
+Jarvis au premier hoquet de connexion, sans que rien ne le dise — un contrôle
+de `verifier-moteur.ts` garde ce cas.
 
 ### Les vérifications ne puisent plus dans le quota de Raphaël
 
@@ -735,7 +1690,16 @@ tout seul les fichiers voisins (`memoire.ts`) et le dossier `_shared/` quand
 la fonction s'en sert, et il relit puis **conserve le réglage `verify_jwt`
 existant** — `google-oauth` doit rester ouvert pour recevoir la redirection de
 Google, qui ne porte aucun jeton ; le refermer casserait la connexion du
-compte Google. **Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
+compte Google. **`git fetch && git merge` AVANT de déployer, toujours.** Le script envoie ce
+qui est SUR LE DISQUE, pas ce qui est sur la branche. Le 5 sept., un
+déploiement fait pour une raison sans rapport (une phrase de
+`_shared/environnement.ts`) a remis en ligne l'`index.ts` d'avant le correctif
+qu'une autre session venait de pousser — le rouge est tombé une demi-heure
+plus tard sur `verifier-commande-vocale.mjs`, chez celui qui n'y était pour
+rien. Plusieurs sessions déploient la MÊME fonction ; l'état du disque n'est à
+jour que si on vient de le mettre à jour.
+
+**Il exige `SUPABASE_ACCESS_TOKEN`** (jeton personnel, https://supabase.com/dashboard/account/tokens,
 à mettre dans les variables d'environnement de l'environnement cloud — jamais
 dans le dépôt). Tant qu'elle manque, le script le dit et s'arrête.
 
@@ -891,6 +1855,28 @@ prouve qu'une ligne a bougé (`rattraperEmpreintes`), et un contrôle
 bout-en-bout de `verifier-memoire.mjs` vérifie que le rattrapage rend
 VRAIMENT cherchable un échange ancien.
 
+**Une commande comprise SUR L'APPAREIL laisse quand même sa trace
+(`src/lib/echangeLocal.ts`).** `resolveTranscript` essaie d'abord
+`interpreterLocalement` — gratuit, instantané, hors ligne, et c'est très bien.
+Mais quand une règle locale reconnaît la phrase, `voice-command` n'est jamais
+appelé, et c'est lui qui écrit la ligne dans `echanges` : la phrase
+disparaissait de l'historique, invisible pour « on avait parlé de quoi ? »,
+invisible pour la mémoire, et il n'en restait que les 80 premiers caractères
+dans `journal_ecoute`. Deux chantiers dictés le 5 sept. à 18h20 et 19h32 ont
+été perdus comme ça — il a dû les redicter.
+
+L'app écrit donc elle-même l'échange, sans `await` chez l'appelant et sans
+jamais faire échouer la commande qu'elle observe. `embedding` reste `null` :
+`Supabase.ai` n'existe que dans une Edge Function ; `rattraperEmpreintes` rend
+la ligne cherchable peu après, tout seul. Ces phrases ne passent volontairement
+PAS par l'extraction de souvenirs — la consigne dit déjà de ne rien retenir
+d'une demande de création de tâche ou de chantier, et ce sont exactement
+celles-là. **Chaque chemin qui exécute une commande doit tracer** : il y en a
+deux (le micro classique et l'outil du mode Live), et
+`verifier-pannes-silencieuses.ts` compte les appels à `executerActions` face
+aux appels à `tracerSiLocale` — un troisième chemin ajouté sans trace
+reperdrait des phrases sans que rien ne le signale.
+
 **Une panne de LECTURE ne se voit pas dans le témoin, d'où `_shared/pannes.ts`.**
 Le témoin compte les écritures ; un rappel qui échoue, lui, rend exactement le
 même résultat qu'un rappel qui n'a rien trouvé — la chaîne vide. Jarvis
@@ -917,6 +1903,52 @@ réponse. Le seuil y est plus haut (0,75) que pour les souvenirs, pour la même
 raison qu'au-dessus. La purge à sept jours ne bouge pas, c'est le choix de
 Raphaël. Les échanges antérieurs reçoivent leur empreinte tout seuls, quelques
 lignes à chaque phrase (`rattraperEmpreintes`) — pas de script à lancer.
+
+## Jarvis constate ses propres échecs (`src/lib/retours.ts`)
+
+Sa demande du 3 sept. 2026, avec son exemple : « mets-moi la musique de Booba,
+Dolce Camara » — Jarvis demande le lecteur, ouvre Apple Music, ne lance pas le
+titre. Raphaël répond « tu n'as pas lancé la musique que je t'ai demandée ».
+**Cet échec-là ne levait aucune exception** : l'action avait « réussi », et le
+seul témoin était une phrase de reproche qui partait dans le vide.
+
+Trois signaux, et c'est tout : une action qui **lève** (l'échec certain, signalé
+depuis le `catch` d'`executerActions` avant que l'erreur remonte) ; une demande
+que Raphaël **redit** dans la minute ; et une **plainte** (« tu n'as pas… »,
+« ça n'a pas marché », « ce n'est pas ce que je t'ai demandé »), attribuée au
+tour précédent gardé dans `dernierTourRef`.
+
+**Pas de second registre** : tout passe par `signalerErreur` et `jarvis_erreurs`
+(migration 0019). Deux registres d'erreurs côte à côte, c'est la garantie que
+personne ne regardera ni l'un ni l'autre. Ces lignes n'ont pas de `correction`,
+donc elles ne partent PAS au modèle (`correctionsUtiles` exige une correction
+écrite) : elles ne gonflent pas la consigne.
+
+**Le titre porte la FAMILLE d'action et sa cible, jamais la phrase dictée.**
+C'est le titre qui fait l'empreinte de regroupement côté base : dix échecs sur
+la musique font UNE ligne avec un compteur, et non dix lignes que personne ne
+lira. C'est la demande explicite de Raphaël — « se corriger de façon GLOBALE,
+par contexte, pas par phrase ». Corollaire dans `cibleDeLAction` : l'application
+et le contact sont des cibles, le titre d'une tâche non — il change à chaque
+phrase et ferait une ligne par échec.
+
+**Ce qui est volontairement absent, et ne doit pas être ajouté : « non ».** Un
+« non » sec répond presque toujours à une question de précision (« Tu veux dire
+la villa Dan ? »), c'est-à-dire le fonctionnement NORMAL du dialogue. Même
+raison pour la redite après un `clarify` : il vient de demander une précision,
+on la lui donne. La moitié des contrôles de `verifier-retours.ts` vérifie le
+SILENCE, pas la détection — un registre bruyant n'est plus lu du tout, ce qui
+est pire que pas de détecteur.
+
+**Le rapport aux sessions** (le point 4 de sa demande) passe par le bloc de
+démarrage : le hook injecte les échecs `comprehension`/`action` vus au moins
+deux fois, **sans correction et sans chantier** — c'est-à-dire exactement ce
+que personne n'a pris. **Aucun chantier n'est créé automatiquement**, et c'est
+une décision, pas un oubli : un chantier auto-généré sans note de correction
+serait une seconde vue, plus pauvre, d'une ligne que les sessions lisent déjà
+au démarrage — dans l'écran dont il dit lui-même qu'il ne sait plus « où mettre
+le nez ». La question lui est posée dans le cockpit ; s'il tranche l'inverse,
+la place est prête.
 
 ## Ce que Raphaël reprend à Jarvis lui revient
 
@@ -974,17 +2006,43 @@ node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
+node --experimental-strip-types scripts/verifier-moteur.ts        # quel fournisseur, quel modèle, quels seaux de quota — vrai répartiteur, fetch en doublure
+node --experimental-strip-types scripts/verifier-consommation.ts   # ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas, sans réseau
+node --experimental-strip-types scripts/verifier-veille-modele.ts # on ne change pas de modèle à la légère, sans réseau
+npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
+node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
 node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
 node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
+node --experimental-strip-types scripts/verifier-telechargement-apk.ts  # télécharger l'APK : aucun chemin ne peut rester muet, sans réseau
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
+node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton « Autoriser » n'est jamais mort, sans réseau
+node --experimental-strip-types scripts/verifier-musique.ts       # « je lance » n'est dit que si ça joue vraiment, sans réseau
+node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
+node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
+node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
+node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
+node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
+node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau
+node --experimental-strip-types scripts/verifier-apps-par-defaut.ts  # les applications proposées sont celles du téléphone, sans réseau
+node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
+node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
+node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
-node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, sans réseau
+node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
+node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
+node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, et le repère « déjà vu », sans réseau
+ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà vu » suit son compte : non-recul côté SQL et cloisonnement RLS
+node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâche dictée hors réseau ne se perd pas et ne se dédouble pas, sans réseau
+node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une session autonome se retire quand il le faut, sans réseau
+node --experimental-strip-types scripts/verifier-historique-chantier.ts  # une note complétée n'est pas une note écrasée, sans réseau
+ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce qu'on y a écrit : trigger, restauration tracée, RLS
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
+scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
@@ -1190,6 +2248,38 @@ next-themes plutôt qu'un bricolage maison parce que `components/ui/sonner.tsx`
 lit déjà son état — sinon un toast clair s'afficherait au-dessus d'un écran
 sombre.
 
+## Les heures de silence protègent son sommeil, pas son attention
+
+Sa demande du 6 sept. 2026 : « concernant les heures de silence, si on
+l'utilise pour lancer une action, il faudrait que ça marche, oui. » Le cas
+visé est le rappel qu'il a demandé LUI-MÊME le soir (« rappelle-moi dans dix
+minutes ») : il partait sur le canal muet, et vu de son fauteuil il avait
+demandé quelque chose sans que rien ne se passe.
+
+La règle, en une phrase : **elles taisent ce que Jarvis INITIE pendant qu'il
+ne s'en sert pas, jamais ce qu'il a demandé.** En pratique, deux signes
+suffisent à lever le silence (`ilSenSertMaintenant`, pur, dans
+`annonceVocale.ts`) : l'app est à l'écran, ou il a parlé à Jarvis il y a moins
+de quinze minutes.
+
+**Le quart d'heure se raisonne à partir de SA phrase type**, « rappelle-moi
+dans dix minutes » : dix minutes tomberaient exactement sur la limite et
+rateraient le cas qu'il décrit. Au-delà, on parlerait la nuit longtemps après
+qu'il a reposé le téléphone.
+
+**`dansLaPlageSilencieuse` n'a pas bougé**, et son passage par minuit non plus
+— c'est `raisonDuSilence` qui ne l'applique plus quand il s'en sert. Et
+l'interrupteur « Sauf si je viens de te parler » (Paramètres › Notifications,
+sous les heures de silence) existe pour le cas inverse : lire au lit à côté de
+quelqu'un qui dort.
+
+**« Il vient de me parler » se lit dans `journalEcoute.ts`** (`derniereParole`),
+pas dans le moteur d'écoute : tout ce qui l'entend passe déjà par
+`noterEcoute` — micro classique, mode Live, widget. Un seul point à brancher,
+aucun chemin oublié. C'est en mémoire et pas en base, exprès : la question est
+« est-ce qu'il s'en sert EN CE MOMENT », et une valeur relue après un
+redémarrage répondrait « oui » à propos d'hier soir.
+
 ## Les notifications : Jarvis ne notifie QUE ce qui vit chez lui
 
 Livré le 4 sept. 2026 (chantier 5d03a192). `@capacitor/local-notifications`,
@@ -1385,6 +2475,147 @@ de preuve à un chantier qui ne marchait pas. Et **un contrôle doit être essay
 supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle lit
 maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
 Playwright du 4 sept.
+
+## Télécharger l'APK : DownloadManager ne peut pas être le seul chemin
+
+Le 6 sept. 2026, Raphaël ne pouvait plus mettre à jour DU TOUT — « installée
+build 206, publiée 207 », il appuie, « Téléchargement… », la barre vide,
+« 0.0 Mo reçus » indéfiniment. **C'est le blocage qui bloque tous les
+autres** : tant qu'il tient, aucun correctif touchant `android/` ne lui
+parvient.
+
+**La cause exacte n'a pas pu être établie d'ici** (aucun SDK Android, et le
+défaut vit dans une application SYSTÈME d'Android). Ce qui a été corrigé, ce
+sont les trois façons dont ce chemin pouvait rester MUET — et c'est ça, le
+vrai défaut :
+
+1. `enqueue()` n'était pas protégé. Sur Samsung et Xiaomi, l'application
+   « Gestionnaire de téléchargement » se désactive : `getSystemService` rend
+   null ou `enqueue()` lève, et la promesse n'était alors ni résolue ni
+   rejetée — l'écran restait sur « Téléchargement… » pour toujours.
+2. `STATUS_PAUSED` n'émettait aucune progression. Une attente du Wi-Fi se
+   lisait donc exactement comme un plantage : le dernier « 0.0 Mo » restait
+   figé à l'écran. Il est émis, avec sa raison en clair.
+3. Zéro octet reçu faisait attendre **dix minutes**. Vingt secondes sans le
+   moindre octet, et on cesse d'attendre.
+
+**Et il y a désormais deux chemins de repli, dans cet ordre.** Le premier est
+dans `telechargerNousMemes()` : une simple `HttpURLConnection`, aucun service
+système, aucune application tierce. Le second est le lien direct ouvert dans
+son navigateur (`ouvrirLienExterne`) — un `<a href download>` ordinaire ne
+sort jamais de la WebView, Capacitor l'intercepte.
+
+`scripts/verifier-telechargement-apk.ts` (dans la CI) lit le code, faute de
+SDK : il tient les quatre règles ci-dessus. **Essayé à l'envers, et deux de
+ses contrôles étaient d'abord faux** — chercher `STATUS_PAUSED` n'importe où
+restait vert quand on le retirait de la condition d'émission, et chercher
+`ouvrirDansLeNavigateur` trouvait la définition de la fonction alors que son
+`onClick` avait disparu. Même piège que `Filesystem.mkdir` le 4 sept. : un
+contrôle doit viser l'APPEL, pas la présence du mot.
+
+**Le compteur `download_count` de la release ne prouve rien à lui seul** :
+republier l'asset le remet à zéro. Vérifié le 6 sept. — il valait 0 sur un
+fichier mis en ligne trois minutes plus tôt.
+
+## L'assistant du téléphone : ce qui qualifie Jarvis, et ce qui ne se peut pas
+
+Raphaël, 5 sept. 2026, captures à l'appui : « voici le vrai paramétrage à
+faire pour activer Jarvis dans le téléphone ». Son chemin Samsung : Paramètres
+› Fonctions avancées › Touche latérale › Appuyer longuement › « Application
+d'assistant numérique par défaut » › Autres applications.
+
+**Le critère est celui d'AOSP, et il a été lu dans la source, pas cité de
+mémoire** (`PermissionController`,
+`AssistantRoleBehavior.getQualifyingPackagesInternal`, téléchargée depuis
+android.googlesource.com). Deux branches, l'une OU l'autre suffit : un
+`VoiceInteractionService` protégé par `BIND_VOICE_INTERACTION` (avec
+`sessionService`, `recognitionService`, `supportsAssist`), **ou** une simple
+activité EXPORTÉE répondant à `ACTION_ASSIST` avec `MATCH_DEFAULT_ONLY`.
+
+**MAIS LA LISTE DE SAMSUNG NE REGARDE QUE LA PREMIÈRE.** Constaté par Raphaël
+le 6 sept. 2026, captures à l'appui : `AssistOverlayActivity` remplissait la
+seconde depuis le 4 sept., l'APK publiée la portait bien (vérifié en lisant
+son manifeste binaire), et Jarvis n'apparaissait toujours pas dans « Autres
+applications ». D'où `JarvisVoiceInteractionService` + sa session + un
+`JarvisRecognitionService` qui ne reconnaît rien.
+
+**Ce dernier n'est pas une fonctionnalité, c'est une case à cocher du
+système** : `VoiceInteractionServiceInfo` refuse tout le service avec « No
+recognitionService specified » si le XML n'en déclare pas — relevé dans la
+source le 6 sept. Et le rejet est SILENCIEUX : rien à l'écran, rien dans les
+journaux de l'app, Jarvis disparaît simplement de la liste. C'est pour ça que
+`scripts/verifier-assistant.ts` lit le manifeste et le XML plutôt que de faire
+confiance.
+
+**Donc quand la liste d'Android ne montre pas Jarvis, la première question
+reste : l'APK INSTALLÉE est-elle assez récente ?** Le piège est neuf depuis
+la mise à jour rapide, et il trompe : l'interface est à jour, ce qui donne
+toutes les raisons de croire l'app à jour, alors que le manifeste vit dans la
+coquille Android, que seule une vraie installation remplace. La carte
+« L'appui long sur la touche latérale » (Paramètres › Ce que Jarvis utilise)
+interroge le système sur notre propre paquet, sur l'appareil, et le dit —
+plutôt que de le laisser deviner. Depuis le 6 sept., elle regarde `service`
+(le VoiceInteractionService réellement déclaré par l'APK installée), pas
+`candidat` : se fier à `candidat` seul lui disait « Jarvis peut être choisi »
+devant une liste où il n'était pas.
+
+### Deux pièges de la fenêtre d'assistance, payés le 6 sept.
+
+**UNE SEULE FENÊTRE DOIT MONTER UN MICRO.** `AssistOverlay.estOverlay()` est
+asynchrone. Tant qu'elle n'a pas répondu, le routeur rendait la route « / » —
+donc la coquille de l'app normale, donc un premier micro, qui consommait au
+passage le drapeau « démarre l'écoute » posé par l'activité avant de se faire
+démonter par la redirection. Le micro de la fenêtre d'assistance arrivait
+40 ms plus tard, ne trouvait plus le drapeau, et attendait le mot-clé —
+pendant que les deux se disputaient le micro du téléphone. À l'écran : « Dis
+Jarvis pour lancer la conversation » au lieu d'une écoute, et rien qui
+aboutit.
+
+`App.tsx` n'affiche donc RIEN tant qu'il ne sait pas où il est
+(`src/lib/demarrageOverlay.ts`, pur), et rend la fenêtre d'assistance
+directement plutôt que par une redirection. **Ne remets pas de `navigate()`
+vers `/assistant`** : c'est précisément ce qui montait deux micros. Un délai
+maximum évite l'écran blanc si le pont ne répond jamais.
+
+**LE MOTEUR DE RECONNAISSANCE-CROUPION NE DOIT JAMAIS ÊTRE CHOISI.** Dès que
+l'APK a déclaré le VoiceInteractionService, `com.raphael.jarvis` est apparu
+parmi les moteurs de reconnaissance de son téléphone — c'est
+`JarvisRecognitionService`, qui ne reconnaît rien. S'il était retenu comme
+moteur par défaut, Jarvis deviendrait sourd sans le moindre message. D'où
+`android:selectableAsDefault="false"` dans `res/xml/recognition_service.xml` :
+l'attribut est celui d'AOSP (`attrs.xml`, styleable `RecognitionService`), et
+`findAvailRecognizer` s'en sert pour écarter les moteurs qui ne veulent pas
+être choisis. Ne le retire pas.
+
+### Prouver qu'une déclaration a bien atteint l'APK, sans téléphone
+
+Un manifeste juste dans le dépôt ne prouve rien : c'est la coquille Android
+publiée qui compte, et la mise à jour rapide ne la remplace pas. La release
+se lit d'ici, et c'est la meilleure preuve atteignable sans appareil :
+
+```bash
+curl -sSL -o app.apk https://github.com/rnab26/Jarvis-assistant/releases/download/latest-debug/app-debug.apk
+unzip -o -q app.apk AndroidManifest.xml 'res/xml/*'
+strings -el AndroidManifest.xml | grep -F JarvisVoiceInteractionService   # manifeste : UTF-16
+strings -a  res/xml/interaction_service.xml | grep -F recognitionService  # ressource : UTF-8
+```
+
+**Le piège, payé le 6 sept. : les deux ne s'encodent pas pareil.** Le
+manifeste binaire se lit avec `strings -el` (UTF-16), la ressource XML
+compilée avec `strings -a` (UTF-8). Utiliser `-el` sur la seconde ne rend
+RIEN — et « rien » se lit exactement comme « la déclaration est absente ».
+Vérifié sur la build 192 : les trois services, la permission, la meta-data et
+les quatre attributs du XML y sont tous.
+
+**Deux chemins qui n'existent pas, vérifiés : ne les retente pas.** L'action
+qui mène pile sur l'écran du choix (`MANAGE_DEFAULT_APP` + `EXTRA_ROLE_NAME`)
+est protégée par la permission de signature `MANAGE_ROLE_HOLDERS` ; et le rôle
+assistant est `requestable="false"` dans `roles.xml`, ce qui ferme aussi
+`RoleManager.createRequestRoleIntent`. On ouvre donc `VOICE_INPUT_SETTINGS`,
+puis à défaut la liste des applications par défaut, et les derniers pas restent
+écrits sous le bouton. Corollaire pour le chantier f5621562 : **l'appui long ne
+peut pas avoir d'interrupteur dans l'app**, c'est un rôle exclusif d'Android
+qu'une application ne peut ni s'attribuer ni se retirer.
 
 ## Le web se met à jour tout seul, l'app Android jamais
 

@@ -1,5 +1,15 @@
 import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
 import { cleTheme } from "@/lib/themeChantier"
+import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
+import {
+  correctionApplicable,
+  phraseDeplacement,
+  phraseIntrouvable,
+  phraseSupposition,
+  suppositionDictee,
+  type DerniereCreation,
+  type Destination,
+} from "@/lib/ouVaCetteDictee"
 import type {
   Category,
   Contact,
@@ -21,6 +31,11 @@ import type {
 } from "@/types/database"
 
 export type VoiceAction =
+  /** « non, mets-le en chantier » : déplacer ce qui vient d'être créé, au
+   * lieu d'en créer un second. Reconnue LOCALEMENT (commandeLocale.ts), donc
+   * gratuite et instantanée — et elle doit l'être : c'est une reprise dite
+   * dans la foulée, pas une nouvelle demande. */
+  | { action: "move_last_entry"; vers: Destination }
   | { action: "list_tasks"; filter_category_id?: string; filter_status?: TaskStatus }
   | {
       action: "add_task"
@@ -277,6 +292,24 @@ export interface DevSectionsVoiceApi {
   renameSection: (id: string, nom: string) => Promise<number>
 }
 
+/**
+ * Ce qui vient d'être créé, pour qu'une correction puisse le déplacer.
+ *
+ * En mémoire du module, et pas en base : la question est « qu'est-ce que je
+ * viens de créer, à l'instant », et une valeur relue après un redémarrage
+ * répondrait à propos d'hier soir. Même raison que `derniereParole` dans
+ * journalEcoute.ts.
+ */
+let derniereCreation: DerniereCreation | null = null
+
+/** Exportées pour les contrôles : rien d'autre ne doit y toucher. */
+export function memoireDerniereCreation(): DerniereCreation | null {
+  return derniereCreation
+}
+export function oublierDerniereCreation() {
+  derniereCreation = null
+}
+
 export async function executeVoiceAction(
   action: VoiceAction,
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
@@ -303,6 +336,26 @@ export async function executeVoiceAction(
     }
 
     case "add_task": {
+      // LA SUPPOSITION, au moment de la dictée. « R un chantier : … »,
+      // « pour Claude Code … » : la commande vocale a compris « une tâche »
+      // là où il annonçait une demande aux sessions. Jusqu'ici ça atterrissait
+      // dans sa liste de courses et n'en ressortait que des jours plus tard,
+      // par la carte de rattrapage de l'onglet Tâches. On range au mieux, on
+      // le DIT, et il corrige d'un mot — rien n'attend sa réponse.
+      const suppose = suppositionDictee(action.title, action.notes)
+      if (suppose) {
+        await addDevItem({
+          title: suppose.titre,
+          notes: action.notes ?? null,
+          status: "todo",
+          priority: "normal",
+          theme: null,
+        })
+        derniereCreation = { vers: "chantier", titre: suppose.titre, quand: Date.now() }
+        // Au passé SEULEMENT ici, une fois l'écriture aboutie.
+        return phraseSupposition(suppose.titre, suppose.indice)
+      }
+
       await addTask({
         title: action.title,
         notes: action.notes ?? null,
@@ -311,9 +364,49 @@ export async function executeVoiceAction(
         category_id: action.category_id ?? null,
         status: "todo",
       })
+      derniereCreation = { vers: "tache", titre: action.title, quand: Date.now() }
       const catName = categoryName(categories, action.category_id)
       const heure = action.due_date && action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
       return `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
+    }
+
+    /**
+     * « Non, mets-le en chantier » — on DÉPLACE, on ne recrée pas.
+     *
+     * Le 5 sept., deux phrases à une minute d'intervalle ont créé deux
+     * chantiers jumeaux parce qu'il reformulait en croyant que ça n'avait pas
+     * pris. Ici c'est pire : la ligne d'origine resterait dans la mauvaise
+     * liste, invisible, pendant que la nouvelle apparaît ailleurs.
+     */
+    case "move_last_entry": {
+      const derniere = derniereCreation
+      if (!correctionApplicable(derniere, action.vers, Date.now())) {
+        return "Je ne vois pas ce que tu veux déplacer. Redis-moi ce que je crée, et où."
+      }
+      const titre = derniere!.titre
+
+      if (action.vers === "chantier") {
+        const tache = tasks.find((t) => t.title === titre)
+        if (!tache) return phraseIntrouvable(titre)
+        await addDevItem({ title: titre, notes: tache.notes ?? null, status: "todo", priority: "normal", theme: null })
+        // L'ordre compte : on n'efface l'ancienne qu'une fois la nouvelle
+        // écrite. L'inverse perdrait sa dictée si la seconde écriture échoue.
+        await deleteTask(tache.id)
+      } else {
+        const chantier = devItems.find((d) => d.title === titre)
+        if (!chantier) return phraseIntrouvable(titre)
+        await addTask({
+          title: titre,
+          notes: chantier.notes ?? null,
+          due_date: null,
+          due_time: null,
+          category_id: null,
+          status: "todo",
+        })
+        await deleteDevItem(chantier.id)
+      }
+      derniereCreation = { vers: action.vers, titre, quand: Date.now() }
+      return phraseDeplacement(titre, action.vers)
     }
 
     case "update_task": {
@@ -343,6 +436,14 @@ export async function executeVoiceAction(
     }
 
     case "add_dev_item": {
+      // « Ça existe déjà », à la voix. Il dicte, ne voit pas le résultat, et
+      // reformule en croyant que ça n'a pas pris : le 5 sept. deux phrases à
+      // une minute d'intervalle ont créé deux chantiers jumeaux. La
+      // comparaison est locale et gratuite ; elle ne pose aucune question —
+      // elle dit, et ne recrée pas une redite littérale.
+      const doublon = deciderDoublonVocal(action.title, action.notes, devItems)
+      if (doublon.verdict === "refuser") return doublon.phrase
+
       await addDevItem({
         title: action.title,
         notes: action.notes ?? null,
@@ -355,7 +456,11 @@ export async function executeVoiceAction(
       // phrase, il pouvait croire qu'une session allait s'en saisir tout de
       // suite — c'est le même malentendu que corrige le bandeau permanent
       // de la fenêtre d'envoi du cockpit.
-      return `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
+      derniereCreation = { vers: "chantier", titre: action.title, quand: Date.now() }
+      const ajoute = `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
+      return doublon.verdict === "creer_en_avertissant"
+        ? `${doublon.phrase} ${ajoute}`
+        : ajoute
     }
 
     case "update_dev_item": {
@@ -596,6 +701,8 @@ export async function executeVoiceAction(
     case "media_control":
     case "set_app_preference":
     case "ask_ai":
+    case "screen_action":
+    case "block_screen_app":
       return await executerActionTelephone(action, contacts)
 
     case "chat":

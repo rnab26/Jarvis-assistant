@@ -2,6 +2,8 @@
 // `node --experimental-strip-types` pour sa vérification, qui ne connaît
 // pas l'alias « @/ » de Vite.
 import { lireHeure, lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
+import { cibleTropCourante } from "./chercherContact.ts"
+import { correctionDeDestination } from "./ouVaCetteDictee.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 
 /**
@@ -237,6 +239,18 @@ export function interpreterLocalement(
   if (!texte) return null
   const maintenant = ctx.maintenant ?? new Date()
 
+  /* ---------- « Non, mets-le en chantier » ----------
+     En PREMIER, et localement. C'est une reprise dite dans la foulée d'une
+     création : la faire remonter au modèle coûterait un aller-retour, une
+     seconde d'attente et une chance de plus de la comprendre comme une
+     nouvelle demande — auquel cas la ligne d'origine resterait dans la
+     mauvaise liste pendant qu'une jumelle apparaîtrait ailleurs.
+     `correctionDeDestination` refuse tout ce qui porte du contenu en plus
+     (« ajoute un chantier pour refaire la salle de bain »), et c'est la
+     moitié qui compte. */
+  const correction = correctionDeDestination(texte)
+  if (correction) return [{ action: "move_last_entry", vers: correction }]
+
   /* ---------- La voix ---------- */
   if (/^(coupe|arrete|stoppe)( ta| la)? voix\b/.test(texte) ||
       /^(tais-toi pour de bon|ne parle plus|arrete de parler)\b/.test(texte) ||
@@ -450,6 +464,13 @@ export function interpreterLocalement(
   /* ---------- Appeler un contact connu ---------- */
   const appelContact = texte.match(/^(?:appelle|telephone a)\s+(.+)$/)
   if (appelContact) {
+    // « Jarvis appelle mail » — ce qu'il a réellement dit le 5 sept. 2026 à
+    // 21 h 07, c'était « appelle ma femme ». Un seul mot, et c'est un mot
+    // d'appareil : ce n'est pas quelqu'un qu'il a nommé, c'est une commande
+    // mal entendue. On rend la main au serveur, qui demandera — plutôt que de
+    // composer un numéro, ce qui ne se rattrape pas. Cette fois-là, l'appel
+    // est parti vers le répondeur.
+    if (cibleTropCourante(appelContact[1])) return null
     const contact = meilleurContact(appelContact[1], ctx.contacts ?? [])
     if (contact) return [{ action: "call_contact", contact_id: contact.id }]
     // Aucun contact enregistré ne correspond : on rend quand même l'action,
@@ -473,6 +494,9 @@ export function interpreterLocalement(
   )
   if (messageContact) {
     const canalMot = messageContact[1]
+    // Même garde-fou que pour l'appel : un destinataire qui tient en un mot
+    // d'appareil n'est pas un destinataire.
+    if (cibleTropCourante(messageContact[2])) return null
     const contact = meilleurContact(messageContact[2], ctx.contacts ?? [])
     if (!contact) return null
     const texteMsg = messageContact[3].trim()

@@ -12,6 +12,7 @@
  *   — compter ce qu'il a écrit lui-même comme « du nouveau », ce qui gonfle
  *     les chiffres avec ses propres messages.
  */
+import { reperePlusRecent, repereApresLecture } from "../src/lib/cockpitVu.ts"
 import { depuisDerniereVisite, depuisQuand } from "../src/lib/depuisDerniereVisite.ts"
 import type { DevItem, DevLogEntry } from "../src/types/database.ts"
 
@@ -42,12 +43,17 @@ const chantier = (titre: string, creele: string, archiveLe: string | null = null
   updated_at: creele,
 })
 
-const message = (auteur: string, quand: string, corps = "coucou"): DevLogEntry => ({
+const message = (
+  auteur: string,
+  quand: string,
+  corps = "coucou",
+  kind: DevLogEntry["kind"] = "info",
+): DevLogEntry => ({
   id: `m${++n}`,
   user_id: "u",
   item_id: null,
   author: auteur,
-  kind: "info",
+  kind,
   body: corps,
   answered_at: null,
   created_at: quand,
@@ -60,7 +66,12 @@ const ITEMS = [
   chantier("Ouvert avant, toujours là", AVANT),
 ]
 const MESSAGES = [
+  // Un compte rendu d'une session à l'autre : c'est le cas RÉEL du 6 sept.,
+  // où deux notes de 2 000 et 2 500 caractères occupaient les deux lignes les
+  // plus précieuses du bandeau.
   message("claude/voix", APRES, "J'ai fini le micro."),
+  // Et une question qui lui est adressée, à lui : celle-là doit se lire.
+  message("claude/voix", APRES, "Tu veux qu'on coupe après 30 s ?", "question"),
   message("claude/voix", AVANT, "Message d'avant."),
   message("Raphaël", APRES, "Ce qu'il a écrit lui-même."),
 ]
@@ -86,9 +97,19 @@ verifier(
   !bilan.nouveaux.some((i) => i.archived_at),
 )
 verifier(
-  "les messages des sessions sont comptés",
-  bilan.messages.length === 1 && bilan.messages[0].body === "J'ai fini le micro.",
+  "ce qui lui est ADRESSÉ se lit dans le bandeau",
+  bilan.messages.length === 1 && bilan.messages[0].body === "Tu veux qu'on coupe après 30 s ?",
   JSON.stringify(bilan.messages.map((m) => m.body)),
+)
+verifier(
+  "et les notes entre sessions se comptent SANS se déballer",
+  bilan.notesEntreSessions === 1,
+  `${bilan.notesEntreSessions} — le 6 sept., deux comptes rendus de 2 000 et 2 500 caractères occupaient les deux lignes les plus précieuses du bandeau, le matin même où il a dit ne pas arriver à savoir ce qui avait bougé`,
+)
+verifier(
+  "une note entre sessions compte quand même comme « il s'est passé quelque chose »",
+  depuisDerniereVisite([], [message("claude/voix", APRES, "Compte rendu.")], HIER).quelqueChose,
+  "le bandeau serait vide un jour où trois sessions ont travaillé toute la nuit",
 )
 verifier(
   "ce que Raphaël a écrit lui-même n'est pas du nouveau pour lui",
@@ -191,6 +212,55 @@ verifier("« il y a 3 h »", ilYA(3) === "il y a 3 h", ilYA(3))
 verifier("« hier » pour une nuit entière", ilYA(24) === "hier", ilYA(24))
 verifier("« il y a 3 jours »", ilYA(72) === "il y a 3 jours", ilYA(72))
 verifier("et des minutes pour un aller-retour", ilYA(0.2).endsWith("min"), ilYA(0.2))
+
+console.log("\n— Le repère, partagé entre le téléphone et le site —")
+
+// Chantier ae0f3a7b. Il utilise l'app ET le site dans la même matinée :
+// appuyer sur « Vu » d'un côté doit valoir de l'autre.
+const TOT = "2026-09-01T08:00:00Z"
+const TARD = "2026-09-05T20:00:00Z"
+
+verifier(
+  "le « Vu » du téléphone vaut sur le site",
+  reperePlusRecent(TOT, TARD) === TARD,
+  "sinon le site réannonce les quatorze mêmes chantiers livrés",
+)
+verifier(
+  "et le repère ne RECULE jamais",
+  reperePlusRecent(TARD, TOT) === TARD,
+  "reculer, c'est réannoncer six semaines de travail à quelqu'un qui vient de tout regarder",
+)
+verifier(
+  "un écran neuf prend celui de la base",
+  reperePlusRecent(null, TARD) === TARD,
+)
+verifier(
+  "un compte neuf garde celui de l'écran",
+  reperePlusRecent(TARD, null) === TARD,
+)
+verifier(
+  "rien nulle part reste rien : la première ouverture n'annonce pas tout",
+  reperePlusRecent(null, null) === null,
+)
+verifier(
+  "une date illisible ne fait pas repartir de zéro",
+  reperePlusRecent(TARD, "pas une date") === TARD,
+  "un repère corrompu déballerait tout le cockpit",
+)
+
+verifier(
+  "UNE PANNE DE LECTURE ne se lit pas comme « tu n'as jamais rien vu »",
+  repereApresLecture(TARD, { ok: false }) === TARD,
+  "c'est le piège du projet : une absence et un échec rendent la même valeur",
+)
+verifier(
+  "et une lecture réussie qui ne trouve rien garde ce que l'écran savait",
+  repereApresLecture(TARD, { ok: true, vuLe: null }) === TARD,
+)
+verifier(
+  "une lecture réussie plus récente l'emporte",
+  repereApresLecture(TOT, { ok: true, vuLe: TARD }) === TARD,
+)
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

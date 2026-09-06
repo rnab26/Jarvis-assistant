@@ -289,13 +289,25 @@ poursuivre un travail commencé ailleurs, et ne veut rien perdre ni se répéter
 
 - Ne poser une question que si le choix est **réellement ambigu et impactant**.
   Sinon, avancer avec l'option la plus raisonnable et lui dire laquelle.
-- Dès qu'il y a **plus de deux ou trois questions**, publier un artefact qu'il
-  remplit au pouce, pas un mur de texte. Chaque point : la question, pourquoi
-  elle est posée et ce qu'on sait déjà, des options cliquables avec la
-  recommandation marquée, et un champ libre. Séparer les **décisions** (il
-  choisit) des **actions** (il doit faire quelque chose).
-- Verser l'URL de la fiche dans le CLAUDE.md du projet, dans le même commit.
-  Sinon ses réponses sont perdues pour les sessions suivantes.
+- **Sur le projet Jarvis, on ne publie plus d'artefact pour lui poser une
+  question** (depuis le 5 sept. 2026, chantier `85ae62b5`). Elles passent par
+  `scripts/demander.sh`, qui écrit dans `dev_log` : la question s'affiche en
+  tête de son cockpit (« Ce qui attend ta décision »), il y répond au pouce
+  avec une option, un commentaire et une photo, et sa réponse est injectée au
+  démarrage de CHAQUE session suivante. Rien à recopier, rien à perdre.
+- La raison, ses mots du 5 sept. : « les artefacts ont trop de durée de vie
+  limitée et je te colle des réponses détaillées quand c'était nécessaire ».
+  Une fiche vit hors du dépôt et hors de la base ; deux fiches lui ont posé LA
+  MÊME question le même soir, et il a répondu deux choses différentes.
+- Ce que la question doit porter, et qui n'a pas changé : ce qu'on demande,
+  **pourquoi** on le demande, des **options cliquables** avec la
+  recommandation marquée, un **commentaire par question**, et la séparation
+  entre **décisions** (il choisit) et **actions** (il fait quelque chose de
+  son côté, et dit fait / pas encore / ça bloque).
+- Sur un projet qui n'a pas encore cet écran, l'artefact reste le moins mauvais
+  outil — mais **recopier ses réponses en base dès qu'on les lit**, en citant
+  ses mots, et verser l'URL de la fiche dans le CLAUDE.md du projet dans le
+  même commit.
 
 ## Les pop-up de validation
 

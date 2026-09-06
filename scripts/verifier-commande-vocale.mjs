@@ -51,6 +51,26 @@ const cree = await admin("/auth/v1/admin/users", {
 if (!cree.corps?.id) { console.error("création impossible", cree); process.exit(1) }
 const userId = cree.corps.id
 
+// UN COMPTE GOOGLE DE FACADE POUR L UTILISATEUR DE TEST.
+// Depuis que _shared/branchements.ts dit au modele l etat REEL de
+// l installation (6 sept. 2026), un utilisateur sans compte Google branche
+// s entend repondre « je n ai pas acces a tes e-mails » — ce qui est la BONNE
+// reponse, et ce qui faisait virer au rouge les six controles agenda/Gmail,
+// pour rien. On declare donc un compte ici, avec les memes portees que le
+// sien. Aucun jeton n est pose : ces controles regardent ce que le MODELE
+// decide de faire, pas ce que Google repond.
+// La ligne part avec l utilisateur (cle etrangere sur auth.users).
+await admin("/rest/v1/google_accounts", {
+  method: "POST",
+  headers: { Prefer: "return=minimal" },
+  body: JSON.stringify({
+    user_id: userId,
+    email: `essai+${userId.slice(0, 8)}@exemple.test`,
+    scopes: "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.events",
+    connected_at: new Date().toISOString(),
+  }),
+})
+
 const connexion = await fetch(`${URL_PROJET}/auth/v1/token?grant_type=password`, {
   method: "POST",
   headers: { apikey: ANON, "Content-Type": "application/json" },
@@ -379,14 +399,25 @@ cas.push(
     },
   },
   {
-    nom: "retenir le numéro dicté d'un contact existant",
+    // Réécrit le 5 sept. 2026, après le retrait des fiches contacts. Il
+    // vérifiait update_contact, une action qui n'existe plus : les numéros
+    // viennent du répertoire du téléphone. Ce qui compte maintenant, c'est que
+    // Jarvis NE MENTE PAS — sa première réponse après le retrait était « j'ai
+    // ajouté le numéro de Dylan à sa fiche contact », alors qu'il n'avait rien
+    // fait et qu'aucune fiche n'existe. Prétendre avoir enregistré quelque
+    // chose est pire que de ne rien enregistrer : Raphaël s'y fie.
+    nom: "un numéro dicté : il le retient sans prétendre l'avoir fiché",
     phrase: "Le numéro de Dylan c'est le 07 88 99 00 11.",
     controle: (r) => {
-      const a = (r.actions ?? []).find((x) => x.action === "update_contact")
-      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
-      if (a.contact_id !== "ct-dylan") return [false, `contact_id = ${a.contact_id}`]
-      const tel = (a.changes?.phone ?? "").replace(/\D/g, "")
-      if (tel !== "0788990011") return [false, `changes = ${JSON.stringify(a.changes)}`]
+      const actions = (r.actions ?? []).map((x) => x.action)
+      const interdites = actions.filter((a) => /contact/.test(a) && a !== "call_contact")
+      if (interdites.length > 0) {
+        return [false, `action de fiche contact renvoyée : ${JSON.stringify(interdites)}`]
+      }
+      const dit = (r.message ?? "").toLowerCase()
+      if (/fiche|dans (?:tes|ses) contacts|carnet/.test(dit)) {
+        return [false, `il prétend avoir fiché le numéro : « ${r.message} »`]
+      }
       return [true]
     },
   },
@@ -608,6 +639,111 @@ cas.push(
     },
   },
   {
+    nom: "« lance la deuxième vidéo » est une action d'écran, pas une recherche",
+    phrase: "Attends, vas-y, lance la deuxième vidéo.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "screen_action")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.screen_command !== "clic") return [false, `screen_command = ${a.screen_command}`]
+      // Il ne voit pas l'écran : il doit reprendre SES mots, pas inventer un
+      // titre de vidéo. Le téléphone compare ces mots à ce qui est affiché.
+      if (!a.screen_target || !/deuxi|2/i.test(a.screen_target)) {
+        return [false, `screen_target inventé ou absent : "${a.screen_target ?? ""}"`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "« descends » fait défiler, sans rien cliquer",
+    phrase: "Descends un peu.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "screen_action")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.screen_command !== "defiler_bas") return [false, `screen_command = ${a.screen_command}`]
+      return [true]
+    },
+  },
+  {
+    nom: "« appuie sur envoyer » ne redemande pas le destinataire",
+    phrase: "Appuie sur envoyer.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "screen_action")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.screen_command !== "clic") return [false, `screen_command = ${a.screen_command}`]
+      if (!a.screen_target || !/envoy|envoi/i.test(a.screen_target)) {
+        return [false, `screen_target = "${a.screen_target ?? ""}"`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "« ne touche jamais à ma banque » met l'app sur la liste noire",
+    phrase: "N'appuie jamais dans Bitwarden.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "block_screen_app")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (!/bitwarden/i.test(a.app_name ?? "")) return [false, `app_name = "${a.app_name ?? ""}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "« lance la deuxième vidéo » ne devient PAS une tâche ni un chantier",
+    phrase: "Vas-y, lance la troisième.",
+    controle: (r) => {
+      const familles = (r.actions ?? []).map((x) => x.action)
+      const inventees = familles.filter((f) => /add_task|add_dev_item|save_document/.test(f))
+      if (inventees.length) return [false, `il a créé quelque chose : ${inventees.join(", ")}`]
+      return [true]
+    },
+  },
+  {
+    nom: "« cherche X » part vers son application d'IA, sans la nommer",
+    phrase: "Cherche le prix du grès cérame au mètre carré.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "ask_ai")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.app_name) return [false, `il a deviné une application : "${a.app_name}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "« cherche X sur Perplexity » vise l'application citée",
+    phrase: "Cherche sur Perplexity ce que vaut un carrelage en grès cérame.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "ask_ai")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (!/perplexity/i.test(a.app_name ?? "")) return [false, `app_name = "${a.app_name ?? ""}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "« sur internet » n'est PAS un nom d'application",
+    phrase: "Cherche sur internet qui a gagné le match hier soir.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "ask_ai")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.app_name && /internet|web/i.test(a.app_name)) {
+        return [false, `app_name = "${a.app_name}" — aucune application ne s'appelle comme ça`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "il envoie vers « Tes applications par défaut », jamais vers les autorisations",
+    phrase: "Où est-ce que je choisis l'application que tu utilises pour les itinéraires ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (SANS_ACCES.test(message)) return [false, `il se dit sans accès à l'interface : "${message}"`]
+      if (/autorisation/i.test(message)) {
+        return [false, `il renvoie vers les autorisations, où il n'y a aucune application : "${message}"`]
+      }
+      if (!/applications par d[ée]faut/i.test(message)) {
+        return [false, `la bonne carte n'est pas citée : "${message}"`]
+      }
+      return [true]
+    },
+  },
+  {
     nom: "il sait où retrouver ce qu'il a mémorisé",
     phrase: "Où je peux relire ce que tu as retenu sur moi ?",
     controle: (r) => {
@@ -660,6 +796,35 @@ cas.push(
     },
   },
   {
+    // SA PHRASE EXACTE du 5 sept. à 19 h 34. Résultat à l'époque : un
+    // chantier « Lancer une nouvelle session pour l'intégration IA » avec le
+    // thème « Intégration IA », et AUCUNE ligne dans dev_sections. La section
+    // n'existait donc que comme texte libre porté par un chantier, et elle
+    // aurait disparu du cockpit le jour où ce chantier serait archivé.
+    nom: "« ouvre une section pour X et lance une session » crée bien la SECTION",
+    phrase:
+      "Ouvrir une nouvelle section de chantier pour l'intégration d'application IA et lancer une nouvelle session.",
+    controle: (r) => {
+      const actions = r.actions ?? []
+      const a = actions.find((x) => x.action === "add_dev_section")
+      if (!a) return [false, `aucune section créée : ${JSON.stringify(actions.map((x) => x.action))}`]
+      if (!/ia|intelligence/i.test(a.section_nom ?? "")) return [false, `section_nom = ${a.section_nom}`]
+      return [true]
+    },
+  },
+  {
+    // Jarvis ne peut pas lancer une session Claude Code. L'ignorer laissait
+    // croire que c'était fait ; en faire un chantier ajoutait du bruit.
+    nom: "et il dit qu'il ne sait pas lancer une session Claude Code",
+    phrase:
+      "Ouvrir une nouvelle section de chantier pour l'intégration d'application IA et lancer une nouvelle session.",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (!/session/i.test(message)) return [false, `il n'en dit rien : "${message}"`]
+      return [true]
+    },
+  },
+  {
     // Supprimer une section déplace TOUS ses chantiers. À la voix il n'y a ni
     // confirmation ni bouton Annuler ; le cockpit a les deux. Jarvis doit donc
     // y renvoyer, pas le faire.
@@ -677,17 +842,140 @@ cas.push(
   },
 )
 
+// « envoie un message à Mel » (sa femme) compris comme une demande Gmail, le
+// 4 sept. : « Mel » sonne comme « mail ». Sa consigne est explicite — ne pas
+// coder en dur « Mel n'est pas mail », c'est une CLASSE de bug (Sam/SMS,
+// Al/appel), pas un cas particulier. On vérifie donc la règle générale sur
+// deux prénoms différents, dont un qui n'est dans aucune liste de contacts.
+cas.push(
+  {
+    nom: "« envoie un message à Mel » va aux messages, pas à Gmail",
+    phrase: "Envoie un message à Mel.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.some((t) => `${t}`.includes("email"))) {
+        return [false, `il est parti sur Gmail : ${JSON.stringify(types)}`]
+      }
+      if (!types.includes("send_message") && !types.includes("clarify")) {
+        return [false, `ni message ni clarification : ${JSON.stringify(types)}`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "et « appelle Al » reste un appel",
+    phrase: "Appelle Al.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "call_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      return [true]
+    },
+  },
+)
+
+// L'application d'appel par défaut, ajoutée le 5 sept. au soir : sans elle,
+// Android affiche « Terminer l'action avec… » à chaque appel dès que deux
+// applications savent téléphoner (il a ZoiPer en plus du téléphone).
+cas.push({
+  nom: "apprentissage direct : quelle application pour les appels",
+  phrase: "Utilise le téléphone pour mes appels.",
+  controle: (r) => {
+    const a = (r.actions ?? []).find((x) => x.action === "set_app_preference")
+    if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+    if (a.category !== "appels") return [false, `category = ${a.category}`]
+    return [true]
+  },
+})
+
+// « Il me dit qu'il a envoyé un message alors que ce n'est pas vrai » (6 sept.
+// 2026). Préparer n'est pas envoyer : la réponse ne doit rien annoncer au
+// passé. Le journal a montré que notre phrase était honnête et que c'est le
+// MODÈLE qui la remettait au passé — donc ça se vérifie sur la fonction
+// déployée, pas dans le code de l'app.
+cas.push(
+  {
+    nom: "un message préparé n'est jamais annoncé comme envoyé",
+    phrase: "Envoie un message à Dylan sur WhatsApp pour lui dire que je passe demain.",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      const menteur = /(j'?ai |c'est |bien )?envoy[ée]|message parti|est parti|j'?ai transmis/i
+      if (menteur.test(message)) return [false, `il annonce un envoi : "${message}"`]
+      return [true]
+    },
+  },
+  {
+    nom: "et un appel préparé n'est pas annoncé comme passé",
+    phrase: "Appelle Yoni.",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (/j'?ai appel[ée]|je l'?ai eu|appel termin/i.test(message)) {
+        return [false, `il annonce un appel déjà passé : "${message}"`]
+      }
+      return [true]
+    },
+  },
+)
+
+// « Jarvis ne connaît toujours pas son propre environnement […] quand je lui
+// demande à quoi il est branché » (6 sept. 2026). L'état réel de SON
+// installation est lu en base et joint au contexte — et ce que le serveur ne
+// voit pas (autorisations Android, accessibilité, version installée), Jarvis
+// doit le DIRE plutôt que d'inventer.
+cas.push(
+  {
+    nom: "il sait dire à quoi il est branché",
+    phrase: "À quoi tu es branché exactement ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (!message.trim()) return [false, "réponse vide"]
+      if (/je n'?ai pas acc[èe]s à l'?interface|je ne sais pas ce que je suis/i.test(message)) {
+        return [false, `il se dit aveugle : "${message}"`]
+      }
+      if (!/google|application|musique|whatsapp|sms|agenda|mail/i.test(message)) {
+        return [false, `il ne cite rien de concret : "${message}"`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "et il n'invente pas ce que le serveur ne peut pas voir",
+    phrase: "Est-ce que le service d'accessibilité est activé sur mon téléphone ?",
+    controle: (r) => {
+      const message = (r.actions ?? []).map((x) => x.message ?? "").join(" ")
+      if (/(oui|non),? (il est|c'est) (bien )?(activé|désactivé)/i.test(message)) {
+        return [false, `il tranche alors qu'il ne peut pas le voir : "${message}"`]
+      }
+      return [true]
+    },
+  },
+)
+
 // Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
 // au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
 // répond « J'ai atteint la limite de l'offre gratuite », ou meurt en
 // IDLE_TIMEOUT à 150 s en attendant un modèle saturé. Le contrôle tombe, mais
 // le code est bon — les mêmes cas rejoués lentement repassent au vert. Sans ce
 // relevé, on relit son diff pendant une heure pour rien.
-const SIGNATURE_QUOTA = /IDLE_TIMEOUT|limite de l'offre gratuite|quota|RESOURCE_EXHAUSTED|429/i
+const SIGNATURE_QUOTA = /IDLE_TIMEOUT|limite du moteur|limite de l'offre gratuite|quota|RESOURCE_EXHAUSTED|429/i
 const suspectsQuota = []
 
+// Rejouer UN sous-ensemble sans redérouler les 46 appels : chaque appel coûte
+// du quota sur la clé de test, et une passe complète pour vérifier un seul
+// correctif en gaspille l'essentiel. FILTRE=section,mel garde les cas dont le
+// nom contient l'un de ces mots.
+const FILTRE = (process.env.FILTRE ?? "")
+  .split(",")
+  .map((m) => m.trim().toLowerCase())
+  .filter(Boolean)
+const aJouer = FILTRE.length
+  ? cas.filter((c) => FILTRE.some((m) => c.nom.toLowerCase().includes(m)))
+  : cas
+if (FILTRE.length) {
+  console.log(`FILTRE actif : ${aJouer.length} cas sur ${cas.length}\n`)
+}
+
 let premier = true
-for (const c of cas) {
+for (const c of aJouer) {
   // Rien à attendre avant le tout premier appel : la pause ne sert qu'à
   // espacer deux requêtes déjà envoyées.
   if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))

@@ -12,8 +12,24 @@ import {
   type OptionsTour,
 } from "@/lib/dialogueTour"
 import { extraitEntendu, noterEcoute } from "@/lib/journalEcoute"
+import { raisonDepuisCode, type RaisonEcoute } from "@/lib/raisonEcoute"
 
 type SpeechRecognitionCtor = new () => SpeechRecognition
+
+/**
+ * Ce que le plugin émet sur `listeningState`, patch compris.
+ *
+ * Les types du paquet d'origine ne connaissent que « started » et
+ * « stopped » : notre patch ajoute « error » avec le code d'Android, que
+ * `onError` jetait jusqu'ici (voir patches/ et src/lib/raisonEcoute.ts).
+ * Une APK plus ancienne n'émet pas cet événement — d'où les champs
+ * optionnels : le code doit rester juste sur les deux versions.
+ */
+interface EtatEcoute {
+  status: "started" | "stopped" | "error"
+  code?: number
+  message?: string
+}
 
 function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   const w = window as unknown as {
@@ -259,6 +275,16 @@ export function useSpeechRecognition() {
       let resoudreStop: (() => void) | undefined
       let resoudreFinal: (() => void) | undefined
       let filet: ReturnType<typeof setTimeout> | null = null
+      // Déclarée AVANT les écouteurs qui l'affectent : c'est une fermeture
+      // appelée depuis le pont natif, pas du code qu'on relit d'en haut.
+      let raison: RaisonEcoute | null = null
+      // ET LE CODE BRUT, PAS SEULEMENT SA TRADUCTION. Mesuré le 6 sept. sur
+      // son téléphone : `raison=service` est arrivée 51 fois, contre 35
+      // « silence » — c'est devenu la première erreur ouverte du registre. Or
+      // « service » regroupe ERROR_SERVER (4), ERROR_CLIENT (5),
+      // ERROR_SERVER_DISCONNECTED (11) ET tout code inconnu : impossible de
+      // savoir laquelle de ces pannes il subit. On garde donc le nombre.
+      let codeAndroid: number | null = null
 
       const partiels = await NativeSpeechRecognition.addListener(
         "partialResults",
@@ -282,8 +308,24 @@ export function useSpeechRecognition() {
           }
         },
       )
-      const etats = await NativeSpeechRecognition.addListener("listeningState", ({ status }) => {
+      const etats = await NativeSpeechRecognition.addListener("listeningState", (e) => {
+        const { status, code } = e as EtatEcoute
         setReady(status === "started")
+        if (status === "error") {
+          // La raison de l'arrêt, que le plugin jetait avant notre patch.
+          // C'est elle qui distingue « personne n'a parlé » d'une vraie
+          // panne — voir src/lib/raisonEcoute.ts.
+          //
+          // On ne pose PAS `stoppedRecu` : après une erreur, Android ne
+          // livrera aucun résultat final, et l'attendre coûterait
+          // ATTENTE_FINAL_MS pour rien — une seconde de micro sourd à chaque
+          // rafale, soit 363 secondes perdues sur la seule journée du
+          // 5 sept. C'est exactement la latence dont Raphaël se plaint.
+          raison = raisonDepuisCode(code)
+          codeAndroid = code ?? null
+          resoudreStop?.()
+          return
+        }
         if (status === "stopped") {
           flux.stoppedRecu = true
           resoudreStop?.()
@@ -366,6 +408,11 @@ export function useSpeechRecognition() {
         // partiel ; on le préfère quand il existe.
         const transcript = (resultat?.matches?.[0] ?? flux.texte).trim()
         noterEcoute("rafale_fin", {
+          // « veille » : c'est la boucle qui écoute « Jarvis » toute seule.
+          // Sans ce mode, le registre des erreurs ne pouvait pas distinguer
+          // une pièce calme (normal, 363 fois le 5 sept.) d'un micro qui
+          // lâche pendant que Raphaël parle (vraie perte).
+          mode: "veille",
           duree_ms: Date.now() - debutAt,
           partiels: nbPartiels,
           mot_cle: flux.suffit,
@@ -373,6 +420,8 @@ export function useSpeechRecognition() {
           final_recu: flux.finalRecu,
           mort_silencieuse: mortSilencieuse,
           demarrage_refuse: demarrageRefuse,
+          raison,
+          code: codeAndroid,
           entendu: extraitEntendu(transcript),
         })
         if (!transcript) throw new Error(demarrageRefuse ? MOTEUR_OCCUPE : RIEN_ENTENDU)
@@ -406,6 +455,10 @@ export function useSpeechRecognition() {
       let sessionDebutAt = 0
       let stoppedRecu = false
       let finalApresStop = 0
+      let raison: RaisonEcoute | null = null
+      // Voir le mode veille : « service » regroupe quatre pannes distinctes,
+      // seul le nombre les sépare.
+      let codeAndroid: number | null = null
 
       setListening(true)
       noterEcoute("commande_debut")
@@ -426,8 +479,23 @@ export function useSpeechRecognition() {
           if (flux.etat.courant !== avant) o.onTexte?.(texteDuTour(flux.etat))
         },
       )
-      const etats = await NativeSpeechRecognition.addListener("listeningState", ({ status }) => {
+      const etats = await NativeSpeechRecognition.addListener("listeningState", (e) => {
+        const { status, code } = e as EtatEcoute
         setReady(status === "started")
+        if (status === "error") {
+          // On garde la DERNIÈRE raison : le tour de parole enchaîne
+          // plusieurs sessions, et c'est celle qui a clos la dernière qui
+          // explique pourquoi le tour s'est terminé.
+          //
+          // Pas de `stoppedRecu` non plus ici : après une erreur il n'y a
+          // pas de résultat final à attendre, et la boucle doit relancer
+          // tout de suite — c'est ce qui fait qu'une coupure en pleine
+          // phrase ne se paie plus une seconde de silence.
+          raison = raisonDepuisCode(code)
+          codeAndroid = code ?? null
+          resoudreStop?.()
+          return
+        }
         if (status === "stopped") {
           stoppedRecu = true
           resoudreStop?.()
@@ -485,7 +553,18 @@ export function useSpeechRecognition() {
               maxResults: 1,
               partialResults: true,
               popup: false,
-            }),
+              // BAISSER LA MUSIQUE PENDANT QU'IL PARLE. Ses mots du 6 sept. :
+              // « la musique ne se coupe pas, mais il a du mal à entendre une
+              // fois que la musique est lancée, car le fond musical est
+              // présent. » Le plugin demande alors le focus audio à Android,
+              // qui baisse les autres applications puis les remonte tout seul.
+              //
+              // Ici SEULEMENT, et pas dans l'écoute du mot-clé : la veille
+              // relance une rafale toutes les 1 à 8 s, et baisser puis
+              // remonter la musique à ce rythme la ferait « pomper » sans
+              // arrêt — pire que le défaut qu'on corrige.
+              baisserLeSon: true,
+            } as Parameters<typeof NativeSpeechRecognition.start>[0]),
             DELAI_PLUGIN_MS,
           )
           // En mode partiels, `start()` se résout dès que le service est
@@ -515,6 +594,11 @@ export function useSpeechRecognition() {
 
         const transcript = texteDuTour(flux.etat)
         noterEcoute("commande_fin", {
+          // « commande » : Raphaël a appuyé et parle. Ici un silence EST une
+          // perte — il attendait une réponse.
+          mode: "commande",
+          raison,
+          code: codeAndroid,
           duree_ms: Date.now() - flux.etat.debutAt,
           sessions: nbSessions,
           partiels: nbPartiels,

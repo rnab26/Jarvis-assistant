@@ -34,6 +34,45 @@ export interface ContexteAnnonce {
   /** La voix de Jarvis est coupée dans les réglages : on n'annonce rien. */
   voixCoupee: boolean
   maintenant: Date
+  /** L'app est à l'écran en ce moment : il s'en sert. */
+  appVisible?: boolean
+  /** Quand il a parlé à Jarvis pour la dernière fois, si on le sait. */
+  derniereParole?: Date | null
+}
+
+/**
+ * Combien de temps « il vient de me parler » reste vrai.
+ *
+ * Quinze minutes, et le choix se raisonne à partir de SA phrase type :
+ * « rappelle-moi dans dix minutes ». Un délai de dix minutes tomberait
+ * exactement sur la limite et raterait le cas qu'il décrit ; en dessous, le
+ * rappel qu'il vient de demander sortirait muet. Au-delà, on parlerait la
+ * nuit longtemps après qu'il a reposé le téléphone — ce que les heures de
+ * silence existent justement pour éviter.
+ */
+export const DELAI_USAGE_MS = 15 * 60 * 1000
+
+/**
+ * Est-il en train de s'en servir ?
+ *
+ * Sa demande du 6 sept. 2026 : « si on l'utilise pour lancer une action, il
+ * faudrait que ça marche ». Les heures de silence protègent son sommeil, pas
+ * son attention : elles taisent ce que Jarvis INITIE pendant qu'il ne s'en
+ * sert pas, jamais ce qu'il a demandé.
+ *
+ * Deux signes, l'un OU l'autre : l'app est à l'écran, ou il a parlé à Jarvis
+ * il y a moins de quinze minutes. Pas d'autre : « le téléphone est déverrouillé »
+ * ou « il a bougé » diraient qu'il est réveillé, pas qu'il attend une réponse
+ * de Jarvis.
+ */
+export function ilSenSertMaintenant(ctx: ContexteAnnonce): boolean {
+  if (!ctx.prefs.silenceLeveParUsage) return false
+  if (ctx.appVisible) return true
+  if (!ctx.derniereParole) return false
+  const depuis = ctx.maintenant.getTime() - ctx.derniereParole.getTime()
+  // Une date dans le futur (horloge décalée, valeur aberrante) ne doit pas
+  // lever le silence pour toujours.
+  return depuis >= 0 && depuis <= DELAI_USAGE_MS
 }
 
 /** Au-delà, ce n'est plus une annonce, c'est une lecture — et le point du
@@ -59,7 +98,13 @@ export type RaisonSilence = "desactive" | "voix_coupee" | "heures_de_silence" | 
 export function raisonDuSilence(notif: NotifRecue, ctx: ContexteAnnonce): RaisonSilence | null {
   if (!ctx.prefs.direAVoixHaute) return "desactive"
   if (ctx.voixCoupee) return "voix_coupee"
-  if (dansLaPlageSilencieuse(ctx.maintenant, ctx.prefs)) return "heures_de_silence"
+  // Les heures de silence ne s'appliquent QUE s'il ne s'en sert pas. Sa
+  // demande du 6 sept. : un rappel qu'il vient de demander doit se dire, même
+  // à 23 h. La plage elle-même n'est pas touchée — elle reste juste, et son
+  // passage par minuit est protégé par son propre contrôle.
+  if (dansLaPlageSilencieuse(ctx.maintenant, ctx.prefs) && !ilSenSertMaintenant(ctx)) {
+    return "heures_de_silence"
+  }
   if (!propre(notif.title) && !propre(notif.body)) return "rien_a_dire"
   return null
 }
@@ -70,9 +115,12 @@ export function raisonDuSilence(notif: NotifRecue, ctx: ContexteAnnonce): Raison
  * Les quatre raisons de se taire, dans cet ordre :
  *   1. il ne veut pas qu'on parle (l'interrupteur de Paramètres) ;
  *   2. la voix de Jarvis est coupée — ce réglage-là vaut pour tout ;
- *   3. on est dans ses heures de silence : la notification s'affiche, elle ne
- *      se dit pas. Même quand il vient d'appuyer dessus — s'il est réveillé à
- *      3 h du matin, il lit, il n'a pas besoin qu'on parle à côté de lui ;
+ *   3. on est dans ses heures de silence ET il ne s'en sert pas : la
+ *      notification s'affiche, elle ne se dit pas. S'il s'en sert — app à
+ *      l'écran, ou il vient de parler à Jarvis — elle se dit normalement.
+ *      C'est sa demande du 6 sept. 2026, et elle REMPLACE la règle
+ *      précédente, qui se taisait même quand il venait d'appuyer dessus :
+ *      les heures de silence protègent son sommeil, pas son attention ;
  *   4. il n'y a rien à dire.
  */
 export function phraseAnnonce(notif: NotifRecue, ctx: ContexteAnnonce): string | null {

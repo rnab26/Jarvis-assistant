@@ -377,5 +377,31 @@ doitLaisserPasser("ajoute un rendez-vous avec Yoni", "un rendez-vous sans date n
 doitLaisserPasser("", "phrase vide")
 doitLaisserPasser("euh", "un mot isolé qui ne veut rien dire")
 
+// ── L'incident du 5 sept. 2026, 21 h 07 ──────────────────────────────────
+//
+// Il a dit « appelle ma femme ». La reconnaissance a écrit « Jarvis appelle
+// mail ». Le journal le montre : la réponse est venue d'ICI (source
+// « locale »), pas du serveur — donc la consigne du modèle, qui sait
+// distinguer un prénom d'un mot-clé, n'a jamais été consultée. « mail » a
+// trouvé l'entrée système « Voice Mail » du répertoire, et l'appel est parti
+// vers le répondeur.
+//
+// Ce module ne doit plus rien décider dans ce cas : il rend la main au
+// serveur, qui demandera. Composer le numéro de quelqu'un d'autre ne se
+// rattrape pas.
+doitLaisserPasser("appelle mail", "« mail » est un mot d'appareil, pas quelqu'un")
+doitLaisserPasser("appelle message", "même classe : un mot d'appareil entendu à la place d'un nom")
+doitLaisserPasser("appelle SMS", "idem, quelle que soit la casse")
+doitLaisserPasser(
+  "envoie un sms à mail pour lui dire que j'arrive",
+  "un destinataire qui tient en un mot d'appareil n'est pas un destinataire",
+)
+
+// Et le garde-fou ne doit RIEN casser de ce qui marchait : à 21 h 08, la même
+// phrase correctement entendue a bien trouvé « Mel Ma Femme ❤ ».
+doitDonner("appelle Yoni", { action: "call_contact", contact_id: "ct-yoni" })
+doitDonner("appelle ma femme", { action: "call_contact", contact_name: "Ma femme" })
+doitDonner("appelle Mel", { action: "call_contact", contact_name: "Mel" })
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

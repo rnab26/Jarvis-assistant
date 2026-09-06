@@ -292,6 +292,47 @@ if (loyers.length >= 2) {
 }
 
 // ---------------------------------------------------------------------------
+// Une commande traitée SUR L'APPAREIL laisse quand même sa trace (5c3182c5).
+//
+// Les commandes que `interpreterLocalement` reconnaît ne passent jamais par
+// voice-command : c'est l'app elle-même qui écrit la ligne dans `echanges`,
+// avec le jeton de l'utilisateur. On rejoue donc ici EXACTEMENT ce que fait
+// `src/lib/echangeLocal.ts` — insertion puis `select=id` — et on exige qu'une
+// ligne revienne. Une écriture refusée par RLS ne dit rien : elle restreint
+// les lignes, PostgREST rend un succès, et la phrase disparaît de l'historique
+// sans que personne le voie. C'est ce qui est arrivé au rattrapage des
+// empreintes pendant deux jours (migration 0021).
+{
+  const dit = "Ajoute une tâche : rappeler le plombier."
+  const reponse = await fetch(`${URL_PROJET}/rest/v1/echanges?select=id`, {
+    method: "POST",
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${jeton}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({ user_id: userId, transcript: dit, reponse: "C'est noté." }),
+  })
+  const lignes = reponse.ok ? await reponse.json() : []
+  verifier(
+    "une commande traitée sur l'appareil s'écrit dans l'historique, et le prouve",
+    Array.isArray(lignes) && lignes.length === 1 && !!lignes[0].id,
+    `HTTP ${reponse.status} — l'app n'a pas pu garder la trace d'une commande locale ; ` +
+      "c'est le `.select(\"id\")` de echangeLocal.ts qui doit attraper ça",
+  )
+
+  const relu = sql(
+    `select transcript, reponse from echanges where user_id = '${userId}' and transcript like 'Ajoute une t%'`,
+  )
+  verifier(
+    "et on la retrouve mot pour mot, pas tronquée à 80 caractères comme dans journal_ecoute",
+    relu.length === 1 && relu[0].transcript === dit,
+    JSON.stringify(relu),
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Retrouver une CONVERSATION passée, pas seulement un fait (chantier caa54df2).
 //
 // On choisit exprès un échange dont la consigne d'extraction dit qu'il ne doit

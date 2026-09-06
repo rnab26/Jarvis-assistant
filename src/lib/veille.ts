@@ -39,8 +39,31 @@ export const RECUL_APRES_ECHEC_MS = 700
  * « error » compte comme un repos : sans ça, la moindre erreur tuait la
  * veille pour de bon (déjà signalé une fois, ne pas y revenir).
  */
-export function peutEcouterEnVeille(p: { actif: boolean; visible: boolean; statut: StatutVoix }): boolean {
+export function peutEcouterEnVeille(p: {
+  actif: boolean
+  visible: boolean
+  statut: StatutVoix
+  /**
+   * Une mise à jour est en train de s'installer.
+   *
+   * Sa demande du 6 sept. 2026, capture à l'appui : la fenêtre d'installation
+   * d'Android s'ouvrait PAR-DESSUS un « Conversation en cours — parle,
+   * coupe-moi si tu veux ». Ses mots : « stopper Jarvis de s'activer
+   * directement UNIQUEMENT s'il y a des mises à jour auto qui se lancent dès
+   * le lancement de l'app. »
+   *
+   * « Uniquement » : on suspend la VEILLE, c'est-à-dire ce que Jarvis
+   * déclenche tout seul. Un appui volontaire sur le cœur pendant une mise à
+   * jour reste obéi — il ne passe pas par ici.
+   *
+   * Optionnel, et faux par défaut : les appelants qui ne savent rien des
+   * mises à jour (le banc d'essai, la fenêtre de l'appui long) gardent
+   * exactement le comportement d'avant.
+   */
+  majEnCours?: boolean
+}): boolean {
   if (!p.actif || !p.visible) return false
+  if (p.majEnCours) return false
   return p.statut === "idle" || p.statut === "error"
 }
 

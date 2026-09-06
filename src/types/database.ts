@@ -19,6 +19,19 @@ export interface Task {
   status: TaskStatus
   created_at: string
   updated_at: string
+  /**
+   * Vrai quand cette tâche est dans la FILE D'ATTENTE : il l'a dictée, elle
+   * s'affiche, mais elle n'est pas encore écrite en base (réseau coupé).
+   *
+   * Absent partout ailleurs, et c'est voulu : une tâche relue depuis Postgres
+   * n'a pas ce champ. Il ne sert qu'à ne jamais lui laisser croire que c'est
+   * enregistré alors que ça ne l'est pas — sa règle du 6 sept.
+   */
+  enAttente?: boolean
+  /** Le dernier échec de renvoi, en clair, quand il y en a eu un. */
+  echecEnvoi?: string | null
+  /** On a cessé de renvoyer tout seul : ça attend un geste de lui. */
+  envoiBloque?: boolean
 }
 
 export interface TaskInput {
@@ -54,7 +67,23 @@ export interface DevItem {
 }
 
 /** Message du journal de bord : entre sessions, ou écrit par Raphaël. */
-export type DevLogKind = "question" | "reponse" | "info" | "blocage"
+/** « action » = ce que RAPHAËL doit faire de son côté, par opposition à
+ * « question », où il décide. Voir src/lib/decisions.ts. */
+export type DevLogKind = "question" | "reponse" | "info" | "blocage" | "action"
+
+/** Où en est une action de son côté. « Ça bloque » est le seul des trois qui
+ * apprenne quelque chose, et c'est celui qui manquait aux fiches. */
+export type EtatAction = "fait" | "pas_encore" | "bloque"
+
+/** Une réponse cliquable proposée par une session (colonne `options`, jsonb). */
+export interface OptionDecision {
+  cle: string
+  libelle: string
+  /** Ce que ce choix implique, en une phrase. */
+  aide: string | null
+  /** Celle que la session recommande, marquée comme telle. */
+  recommande: boolean
+}
 
 export interface DevLogEntry {
   id: string
@@ -65,6 +94,16 @@ export interface DevLogEntry {
   body: string
   answered_at: string | null
   created_at: string
+  /** Pourquoi la session pose la question — une question dont on ne voit pas
+   * l'enjeu reste sans réponse. */
+  pourquoi?: string | null
+  /** Les options cliquables, telles qu'écrites en base (jsonb, donc non
+   * fiable : lire avec `optionsDe`, jamais directement). */
+  options?: unknown
+  /** L'état d'une action, quand c'en est une. */
+  etat?: EtatAction | null
+  /** Une capture d'écran jointe, dans le bucket « cockpit ». */
+  photo_chemin?: string | null
 }
 
 export interface DevItemInput {

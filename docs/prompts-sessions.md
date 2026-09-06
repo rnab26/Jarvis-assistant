@@ -490,6 +490,12 @@ merge : grep -rn '^<<<<<<< ' --exclude-dir=node_modules .
 
 ## Prompt F — Cadrage : les décisions qui attendent Raphaël (4 sept., après-midi)
 
+**OBSOLÈTE depuis le 5 sept. au soir : ne plus le coller.** Le cadrage a été
+fait (fiche 4e952f48, huit décisions répondues, chantiers réécrits en tête de
+notes). Le découpage en vigueur est celui du journal de bord du 5 sept. à
+20h45 : trois fronts, « Le téléphone », « Voix et écoute », « Le cockpit »,
+avec leurs fichiers attribués. Gardé ici comme modèle d'une session de cadrage.
+
 Demandé par Raphaël le 4 sept. : « rédige-moi un prompt que je vais
 copier-coller dans une autre session, comme ça je le fais à part ». Cette
 session ne code rien : elle rassemble tout ce qui est marqué
@@ -543,3 +549,61 @@ conversations ; la lecture qui fait foi est écrite dans la note du chantier
 chantier `[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]`, et la session passe au
 suivant. Le chantier `85ae62b5` existe pour que ses réponses vivent dans son
 app plutôt que dans des artefacts qu'il faut aller relire un par un.
+
+
+## Le front « Le cockpit » du 5 sept. au soir — claude/cockpit-lisible-0509
+
+Ouvert après sa phrase : « là vraiment je commence à avoir des chantiers de
+partout, je ne comprends plus rien, je ne sais plus où mettre le nez. Je
+travaille de tous les côtés et toi aussi et il y a des chantiers ouverts de
+partout, mais je ne sais pas ce qui avance, ce qui n'avance pas. »
+
+**Fichiers tenus par ce front** (les autres sessions ne les touchent pas) :
+`src/components/cockpit/**`, `src/components/settings/**`,
+`src/components/ConfirmerAction.tsx`, `src/hooks/useDevItems.ts`,
+`useDevLog.ts`, `useTasks.ts`, `src/lib/journalBord.ts`,
+`journalDestinataire.ts`, `marqueurChantier.ts`, `themeChantier.ts`,
+`doublonChantier.ts`, `suggestionTheme.ts`, `annulation.ts`, `reglages.ts`,
+`ouJenSuis.ts`, `decisions.ts`, `memoirePrefs.ts`, `cockpitPrefs.ts`,
+`supabase/migrations/**`, `.claude/hooks/session-start.sh`, les
+`scripts/verifier-*cockpit*`, `verifier-sections.ts`, `verifier-reglages*`.
+
+**Ce qu'il NE touche pas** : `android/**`, `src/lib/commandeLocale.ts`,
+`voiceActions.ts`, `supabase/functions/voice-command/**` (session « Le
+téléphone », seule à déployer cette fonction) ; les hooks vocaux,
+`MicButton.tsx`, `src/lib/live/**` (session « Voix et écoute »).
+
+**Ce que ce front a changé pour tout le monde**, et qu'il faut connaître avant
+d'ouvrir une session sur un autre thème :
+
+1. **On ne publie plus d'artefact pour poser une question à Raphaël.** Elles
+   passent par `scripts/demander.sh` (voir le CLAUDE.md). Sa réponse revient
+   dans le bloc injecté au démarrage de chaque session.
+2. Le hook de démarrage injecte deux blocs de plus : « Ce qui attend une
+   DÉCISION de Raphaël » et « Ce que Raphaël a répondu ». Lis-les avant de
+   proposer quoi que ce soit — une question déjà tranchée qu'on repose est ce
+   qui l'épuise le plus.
+3. Le cockpit a un budget de hauteur mesuré : si tu ajoutes une carte,
+   `scripts/verifier-cockpit-web.mjs` la refusera tant que tu n'auras pas pris
+   la place à quelque chose qui fait doublon.
+
+## Les sessions que personne n'ouvre
+
+Depuis le 6 sept. 2026, une session peut être ouverte par un déclencheur
+horaire et non par Raphaël (chantier `59d8587f`, sa réponse : « Oui en continue
+même la journee »). Elle suit `docs/session-autonome.md`, qui n'est pas un
+prompt à coller : c'est une consigne versionnée, relue et discutée comme du
+code.
+
+Ce que ça change pour les sessions ordinaires, celles que Raphaël ouvre :
+
+1. **Réserve ce que tu traites, tout de suite.** Une session autonome regarde
+   `claim_dev_item` avant de démarrer et se retire s'il y a une réservation
+   vivante. Une session qui travaille sans réserver est invisible pour elle —
+   et deux sessions partiront sur le même chantier.
+2. **Un chantier marqué `[LIBRE]` est une promesse.** C'est le seul marqueur
+   qu'une session sans personne derrière elle a le droit de prendre. Ne le pose
+   que sur un chantier réellement spécifié de bout en bout.
+3. Ce qui n'a rien à voir avec un chantier — un correctif de passage, une
+   trouvaille — n'est pas visible d'elle. Comme d'habitude : ça devient une
+   ligne de `dev_items`, pas une note dans `dev_log`.

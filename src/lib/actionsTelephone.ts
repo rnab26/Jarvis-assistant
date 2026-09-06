@@ -1,6 +1,11 @@
 import { registerPlugin } from "@capacitor/core"
+import type { ResultatOuverture } from "@/lib/actionsTelephoneMusique"
 
 export type CommandeMedia = "play_pause" | "lecture" | "pause" | "suivant" | "precedent" | "stop"
+
+// Le type et la phrase vivent dans un module pur, vérifiable sans
+// téléphone : voir src/lib/actionsTelephoneMusique.ts.
+export type { ResultatOuverture } from "@/lib/actionsTelephoneMusique"
 
 export interface ApplicationInstallee {
   nom: string
@@ -18,12 +23,28 @@ export interface ContactTelephone {
 
 interface ActionsTelephonePlugin {
   listerApplications(): Promise<{ applications: ApplicationInstallee[] }>
+  /** Celles qui savent PASSER un appel — pas les mêmes que celles qu'on peut
+   * ouvrir. C'est parmi elles qu'il choisit son application d'appel. */
+  listerApplicationsAppel(): Promise<{ applications: ApplicationInstallee[] }>
+  /** Celles qui savent ouvrir un ITINÉRAIRE (`geo:`). La ligne « Itinéraires »
+   * de Paramètres n'avait aucune liste : impossible de voir Waze, impossible
+   * de le choisir — son retour du 6 sept. 2026. */
+  listerApplicationsItineraire(): Promise<{ applications: ApplicationInstallee[] }>
+  /** Celles qui savent recevoir une demande de MUSIQUE, ou qui se déclarent
+   * lecteurs de musique. */
+  listerApplicationsMusique(): Promise<{ applications: ApplicationInstallee[] }>
   lireContacts(): Promise<{ contacts: ContactTelephone[] }>
-  ouvrirApplication(options: { paquet?: string; recherche?: string }): Promise<void>
-  preparerWhatsApp(options: { texte: string; numero?: string }): Promise<void>
+  ouvrirApplication(options: {
+    paquet?: string
+    recherche?: string
+  }): Promise<{ resultat?: ResultatOuverture }>
+  preparerWhatsApp(options: { texte: string; numero?: string; paquet?: string }): Promise<void>
+  /** Les WhatsApp réellement installés : l'ordinaire, celui d'affaires, ou
+   * les deux. Quand les deux sont là, on demande — on ne devine pas. */
+  listerApplicationsWhatsApp(): Promise<{ applications: ApplicationInstallee[] }>
   preparerSms(options: { texte: string; numero?: string }): Promise<void>
   envoyerTexte(options: { paquet: string; texte: string }): Promise<void>
-  composer(options: { numero: string }): Promise<{ direct: boolean }>
+  composer(options: { numero: string; paquet?: string }): Promise<{ direct: boolean }>
   demanderPermissionAppel(): Promise<{ granted: boolean }>
   commanderMedia(options: { commande: CommandeMedia }): Promise<void>
   mettreAlarme(options: { heure: number; minute: number; libelle?: string }): Promise<void>

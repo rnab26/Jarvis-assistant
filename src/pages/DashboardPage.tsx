@@ -4,12 +4,15 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { LoadError } from "@/components/LoadError"
 import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
+import { ChantiersEgares } from "@/components/tasks/ChantiersEgares"
+import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import type { Task } from "@/types/database"
 
 export function DashboardPage() {
-  const { tasksState } = useJarvisData()
+  const { tasksState, devItemsState, notificationsState } = useJarvisData()
   const {
     tasks,
     categories,
@@ -21,9 +24,34 @@ export function DashboardPage() {
     deleteTask,
     toggleStatus,
     addCategory,
+    fileEnAttente,
+    fileIllisible,
+    relancerEnvoi,
+    oublierEnAttente,
   } = tasksState
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
   const [newCategoryName, setNewCategoryName] = useState("")
+
+  /**
+   * Une « tâche » qui est en fait une demande à Claude passe dans le cockpit.
+   *
+   * On crée le chantier ET on marque la tâche faite — on ne la SUPPRIME
+   * jamais : c'est sa liste, et il doit pouvoir retrouver ce qu'il a dicté.
+   * La note d'origine part avec le chantier, sinon le contexte resterait dans
+   * la tâche pendant que le travail part sans lui.
+   */
+  async function enFaireUnChantier(task: Task, titre: string, notes: string | null) {
+    await devItemsState.addDevItem({
+      title: titre,
+      notes: [notes, `Dicté comme tâche perso le ${new Date(task.created_at).toLocaleDateString("fr-FR")}, remis dans le cockpit depuis l'onglet Tâches.`]
+        .filter(Boolean)
+        .join("\n\n"),
+      status: "todo",
+      priority: "normal",
+      theme: null,
+    })
+    await toggleStatus(task)
+  }
 
   const filteredTasks =
     categoryFilter === ALL_CATEGORIES
@@ -50,6 +78,7 @@ export function DashboardPage() {
         />
         <TaskFormDialog
           categories={categories}
+          taches={tasks}
           onSubmit={addTask}
           trigger={
             <Button size="sm">
@@ -72,6 +101,28 @@ export function DashboardPage() {
         </Button>
       </div>
 
+      {/* En tête, et seulement s'il y en a. Le signalement existait déjà sur
+          chaque ligne ; avec vingt-neuf tâches réparties par catégorie, il ne
+          se trouvait que par hasard — ses mots du 6 sept. : « je ne vois pas
+          de quelles 7 lignes existantes tu parles ». La carte porte sur TOUTES
+          ses tâches, pas sur ce que le filtre de catégorie laisse passer :
+          une tâche égarée dans une catégorie qu'il ne regarde pas est
+          précisément celle qu'il ne trouve jamais. */}
+      {!loading && !error && (
+        <ChantiersEgares
+          tasks={tasks}
+          devItems={devItemsState.devItems}
+          onEnFaireUnChantier={enFaireUnChantier}
+          onMarquerFaite={toggleStatus}
+        />
+      )}
+
+      {/* Ce qu'il a dicté sans réseau. La carte ne s'affiche PAS quand il n'y
+          a rien : un bandeau « 0 en attente » use le signal qui doit servir le
+          jour où il y en a. Elle est au-dessus de la liste et pas dedans,
+          parce que le filtre de catégorie ne doit pas pouvoir la masquer. */}
+      <EnAttenteDenvoi file={fileEnAttente} illisible={fileIllisible} />
+
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>
       ) : error ? (
@@ -83,6 +134,10 @@ export function DashboardPage() {
           onToggle={toggleStatus}
           onUpdate={updateTask}
           onDelete={deleteTask}
+          onEnFaireUnChantier={enFaireUnChantier}
+          prefsNotifs={notificationsState.prefs}
+          onRelancerEnvoi={relancerEnvoi}
+          onOublierEnAttente={oublierEnAttente}
         />
       )}
     </div>

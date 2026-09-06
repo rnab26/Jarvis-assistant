@@ -86,6 +86,16 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/ModeLive.tsx",
   },
   {
+    cle: "jarvis_sessions_autonomes",
+    ou: "Paramètres › Le cockpit › Sessions autonomes",
+    fichier: "src/components/settings/SessionsAutonomes.tsx",
+  },
+  {
+    cle: "jarvis_moteur_auto",
+    ou: "Paramètres › Le cockpit › Le moteur de langue",
+    fichier: "src/components/settings/MoteurDeLangue.tsx",
+  },
+  {
     cle: "jarvis_theme",
     ou: "Paramètres › Apparence › Thème",
     fichier: "src/components/settings/Theme.tsx",
@@ -107,6 +117,16 @@ export const REGLAGES: ReglageDeclare[] = [
   },
   {
     cle: "jarvis_app_ia",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications d'IA",
+    fichier: "src/components/settings/ConnecteursIA.tsx",
+  },
+  {
+    cle: "jarvis_app_appels",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
+    fichier: "src/components/settings/AppsParDefaut.tsx",
+  },
+  {
+    cle: "jarvis_app_whatsapp",
     ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
     fichier: "src/components/settings/AppsParDefaut.tsx",
   },
@@ -116,9 +136,34 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/AppsParDefaut.tsx",
   },
   {
+    cle: "jarvis_bulle_flottante",
+    ou: "Paramètres › Ce que Jarvis utilise › La bulle Jarvis, par-dessus tout",
+    fichier: "src/components/settings/BulleFlottante.tsx",
+  },
+  {
+    cle: "jarvis_liste_noire",
+    ou: "Paramètres › Ce que Jarvis utilise › Appuyer sur l'écran à ta place",
+    fichier: "src/components/settings/ControleEcran.tsx",
+  },
+  {
+    cle: "jarvis_delai_annulation",
+    ou: "Paramètres › Ce que Jarvis utilise › Le temps de l'arrêter",
+    fichier: "src/components/settings/FenetreAnnulation.tsx",
+  },
+  {
     cle: "jarvis_notifications",
     ou: "Paramètres › Notifications › Quand Jarvis te dérange",
     fichier: "src/components/settings/Notifications.tsx",
+  },
+  {
+    cle: "jarvis_memoire_retention",
+    ou: "Paramètres › Mémoire › Combien de temps Jarvis garde tes conversations",
+    fichier: "src/components/settings/Memoire.tsx",
+  },
+  {
+    cle: "jarvis_cockpit_fenetre",
+    ou: "Paramètres › Le cockpit › Ce qui compte comme « livré »",
+    fichier: "src/components/settings/Cockpit.tsx",
   },
   {
     cle: "jarvis_maj_auto",
@@ -154,9 +199,37 @@ export const STOCKAGE_LOCAL_ASSUME: { prefixe: string; pourquoi: string }[] = [
       "La question envoyée à une IA installée, en attendant que Raphaël en partage la réponse. Un aller-retour en cours sur CET appareil, qui vit une demi-heure : la réponse se partage depuis le téléphone d'où la question est partie, pas depuis un autre.",
   },
   {
-    prefixe: "jarvis_cockpit_vu",
+    prefixe: "jarvis_file_en_attente",
     pourquoi:
-      "Date de la dernière visite du cockpit sur CET écran, pour dire ce qui a bougé depuis. Un repère de lecture, pas une préférence : la retrouver sur un autre appareil n'aurait aucun sens.",
+      "Ce qu'il a dicté sans réseau, en attendant que ça s'écrive vraiment. Ce n'est PAS une préférence — il n'y a rien à régler — et la recopier en base n'aurait aucun sens : ce qu'elle contient a justement échoué à y arriver. Un tampon propre à l'appareil où la dictée a eu lieu, vidé dès que le réseau revient.",
+  },
+  {
+    prefixe: "jarvis_autorisations_vues",
+    pourquoi:
+      "L'écran des autorisations a déjà été présenté sur CET appareil. Les autorisations Android sont propres au téléphone : recopier ce repère en base ferait sauter l'écran sur un appareil neuf, qui n'a justement rien d'accordé.",
+  },
+]
+
+/**
+ * Les clés locales qui sont recopiées en base par LEUR PROPRE table, et non
+ * par `reglages`.
+ *
+ * Troisième cas, découvert le 6 sept. 2026 avec `jarvis_cockpit_vu` : une
+ * donnée qui doit suivre Raphaël d'un écran à l'autre, mais qui n'est PAS une
+ * préférence. La mettre dans `REGLAGES` obligerait à lui offrir un contrôle
+ * dans Paramètres — et un réglage « date de ta dernière visite » n'aurait
+ * aucun sens à l'écran. La laisser dans `STOCKAGE_LOCAL_ASSUME` faisait dire
+ * au code le contraire de ce qu'il fait.
+ *
+ * Le localStorage reste le chemin RAPIDE (l'écran s'affiche avant le réseau) ;
+ * la base porte la vérité.
+ */
+export const MIROIR_EN_BASE: { prefixe: string; table: string; pourquoi: string }[] = [
+  {
+    prefixe: "jarvis_cockpit_vu",
+    table: "visites_cockpit",
+    pourquoi:
+      "Date de la dernière visite du cockpit. Ce n'est pas une préférence — rien à régler dans Paramètres — mais elle doit suivre son compte : il utilise l'app ET le site dans la même matinée, et appuyer sur « Vu » d'un côté doit valoir de l'autre. Chemin rapide en local, vérité en base (migration 0025).",
   },
 ]
 

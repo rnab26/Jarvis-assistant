@@ -17,6 +17,9 @@ import {
 } from "@/lib/veille"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
+import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
+import { signalerErreur } from "@/lib/erreurs"
+import { cibleDeLAction, echecDeLAction, echecSignalePar, type TourJarvis } from "@/lib/retours"
 import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appPreferee,
@@ -28,6 +31,9 @@ import {
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
+import { consigneQuestionApp, suiteDeLaQuestion, type QuestionEnAttente } from "@/lib/questionAppLive"
+import { retourOuAveu } from "@/lib/retourVide"
+import { majEnCours, sAbonnerMaj } from "@/lib/majEnCours"
 import { ecrireModeLive, lireModeLive } from "@/lib/livePrefs"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import type { DevItem } from "@/types/database"
@@ -194,6 +200,61 @@ export function MicButton({
   // (appui, mot-clé reconnu) prend la main. La veille compare avant/après sa
   // rafale : s'il a changé, elle ne touche plus à rien.
   const priseRef = useRef(0)
+  // En Live, « avec quelle application ? » est posée par le modèle et la
+  // réponse revient au tour suivant : on garde ici la demande à rejouer.
+  // Volontairement une ref et pas un état : personne ne l'affiche, et un
+  // rendu de plus pendant que Google tient le micro ne sert à rien.
+  const questionAppRef = useRef<QuestionEnAttente | null>(null)
+
+  // La dernière phrase que les règles locales ont reconnue toute seule.
+  //
+  // Une commande traitée sur l'appareil ne passe jamais par voice-command,
+  // donc personne n'écrit sa ligne dans `echanges` : elle disparaissait de
+  // l'historique, et deux chantiers dictés le 5 sept. ont été perdus comme ça
+  // (chantier 5c3182c5). On retient laquelle, pour l'écrire une fois que la
+  // réponse est connue — et une seule fois : une phrase résolue par le
+  // serveur, déjà écrite là-bas, ne doit pas se retrouver en double.
+  const derniereLocaleRef = useRef<string | null>(null)
+
+  /** Garde la trace d'une commande que l'appareil a traitée sans le serveur. */
+  function tracerSiLocale(transcript: string, reponse: string | null) {
+    if (derniereLocaleRef.current !== transcript) return
+    derniereLocaleRef.current = null
+    enregistrerEchangeLocal(transcript, reponse)
+  }
+
+  // Le tour précédent, pour pouvoir lui attribuer un reproche.
+  //
+  // « Tu n'as pas lancé la musique que je t'ai demandée » — l'exemple vécu de
+  // Raphaël le 3 sept. : aucune exception n'avait été levée, l'action avait
+  // « réussi », et ce reproche partait dans le vide. C'est le SEUL témoin d'un
+  // échec que Jarvis croit être une réussite (chantier 25a58902).
+  const dernierTourRef = useRef<TourJarvis | null>(null)
+
+  /** Ce que la phrase courante dit du tour précédent — le plus souvent rien. */
+  function constaterEchec(phrase: string, source: "voix" | "live") {
+    const echec = echecSignalePar(phrase, dernierTourRef.current, Date.now())
+    if (!echec) return
+    // Une fois signalé, on oublie le tour : sinon deux reproches d'affilée sur
+    // la même chose compteraient deux fois, et le registre exagérerait.
+    dernierTourRef.current = null
+    signalerErreur(echec.categorie, echec.titre, {
+      detail: echec.detail,
+      contexte: echec.contexte,
+      source,
+    })
+  }
+
+  /** Retient ce qui vient d'être fait, au cas où la phrase suivante le conteste. */
+  function retenirLeTour(transcript: string, actions: VoiceAction[], reponse: string | null) {
+    dernierTourRef.current = {
+      transcript,
+      actions: actions.map((a) => a.action),
+      cible: cibleDeLAction(actions[0] as unknown as Record<string, unknown>),
+      reponse,
+      at: Date.now(),
+    }
+  }
 
   /**
    * Envoie un transcript à la Edge Function et renvoie les actions à exécuter.
@@ -228,8 +289,12 @@ export function MicButton({
     })
     if (local) {
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: local.length })
+      derniereLocaleRef.current = transcript
       return local
     }
+    // Le serveur écrira lui-même la ligne dans `echanges` : rien à tracer ici,
+    // et surtout pas la phrase précédente.
+    derniereLocaleRef.current = null
     const t0 = Date.now()
 
     // Borné dans le temps, comme tout le reste des appels du projet :
@@ -312,6 +377,10 @@ export function MicButton({
     originalTranscript = transcript,
     round = 0,
   ): Promise<boolean> {
+    // Seulement au premier tour : les tours suivants rejouent une phrase
+    // construite par l'app (question de précision, préférence d'application),
+    // pas une phrase de Raphaël — les prendre pour une redite serait faux.
+    if (round === 0) constaterEchec(transcript, "voix")
     setStatus("processing")
     const actions = await resolveTranscript(transcript)
 
@@ -357,6 +426,8 @@ export function MicButton({
     }
 
     const reply = await executerActions(actions, originalTranscript)
+    tracerSiLocale(transcript, reply)
+    retenirLeTour(transcript, actions, reply)
 
     setLastReply(reply)
     setStatus("speaking")
@@ -400,6 +471,20 @@ export function MicButton({
         // compte Google pas encore branché, accès retiré, Google qui refuse.
         // Ces messages-là sont écrits pour être dits — les avaler ferait
         // croire que Jarvis n'a pas entendu la demande.
+        // Une action qui lève, c'est un échec sans le moindre doute : on le
+        // range avant de laisser l'erreur remonter, sinon elle ne laisse
+        // qu'un message rouge de cinq secondes à l'écran.
+        const echec = echecDeLAction(
+          action.action,
+          cibleDeLAction(action as unknown as Record<string, unknown>),
+          originalTranscript,
+          e,
+        )
+        signalerErreur(echec.categorie, echec.titre, {
+          detail: echec.detail,
+          contexte: echec.contexte,
+          source: "voix",
+        })
         if (e instanceof AgendaError) reponses.push(e.message)
         else throw e
       }
@@ -417,7 +502,22 @@ export function MicButton({
     if (triggered.length > 0) {
       reply += ` Au fait, ${triggered.map((p) => p.reminder).join(" ")}`
     }
-    return reply
+
+    // AUCUNE ACTION N'A RENDU DE PHRASE. Vu deux fois dans son journal le
+    // 6 sept. sur « réponds à mel ma femme » puis « envoyer le message
+    // maintenant » : le modèle Live recevait "" et comblait le silence en
+    // annonçant que le message était parti. On avoue au lieu de se taire, et
+    // on SIGNALE — sinon on aurait juste rendu Jarvis poli sur un défaut
+    // qu'on n'aurait plus jamais retrouvé.
+    const retour = retourOuAveu(reply)
+    if (retour.vide) {
+      signalerErreur("action", "Une action n'a rien répondu", {
+        detail: `actions : ${actions.map((a) => a.action).join(", ") || "(aucune)"}`,
+        contexte: originalTranscript,
+        source: "voix",
+      })
+    }
+    return retour.texte
   }
 
   // --- Mode conversation Live (prototype, décision de Raphaël du 4 sept.) ---
@@ -480,13 +580,44 @@ export function MicButton({
       onReponse: (texte) => setLastReply(texte),
       onCommande: async (demande) => {
         setLastUserText(demande)
+        constaterEchec(demande, "live")
+
+        // Une question « avec quelle application ? » posée au tour précédent
+        // attend peut-être sa réponse ici (chantier d3b6eeb4).
+        const suite = suiteDeLaQuestion(questionAppRef.current, demande, Date.now())
+        let aRejouer = demande
+        if (suite.suite !== "normale") questionAppRef.current = null
+        if (suite.suite === "enregistrer") {
+          await executerActionTelephone(
+            { action: "set_app_preference", category: suite.categorie as CategorieAppTelephone, app_name: suite.app },
+            [],
+          )
+          // La préférence est connue : on rejoue la demande d'origine, qui
+          // ne sera plus ambiguë.
+          aRejouer = suite.demande
+          setLastUserText(aRejouer)
+        }
+
         // Le rendu courant, pas celui de l'ouverture : une tâche ajoutée
         // pendant la conversation doit se voir à la commande suivante.
-        const actions = await derniersRef.current.resolveTranscript(demande)
+        const actions = await derniersRef.current.resolveTranscript(aRejouer)
         // Une question de précision ne peut pas ouvrir un second micro : on
         // la rend au modèle, qui la posera de vive voix.
         if (actions[0]?.action === "clarify") return actions[0].message ?? "Peux-tu préciser ?"
-        return await derniersRef.current.executerActions(actions, demande)
+
+        // Même chose pour l'app du téléphone : sans la question, Android
+        // ouvrirait son sélecteur « Terminer l'action avec… ». On mémorise
+        // la demande pour la rejouer quand il aura répondu.
+        const question = actions.length === 1 ? questionAmbigueAppTelephone(actions[0]) : null
+        if (question) {
+          questionAppRef.current = { demande: aRejouer, categorie: question.category, poseeAt: Date.now() }
+          return consigneQuestionApp(question.message)
+        }
+
+        const reponse = await derniersRef.current.executerActions(actions, aRejouer)
+        tracerSiLocale(aRejouer, reponse)
+        retenirLeTour(aRejouer, actions, reponse)
+        return reponse
       },
       onEtat: (etat, detail) => {
         if (etat === "connexion") setStatus("processing")
@@ -645,6 +776,17 @@ export function MicButton({
   // En mode Live aussi : dire « Jarvis » ouvre la conversation. Pendant la
   // conversation, l'état n'est jamais au repos, donc la veille attend.
   const veilleActive = wakeWordEnabled && visible
+
+  // Une mise à jour qui s'installe suspend la veille (voir majEnCours.ts et
+  // peutEcouterEnVeille). L'état sert à l'AFFICHAGE, la ref à la boucle —
+  // qui est montée une fois et ne verrait jamais un état changé après coup.
+  const [majEnCoursEtat, setMajEnCoursEtat] = useState(majEnCours)
+  const majEnCoursRef = useRef(majEnCoursEtat)
+  majEnCoursRef.current = majEnCoursEtat
+  useEffect(() => {
+    setMajEnCoursEtat(majEnCours())
+    return sAbonnerMaj(setMajEnCoursEtat)
+  }, [])
   // LES FONCTIONS APPELÉES DEPUIS UN EFFET PASSENT PAR CETTE REF, JAMAIS EN
   // DIRECT. La boucle de veille (et les deux lanceurs ci-dessous) vivent
   // dans des effets montés une seule fois : ce qu'ils appellent en direct
@@ -664,7 +806,16 @@ export function MicButton({
       let echecDemarrage = false
       let rafalesMuettes = 0
       while (!cancelled) {
-        if (!peutEcouterEnVeille({ actif: true, visible: true, statut: statusRef.current })) {
+        if (
+          !peutEcouterEnVeille({
+            actif: true,
+            visible: true,
+            statut: statusRef.current,
+            // Relu à CHAQUE tour, pas capturé au montage : une mise à jour
+            // commence après le démarrage de la boucle, pas avant.
+            majEnCours: majEnCoursRef.current,
+          })
+        ) {
           await new Promise((r) => setTimeout(r, 400))
           continue
         }
@@ -807,13 +958,23 @@ export function MicButton({
           était réellement actif : un indicateur qui n'apparaît qu'une fraction
           du temps revient à ne rien indiquer. */}
       {wakeWordEnabled && (status === "wake-listening" || status === "idle") && (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="relative flex size-2">
-            <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
-            <span className="relative inline-flex size-2 rounded-full bg-primary" />
-          </span>
-          {modeLive ? "Dis « Jarvis » pour lancer la conversation" : "Dis « Jarvis » quand tu veux"}
-        </p>
+        majEnCoursEtat ? (
+          // Le DIRE plutôt que de rester muet : une veille suspendue sans un
+          // mot se lit exactement comme un mot-clé qui ne marche pas — le
+          // défaut qu'il signalait le 3 sept. (« je ne sais jamais ce qui est
+          // réellement actif »).
+          <p className="text-xs text-muted-foreground">
+            Mise à jour en cours — je me remets à l'écoute juste après.
+          </p>
+        ) : (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-primary" />
+            </span>
+            {modeLive ? "Dis « Jarvis » pour lancer la conversation" : "Dis « Jarvis » quand tu veux"}
+          </p>
+        )
       )}
       {(lastUserText || lastReply) && (
         <div className="max-w-xs text-center text-sm">

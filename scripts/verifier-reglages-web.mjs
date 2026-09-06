@@ -171,6 +171,205 @@ try {
     "la plupart des tâches dictées n'ont qu'une date : sans ce réglage, elles sonneraient à une heure imposée",
   )
 
+  // ── Les sessions autonomes ──
+  // Ça dépense son crédit et ça pousse du code pendant qu'il dort : il doit
+  // pouvoir tout arrêter d'un geste, et distinguer « rien à faire cette nuit »
+  // de « le déclencheur ne tourne plus ».
+  const autonomes = page.locator("#autonomes")
+  const autonomesVide = page.locator("#autonomes-vide")
+  const autonomesSilence = page.locator("#autonomes-silence")
+  const autonomesPanne = page.locator("#autonomes-panne")
+
+  verifier(
+    "l'interrupteur des sessions autonomes est là, et allumé par défaut",
+    (await autonomes.getByLabel("Travailler sans moi").isVisible()) &&
+      (await autonomes.getByLabel("Travailler sans moi").isChecked()),
+    "sans lui, il ne peut arrêter les sessions qu'en nous le demandant",
+  )
+  verifier(
+    "ce que la dernière passe a livré se lit sans déplier",
+    await autonomes.getByText(/Sections repliables livrées/).first().isVisible(),
+    "sinon il découvre au réveil du code sans savoir d'où il vient",
+  )
+  verifier(
+    "une passe qui s'est retirée dit pourquoi",
+    await autonomes.getByText(/Une session travaille déjà/).isVisible(),
+  )
+
+  await autonomes.getByLabel("Travailler sans moi").click()
+  await pause(200)
+  verifier(
+    "l'éteindre le dit tout de suite à l'écran",
+    await autonomes.getByText("Éteint", { exact: true }).isVisible(),
+    "un interrupteur qui ne change rien à l'écran ne dit pas s'il a été pris en compte",
+  )
+  await autonomes.getByLabel("Travailler sans moi").click()
+  await pause(200)
+
+  verifier(
+    "aucune passe encore enregistrée : l'écran vide est traité",
+    await autonomesVide.getByText(/En attente de la première passe/).isVisible(),
+  )
+  verifier(
+    "deux jours de silence ne se lisent PAS comme « rien à faire »",
+    await autonomesSilence.getByText(/Plus rien ne passe/).isVisible(),
+    "c'est exactement le cas où le déclencheur est mort sans que personne le voie",
+  )
+  verifier(
+    "une lecture en échec ne se lit pas comme une absence de passe",
+    await autonomesPanne.getByText(/Impossible de lire les passes/).isVisible(),
+  )
+
+  // ── Ce que Jarvis a consommé aujourd'hui ──
+  // Sa demande du 5 sept. : « savoir combien il me reste de crédit et à
+  // combien de temps de discussion ça équivaut ». La moitié des contrôles qui
+  // suivent vérifie un SILENCE, et c'est le point : il n'y a pas de solde sur
+  // l'offre gratuite, et un chiffre inventé se lirait comme une mesure.
+  const conso = page.locator("#conso")
+  const consoSecours = page.locator("#conso-secours")
+  const consoVide = page.locator("#conso-vide")
+  const consoPanne = page.locator("#conso-panne")
+
+  verifier(
+    "la carte dit ses phrases du jour et ses jetons",
+    (await conso.getByText("40 phrases").isVisible()) &&
+      (await conso.getByText(/de jetons/).isVisible()),
+  )
+  verifier(
+    "et ce qu'on sait vraiment de la marge, sans jamais inventer de plafond",
+    await conso.getByText(/au moins 100 phrases passent dans une journée, mesuré/).isVisible(),
+    "les plafonds ne se lisent que dans le corps d'un 429, donc une fois dépassés",
+  )
+  {
+    // LE CONTRÔLE QUI COMPTE LE PLUS : aucun solde, aucun pourcentage. Un
+    // chiffre en euros ou en % se lit comme une mesure, et il s'est déjà
+    // retrouvé sans Jarvis deux fois alors que tout avait l'air normal.
+    const texte = (await conso.innerText()).replace(/\s+/g, " ")
+    verifier(
+      "aucun solde en argent, aucun pourcentage d'un plafond supposé",
+      !/[%€$]|\d+\s*(euros?|crédits? restants?)/i.test(texte),
+      `la carte affiche : ${texte.slice(0, 120)}…`,
+    )
+    verifier(
+      "un refus « par minute » est affiché mais ne lève AUCUNE alerte",
+      /4 refus/.test(texte) && /ça se lève tout seul en une minute/.test(texte),
+      "c'est le fonctionnement normal quand il enchaîne : un bandeau quotidien n'est plus lu",
+    )
+  }
+  verifier(
+    "aucune alerte sur une journée ordinaire",
+    (await conso.locator(".text-destructive").count()) === 0,
+    "sinon la vraie alerte, le jour venu, ne se distinguerait plus du décor",
+  )
+
+  verifier(
+    "quand ses phrases passent par un secours, la carte le dit",
+    (await consoSecours.getByText("sur un secours").isVisible()) &&
+      (await consoSecours.getByText(/le modèle principal ne répond pas/).isVisible()),
+    "le rang vient du serveur : l'app ne peut pas lire le secret GEMINI_MODELE",
+  )
+
+  verifier(
+    "une journée sans phrase le dit, sans faire croire à une panne",
+    (await consoVide.getByText("Aucune phrase aujourd'hui.").isVisible()) &&
+      (await consoVide.getByText(/ne veut pas dire que Jarvis n'a jamais servi/).isVisible()),
+  )
+
+  verifier(
+    "une lecture en échec ne se lit PAS comme « rien consommé »",
+    await consoPanne.getByText(/Ce n'est pas « rien consommé »/).isVisible(),
+    "ce serait le rassurer juste avant un quota vide",
+  )
+
+  // ── La durée de conservation des conversations ──
+  // Ce réglage EFFACE, à chaque phrase, sans corbeille. Ce qui compte à
+  // l'écran n'est pas qu'il existe : c'est qu'il demande AVANT, et qu'il dise
+  // combien de conversations vont disparaître.
+  const memoire = page.locator("#memoire")
+  const memoireVide = page.locator("#memoire-vide")
+  const memoirePanne = page.locator("#memoire-panne")
+
+  verifier(
+    "la durée de conservation est réglable, sans limite comprise",
+    (await memoire.getByRole("button", { name: "Garder Sans limite" }).isVisible()) &&
+      (await memoire.getByRole("button", { name: "Garder 7 jours" }).isVisible()),
+    "elle était écrite en dur dans une fonction SQL, invisible et impossible à changer",
+  )
+  verifier(
+    "et le défaut ne détruit rien",
+    (await memoire
+      .getByRole("button", { name: "Garder Sans limite" })
+      .getAttribute("aria-pressed")) === "true",
+    "supprimer est irréversible, garder ne l'est pas",
+  )
+  verifier(
+    "la carte dit combien de conversations sont gardées",
+    await memoire.getByText(/4 conversations gardées/).isVisible(),
+  )
+
+  await memoire.getByRole("button", { name: "Garder 30 jours" }).click()
+  await pause(250)
+  verifier(
+    "raccourcir la durée DEMANDE avant d'effacer",
+    await page.getByText("Ne garder que 30 jours ?").isVisible(),
+    "un appui de travers effacerait des mois de conversations, sans corbeille",
+  )
+  verifier(
+    "et dit combien vont disparaître, nommément",
+    await page.getByText(/2 conversations/).first().isVisible(),
+    "« des conversations seront effacées » ne permet pas de décider",
+  )
+  await page.getByRole("button", { name: "Annuler" }).first().click()
+  await pause(250)
+  verifier(
+    "annuler ne change rien",
+    (await memoire
+      .getByRole("button", { name: "Garder Sans limite" })
+      .getAttribute("aria-pressed")) === "true",
+  )
+
+  await memoireVide.getByRole("button", { name: "Garder 7 jours" }).click()
+  await pause(250)
+  verifier(
+    "sans rien à perdre, la fenêtre le dit au lieu d'annoncer une purge",
+    await page.getByText(/Rien n'est effacé aujourd'hui/).isVisible(),
+    "il renoncerait à un réglage qui ne détruit rien",
+  )
+  await page.getByRole("button", { name: "Annuler" }).first().click()
+  await pause(250)
+
+  await memoirePanne.getByRole("button", { name: "Garder 7 jours" }).click()
+  await pause(250)
+  verifier(
+    "une lecture en échec ne se lit PAS comme « aucune conversation »",
+    await page.getByText(/Impossible de dire combien/).isVisible(),
+    "il confirmerait en croyant ne rien perdre, juste avant une purge qui efface tout",
+  )
+  await page.getByRole("button", { name: "Annuler" }).first().click()
+  await pause(250)
+  verifier(
+    "et la carte signale l'incident au lieu de rester muette",
+    await memoirePanne.getByText(/n'a pas pu être chargée/).isVisible(),
+  )
+
+  // ── Combien de SES tâches sonneront vraiment ──
+  // Sa question du chantier 336be5fb : « les taches hors cockpit n'ont que des
+  // dates d'échéance, est-ce que ça correspond au rappel ? » Mesuré chez lui
+  // le 6 sept. : 4 sonneront sur 30, 22 n'ont pas de date, 4 sont en retard.
+  // « 12 notifications programmées », juste en dessous, ne répond pas à ça :
+  // ce compte mélange les échéances, les points du matin et le reste.
+  verifier(
+    "la carte dit combien de ses tâches feront réellement sonner quelque chose",
+    await ok.getByText(/Sur tes 6 tâches à faire/).isVisible(),
+    "il ne pouvait pas savoir si ses dates d'échéance déclenchaient quoi que ce soit",
+  )
+  verifier(
+    "et pourquoi les autres ne sonneront pas",
+    (await ok.getByText(/n'ont pas de date/).isVisible()) &&
+      (await ok.getByText(/est en retard|sont en retard/).isVisible()),
+    "« 2 sur 6 » sans explication laisse la question entière",
+  )
+
   // ── Ce qui est programmé se voit, et s'annule en le demandant ──
   verifier(
     "le nombre de notifications programmées s'affiche",
@@ -364,6 +563,59 @@ try {
     "un fichier local ouvert dans la fenêtre de l'app remplacerait l'application, qui perdrait son état",
   )
 
+  // ── L'assistant du téléphone : l'appui long sur la touche latérale ──
+  // Ce qui compte ici n'est pas un calcul mais une PHRASE : quand Jarvis
+  // n'apparaît pas dans la liste d'Android, la carte doit dire que la cause
+  // est l'APK installée, sinon Raphaël cherche dans les réglages du téléphone
+  // un réglage qui ne peut pas y être.
+  const assistVieux = page.locator("#assistant-ancien")
+  await assistVieux.getByText(/ne sait pas encore se déclarer/).waitFor({ timeout: 5000 })
+  verifier(
+    "APK trop ancienne : la carte dit que c'est la version installée qui bloque",
+    await assistVieux.getByText(/ne sait pas encore se déclarer/).isVisible(),
+  )
+  verifier(
+    "et qu'une mise à jour rapide n'y suffira pas",
+    await assistVieux.getByText(/mise à jour rapide ne suffit pas/).isVisible(),
+    "sans cette phrase, il appuie sur « Mettre à jour » et rien ne change",
+  )
+
+  // LE CAS RÉEL DU 6 SEPT. 2026 : l'activité ACTION_ASSIST est déclarée, donc
+  // « candidat » est vrai — et Jarvis n'apparaît quand même pas dans la liste
+  // de Samsung, qui ne regarde que le VoiceInteractionService. La carte doit
+  // dire d'installer l'APK, pas « Jarvis peut être choisi ».
+  const assistSansService = page.locator("#assistant-sans-service")
+  verifier(
+    "activité déclarée mais pas le service : la carte dit encore d'installer l'APK",
+    await assistSansService.getByText(/ne sait pas encore se déclarer/).isVisible(),
+    "c'est le cas qui lui a fait suivre le chemin pour rien le 6 sept.",
+  )
+  verifier(
+    "et elle ne prétend PAS qu'il peut déjà être choisi",
+    !(await assistSansService.getByText(/ce n'est pas lui pour l'instant/).isVisible()),
+    "ce message-là devant une liste où Jarvis n'est pas est le pire des deux",
+  )
+
+  const assistCandidat = page.locator("#assistant-candidat")
+  verifier(
+    "APK à jour mais assistant non choisi : la carte le dit",
+    await assistCandidat.getByText(/ce n'est pas lui pour l'instant/).isVisible(),
+  )
+  verifier(
+    "et propose d'ouvrir le réglage d'Android",
+    await assistCandidat.getByRole("button", { name: "Ouvrir le réglage Android" }).isVisible(),
+  )
+  verifier(
+    "le chemin exact reste écrit : le bouton ne mène pas jusqu'au dernier écran",
+    await assistCandidat.getByText(/Application d'assistant numérique par défaut/).isVisible(),
+    "l'action qui irait pile dessus est protégée par une permission de signature",
+  )
+
+  const assistActif = page.locator("#assistant-actif")
+  verifier(
+    "quand Jarvis est l'assistant, la carte le confirme",
+    await assistActif.getByText("Jarvis est l'assistant du téléphone.").isVisible(),
+  )
   // ── L'ordre réel : à quelle hauteur commence la mise à jour ──
   // Raphaël, 5 sept. 2026 : « pour la mise à jour, il faut que je descende
   // tout en bas, essaye de la rehausser un petit peu, mais en la compactant ».
@@ -384,8 +636,8 @@ try {
     })
 
     verifier(
-      "les six autres sections sont bien repliées",
-      mesures.nbBarres === 6,
+      "les dix autres sections sont bien repliées",
+      mesures.nbBarres === 10,
       `${mesures.nbBarres} barres repliées trouvées`,
     )
     verifier(

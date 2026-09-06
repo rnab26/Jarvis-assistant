@@ -1,3 +1,6 @@
+// Relatif avec extension : ce module se vérifie sous
+// `node --experimental-strip-types`, qui ne connaît pas l'alias « @/ ».
+import { estPourRaphael } from "./journalDestinataire.ts"
 import type { DevItem, DevLogEntry } from "@/types/database"
 
 /**
@@ -28,8 +31,24 @@ export interface DepuisDerniereVisite {
   livres: DevItem[]
   /** Chantiers créés depuis : ce qu'une session a ouvert en travaillant. */
   nouveaux: DevItem[]
-  /** Messages des sessions, hors les siens : ce qu'on lui a écrit. */
+  /**
+   * Ce qu'on lui a écrit À LUI : une question, un blocage, une action de son
+   * côté. Même règle que le badge du journal et que la colonne « pour toi » de
+   * « Où j'en suis » — `estPourRaphael`, jamais une seconde lecture.
+   */
   messages: DevLogEntry[]
+  /**
+   * Les notes que les sessions s'écrivent ENTRE ELLES, comptées et pas
+   * déballées.
+   *
+   * MESURÉ SUR SES VRAIES DONNÉES le 6 sept. : les deux messages que le
+   * bandeau dépliait faisaient 2 000 et 2 500 caractères — des comptes rendus
+   * techniques d'une session à l'autre. Ils occupaient les deux lignes les
+   * plus précieuses de l'écran, juste sous « 14 livrés », et c'est
+   * exactement le matin où il a dit ne pas arriver à savoir ce qui avait
+   * bougé. Ce qui ne lui est pas adressé se compte, il ne se déballe pas.
+   */
+  notesEntreSessions: number
   /** Vrai s'il y a quelque chose à annoncer. */
   quelqueChose: boolean
 }
@@ -60,6 +79,7 @@ export function depuisDerniereVisite(
     livres: [],
     nouveaux: [],
     messages: [],
+    notesEntreSessions: 0,
     quelqueChose: false,
   }
 
@@ -88,13 +108,18 @@ export function depuisDerniereVisite(
   const livres = items.filter((i) => apres(i.archived_at))
   const nouveaux = items.filter((i) => !i.archived_at && apres(i.created_at))
   const nouveauxMessages = messages.filter((m) => apres(m.created_at) && !estDeRaphael(m.author))
+  const pourLui = nouveauxMessages.filter(estPourRaphael)
 
   return {
     origine,
     depuis: repere,
     livres,
     nouveaux,
-    messages: nouveauxMessages,
+    messages: pourLui,
+    notesEntreSessions: nouveauxMessages.length - pourLui.length,
+    // Les notes entre sessions comptent pour « il s'est passé quelque chose » :
+    // les taire complètement laisserait un bandeau vide un jour où trois
+    // sessions ont travaillé toute la nuit.
     quelqueChose: livres.length + nouveaux.length + nouveauxMessages.length > 0,
   }
 }

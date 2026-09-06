@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ce que Jarvis declare pour etre choisissable comme assistant du telephone.
+
+  Les quatre attributs ci-dessous sont EXIGES par Android, et il ne dit rien
+  quand l'un manque : le service est simplement ignore, et Jarvis n'apparait
+  pas dans « Application d'assistant numerique par defaut ». Releve dans la
+  source d'AOSP le 6 sept. 2026 (VoiceInteractionServiceInfo, frameworks/base)
+  et pas cite de memoire.
+
+  recognitionService pointe sur un moteur qui ne reconnait rien : c'est une
+  case a cocher du systeme, pas une fonctionnalite. Jarvis ecoute par le
+  plugin de reconnaissance, qui vise le moteur de Google.
+-->
+<voice-interaction-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.raphael.jarvis.JarvisVoiceInteractionSessionService"
+    android:recognitionService="com.raphael.jarvis.JarvisRecognitionService"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="false" />

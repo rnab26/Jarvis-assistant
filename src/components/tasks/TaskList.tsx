@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TaskItem } from "@/components/tasks/TaskItem"
+import type { PrefsNotifications } from "@/lib/notifications/prefs"
 import type { Category, Task, TaskInput } from "@/types/database"
 
 interface TaskListProps {
@@ -8,6 +9,15 @@ interface TaskListProps {
   onToggle: (task: Task) => Promise<void>
   onUpdate: (id: string, input: TaskInput) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  /** Transformer une « tâche » qui est en fait une demande à Claude en
+   * chantier du cockpit. Absent = la proposition ne s'affiche pas. */
+  onEnFaireUnChantier?: (task: Task, titre: string, notes: string | null) => Promise<void>
+  /** Pour dire, sur une ligne dépliée, ce que Jarvis fera sonner et quand. */
+  prefsNotifs?: PrefsNotifications
+  /** Relancer l'envoi d'une tâche restée en attente (réseau coupé). */
+  onRelancerEnvoi?: (id: string) => void
+  /** Retirer une dictée de la file d'attente. */
+  onOublierEnAttente?: (id: string) => void
 }
 
 const NO_CATEGORY_LABEL = "Sans catégorie"
@@ -18,6 +28,10 @@ export function TaskList({
   onToggle,
   onUpdate,
   onDelete,
+  onEnFaireUnChantier,
+  prefsNotifs,
+  onRelancerEnvoi,
+  onOublierEnAttente,
 }: TaskListProps) {
   const categoryById = new Map(categories.map((c) => [c.id, c.name]))
   const groups = new Map<string, Task[]>()
@@ -66,6 +80,14 @@ export function TaskList({
                   onToggle={onToggle}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
+                  prefsNotifs={prefsNotifs}
+                  onRelancerEnvoi={onRelancerEnvoi}
+                  onOublierEnAttente={onOublierEnAttente}
+                  onEnFaireUnChantier={
+                    onEnFaireUnChantier
+                      ? (titre, notes) => onEnFaireUnChantier(task, titre, notes)
+                      : undefined
+                  }
                 />
               ))}
             </CardContent>

@@ -4,6 +4,8 @@ import { GoogleGenAI, Modality, Type } from "npm:@google/genai"
 import { rappelerCorrections } from "../_shared/corrections.ts"
 import { signalerPanne } from "../_shared/pannes.ts"
 import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
+import { rappelerBranchements } from "../_shared/branchements.ts"
+import { CONSIGNE_HONNETETE } from "../_shared/honnetete.ts"
 
 /**
  * Jeton éphémère pour ouvrir une session Gemini Live depuis l'app.
@@ -48,6 +50,7 @@ const CONSIGNE_LIVE = `Tu es Jarvis, l'assistant vocal personnel de Raphaël —
 Tu parles français, de façon courte et naturelle : c'est une conversation à voix haute, pas un texte. Une ou deux phrases suffisent presque toujours.
 TU AS ACCÈS à ses tâches, ses chantiers, ses contacts, sa date du jour : ils sont dans le contexte ci-dessous, réponds directement avec. Ne dis JAMAIS « je n'ai pas accès » : si l'information n'est pas dans le contexte (agenda, mails, documents), appelle l'outil commande_jarvis avec la question telle quelle.
 Quand Raphaël te demande de FAIRE quelque chose (ajouter, modifier, terminer une tâche ou un chantier, noter un rendez-vous, un rappel, appeler, envoyer un message, mettre de la musique, régler ta voix…), appelle l'outil commande_jarvis avec sa demande telle quelle, puis dis-lui simplement ce que l'outil a rendu — c'est l'outil qui fait foi, pas toi.
+${CONSIGNE_HONNETETE}
 Pour le reste (questions générales, discussion, conseil), réponds directement.
 ${CONSIGNE_ENVIRONNEMENT}
 Le contexte ci-dessous date de l'ouverture de la conversation : après une modification (tâche ajoutée, terminée…), reconsulte par l'outil plutôt que de répondre de mémoire.
@@ -66,7 +69,7 @@ const MAX_SOUVENIRS_LIVE = 40
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-jarvis-essai",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 }
 
@@ -134,8 +137,24 @@ Deno.serve(async (req) => {
     } = await supabase.auth.getUser()
     if (!user) return json({ error: "Non authentifié." }, 401)
 
-    const cle = Deno.env.get("GEMINI_API_KEY")
+    // NOS VÉRIFICATIONS NE DOIVENT PLUS VIDER LE QUOTA DE RAPHAËL. Même motif
+    // que voice-command depuis le chantier 4eaf9c1d : l'en-tête « x-jarvis-essai »
+    // fait basculer sur GEMINI_API_KEY_TEST, la clé d'un SECOND projet Google
+    // AI Studio — le plafond de l'offre gratuite se compte PAR PROJET.
+    // verifier-live-jeton.mjs et surtout verifier-live-contexte.mjs ouvrent de
+    // VRAIES sessions Live : c'est par ce trou-là que quatre sessions l'ont
+    // laissé sans Jarvis le 3 sept. à 21h28.
+    //
+    // L'en-tête n'ouvre aucun accès : la fonction exige déjà d'être connecté
+    // (verify_jwt reste à true), et les deux clés sont également gratuites.
+    const essai = req.headers.get("x-jarvis-essai") === "1"
+    const cleEssai = Deno.env.get("GEMINI_API_KEY_TEST")
+    const cle = (essai && cleEssai) || Deno.env.get("GEMINI_API_KEY")
     if (!cle) return json({ error: "GEMINI_API_KEY non configurée côté serveur." }, 500)
+
+    // Sans cette trace, une clé de test absente est invisible : le contrôle
+    // passe au vert en vidant quand même le quota du jour.
+    if (essai) console.log("clé", cleEssai ? "test" : "normale (GEMINI_API_KEY_TEST absente)")
 
     const modele = Deno.env.get("GEMINI_MODELE_LIVE") || MODELE_LIVE_PAR_DEFAUT
     const maintenant = Date.now()
@@ -165,7 +184,28 @@ Deno.serve(async (req) => {
     // Les corrections que Raphaël a écrites suivent aussi : se faire reprendre
     // deux fois sur la même chose est ce qui l'agace le plus, et ça ne doit pas
     // dépendre du mode dans lequel il parle.
-    contexte = `${contexte}\n${await souvenirsDeLUtilisateur(supabase)}\n${await rappelerCorrections(supabase)}`.trim()
+    // « À quoi tu es branché ? » — sa remarque du 6 sept. Joint ici comme les
+    // souvenirs et les corrections, et pour la même raison : en Live le
+    // contexte est scellé une fois à l'ouverture, donc il doit contenir tout
+    // ce que le modèle ne pourra plus aller chercher.
+    // LES TROIS EN PARALLÈLE, ET C'EST MESURÉ. Écrites dans un gabarit, ces
+    // trois lectures s'exécutaient l'une APRÈS l'autre — un gabarit évalue ses
+    // expressions de gauche à droite, donc trois allers-retours Supabase mis
+    // bout à bout. Relevé le 6 sept. sur son journal (live_debut, découpé en
+    // trois depuis le 5) : ms_jeton est de loin le plus gros morceau d'une
+    // ouverture Live — 1200 à 1500 ms d'ordinaire, 4444 et 8163 ms au pire —
+    // devant ms_connexion (630-1275) et ms_micro (333-850). Le micro de la
+    // WebView, que je soupçonnais, n'y est pour rien : c'est nous.
+    //
+    // Les trois sont indépendantes et aucune ne peut échouer bruyamment (elles
+    // avalent leurs erreurs et rendent ""), donc Promise.all ne change que le
+    // temps. L'ordre du texte final reste celui d'avant.
+    const [branchements, souvenirs, corrections] = await Promise.all([
+      rappelerBranchements(supabase),
+      souvenirsDeLUtilisateur(supabase),
+      rappelerCorrections(supabase),
+    ])
+    contexte = `${contexte}\n${branchements}\n${souvenirs}\n${corrections}`.trim()
 
     // Les jetons éphémères ne vivent que dans la version v1alpha de l'API.
     const ai = new GoogleGenAI({ apiKey: cle, httpOptions: { apiVersion: "v1alpha" } })

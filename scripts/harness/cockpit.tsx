@@ -6,10 +6,18 @@ import "@/index.css"
 import { Toaster } from "@/components/ui/sonner"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
+import { lireRepereLocal, ecrireRepereLocal } from "@/lib/cockpitVu"
+import { HistoriqueChantier } from "@/components/cockpit/HistoriqueChantier"
+import type { HistoriqueApi } from "@/hooks/useHistoriqueChantier"
+import type { LigneHistorique } from "@/lib/historiqueChantier"
+import type { VisiteCockpitApi } from "@/hooks/useVisiteCockpit"
 import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
+import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
-import { SessionsAuTravail } from "@/components/cockpit/SessionsAuTravail"
+import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
+import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
+import { FILTRE_VIDE, type FiltreCockpit } from "@/lib/sections"
 import type {
   DevItem,
   DevLogEntry,
@@ -93,8 +101,15 @@ const SECTIONS = [
   section("Entraînement", 3),
 ]
 
-/** Une réservation en cours, et une qui a expiré : les deux cas de la carte
- * « Qui travaille en ce moment ». */
+/** Minuit ce matin, sur l'heure du navigateur qui fait tourner le banc. */
+function minuitLocal(): Date {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+/** Une réservation en cours, et une qui a expiré : les deux cas que
+ * « Où j'en suis » distingue — ça bouge, et ça ne bouge plus. */
 function reserve(item: DevItem, session: string, minutes: number): DevItem {
   return {
     ...item,
@@ -112,11 +127,14 @@ const CHANTIERS = [
   ),
   chantier("Réveil vocal en arrière-plan", "Voix et écoute"),
   reserve(chantier("Widget d'écran d'accueil", "Le téléphone"), "claude/telephone-arretee", -120),
-  // Une archive récente : la liste des archivées et le compte « livrés cette
-  // semaine » n'étaient couverts par rien.
+  // Une archive du jour : la liste des archivées, le compte « livrés cette
+  // semaine », et la colonne « livré » de « Où j'en suis ». Datée à minuit
+  // LOCAL plutôt qu'à « il y a deux jours » — la colonne « livré » compte par
+  // défaut depuis minuit, et un banc qui ne tomberait dans la fenêtre qu'à
+  // certaines heures du jour serait vert le matin et rouge le soir.
   {
     ...chantier("Le badge de version, livré", "Le téléphone", "done"),
-    archived_at: new Date(Date.now() - 2 * 24 * 3600_000).toISOString(),
+    archived_at: minuitLocal().toISOString(),
   },
   {
     // Un marqueur en tête des notes, comme les sessions en écrivent : il doit
@@ -150,6 +168,69 @@ const MESSAGES: DevLogEntry[] = [
     created_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
   },
 ]
+
+/**
+ * Les deux familles de « Ce qui attend ta décision » : une DÉCISION avec ses
+ * options cliquables, et une ACTION de son côté. Rattachées à aucun chantier
+ * exprès — c'est le cas qui n'apparaît sur aucune ligne de « Où j'en suis » et
+ * qui, sans cet écran, attendrait indéfiniment.
+ */
+const DECISIONS: DevLogEntry[] = [
+  {
+    id: "d1",
+    user_id: "banc",
+    item_id: "c2",
+    author: "claude/memoire",
+    kind: "question",
+    body: "On garde le mot-à-mot des conversations combien de temps ?",
+    pourquoi: "Supprimer est irréversible, garder ne l'est pas.",
+    options: [
+      {
+        cle: "sans_limite",
+        libelle: "Sans limite",
+        aide: "Rien n'est jamais supprimé, tu peux redescendre quand tu veux.",
+        recommande: true,
+      },
+      { cle: "30j", libelle: "30 jours" },
+      { cle: "7j", libelle: "7 jours" },
+    ],
+    answered_at: null,
+    created_at: new Date(Date.now() - 26 * 3600_000).toISOString(),
+  },
+  {
+    id: "d2",
+    user_id: "banc",
+    item_id: null,
+    author: "claude/telephone",
+    kind: "action",
+    body: "Dépose GOOGLE_GEOCODING_API_KEY dans les secrets Supabase",
+    pourquoi: "Sans elle, les rappels de lieu ne savent pas géocoder une adresse.",
+    etat: null,
+    answered_at: null,
+    created_at: new Date(Date.now() - 4 * 3600_000).toISOString(),
+  },
+]
+
+/**
+ * Un compte rendu d'une session à l'autre, à sa VRAIE longueur.
+ *
+ * Le 6 sept., deux notes de 2 000 et 2 500 caractères occupaient les deux
+ * lignes les plus précieuses du bandeau « Depuis ton dernier passage » — le
+ * matin même où Raphaël a dit ne pas arriver à savoir ce qui avait bougé. Une
+ * note courte dans un banc d'essai ne reproduit pas ce défaut.
+ */
+const COMPTE_RENDU: DevLogEntry = {
+  id: "cr1",
+  user_id: "banc",
+  item_id: null,
+  author: "claude/une-autre-session",
+  kind: "info",
+  body:
+    "SESSION X — commits abc1234, def5678. CE QUI VOUS CONCERNE : " +
+    "la fonction machin a été déplacée, réutilisez-la plutôt que d'en écrire une seconde. ".repeat(20),
+  answered_at: null,
+  created_at: new Date(Date.now() - 90 * 60000).toISOString(),
+}
 
 const ERREURS = [
   erreur("Il a créé une tâche au lieu d'un chantier", "comprehension", 3),
@@ -200,10 +281,65 @@ function volumeReel(): { chantiers: DevItem[]; sections: DevSection[] } {
   // reste repliée, comme un jour ordinaire.
   const sections = SECTIONS_REELLES.map((nom, i) => section(nom, i + 1))
   const chantiers: DevItem[] = []
+  // Des titres VRAIMENT différents les uns des autres, et pas seulement par
+  // un numéro : la comparaison de mots retire les chiffres. Trois listes de
+  // longueurs premières entre elles (11, 12, 13) : deux titres ne peuvent pas
+  // partager à la fois leur début et leur fin avant le 143e, donc jamais sur
+  // 83. Vérifié : 83 titres, aucune paire signalée — comme sur les 192
+  // chantiers réels de Raphaël, où la mesure n'en sort qu'une, la vraie.
+  //
+  // Un banc qui fabrique ses propres doublons ferait mesurer un artefact du
+  // banc au lieu du cockpit : la première version croisait 12 sujets et
+  // 7 nuances, donc deux titres partageaient tout leur sujet, et la carte
+  // « Ça existe déjà » en annonçait cinq qui n'existaient nulle part ailleurs.
+  const DEBUTS = [
+    "Corriger",
+    "Comprendre pourquoi",
+    "Mesurer",
+    "Rendre réglable",
+    "Documenter",
+    "Supprimer",
+    "Accélérer",
+    "Simplifier",
+    "Retrouver",
+    "Fiabiliser",
+    "Annuler",
+  ]
+  const QUOI = [
+    "le micro",
+    "la lecture des reçus",
+    "le widget d'accueil",
+    "les rappels de lieu",
+    "la voix dictée",
+    "l'agenda partagé",
+    "les pièces jointes",
+    "le tri des tâches",
+    "la recherche",
+    "les brouillons",
+    "l'export PDF",
+    "le thème sombre",
+  ]
+  const QUAND = [
+    "quand le réseau tombe",
+    "au premier lancement",
+    "pendant une dictée longue",
+    "après une mise à jour",
+    "avec plusieurs comptes ouverts",
+    "sur un écran de téléphone",
+    "une fois l'app fermée",
+    "hors ligne",
+    "en pleine nuit",
+    "depuis le widget",
+    "à la reconnexion",
+    "quand la batterie est faible",
+    "sous Android 15",
+  ]
   for (let i = 0; i < 83; i++) {
     const theme = SECTIONS_REELLES[i % SECTIONS_REELLES.length]
     const c = chantier(
-      `Chantier numéro ${i + 1} sur ${theme.toLowerCase()}, avec un titre assez long pour déborder`,
+      // Le nom de la section reste dans le titre : d'autres contrôles s'en
+      // servent pour vérifier qu'un filtre ne laisse bien que sa section.
+      `${DEBUTS[i % 11]} ${QUOI[i % 12]} ${QUAND[i % 13]} sur ${theme.toLowerCase()}`,
       theme,
       i % 7 === 0 ? "in_progress" : "todo",
     )
@@ -232,6 +368,11 @@ interface FixtureReelle {
 }
 const REELLES = (window as unknown as { __FIXTURE_REELLE?: FixtureReelle }).__FIXTURE_REELLE
 
+/** `?doublons=1` : deux chantiers strictement identiques, plus un ouvert qui
+ * redit un chantier déjà archivé. Le cas réel du 5 sept. 2026, où deux
+ * « Sous-sections pour sessions multiples Claude Code » cohabitaient. */
+const DOUBLONS = new URLSearchParams(location.search).has("doublons")
+
 const VOLUME = new URLSearchParams(location.search).has("volume")
 /** Le cockpit un jour ordinaire : rien qui appelle une action — pas de
  * question en attente, pas de réservation abandonnée. C'est l'état dans lequel
@@ -243,15 +384,75 @@ const CALME = new URLSearchParams(location.search).has("calme")
 const PANNE = new URLSearchParams(location.search).has("panne")
 const REEL = VOLUME ? volumeReel() : null
 
+/** Un historique de chantier comme il s'en écrit vraiment : une note complétée,
+ * un statut, et LA note écrasée — celle qu'on vient chercher. */
+const NOTE_LONGUE =
+  "[LIBRE] Ses mots, dictés le 3 sept. : « il faut que Jarvis sache lancer une " +
+  "musique précise ». Vérifié le 5 sept. : l'intent part bien, Apple Music s'ouvre, " +
+  "mais rien ne joue. Écarté : passer par l'API Spotify, il ne l'a pas. Écarté aussi : " +
+  "lui faire choisir le lecteur à chaque fois, il l'a refusé le 4 sept."
+
+const HISTORIQUE_BANC: LigneHistorique[] = [
+  {
+    id: "h1",
+    item_id: "1",
+    champ: "notes",
+    avant: NOTE_LONGUE,
+    apres: "Fait : correction poussée. Commit abc1234.",
+    par: "claude/telephone-0509",
+    change_at: "2026-09-06T08:40:00Z",
+  },
+  {
+    id: "h2",
+    item_id: "1",
+    champ: "status",
+    avant: "todo",
+    apres: "in_progress",
+    par: "claude/telephone-0509",
+    change_at: "2026-09-06T08:10:00Z",
+  },
+  {
+    id: "h3",
+    item_id: "1",
+    champ: "notes",
+    avant: "[LIBRE] Ses mots, dictés le 3 sept.",
+    apres: NOTE_LONGUE,
+    par: "claude/cockpit-0509",
+    change_at: "2026-09-05T21:00:00Z",
+  },
+]
+
+function historiqueFactice(
+  lignes: LigneHistorique[],
+  erreur: string | null = null,
+  chargement = false,
+): HistoriqueApi {
+  return { lignes, chargement, erreur, restaurer: async () => {} }
+}
+
 function BancDuCockpit() {
+  // Lu une fois, comme le chemin rapide du vrai hook.
+  const [repereInitial] = useState(lireRepereLocal)
   const [devItems, setDevItems] = useState<DevItem[]>(
-    REELLES?.chantiers ?? REEL?.chantiers ?? CHANTIERS,
+    DOUBLONS
+      ? [
+          chantier("Sous-sections pour sessions multiples Claude Code", "Le cockpit"),
+          chantier("Sous-sections pour sessions multiples Claude Code", "Le cockpit"),
+          {
+            ...chantier("Retrouver une conversation passée", "Mémoire et apprentissage"),
+            archived_at: new Date(Date.now() - 86400_000).toISOString(),
+          },
+          chantier("Retrouver une conversation passée", "Mémoire et apprentissage"),
+          chantier("Le micro se coupe entre deux phrases", "Voix et écoute"),
+        ]
+      : (REELLES?.chantiers ?? REEL?.chantiers ?? CHANTIERS),
   )
   const [sections] = useState<DevSection[]>(REELLES?.sections ?? REEL?.sections ?? SECTIONS)
   const [erreurs, setErreurs] = useState<JarvisErreur[]>(VOLUME ? erreursEnVolume() : ERREURS)
   const [messages, setMessages] = useState<DevLogEntry[]>(
-    REELLES?.messages ?? (CALME ? [] : MESSAGES),
+    REELLES?.messages ?? (CALME ? [] : [...MESSAGES, ...DECISIONS, COMPTE_RENDU]),
   )
+  const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
 
   const sectionsState = {
     sections: PANNE ? [] : sections,
@@ -279,21 +480,33 @@ function BancDuCockpit() {
     },
   }
 
+  // Le repère lu au montage, comme le fait le vrai hook par son chemin rapide.
+  const visite: VisiteCockpitApi = {
+    vuLe: repereInitial,
+    chargement: false,
+    erreur: null,
+    marquerVu: () => ecrireRepereLocal(new Date().toISOString()),
+  }
+
   return (
     <div className="flex flex-col gap-4 p-3">
       {/* Le même Toaster que l'app : c'est lui qui porte le bouton
           « Annuler » après une action groupée. Sans lui, le banc verrait
           l'action réussir et manquerait la moitié qui compte. */}
       <Toaster />
-      <DepuisTonDernierPassage devItems={devItems} messages={messages} />
-      <EnvoyerAClaudeCode
+      {/* Le repère de visite est injecté : le banc n'a ni session ni Supabase.
+          La variante hors ligne est montée TOUT EN BAS, pas ici : elle
+          occuperait sinon de la place en tête de page, et c'est exactement ce
+          que le budget de hauteur mesure. Et AUCUN `div` autour de ce
+          bandeau-ci : un conteneur consomme l'espacement de la colonne même
+          quand la carte ne rend rien, ce qui a déjà coûté 16 points au budget
+          une première fois avec la carte des doublons. On repère donc les deux
+          bandeaux par leur ORDRE — celui du haut d'abord. */}
+      <DepuisTonDernierPassage devItems={devItems} messages={messages} visite={visite} />
+      <OuJenSuis
         devItems={devItems}
         sections={sections}
-        themes={sections.map((s) => s.nom)}
-        onSend={async () => {}}
-      />
-      <SessionsAuTravail
-        devItems={devItems}
+        messages={messages}
         onLiberer={async (id) => {
           setDevItems((items) =>
             items.map((i) =>
@@ -301,7 +514,45 @@ function BancDuCockpit() {
             ),
           )
         }}
+        onVoirSection={(nom) => setFiltre({ ...FILTRE_VIDE, section: nom })}
       />
+      <CeQuiAttendTaDecision
+        messages={messages}
+        devItems={devItems}
+        onRepondre={async (question, option, commentaire) => {
+          setMessages((m) => [
+            ...m.map((x) =>
+              x.id === question.id ? { ...x, answered_at: new Date().toISOString() } : x,
+            ),
+            {
+              id: `rep-${question.id}`,
+              user_id: "banc",
+              item_id: question.item_id,
+              author: "Raphaël",
+              kind: "reponse",
+              body: [option?.libelle, commentaire.trim()].filter(Boolean).join(" — "),
+              answered_at: null,
+              created_at: new Date().toISOString(),
+            },
+          ])
+        }}
+        onEtat={async (id, etat) => {
+          setMessages((m) =>
+            m.map((x) =>
+              x.id === id
+                ? { ...x, etat, answered_at: etat === "fait" ? new Date().toISOString() : null }
+                : x,
+            ),
+          )
+        }}
+      />
+      <EnvoyerAClaudeCode
+        devItems={devItems}
+        sections={sections}
+        themes={sections.map((s) => s.nom)}
+        onSend={async () => {}}
+      />
+
       {/* Le journal, à sa place réelle dans la page : sans lui, la mesure de
           ce qu'on voit en arrivant serait fausse de deux cents points. */}
       <DevLogFeed
@@ -313,6 +564,20 @@ function BancDuCockpit() {
         onAdd={async () => {}}
         onMarkAnswered={async () => {}}
       />
+      {/* SANS div d'enrobage, et c'est important : la carte se retire d'elle-même
+          quand il n'y a rien à dire, mais un conteneur vide continuerait de
+          consommer un `gap` de la colonne. Seize points de plus poussés sur
+          tout ce qui suit, mesurés par le banc, pour un bloc invisible. */}
+      <DoublonsTrouves
+        devItems={devItems}
+        onArchive={async (id) =>
+          setDevItems((liste) =>
+            liste.map((i) => (i.id === id ? { ...i, archived_at: new Date().toISOString() } : i)),
+          )
+        }
+        onRestore={async () => {}}
+      />
+
       <ErreursJarvis
         erreursState={erreursState}
         devItems={devItems}
@@ -322,6 +587,8 @@ function BancDuCockpit() {
       <CockpitBoard
         devItems={devItems}
         sectionsState={sectionsState}
+        filtre={filtre}
+        onFiltre={setFiltre}
         onUpdate={async (id, patch) => {
           setDevItems((items) => items.map((i) => (i.id === id ? { ...i, ...patch } : i)))
         }}
@@ -377,6 +644,30 @@ function BancDuCockpit() {
           )
         }}
       />
+
+      {/* Le cas qui trompe : la base n'a pas pu être écrite. Le « Vu » ne vaut
+          alors que sur CET écran, et il doit le savoir — sinon il retrouve le
+          même bandeau sur son téléphone sans comprendre pourquoi. */}
+      <div id="passage-hors-ligne">
+        <DepuisTonDernierPassage
+          devItems={devItems}
+          messages={messages}
+          visite={{ ...visite, erreur: "Le serveur ne répond pas." }}
+        />
+      </div>
+
+      {/* « Ce qui a changé » : la note écrasée doit se retrouver, et le
+          reste doit rester discret. Monté ici, tout en bas, pour ne pas
+          entamer le budget de hauteur du tableau. */}
+      <div id="historique">
+        <HistoriqueChantier itemId="1" api={historiqueFactice(HISTORIQUE_BANC)} />
+      </div>
+      <div id="historique-vide">
+        <HistoriqueChantier itemId="2" api={historiqueFactice([])} />
+      </div>
+      <div id="historique-panne">
+        <HistoriqueChantier itemId="3" api={historiqueFactice([], "Le serveur ne répond pas.")} />
+      </div>
     </div>
   )
 }

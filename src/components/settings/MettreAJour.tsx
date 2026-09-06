@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { MajWebApi } from "@/hooks/useMajWeb"
 import type { PublishedBuild, UpdateStatus, Verdict } from "@/hooks/useUpdateCheck"
 import { ApkDownloader, type ProgressionTelechargement } from "@/lib/apkDownloader"
+import { noterEcoute } from "@/lib/journalEcoute"
 import { cn } from "@/lib/utils"
 import { formatBuildDate, versionInstallee } from "@/lib/version"
 
@@ -91,6 +92,7 @@ function libelleProgression(p: ProgressionTelechargement): string {
     const pct = Math.min(100, Math.round((p.recus / p.total) * 100))
     return `${pct}% · ${recusMo} / ${(p.total / 1_000_000).toFixed(1)} Mo`
   }
+  if (p.enPause) return `${recusMo} Mo reçus — ${p.pourquoi ?? "en pause"}`
   return `${recusMo} Mo reçus…`
 }
 
@@ -125,6 +127,7 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
   const [etatApk, setEtatApk] = useState<"idle" | "besoin-permission" | "telechargement" | "erreur">("idle")
   const [erreur, setErreur] = useState<string | null>(null)
   const [progression, setProgression] = useState<ProgressionTelechargement | null>(null)
+  const [repli, setRepli] = useState(false)
   const [confirmerRetour, setConfirmerRetour] = useState(false)
 
   useEffect(() => {
@@ -140,8 +143,16 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
     const poignee = ApkDownloader.addListener("progression", (p) => setProgression(p)).catch(
       () => null,
     )
+    // Le repli : DownloadManager n'a rien donné, on télécharge nous-mêmes.
+    // Il se DIT, plutôt que de laisser croire que rien ne se passe — c'est
+    // précisément le silence qui l'a bloqué le 6 sept.
+    const poigneeRepli = ApkDownloader.addListener("repli", (a) => {
+      setRepli(true)
+      noterEcoute("maj_apk", { etape: "repli", pourquoi: a.pourquoi })
+    }).catch(() => null)
     return () => {
       poignee.then((h) => h?.remove()).catch(() => {})
+      poigneeRepli.then((h) => h?.remove()).catch(() => {})
     }
   }, [])
 
@@ -188,14 +199,29 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
     }
     setEtatApk("telechargement")
     setProgression(null)
+    setRepli(false)
     try {
       await ApkDownloader.downloadAndInstall({ url: APK_DOWNLOAD_URL })
       setEtatApk("idle")
     } catch (e) {
+      const message = e instanceof Error ? e.message : "Échec du téléchargement."
       setEtatApk("erreur")
-      setErreur(e instanceof Error ? e.message : "Échec du téléchargement.")
+      setErreur(message)
+      // La trace, sans quoi on rediagnostiquera à l'aveugle la prochaine
+      // fois — c'est ce qui a coûté une matinée le 6 sept.
+      noterEcoute("maj_apk", { etape: "echec", detail: message })
     } finally {
       setProgression(null)
+    }
+  }
+
+  /** Le dernier recours, celui qui ne dépend ni d'Android ni de nous. */
+  async function ouvrirDansLeNavigateur() {
+    try {
+      await ApkDownloader.ouvrirLienExterne({ url: APK_DOWNLOAD_URL })
+    } catch {
+      // APK antérieure à cette méthode : le lien reste copiable à la main.
+      toast.error("Ouvre ce lien depuis ton navigateur", { description: APK_DOWNLOAD_URL })
     }
   }
 
@@ -304,6 +330,11 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
         {etatApk === "telechargement" && progression && (
           <BarreProgression progression={progression} />
         )}
+        {etatApk === "telechargement" && repli && (
+          <p className="text-xs text-muted-foreground">
+            Le gestionnaire de téléchargement d'Android n'a rien envoyé — je télécharge moi-même.
+          </p>
+        )}
 
         {/* Sans cette ligne, revérifier alors qu'on est déjà à jour ne
             change rien à l'écran : le bouton paraît cassé. L'heure qui
@@ -381,7 +412,25 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
             </Button>
           </div>
         )}
-        {etatApk === "erreur" && erreur && <p className="text-sm text-destructive">{erreur}</p>}
+        {/* UN ÉCHEC DOIT SE VOIR, ET DONNER UNE SORTIE. Le 6 sept. 2026, il
+            est resté devant « 0.0 Mo reçus… » sans rien à faire, et plus aucun
+            correctif touchant le natif ne pouvait lui parvenir. Le lien direct
+            ne dépend ni du gestionnaire de téléchargement d'Android ni de
+            nous : c'est ce qui le débloque quoi qu'il arrive. */}
+        {etatApk === "erreur" && (
+          <div className="flex w-full flex-col items-start gap-2">
+            {erreur && <p className="text-sm text-destructive">{erreur}</p>}
+            <p className="text-xs text-muted-foreground">
+              Tu peux la télécharger depuis ton navigateur, puis ouvrir le fichier pour
+              l'installer. Si Android refuse, autorise « Installer des applications inconnues »
+              pour ton navigateur.
+            </p>
+            <Button variant="outline" size="sm" onClick={ouvrirDansLeNavigateur}>
+              <Download className="size-4" />
+              Télécharger depuis le navigateur
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

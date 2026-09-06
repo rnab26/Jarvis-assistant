@@ -8,9 +8,15 @@
  * n'avait plus de crédit. Une panne qui ne se nomme pas se cherche pendant des
  * heures.
  *
- * Mêmes formulations que supabase/functions/_shared/gemini.ts (phrasePourEchec),
- * qui habille côté serveur les pannes du modèle. Si tu en changes une, change
- * l'autre.
+ * Mêmes formulations que supabase/functions/_shared/modele.ts
+ * (phrasePourEchec), qui habille côté serveur les pannes du moteur. Si tu en
+ * changes une, change l'autre — `scripts/verifier-moteur.ts` refuse qu'elles
+ * divergent.
+ *
+ * AUCUNE NE NOMME LE FOURNISSEUR, et c'est voulu (chantier 2c54c62f) : le
+ * moteur se change maintenant en posant un secret côté serveur, et une phrase
+ * qui dirait « Gemini » obligerait à republier l'app pour rester vraie. Elle
+ * mentirait entre les deux.
  */
 
 /** Le vrai corps de la réponse, que supabase-js range dans `context`. */
@@ -36,13 +42,19 @@ export function traduireErreurServeur(corps: string, messageBrut = ""): string {
   const texte = `${corps} ${messageBrut}`.toLowerCase()
 
   if (texte.includes("resource_exhausted") || texte.includes("quota")) {
-    return "J'ai atteint la limite de l'offre gratuite de Gemini pour le moment. Redis-moi ça dans une minute ; si ça se répète toute la journée, c'est le quota du jour qui est épuisé."
+    return "J'ai atteint la limite du moteur pour le moment. Redis-moi ça dans une minute ; si ça se répète toute la journée, c'est le quota du jour qui est épuisé."
   }
-  if (texte.includes("gemini_api_key non configurée")) {
-    return "Ma clé Gemini n'est pas configurée côté serveur : je ne peux pas traiter ta demande."
+  // Les deux formulations, l'ancienne et la neuve : le site web se republie à
+  // chaque push, la Edge Function seulement quand quelqu'un la déploie. Entre
+  // les deux, c'est l'ancien message qui arrive, et il doit rester reconnu.
+  if (
+    texte.includes("clé du moteur non configurée") ||
+    texte.includes("gemini_api_key non configurée")
+  ) {
+    return "La clé du moteur n'est pas configurée côté serveur : je ne peux pas traiter ta demande."
   }
   if (texte.includes("api_key_invalid") || texte.includes("api key not valid") || texte.includes("permission_denied")) {
-    return "Ma clé Gemini est refusée par le serveur : elle a dû être changée, révoquée, ou l'API n'est pas activée pour elle."
+    return "La clé du moteur est refusée par le serveur : elle a dû être changée, révoquée, ou l'API n'est pas activée pour elle. Regarde les secrets côté Supabase."
   }
   if (texte.includes("overloaded") || texte.includes("unavailable") || texte.includes("503")) {
     return "Le modèle est débordé en ce moment. Redis-moi ça dans quelques secondes."

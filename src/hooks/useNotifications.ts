@@ -4,7 +4,7 @@ import { LocalNotifications } from "@capacitor/local-notifications"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { phraseAnnonce, raisonDuSilence } from "@/lib/notifications/annonceVocale"
-import { noterEcoute } from "@/lib/journalEcoute"
+import { derniereParole, noterEcoute } from "@/lib/journalEcoute"
 import { readVoicePrefs } from "@/lib/voicePrefs"
 import {
   construirePlan,
@@ -121,7 +121,18 @@ export function useNotifications(
   >(() => {})
   useEffect(() => {
     direRef.current = (notification, declencheur) => {
-      const ctx = { prefs, voixCoupee: readVoicePrefs().muted, maintenant: new Date() }
+      // appVisible et derniereParole servent à UNE chose : pendant ses heures
+      // de silence, un rappel qu'il vient de demander se dit quand même, alors
+      // que ce que Jarvis initie reste muet (sa demande du 6 sept.). Les deux
+      // sont lus MAINTENANT, pas au montage : un écouteur monté une fois
+      // garderait sinon l'état du premier rendu.
+      const ctx = {
+        prefs,
+        voixCoupee: readVoicePrefs().muted,
+        maintenant: new Date(),
+        appVisible: typeof document !== "undefined" && document.visibilityState === "visible",
+        derniereParole: derniereParole(),
+      }
       const phrase = phraseAnnonce(notification, ctx)
       // Écrit dans le journal d'écoute, dit ou pas dit : le pont Android ne se
       // vérifie pas depuis une machine sans téléphone, et sans cette trace
