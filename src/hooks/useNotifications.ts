@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { LocalNotifications } from "@capacitor/local-notifications"
+import { useAgendaDuMatin } from "@/hooks/useAgendaDuMatin"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { phraseAnnonce, raisonDuSilence } from "@/lib/notifications/annonceVocale"
@@ -177,13 +178,19 @@ export function useNotifications(
     }
   }, [navigate, rafraichir])
 
+  // Ses rendez-vous, chargés DE LEUR CÔTÉ et pas dans la reprogrammation
+  // ci-dessous : celle-ci se déclenche à chaque modification de tâche, et
+  // cocher une tâche n'a pas à appeler Google. Quand l'agenda arrive, la
+  // signature change et le plan est reposé — une fois.
+  const agenda = useAgendaDuMatin(prefs.matin)
+
   // Reprogrammation. La signature évite de refaire le travail natif à chaque
   // rechargement de la liste des tâches : `tasks` est un nouveau tableau à
   // chaque rafraîchissement temps réel, même quand rien n'a changé.
   const signatureRef = useRef<string | null>(null)
   useEffect(() => {
     if (!notificationsDisponibles() || !etat.autorise) return
-    const plan = construirePlan(tasks, prefs)
+    const plan = construirePlan(tasks, prefs, new Date(), agenda)
     const signature = JSON.stringify(
       plan.map((n) => [n.id, n.titre, n.corps, n.quand.getTime()]),
     )
@@ -200,7 +207,7 @@ export function useNotifications(
         })
     }, 400)
     return () => clearTimeout(timer)
-  }, [tasks, prefs, etat.autorise, relireListe, rafraichir])
+  }, [tasks, prefs, agenda, etat.autorise, relireListe, rafraichir])
 
   // Chantiers livrés par une session pendant que l'app tourne.
   const dejaArchivesRef = useRef<Set<string> | null>(null)

@@ -21,6 +21,9 @@ import {
   dansLaPlageSilencieuse,
   corpsChantiersLivres,
   corpsDuMatin,
+  grouperParJour,
+  morceauRendezVous,
+  type RendezVous,
   estNotreNotif,
   ID_TEST,
   isoLocal,
@@ -601,6 +604,109 @@ function tache(partiel: Partial<Task>): Task {
     "sans aucune tâche, il n'y a rien à annoncer",
     bilanRappels([], PREFS_NOTIFS_DEFAUT, MAINTENANT).total === 0,
     "un « 0 sur 0 » n'apprend rien",
+  )
+}
+
+// ── Les rendez-vous dans le point du matin (chantier 307b6fa2) ────────────
+// Son exception, écrite de sa main : « Chez Google → on ne notifie pas, SAUF
+// DANS LE POINT DU MATIN, qui est un RÉSUMÉ et non une alerte. »
+{
+  // Les instants sont construits en heure LOCALE, exprès : `heureCourte` rend
+  // l'heure que Raphaël lit sur son téléphone, pas une heure UTC. Écrire
+  // « 09:30+03:00 » en dur ferait échouer ce contrôle partout sauf en Israël —
+  // et il aurait tort, c'est le banc qui aurait tort.
+  const instant = (h: number, m = 0) => new Date(2026, 8, 7, h, m).toISOString()
+  const rdv = (p: Partial<RendezVous> = {}): RendezVous => ({
+    titre: "Dupont",
+    debut: instant(9, 30),
+    journee_entiere: false,
+    ...p,
+  })
+  const jour = new Date(2026, 8, 7)
+  const tache = {
+    id: "t1", title: "Appeler le plombier", status: "todo", due_date: "2026-09-07",
+    due_time: null, notes: null, category_id: null,
+  } as unknown as Task
+
+  verifier(
+    "l'heure se dit « 9h30 », pas « 09:30 »",
+    morceauRendezVous([rdv()])?.includes("9h30 Dupont") === true,
+    String(morceauRendezVous([rdv()])),
+  )
+  verifier(
+    "une heure ronde se dit « 14h »",
+    morceauRendezVous([rdv({ debut: instant(14) })])?.includes("14h Dupont") === true,
+    String(morceauRendezVous([rdv({ debut: instant(14) })])),
+  )
+  const congesSeul = morceauRendezVous([rdv({ titre: "Congés", journee_entiere: true, debut: "2026-09-07" })])
+  verifier(
+    "un événement de journée entière n'invente pas d'heure",
+    congesSeul === "1 rendez-vous : Congés",
+    String(congesSeul),
+  )
+  const quatre = morceauRendezVous([rdv({ titre: "A" }), rdv({ titre: "B" }), rdv({ titre: "C" }), rdv({ titre: "D" })])
+  verifier(
+    "DEUX NOMS AU PLUS, mais le total est dit : Android coupe le reste",
+    quatre === "4 rendez-vous : 9h30 A, 9h30 B et 2 autres",
+    String(quatre),
+  )
+  verifier("aucun rendez-vous : rien à dire", morceauRendezVous([]) === null)
+
+  const avec = corpsDuMatin([tache], jour, [rdv()])
+  verifier(
+    "les tâches ET les rendez-vous sont annoncés",
+    avec.includes("1 tâche") && avec.includes("9h30 Dupont"),
+    avec,
+  )
+  verifier(
+    "SANS AGENDA, le texte est EXACTEMENT celui d'avant ce chantier",
+    corpsDuMatin([tache], jour) === corpsDuMatin([tache], jour, []),
+    "une panne d'agenda ne doit pas changer un point du matin dont il ne s'est jamais plaint",
+  )
+  verifier(
+    "« rien de prévu » ne se dit PLUS quand il a des rendez-vous",
+    !corpsDuMatin([], jour, [rdv()]).includes("Rien de prévu"),
+    corpsDuMatin([], jour, [rdv()]),
+  )
+  verifier(
+    "on dit alors que ce sont les TÂCHES qui sont vides",
+    corpsDuMatin([], jour, [rdv()]).includes("Aucune tâche"),
+    corpsDuMatin([], jour, [rdv()]),
+  )
+  verifier(
+    "et sans tâche ni rendez-vous, « rien de prévu » reste juste",
+    corpsDuMatin([], jour, []).includes("Rien de prévu"),
+  )
+}
+
+// ── Ranger l'agenda par jour ──────────────────────────────────────────────
+{
+  const g = grouperParJour([
+    { titre: "Tard", debut: new Date(2026, 8, 7, 18).toISOString(), journee_entiere: false },
+    { titre: "Tôt", debut: new Date(2026, 8, 7, 8).toISOString(), journee_entiere: false },
+    { titre: "Congés", debut: "2026-09-08", journee_entiere: true },
+    { titre: "Sans début", debut: null, journee_entiere: false },
+    { titre: "Illisible", debut: "pas une date", journee_entiere: false },
+  ])
+  verifier(
+    "les rendez-vous sont rangés par jour",
+    Object.keys(g).sort().join(",") === "2026-09-07,2026-09-08",
+    Object.keys(g).join(","),
+  )
+  verifier(
+    "et dans l'ordre de la journée : « les deux premiers » doit être les deux plus proches",
+    g["2026-09-07"].map((r) => r.titre).join(",") === "Tôt,Tard",
+    g["2026-09-07"].map((r) => r.titre).join(","),
+  )
+  verifier(
+    "une date NUE reste son propre jour, sans passer par UTC",
+    g["2026-09-08"]?.[0]?.titre === "Congés",
+    "la lire en UTC la décalerait d'un jour à l'ouest de Greenwich",
+  )
+  verifier(
+    "un événement sans début lisible est laissé de côté, pas rangé au hasard",
+    Object.values(g).flat().length === 3,
+    JSON.stringify(g),
   )
 }
 

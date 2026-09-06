@@ -301,7 +301,62 @@ export function isoLocal(d: Date): string {
 
 /** Le texte du point du matin d'un jour donné. Écrit pour être lu sur un
  * écran verrouillé : le nombre d'abord, les titres ensuite. */
-export function corpsDuMatin(tasks: Task[], jour: Date): string {
+/**
+ * Un rendez-vous de son agenda Google, réduit à ce que le point du matin dit.
+ *
+ * `debut` est l'instant ISO rendu par `google-calendar` ; `journee_entiere`
+ * distingue « 9h30 Dupont » de « Congés », qui n'a pas d'heure à annoncer.
+ */
+export interface RendezVous {
+  titre: string
+  debut: string | null
+  journee_entiere: boolean
+}
+
+/** « 9h » ou « 9h30 » — jamais « 09:00 », qui se lit mal dans une phrase. */
+function heureCourte(debut: string | null): string {
+  if (!debut) return ""
+  const d = new Date(debut)
+  if (Number.isNaN(d.getTime())) return ""
+  const m = d.getMinutes()
+  return m === 0 ? `${d.getHours()}h` : `${d.getHours()}h${String(m).padStart(2, "0")}`
+}
+
+/**
+ * Les rendez-vous, en un morceau de phrase.
+ *
+ * DEUX NOMS AU PLUS. C'est le corps d'une notification : Android le coupe, et
+ * un point du matin qu'on doit déplier n'est plus un point du matin. Le nombre
+ * total reste dit, lui — c'est l'information qui compte quand il y en a six.
+ */
+export function morceauRendezVous(rdv: RendezVous[]): string | null {
+  if (rdv.length === 0) return null
+  const nommes = rdv.slice(0, 2).map((r) => {
+    const h = r.journee_entiere ? "" : heureCourte(r.debut)
+    return h ? `${h} ${r.titre}` : r.titre
+  })
+  const reste = rdv.length - nommes.length
+  const liste = reste > 0 ? `${nommes.join(", ")} et ${reste} autre${reste > 1 ? "s" : ""}` : nommes.join(", ")
+  return `${rdv.length} rendez-vous : ${liste}`
+}
+
+/**
+ * Le point du matin : ses tâches du jour, ses rendez-vous, ce qui traîne.
+ *
+ * LES RENDEZ-VOUS SONT UNE EXCEPTION ASSUMÉE à la règle d'aiguillage, et c'est
+ * lui qui l'a écrite : « Chez Google (événement d'agenda, mail) → on ne notifie
+ * pas, SAUF DANS LE POINT DU MATIN, qui est un RÉSUMÉ et non une alerte. » Un
+ * résumé de la journée sans les rendez-vous n'est pas un résumé de la journée.
+ * Ça ne rouvre PAS la notification d'un rendez-vous à l'unité, qu'il a refusée
+ * — Google la fait déjà.
+ *
+ * `rdv` est FACULTATIF, et c'est le point à ne pas défaire : quand l'agenda n'a
+ * pas pu être lu — compte non branché, jeton expiré, réseau coupé — on rend
+ * exactement le texte d'avant ce chantier. Un point du matin qui manque parce
+ * que l'agenda n'a pas répondu serait une régression pour quelqu'un qui ne
+ * s'était jamais plaint des tâches.
+ */
+export function corpsDuMatin(tasks: Task[], jour: Date, rdv: RendezVous[] = []): string {
   const duJour = tachesDuJour(tasks, jour)
   const iso = isoLocal(jour)
   const enRetard = tasks.filter(
@@ -309,15 +364,64 @@ export function corpsDuMatin(tasks: Task[], jour: Date): string {
   ).length
 
   const morceaux: string[] = []
-  if (duJour.length === 0) morceaux.push("Rien de prévu aujourd'hui")
-  else {
+  const agenda = morceauRendezVous(rdv)
+
+  if (duJour.length === 0) {
+    // « Rien de prévu » à côté de trois rendez-vous serait faux : ce qui n'est
+    // vide, c'est la liste des tâches, pas la journée.
+    if (!agenda) morceaux.push("Rien de prévu aujourd'hui")
+    else morceaux.push("Aucune tâche aujourd'hui")
+  } else {
     const titres = duJour.slice(0, 3).map((t) => t.title)
     const reste = duJour.length - titres.length
     const liste = reste > 0 ? `${titres.join(", ")} et ${reste} autre${reste > 1 ? "s" : ""}` : titres.join(", ")
     morceaux.push(`${duJour.length} tâche${duJour.length > 1 ? "s" : ""} aujourd'hui : ${liste}`)
   }
+
+  if (agenda) morceaux.push(agenda)
   if (enRetard > 0) morceaux.push(`${enRetard} en retard`)
   return `${morceaux.join(" · ")}.`
+}
+
+/**
+ * Les rendez-vous par jour, tels que le plan les attend : la clé est la date
+ * LOCALE (`isoLocal`), pas la date UTC. Un rendez-vous à 1 h du matin heure
+ * d'Israël tombe la veille en UTC, et serait annoncé le mauvais jour.
+ */
+export type Agenda = Record<string, RendezVous[]>
+
+/**
+ * Range les événements de l'agenda par jour LOCAL.
+ *
+ * DEUX FORMES À DISTINGUER, et s'y tromper annonce un rendez-vous le mauvais
+ * jour : un événement à l'heure porte un instant complet
+ * (« 2026-09-07T09:30:00+03:00 »), un événement de journée entière porte une
+ * date nue (« 2026-09-07 »). Passer la date nue par `new Date()` la lit en UTC,
+ * ce qui la décale d'un jour dès qu'on est à l'ouest de Greenwich — on la prend
+ * donc telle quelle.
+ *
+ * Les événements sans début ne sont pas rangeables : on les laisse de côté
+ * plutôt que de les mettre dans un jour au hasard.
+ */
+export function grouperParJour(evenements: RendezVous[]): Agenda {
+  const agenda: Agenda = {}
+  for (const e of evenements) {
+    if (!e.debut) continue
+    const jour = /^\d{4}-\d{2}-\d{2}$/.test(e.debut)
+      ? e.debut
+      : (() => {
+          const d = new Date(e.debut)
+          return Number.isNaN(d.getTime()) ? null : isoLocal(d)
+        })()
+    if (!jour) continue
+    ;(agenda[jour] ??= []).push(e)
+  }
+  // Dans l'ordre de la journée : le point du matin nomme les deux premiers,
+  // et « les deux premiers » doit vouloir dire les deux plus proches.
+  for (const jour of Object.keys(agenda)) {
+    agenda[jour].sort((a, b) => (a.debut ?? "").localeCompare(b.debut ?? ""))
+  }
+  return agenda
 }
 
 /**
@@ -333,6 +437,7 @@ export function planifierMatins(
   tasks: Task[],
   prefs: PrefsNotifications,
   maintenant: Date,
+  agenda: Agenda = {},
 ): NotifPlanifiee[] {
   if (!prefs.matin) return []
 
@@ -344,7 +449,7 @@ export function planifierMatins(
     plan.push({
       id: PLAGE_MATIN.debut + i,
       titre: "Ton point du matin",
-      corps: corpsDuMatin(tasks, jour),
+      corps: corpsDuMatin(tasks, jour, agenda[isoLocal(jour)] ?? []),
       quand,
       canal: dansLaPlageSilencieuse(quand, prefs) ? "nuit" : "matin",
       route: "/",
@@ -364,8 +469,9 @@ export function construirePlan(
   tasks: Task[],
   prefs: PrefsNotifications,
   maintenant: Date = new Date(),
+  agenda: Agenda = {},
 ): NotifPlanifiee[] {
-  return [...planifierEcheances(tasks, prefs, maintenant), ...planifierMatins(tasks, prefs, maintenant)]
+  return [...planifierEcheances(tasks, prefs, maintenant), ...planifierMatins(tasks, prefs, maintenant, agenda)]
     .sort((a, b) => a.quand.getTime() - b.quand.getTime())
     .slice(0, MAX_PROGRAMMEES)
 }

@@ -2289,6 +2289,37 @@ d'une tâche, point du matin (09:15 par défaut, **activable et réglable**,
 c'est sa consigne écrite), nouvelle version d'APK, chantier livré, session
 bloquée. Refusés : message programmé, agenda, mail.
 
+### Le point du matin dit aussi ses rendez-vous (6 sept. 2026)
+
+Chantier `307b6fa2`. **C'est la SEULE exception à la règle d'aiguillage, et
+c'est lui qui l'a écrite** : « Chez Google (événement d'agenda, mail) → on ne
+notifie pas, SAUF DANS LE POINT DU MATIN, qui est un RÉSUMÉ et non une
+alerte. » Un résumé de la journée sans les rendez-vous n'est pas un résumé de
+la journée. Ça ne rouvre PAS la notification d'un rendez-vous à l'unité, qu'il
+a explicitement refusée — Google la fait déjà.
+
+- `corpsDuMatin(tasks, jour, rdv)` reste **pure**, les rendez-vous arrivent en
+  paramètre. `morceauRendezVous` nomme DEUX rendez-vous au plus mais dit le
+  total : c'est un corps de notification, Android coupe le reste.
+- `grouperParJour` range par jour **local**. Un événement de journée entière
+  porte une date NUE (« 2026-09-08 ») : la passer par `new Date()` la lit en
+  UTC et la décale d'un jour à l'ouest de Greenwich, donc on la prend telle
+  quelle.
+- `src/hooks/useAgendaDuMatin.ts` charge l'agenda **de son côté**, une fois par
+  demi-heure. La consigne du chantier était explicite : ne pas appeler l'agenda
+  dans le chemin de reprogrammation, qui se déclenche à chaque modification —
+  cocher une tâche appellerait Google.
+
+**Sans agenda, le texte est EXACTEMENT celui d'avant ce chantier**, et un
+contrôle le garde. Compte non branché, jeton expiré, réseau coupé : le point du
+matin retombe sur les tâches seules. Une panne d'agenda ne doit pas faire
+disparaître un point du matin dont il ne s'est jamais plaint.
+
+**NON VÉRIFIÉ SUR SON COMPTE, et à ne pas présenter comme fait** : son jeton
+Google a expiré le 5 sept. à 19h51 (`verifier-agenda-google.mjs` le dit). La
+récupération réelle des rendez-vous ne pourra être constatée qu'après qu'il ait
+ouvert l'app une fois. Toute la logique, elle, est vérifiée hors ligne.
+
 Trois fichiers, et la frontière entre eux compte :
 
 - `src/lib/notifications/plan.ts` — **pur**, aucun appel à Android, à la base
