@@ -1186,6 +1186,28 @@ prouve qu'une ligne a bougé (`rattraperEmpreintes`), et un contrôle
 bout-en-bout de `verifier-memoire.mjs` vérifie que le rattrapage rend
 VRAIMENT cherchable un échange ancien.
 
+**Une commande comprise SUR L'APPAREIL laisse quand même sa trace
+(`src/lib/echangeLocal.ts`).** `resolveTranscript` essaie d'abord
+`interpreterLocalement` — gratuit, instantané, hors ligne, et c'est très bien.
+Mais quand une règle locale reconnaît la phrase, `voice-command` n'est jamais
+appelé, et c'est lui qui écrit la ligne dans `echanges` : la phrase
+disparaissait de l'historique, invisible pour « on avait parlé de quoi ? »,
+invisible pour la mémoire, et il n'en restait que les 80 premiers caractères
+dans `journal_ecoute`. Deux chantiers dictés le 5 sept. à 18h20 et 19h32 ont
+été perdus comme ça — il a dû les redicter.
+
+L'app écrit donc elle-même l'échange, sans `await` chez l'appelant et sans
+jamais faire échouer la commande qu'elle observe. `embedding` reste `null` :
+`Supabase.ai` n'existe que dans une Edge Function ; `rattraperEmpreintes` rend
+la ligne cherchable peu après, tout seul. Ces phrases ne passent volontairement
+PAS par l'extraction de souvenirs — la consigne dit déjà de ne rien retenir
+d'une demande de création de tâche ou de chantier, et ce sont exactement
+celles-là. **Chaque chemin qui exécute une commande doit tracer** : il y en a
+deux (le micro classique et l'outil du mode Live), et
+`verifier-pannes-silencieuses.ts` compte les appels à `executerActions` face
+aux appels à `tracerSiLocale` — un troisième chemin ajouté sans trace
+reperdrait des phrases sans que rien ne le signale.
+
 **Une panne de LECTURE ne se voit pas dans le témoin, d'où `_shared/pannes.ts`.**
 Le témoin compte les écritures ; un rappel qui échoue, lui, rend exactement le
 même résultat qu'un rappel qui n'a rien trouvé — la chaîne vide. Jarvis

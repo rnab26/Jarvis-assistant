@@ -17,6 +17,7 @@ import {
 } from "@/lib/veille"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
+import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
 import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appPreferee,
@@ -201,6 +202,23 @@ export function MicButton({
   // rendu de plus pendant que Google tient le micro ne sert à rien.
   const questionAppRef = useRef<QuestionEnAttente | null>(null)
 
+  // La dernière phrase que les règles locales ont reconnue toute seule.
+  //
+  // Une commande traitée sur l'appareil ne passe jamais par voice-command,
+  // donc personne n'écrit sa ligne dans `echanges` : elle disparaissait de
+  // l'historique, et deux chantiers dictés le 5 sept. ont été perdus comme ça
+  // (chantier 5c3182c5). On retient laquelle, pour l'écrire une fois que la
+  // réponse est connue — et une seule fois : une phrase résolue par le
+  // serveur, déjà écrite là-bas, ne doit pas se retrouver en double.
+  const derniereLocaleRef = useRef<string | null>(null)
+
+  /** Garde la trace d'une commande que l'appareil a traitée sans le serveur. */
+  function tracerSiLocale(transcript: string, reponse: string | null) {
+    if (derniereLocaleRef.current !== transcript) return
+    derniereLocaleRef.current = null
+    enregistrerEchangeLocal(transcript, reponse)
+  }
+
   /**
    * Envoie un transcript à la Edge Function et renvoie les actions à exécuter.
    * Une phrase peut en contenir plusieurs ("ajoute une tâche et marque
@@ -234,8 +252,12 @@ export function MicButton({
     })
     if (local) {
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: local.length })
+      derniereLocaleRef.current = transcript
       return local
     }
+    // Le serveur écrira lui-même la ligne dans `echanges` : rien à tracer ici,
+    // et surtout pas la phrase précédente.
+    derniereLocaleRef.current = null
     const t0 = Date.now()
 
     // Borné dans le temps, comme tout le reste des appels du projet :
@@ -363,6 +385,7 @@ export function MicButton({
     }
 
     const reply = await executerActions(actions, originalTranscript)
+    tracerSiLocale(transcript, reply)
 
     setLastReply(reply)
     setStatus("speaking")
@@ -519,7 +542,9 @@ export function MicButton({
           return consigneQuestionApp(question.message)
         }
 
-        return await derniersRef.current.executerActions(actions, aRejouer)
+        const reponse = await derniersRef.current.executerActions(actions, aRejouer)
+        tracerSiLocale(aRejouer, reponse)
+        return reponse
       },
       onEtat: (etat, detail) => {
         if (etat === "connexion") setStatus("processing")

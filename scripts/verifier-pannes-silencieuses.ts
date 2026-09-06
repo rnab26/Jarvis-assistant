@@ -131,5 +131,60 @@ for (const { fichier, fonction, fin } of RAPPELS) {
   )
 }
 
+// Une commande traitée SUR L'APPAREIL doit laisser sa trace (chantier 5c3182c5).
+//
+// Même famille exactement : `interpreterLocalement` répond sans appeler
+// voice-command, donc personne n'écrit la ligne dans `echanges` et la phrase
+// disparaît de l'historique — deux chantiers dictés le 5 sept. ont été perdus
+// comme ça. Le correctif tient à trois fils, et casser n'importe lequel se
+// verrait seulement des jours plus tard, en cherchant une phrase absente.
+{
+  const code = lire("src/lib/echangeLocal.ts")
+  verifier(
+    "echangeLocal prouve son écriture par un .select()",
+    code.includes('.select("id")'),
+    "sans lui, une insertion refusée par RLS rend un succès et la phrase est perdue en silence",
+  )
+  verifier(
+    "echangeLocal signale une écriture qui n'a touché aucune ligne",
+    /!data\?\.length/.test(code) && code.includes("signalerErreur("),
+    "zéro ligne écrite sans erreur, c'est exactement la panne qui se lit comme une absence",
+  )
+  verifier(
+    "echangeLocal avale sa propre erreur, elle",
+    /catch \(err\)/.test(code) && code.includes("void (async ()"),
+    "une trace qui fait échouer la commande qu'elle observe serait pire que pas de trace",
+  )
+  verifier(
+    "echangeLocal charge le client Supabase paresseusement",
+    code.includes('await import("@/lib/supabase")'),
+    "le banc d'essai du micro monte MicButton sans configuration Supabase",
+  )
+
+  const mic = lire("src/components/voice/MicButton.tsx")
+  verifier(
+    "la branche locale de resolveTranscript se retient d'être tracée",
+    mic.includes("derniereLocaleRef.current = transcript"),
+    "sans ce marquage, aucune commande locale n'est jamais écrite",
+  )
+  verifier(
+    "et la branche serveur remet le marqueur à zéro",
+    mic.includes("derniereLocaleRef.current = null"),
+    "sinon une phrase résolue par le serveur serait écrite deux fois : ici et dans memoire.ts",
+  )
+
+  // LE contrôle qui compte pour la suite : chaque chemin qui exécute des
+  // actions doit tracer. Il y en a deux aujourd'hui (le micro classique et
+  // l'outil du mode Live) ; un troisième ajouté sans trace reperdrait des
+  // phrases sans que rien ne le signale.
+  const appels = [...mic.matchAll(/(?<!function )executerActions\(/g)].length
+  const traces = [...mic.matchAll(/(?<!function )tracerSiLocale\(/g)].length
+  verifier(
+    "tout chemin qui exécute une commande garde sa trace",
+    appels > 0 && appels === traces,
+    `${appels} exécution(s) de commande pour ${traces} trace(s) — un chemin oublié perd des phrases`,
+  )
+}
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)
