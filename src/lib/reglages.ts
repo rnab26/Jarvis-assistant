@@ -199,6 +199,11 @@ export const STOCKAGE_LOCAL_ASSUME: { prefixe: string; pourquoi: string }[] = [
       "La question envoyée à une IA installée, en attendant que Raphaël en partage la réponse. Un aller-retour en cours sur CET appareil, qui vit une demi-heure : la réponse se partage depuis le téléphone d'où la question est partie, pas depuis un autre.",
   },
   {
+    prefixe: "jarvis_file_en_attente",
+    pourquoi:
+      "Ce qu'il a dicté sans réseau, en attendant que ça s'écrive vraiment. Ce n'est PAS une préférence — il n'y a rien à régler — et la recopier en base n'aurait aucun sens : ce qu'elle contient a justement échoué à y arriver. Un tampon propre à l'appareil où la dictée a eu lieu, vidé dès que le réseau revient.",
+  },
+  {
     prefixe: "jarvis_autorisations_vues",
     pourquoi:
       "L'écran des autorisations a déjà été présenté sur CET appareil. Les autorisations Android sont propres au téléphone : recopier ce repère en base ferait sauter l'écran sur un appareil neuf, qui n'a justement rien d'accordé.",

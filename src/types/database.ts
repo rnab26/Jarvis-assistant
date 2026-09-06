@@ -19,6 +19,19 @@ export interface Task {
   status: TaskStatus
   created_at: string
   updated_at: string
+  /**
+   * Vrai quand cette tâche est dans la FILE D'ATTENTE : il l'a dictée, elle
+   * s'affiche, mais elle n'est pas encore écrite en base (réseau coupé).
+   *
+   * Absent partout ailleurs, et c'est voulu : une tâche relue depuis Postgres
+   * n'a pas ce champ. Il ne sert qu'à ne jamais lui laisser croire que c'est
+   * enregistré alors que ça ne l'est pas — sa règle du 6 sept.
+   */
+  enAttente?: boolean
+  /** Le dernier échec de renvoi, en clair, quand il y en a eu un. */
+  echecEnvoi?: string | null
+  /** On a cessé de renvoyer tout seul : ça attend un geste de lui. */
+  envoiBloque?: boolean
 }
 
 export interface TaskInput {
