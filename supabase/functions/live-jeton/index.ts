@@ -188,7 +188,24 @@ Deno.serve(async (req) => {
     // souvenirs et les corrections, et pour la même raison : en Live le
     // contexte est scellé une fois à l'ouverture, donc il doit contenir tout
     // ce que le modèle ne pourra plus aller chercher.
-    contexte = `${contexte}\n${await rappelerBranchements(supabase)}\n${await souvenirsDeLUtilisateur(supabase)}\n${await rappelerCorrections(supabase)}`.trim()
+    // LES TROIS EN PARALLÈLE, ET C'EST MESURÉ. Écrites dans un gabarit, ces
+    // trois lectures s'exécutaient l'une APRÈS l'autre — un gabarit évalue ses
+    // expressions de gauche à droite, donc trois allers-retours Supabase mis
+    // bout à bout. Relevé le 6 sept. sur son journal (live_debut, découpé en
+    // trois depuis le 5) : ms_jeton est de loin le plus gros morceau d'une
+    // ouverture Live — 1200 à 1500 ms d'ordinaire, 4444 et 8163 ms au pire —
+    // devant ms_connexion (630-1275) et ms_micro (333-850). Le micro de la
+    // WebView, que je soupçonnais, n'y est pour rien : c'est nous.
+    //
+    // Les trois sont indépendantes et aucune ne peut échouer bruyamment (elles
+    // avalent leurs erreurs et rendent ""), donc Promise.all ne change que le
+    // temps. L'ordre du texte final reste celui d'avant.
+    const [branchements, souvenirs, corrections] = await Promise.all([
+      rappelerBranchements(supabase),
+      souvenirsDeLUtilisateur(supabase),
+      rappelerCorrections(supabase),
+    ])
+    contexte = `${contexte}\n${branchements}\n${souvenirs}\n${corrections}`.trim()
 
     // Les jetons éphémères ne vivent que dans la version v1alpha de l'API.
     const ai = new GoogleGenAI({ apiKey: cle, httpOptions: { apiVersion: "v1alpha" } })

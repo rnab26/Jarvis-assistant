@@ -278,6 +278,13 @@ export function useSpeechRecognition() {
       // Déclarée AVANT les écouteurs qui l'affectent : c'est une fermeture
       // appelée depuis le pont natif, pas du code qu'on relit d'en haut.
       let raison: RaisonEcoute | null = null
+      // ET LE CODE BRUT, PAS SEULEMENT SA TRADUCTION. Mesuré le 6 sept. sur
+      // son téléphone : `raison=service` est arrivée 51 fois, contre 35
+      // « silence » — c'est devenu la première erreur ouverte du registre. Or
+      // « service » regroupe ERROR_SERVER (4), ERROR_CLIENT (5),
+      // ERROR_SERVER_DISCONNECTED (11) ET tout code inconnu : impossible de
+      // savoir laquelle de ces pannes il subit. On garde donc le nombre.
+      let codeAndroid: number | null = null
 
       const partiels = await NativeSpeechRecognition.addListener(
         "partialResults",
@@ -315,6 +322,7 @@ export function useSpeechRecognition() {
           // rafale, soit 363 secondes perdues sur la seule journée du
           // 5 sept. C'est exactement la latence dont Raphaël se plaint.
           raison = raisonDepuisCode(code)
+          codeAndroid = code ?? null
           resoudreStop?.()
           return
         }
@@ -413,6 +421,7 @@ export function useSpeechRecognition() {
           mort_silencieuse: mortSilencieuse,
           demarrage_refuse: demarrageRefuse,
           raison,
+          code: codeAndroid,
           entendu: extraitEntendu(transcript),
         })
         if (!transcript) throw new Error(demarrageRefuse ? MOTEUR_OCCUPE : RIEN_ENTENDU)
@@ -447,6 +456,9 @@ export function useSpeechRecognition() {
       let stoppedRecu = false
       let finalApresStop = 0
       let raison: RaisonEcoute | null = null
+      // Voir le mode veille : « service » regroupe quatre pannes distinctes,
+      // seul le nombre les sépare.
+      let codeAndroid: number | null = null
 
       setListening(true)
       noterEcoute("commande_debut")
@@ -480,6 +492,7 @@ export function useSpeechRecognition() {
           // tout de suite — c'est ce qui fait qu'une coupure en pleine
           // phrase ne se paie plus une seconde de silence.
           raison = raisonDepuisCode(code)
+          codeAndroid = code ?? null
           resoudreStop?.()
           return
         }
@@ -574,6 +587,7 @@ export function useSpeechRecognition() {
           // perte — il attendait une réponse.
           mode: "commande",
           raison,
+          code: codeAndroid,
           duree_ms: Date.now() - flux.etat.debutAt,
           sessions: nbSessions,
           partiels: nbPartiels,

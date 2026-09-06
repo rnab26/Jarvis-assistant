@@ -4,6 +4,7 @@ import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { LecteurAudio, capturerMicro, type CaptureMicro } from "@/lib/live/audio"
 import { demandeFinDeConversation } from "@/lib/live/finConversation"
+import { retourOuAveu } from "@/lib/retourVide"
 
 /**
  * Une conversation Live avec Gemini : l'audio part en continu, Google décide
@@ -185,12 +186,27 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
         for (const appel of m.toolCall!.functionCalls!) {
           const demande = String((appel.args as { demande?: unknown } | undefined)?.demande ?? "")
           let resultat: string
+          let vide = false
           try {
-            resultat = demande ? await ev.onCommande(demande) : "Je n'ai pas compris la demande."
+            if (!demande) {
+              resultat = "Je n'ai pas compris la demande."
+            } else {
+              // JAMAIS DE CHAÎNE VIDE AU MODÈLE. Sans rien à rapporter il
+              // comble — et le 6 sept. il a comblé en annonçant à Raphaël que
+              // son message était parti. La source est corrigée dans
+              // executerActions ; ce filet-ci reste parce qu'il n'y a aucune
+              // raison de refaire confiance au silence.
+              const brut = await ev.onCommande(demande)
+              const retour = retourOuAveu(brut)
+              resultat = retour.texte
+              vide = retour.vide
+            }
           } catch (e) {
             resultat = `Ça n'a pas marché : ${e instanceof Error ? e.message : String(e)}`
           }
-          noterEcoute("live_commande", { demande: demande.slice(0, 80), resultat: resultat.slice(0, 80) })
+          // `vide` est noté comme un DÉFAUT, pas comme un cas normal : c'est
+          // par cette ligne qu'on retrouvera l'action muette.
+          noterEcoute("live_commande", { demande: demande.slice(0, 80), resultat: resultat.slice(0, 80), vide })
           reponses.push({ id: appel.id, name: appel.name ?? NOM_OUTIL, response: { resultat } })
         }
         if (!fermee) session?.sendToolResponse({ functionResponses: reponses })

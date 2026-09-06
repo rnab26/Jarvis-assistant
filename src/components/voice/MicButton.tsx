@@ -32,6 +32,7 @@ import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
 import { consigneQuestionApp, suiteDeLaQuestion, type QuestionEnAttente } from "@/lib/questionAppLive"
+import { retourOuAveu } from "@/lib/retourVide"
 import { ecrireModeLive, lireModeLive } from "@/lib/livePrefs"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import type { DevItem } from "@/types/database"
@@ -500,7 +501,22 @@ export function MicButton({
     if (triggered.length > 0) {
       reply += ` Au fait, ${triggered.map((p) => p.reminder).join(" ")}`
     }
-    return reply
+
+    // AUCUNE ACTION N'A RENDU DE PHRASE. Vu deux fois dans son journal le
+    // 6 sept. sur « réponds à mel ma femme » puis « envoyer le message
+    // maintenant » : le modèle Live recevait "" et comblait le silence en
+    // annonçant que le message était parti. On avoue au lieu de se taire, et
+    // on SIGNALE — sinon on aurait juste rendu Jarvis poli sur un défaut
+    // qu'on n'aurait plus jamais retrouvé.
+    const retour = retourOuAveu(reply)
+    if (retour.vide) {
+      signalerErreur("action", "Une action n'a rien répondu", {
+        detail: `actions : ${actions.map((a) => a.action).join(", ") || "(aucune)"}`,
+        contexte: originalTranscript,
+        source: "voix",
+      })
+    }
+    return retour.texte
   }
 
   // --- Mode conversation Live (prototype, décision de Raphaël du 4 sept.) ---
