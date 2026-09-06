@@ -51,31 +51,54 @@ const HOTE = "https://generativelanguage.googleapis.com/v1beta"
 const COMMANDE_PAR_DEFAUT = "gemini-3.1-flash-lite"
 
 /**
- * Essayés dans l'ordre si la minute du premier est saturée : le quota gratuit
- * est compté PAR MODÈLE, donc basculer rend la main tout de suite là où
- * attendre coûte plusieurs secondes.
+ * Essayés dans l'ordre quand le principal ne répond pas : le quota gratuit est
+ * compté PAR MODÈLE, donc basculer rend la main tout de suite là où attendre
+ * coûte plusieurs secondes.
  *
- * Des seaux RÉELLEMENT distincts, ce qui n'était pas le cas avant :
- * « gemini-flash-lite-latest » est un ALIAS de gemini-3.5-flash-lite, donc le
- * même compteur — le premier secours ne servait à rien. Et
- * gemini-3.1-flash-lite était en même temps le modèle de la mémoire, qui
- * vidait le seau de son côté. Le 3 sept. les 500 requêtes du jour sont
- * parties, et Jarvis est resté muet.
+ * MESURÉ LE 6 SEPT. 2026 (chantier 0edec0c4), par de vrais appels
+ * `generateContent` avec la clé de TEST — pas d'après ListModels, pas de
+ * mémoire, pas de documentation. Ce qui a fait changer les deux secours :
  *
- * PIÈGE VÉRIFIÉ LE 4 SEPT. 2026 : la liste rendue par ListModels n'est PAS une
- * autorisation. Les deux clés annoncent gemini-2.5-flash et
- * gemini-2.5-flash-lite, et generateContent les refuse toutes les deux en 404
- * « no longer available to new users ». Un secours écrit d'après la liste, ou
- * de mémoire, ne se voit donc qu'en production. Les modèles ci-dessous ont été
- * essayés pour de vrai, avec chaque clé, avant d'être écrits ici.
+ * - gemini-3.5-flash a répondu en 13,8 s, gemini-3.6-flash en 22,2 s.
+ *   **L'app abandonne à 25 s.** Un secours qui met 22 s ne sauve donc rien :
+ *   au mieux Raphaël attend une demi-minute, au pire il n'a rien. La note du
+ *   4 sept. les donnait à ~3 s ; ce n'est plus vrai.
+ * - Ils sont en plus plafonnés à 20 requêtes PAR JOUR chacun (mesuré le
+ *   4 sept. sur les journaux réels, `GenerateRequestsPerDayPerProjectPerModel
+ *   -FreeTier`, limite 20). Le filet valait donc 40 phrases par jour.
  *
- * LIMITE CONNUE, MESURÉE LE 4 SEPT. (chantier 0edec0c4) : ces deux secours
- * sont plafonnés à 20 requêtes PAR JOUR chacun
- * (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`). Le filet vaut donc
- * 40 phrases, après quoi il n'existe plus. D'où le secret GEMINI_SECOURS : de
- * meilleurs secours se posent sans redéployer, dès qu'ils sont mesurés.
+ * Les deux remplaçants, et ce qui a été vérifié sur chacun :
+ *
+ * - gemini-3.1-flash-lite-preview — 41 appels réussis dans la journée sans
+ *   AUCUN 429 journalier, 15 requêtes/minute, latence médiane 0,9 à 2,2 s, et
+ *   il APPELLE bien l'outil à chaque fois (répondre n'est pas obéir).
+ *   **Son seau est distinct du principal, et c'est prouvé** : après avoir
+ *   saturé sa minute (4 refus « PerMinute », limite 15), gemini-3.1-flash-lite
+ *   a répondu dans la foulée en 932 ms. Sans cette preuve, un « preview » du
+ *   même numéro aurait très bien pu partager le compteur, et le secours
+ *   n'aurait servi à rien.
+ * - gemini-3-flash-preview — dernier recours, plus étroit : 5 requêtes par
+ *   MINUTE seulement (mesuré : 1 réussite sur une rafale de 20). Latence
+ *   ~1,6 s, aucun plafond journalier rencontré. Il ne tient pas une rafale,
+ *   mais il répond dix fois plus vite que ceux qu'il remplace.
+ *
+ * ÉCARTÉS, et pourquoi, pour qu'on ne les repropose pas :
+ * - gemini-omni-1.1-flash : 429 journalier DÈS LE PREMIER APPEL.
+ * - gemini-flash-latest : 503 « high demand » au moment de la mesure.
+ * - gemini-flash-lite-latest : il répond en 490 ms, mais c'est un ALIAS, et
+ *   d'après la mesure du 4 sept. (pas refaite ici) il pointe sur
+ *   gemini-3.5-flash-lite, c'est-à-dire le modèle de la MÉMOIRE : même
+ *   compteur, donc un secours qui ne secourt rien. Un alias est de toute
+ *   façon écarté par principe — il peut changer de cible du jour au
+ *   lendemain, et un changement de modèle doit être un choix.
+ * - gemini-2.5-flash / gemini-2.5-flash-lite : annoncés par ListModels, et
+ *   refusés en 404 par generateContent. La liste n'est PAS une autorisation.
+ *
+ * Le secret GEMINI_SECOURS remplace cette liste sans redéployer : un modèle
+ * meurt sans prévenir, et attendre un déploiement pendant que Jarvis se tait
+ * est précisément ce qu'il ne faut pas avoir à faire.
  */
-const COMMANDE_SECOURS = ["gemini-3.5-flash", "gemini-3.6-flash"]
+const COMMANDE_SECOURS = ["gemini-3.1-flash-lite-preview", "gemini-3-flash-preview"]
 
 /**
  * Le modèle de la MÉMOIRE. Il ne partage JAMAIS un seau avec la commande.
@@ -88,6 +111,24 @@ const COMMANDE_SECOURS = ["gemini-3.5-flash", "gemini-3.6-flash"]
  * gemini-3.1-flash-lite.
  */
 const MEMOIRE_PAR_DEFAUT = "gemini-3.5-flash-lite"
+
+/**
+ * SON SECOURS RESTE gemini-3.7-flash, ET CE N'EST PAS UN OUBLI.
+ *
+ * Il est plafonné à 20 requêtes par jour (mesuré le 4 sept.), ce qui est peu.
+ * On a cherché mieux le 6 sept. : il n'y a plus un seul modèle « lite »
+ * disponible qui ne soit pas déjà pris. gemini-2.5-flash-lite est mort (404),
+ * gemini-3.1-flash-lite est le principal de la COMMANDE et
+ * gemini-3.1-flash-lite-preview son premier secours — les prendre ici
+ * refabriquerait le partage de seau du 3 sept. —, et
+ * gemini-flash-lite-latest est un alias qui, d'après la mesure du 4 sept.,
+ * pointe sur le principal de la mémoire — donc le même compteur.
+ *
+ * Perdre un souvenir coûte infiniment moins cher que rendre Jarvis muet :
+ * c'est la commande qui garde les bons seaux. Vérifié le 6 sept. après avoir
+ * saturé plusieurs autres modèles : les deux modèles de la mémoire
+ * répondaient toujours, en 503 ms et 1 675 ms.
+ */
 const MEMOIRE_SECOURS = ["gemini-3.7-flash"]
 
 /**

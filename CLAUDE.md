@@ -1173,11 +1173,36 @@ concernée** ; une fonction jetable de dix lignes déployée puis supprimée suf
 (et garde la clé côté Supabase, là où le classificateur de permissions ne
 bloque pas — il refuse toute commande shell qui porte un secret en clair).
 
-Les cinq seaux en place, chacun essayé pour de vrai avant d'être écrit :
-commande — principal `gemini-3.1-flash-lite`, secours `gemini-3.5-flash` puis
-`gemini-3.6-flash` ; mémoire — principal `gemini-3.5-flash-lite`, secours
-`gemini-3.7-flash`. La mémoire ne touche JAMAIS aux modèles de la commande :
-c'est ce qui a rendu Jarvis muet le 3 sept.
+Les cinq seaux en place, chacun essayé pour de vrai avant d'être écrit
+(`_shared/gemini.ts` porte le détail des mesures) : commande — principal
+`gemini-3.1-flash-lite`, secours `gemini-3.1-flash-lite-preview` puis
+`gemini-3-flash-preview` ; mémoire — principal `gemini-3.5-flash-lite`,
+secours `gemini-3.7-flash`. La mémoire ne touche JAMAIS aux modèles de la
+commande : c'est ce qui a rendu Jarvis muet le 3 sept.
+
+**Les secours de la commande ont changé le 6 sept.** (chantier `0edec0c4`), et
+la raison est double : `gemini-3.5-flash` et `gemini-3.6-flash` étaient
+plafonnés à 20 requêtes par jour chacun — le filet valait 40 phrases — et
+surtout, remesurés ce jour-là, ils répondaient en **13,8 s et 22,2 s** alors
+que **l'app abandonne à 25 s**. Un secours à 22 s ne sauve rien. Les
+remplaçants répondent en 1 à 2 s, et `gemini-3.1-flash-lite-preview` a encaissé
+41 appels dans la journée sans plafond journalier.
+
+**Le piège qu'il faut refaire à chaque fois qu'on change un secours** : deux
+modèles peuvent partager un compteur sans que leur nom le dise. On le prouve
+en saturant la MINUTE de l'un puis en appelant l'autre dans la foulée — s'il
+répond, les seaux sont distincts. Fait le 6 sept. pour
+`gemini-3.1-flash-lite-preview` face au principal (932 ms juste après quatre
+refus « PerMinute »). Sans ça, un « preview » du même numéro aurait très bien
+pu ne servir à rien.
+
+**Deux plafonds différents se cachent derrière le même 429 :**
+`GenerateRequestsPerMinutePerProjectPerModel` se lève tout seul en une minute,
+`…PerDay…` laisse Jarvis muet jusqu'au lendemain. Lis toujours le `quotaId`.
+Et la limite/minute varie énormément d'un modèle à l'autre : 15 pour
+`gemini-3.1-flash-lite-preview`, **5** pour `gemini-3-flash-preview` — un
+modèle à 5/minute ne tient pas une rafale, il ne peut être que dernier
+recours.
 
 ### Un contrôle rouge n'est pas forcément un bug
 
