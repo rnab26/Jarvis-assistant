@@ -61,6 +61,24 @@ export const CLES_APP: Record<"musique" | "navigation" | "ia" | "appels", string
 }
 export const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
 
+/**
+ * Lequel des deux WhatsApp, quand les deux sont installés.
+ *
+ * Raphaël, 6 sept. 2026 : « sur WhatsApp, ça prépare le message mais il n'y a
+ * rien qui est envoyé » — et le message partait dans WhatsApp Business, pas
+ * dans celui où il écrit. Le paquet est retenu ici plutôt que deviné : prendre
+ * « la première application qui répond » est précisément ce qui a échoué.
+ */
+export const CLE_APP_WHATSAPP = "jarvis_app_whatsapp"
+
+export function paquetWhatsAppPrefere(): string | null {
+  try {
+    return localStorage.getItem(CLE_APP_WHATSAPP)
+  } catch {
+    return null
+  }
+}
+
 /** L'application que Raphaël a retenue pour la musique, la navigation ou une
  * IA tierce, si on la lui a déjà demandée une fois. Lu par MicButton pour
  * savoir s'il faut la lui demander avant d'exécuter — seule source de
@@ -161,6 +179,37 @@ function dureeLisible(secondes: number): string {
   if (h > 0) return m > 0 ? `${h} h ${m}` : `${h} heure${h > 1 ? "s" : ""}`
   if (m > 0) return `${m} minute${m > 1 ? "s" : ""}`
   return `${secondes} seconde${secondes > 1 ? "s" : ""}`
+}
+
+/**
+ * Lequel des deux WhatsApp utiliser.
+ *
+ * « à_choisir » n'est pas un échec : c'est la seule réponse honnête quand les
+ * deux sont installés et qu'il n'a rien dit. Deviner, c'est un message écrit
+ * dans une application qu'il n'ouvre jamais — et il l'a vécu.
+ */
+async function quelWhatsApp(): Promise<
+  { etat: "ok"; paquet: string | null } | { etat: "a_choisir"; phrase: string }
+> {
+  const retenu = paquetWhatsAppPrefere()
+  if (retenu) return { etat: "ok", paquet: retenu }
+
+  let installes: { nom: string; paquet: string }[] = []
+  try {
+    installes = (await ActionsTelephone.listerApplicationsWhatsApp()).applications ?? []
+  } catch {
+    // APK antérieure à cette méthode : on garde le comportement par défaut du
+    // plugin, qui vise le WhatsApp ordinaire.
+    return { etat: "ok", paquet: null }
+  }
+
+  if (installes.length > 1) {
+    return {
+      etat: "a_choisir",
+      phrase: `Tu as ${installes.map((a) => a.nom).join(" et ")} sur ton téléphone, et je ne sais pas lequel tu utilises. Choisis-le dans Paramètres, « Tes applications par défaut », et je m'en souviendrai.`,
+    }
+  }
+  return { etat: "ok", paquet: installes[0]?.paquet ?? null }
 }
 
 /**
@@ -312,9 +361,19 @@ export async function executerActionTelephone(
         if (canal === "sms") {
           await ActionsTelephone.preparerSms({ texte: action.message_text, numero: numero ?? undefined })
         } else {
+          // LEQUEL des deux WhatsApp ? Le 6 sept. 2026, ses messages
+          // partaient dans WhatsApp Business : le chemin « lien wa.me » ne
+          // visait aucune application, et Android choisissait. On vise
+          // maintenant celui qu'il a retenu — et quand les deux sont
+          // installés sans qu'il ait choisi, on DEMANDE au lieu de prendre le
+          // premier : se tromper d'application, c'est un message qui n'arrive
+          // jamais, sans que rien ne le dise.
+          const choix = await quelWhatsApp()
+          if (choix.etat === "a_choisir") return choix.phrase
           await ActionsTelephone.preparerWhatsApp({
             texte: action.message_text,
             numero: numero ?? undefined,
+            paquet: choix.paquet ?? undefined,
           })
         }
 

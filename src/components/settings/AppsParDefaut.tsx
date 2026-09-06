@@ -3,9 +3,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   CLES_APP,
+  CLE_APP_WHATSAPP,
   CLE_CANAL_MESSAGES,
   appPreferee,
   canalMessagesPrefere,
+  paquetWhatsAppPrefere,
 } from "@/lib/actionsTelephoneVocales"
 import { REGLAGES_RESTAURES, ecrireReglage } from "@/lib/reglages"
 import { ActionsTelephone, type ApplicationInstallee } from "@/lib/actionsTelephone"
@@ -37,6 +39,7 @@ export function AppsParDefaut() {
   const [navigation, setNavigation] = useState<string | null>(null)
   const [ia, setIa] = useState<string | null>(null)
   const [appels, setAppels] = useState<string | null>(null)
+  const [whatsapp, setWhatsapp] = useState<string | null>(null)
   const [canal, setCanal] = useState<"whatsapp" | "sms" | null>(null)
 
   function relire() {
@@ -44,6 +47,7 @@ export function AppsParDefaut() {
     setNavigation(appPreferee("navigation"))
     setIa(appPreferee("ia"))
     setAppels(appPreferee("appels"))
+    setWhatsapp(paquetWhatsAppPrefere())
     setCanal(canalMessagesPrefere())
   }
 
@@ -111,6 +115,19 @@ export function AppsParDefaut() {
           onOublier={() => oublier(CLES_APP.ia)}
         />
 
+        {/* LEQUEL des deux WhatsApp. Le 6 sept. 2026, ses messages partaient
+            dans WhatsApp Business : le chemin « lien wa.me » ne visait aucune
+            application, et Android choisissait. Cette ligne ne s'affiche que
+            s'il en a vraiment deux — sinon il n'y a rien à choisir. */}
+        <LigneWhatsApp
+          paquet={whatsapp}
+          onChoisir={(p) => {
+            ecrireReglage(CLE_APP_WHATSAPP, p)
+            relire()
+          }}
+          onOublier={() => oublier(CLE_APP_WHATSAPP)}
+        />
+
         <div className="flex flex-col gap-2 rounded-lg border p-3">
           <p className="font-medium">Messages</p>
           {/* Ici le choix est fermé — WhatsApp ou SMS, rien d'autre — donc on
@@ -140,6 +157,72 @@ export function AppsParDefaut() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * Lequel des deux WhatsApp — et rien du tout quand il n'y en a qu'un.
+ *
+ * Une ligne « choisis ton WhatsApp » sur un téléphone qui n'en a qu'un est du
+ * bruit. Elle n'apparaît que quand la question se pose vraiment, c'est-à-dire
+ * exactement quand Jarvis, sinon, devinerait.
+ */
+function LigneWhatsApp({
+  paquet,
+  onChoisir,
+  onOublier,
+}: {
+  paquet: string | null
+  onChoisir: (paquet: string) => void
+  onOublier: () => void
+}) {
+  const [apps, setApps] = useState<ApplicationInstallee[] | null>(null)
+
+  useEffect(() => {
+    ActionsTelephone.listerApplicationsWhatsApp()
+      .then((r) => setApps(r.applications ?? []))
+      .catch(() => setApps(null))
+  }, [])
+
+  // Rien à choisir : pas de ligne. Hors de l'app non plus.
+  if (apps === null || apps.length < 2) return null
+
+  const nomChoisi = apps.find((a) => a.paquet === paquet)?.nom ?? null
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-medium">WhatsApp</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {nomChoisi ??
+              "Tu en as deux : tant que tu n'as pas choisi, Jarvis te le demandera plutôt que de deviner."}
+          </p>
+        </div>
+        {paquet && (
+          <Button variant="ghost" size="sm" className="shrink-0" onClick={onOublier}>
+            Oublier
+          </Button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {apps.map((app) => (
+          <button
+            key={app.paquet}
+            type="button"
+            aria-pressed={paquet === app.paquet}
+            onClick={() => onChoisir(app.paquet)}
+            className={`rounded-md border px-2 py-1.5 text-xs ${
+              paquet === app.paquet
+                ? "border-primary bg-primary text-primary-foreground"
+                : "text-muted-foreground"
+            }`}
+          >
+            {app.nom}
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 

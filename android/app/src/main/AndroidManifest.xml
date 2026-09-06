@@ -264,5 +264,9 @@
             <action android:name="android.speech.RecognitionService" />
         </intent>
         <package android:name="com.whatsapp" />
+        <!-- WhatsApp Business : sans cette ligne on ne peut pas savoir qu'elle
+             est installee, donc pas la proposer au choix — et c'est elle qui
+             recevait ses messages le 6 sept. 2026. -->
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 </manifest>
