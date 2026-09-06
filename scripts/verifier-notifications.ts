@@ -30,7 +30,12 @@ import {
   planifierEcheances,
   planifierMatins,
 } from "../src/lib/notifications/plan.ts"
-import { phraseAnnonce, raisonDuSilence } from "../src/lib/notifications/annonceVocale.ts"
+import {
+  DELAI_USAGE_MS,
+  ilSenSertMaintenant,
+  phraseAnnonce,
+  raisonDuSilence,
+} from "../src/lib/notifications/annonceVocale.ts"
 import { normaliserPrefs, PREFS_NOTIFS_DEFAUT } from "../src/lib/notifications/prefs.ts"
 import type { PrefsNotifications } from "../src/lib/notifications/prefs.ts"
 import type { Task } from "../src/types/database.ts"
@@ -422,6 +427,69 @@ function tache(partiel: Partial<Task>): Task {
       String(pourquoi(notif, p, coupee, quand)),
     )
   }
+
+  // ── Les heures de silence protègent son sommeil, pas son attention ──
+  //
+  // Sa demande du 6 sept. 2026 : « si on l'utilise pour lancer une action, il
+  // faudrait que ça marche, oui. » Le cas visé est le rappel qu'il a demandé
+  // LUI-MÊME le soir : il partait sur le canal muet, et vu de son fauteuil il
+  // avait demandé quelque chose sans que rien ne se passe.
+  //
+  // Les deux bords comptent, et ce contrôle garde les deux : ce qu'il a
+  // demandé doit se dire, ce que Jarvis initie doit rester muet.
+  const notif = { title: "Appeler le plombier" }
+  const contexteNuit = (extra: Partial<Parameters<typeof raisonDuSilence>[1]>) =>
+    raisonDuSilence(notif, { prefs: base, voixCoupee: false, maintenant: nuit, ...extra })
+
+  verifier(
+    "la nuit, ce que Jarvis initie reste muet",
+    contexteNuit({}) === "heures_de_silence",
+    String(contexteNuit({})),
+    )
+  verifier(
+    "mais un rappel demandé pendant qu'il s'en sert se dit",
+    contexteNuit({ derniereParole: new Date(nuit.getTime() - 2 * 60 * 1000) }) === null,
+    "c'est exactement « rappelle-moi dans dix minutes » à 23 h",
+  )
+  verifier(
+    "l'app à l'écran suffit aussi",
+    contexteNuit({ appVisible: true }) === null,
+  )
+  verifier(
+    "une parole trop ancienne ne lève plus le silence",
+    contexteNuit({ derniereParole: new Date(nuit.getTime() - DELAI_USAGE_MS - 1000) }) ===
+      "heures_de_silence",
+    "sinon Jarvis parlerait la nuit longtemps après qu'il a reposé le téléphone",
+  )
+  verifier(
+    "sa phrase type, « rappelle-moi dans dix minutes », tombe DANS la fenêtre",
+    DELAI_USAGE_MS > 10 * 60 * 1000,
+    `${Math.round(DELAI_USAGE_MS / 60000)} minutes — un délai de dix tomberait pile sur la limite`,
+  )
+  verifier(
+    "l'interrupteur permet de tout museler quand même",
+    raisonDuSilence(notif, {
+      prefs: { ...base, silenceLeveParUsage: false },
+      voixCoupee: false,
+      maintenant: nuit,
+      appVisible: true,
+      derniereParole: nuit,
+    }) === "heures_de_silence",
+  )
+  verifier(
+    "une date de parole dans le futur ne lève pas le silence pour toujours",
+    !ilSenSertMaintenant({
+      prefs: base,
+      voixCoupee: false,
+      maintenant: nuit,
+      derniereParole: new Date(nuit.getTime() + 60 * 60 * 1000),
+    }),
+    "une horloge décalée ne doit pas ouvrir la nuit entière",
+  )
+  verifier(
+    "de jour, rien de tout ça ne change quoi que ce soit",
+    raisonDuSilence(notif, { prefs: base, voixCoupee: false, maintenant: jour }) === null,
+  )
 
   const long = dire({ title: "Point du matin", body: "x".repeat(900) })
   verifier(

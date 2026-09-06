@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Meta-data attendue de tout RecognitionService. Vide de reglages : ce moteur
+  ne reconnait rien, il n'existe que pour satisfaire la declaration exigee par
+  le VoiceInteractionService (voir interaction_service.xml).
+-->
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />

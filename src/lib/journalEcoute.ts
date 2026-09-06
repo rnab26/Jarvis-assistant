@@ -37,7 +37,40 @@ export function extraitEntendu(texte: string | null | undefined): string | null 
   return propre.length > 80 ? `${propre.slice(0, 80)}…` : propre
 }
 
+/**
+ * Quand Raphaël a parlé à Jarvis pour la dernière fois — en mémoire, pas en
+ * base.
+ *
+ * Sert à UNE décision : pendant ses heures de silence, un rappel qu'il vient
+ * de demander doit se dire à voix haute, alors que ce que Jarvis initie tout
+ * seul reste muet (sa demande du 6 sept. 2026, chantier 4dec6918). C'est ici
+ * plutôt que dans le moteur d'écoute parce que TOUT ce qui l'entend passe déjà
+ * par `noterEcoute` : le micro classique, le mode Live, le widget. Un seul
+ * point à brancher, aucun chemin oublié.
+ *
+ * En mémoire seulement, et c'est voulu : la question posée est « est-ce qu'il
+ * s'en sert EN CE MOMENT ». Une valeur relue d'un stockage après un
+ * redémarrage de l'app répondrait « oui » à propos d'hier soir.
+ */
+let derniereParoleMs = 0
+
+/** Les événements qui prouvent qu'il a parlé, pas seulement que le micro a
+ * tourné : une rafale qui finit sans rien entendre n'est pas une parole. */
+const EVENEMENTS_PAROLE = new Set(["reponse", "live_commande"])
+
+/** La dernière fois qu'il a parlé à Jarvis, ou null si jamais depuis
+ * l'ouverture de l'app. */
+export function derniereParole(): Date | null {
+  return derniereParoleMs === 0 ? null : new Date(derniereParoleMs)
+}
+
 export function noterEcoute(evenement: string, detail: Detail = {}) {
+  if (
+    EVENEMENTS_PAROLE.has(evenement) ||
+    (typeof detail.entendu === "string" && detail.entendu.trim() !== "")
+  ) {
+    derniereParoleMs = Date.now()
+  }
   TAMPON.push({ evenement, detail, at: new Date().toISOString(), version: versionApp })
   if (!minuteur) minuteur = setTimeout(vider, 1500)
 

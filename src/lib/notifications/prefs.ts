@@ -55,6 +55,21 @@ export interface PrefsNotifications {
    * silence, jamais si la voix de Jarvis est coupée.
    */
   direAVoixHaute: boolean
+  /**
+   * Pendant les heures de silence, Jarvis parle QUAND MÊME si Raphaël vient
+   * de s'en servir.
+   *
+   * Sa demande du 6 sept. 2026 : « concernant les heures de silence, si on
+   * l'utilise pour lancer une action, il faudrait que ça marche, oui. » Le
+   * cas visé est le rappel qu'il a demandé lui-même le soir (« rappelle-moi
+   * dans dix minutes ») : il partait sur le canal muet, et de son fauteuil il
+   * avait demandé quelque chose sans que rien ne se passe.
+   *
+   * La règle : les heures de silence protègent son SOMMEIL, pas son
+   * attention. Elles taisent ce que Jarvis initie pendant qu'il ne s'en sert
+   * pas, jamais ce qu'il a demandé.
+   */
+  silenceLeveParUsage: boolean
 }
 
 export const PREFS_NOTIFS_DEFAUT: PrefsNotifications = {
@@ -77,6 +92,9 @@ export const PREFS_NOTIFS_DEFAUT: PrefsNotifications = {
   // main évite de le déverrouiller pour lire trois mots. Les heures de
   // silence la retiennent déjà, et un interrupteur suffit à la couper.
   direAVoixHaute: true,
+  // Activé : c'est la règle qu'il a énoncée. L'interrupteur existe pour le
+  // cas inverse — lire au lit à côté de quelqu'un qui dort.
+  silenceLeveParUsage: true,
 }
 
 /** Les avances proposées dans Paramètres. Une liste fermée : un champ libre
@@ -124,6 +142,7 @@ export function normaliserPrefs(brut: unknown): PrefsNotifications {
     silenceDebut: heureValide(o.silenceDebut, PREFS_NOTIFS_DEFAUT.silenceDebut),
     silenceFin: heureValide(o.silenceFin, PREFS_NOTIFS_DEFAUT.silenceFin),
     direAVoixHaute: booleen(o.direAVoixHaute, PREFS_NOTIFS_DEFAUT.direAVoixHaute),
+    silenceLeveParUsage: booleen(o.silenceLeveParUsage, PREFS_NOTIFS_DEFAUT.silenceLeveParUsage),
   }
 }
 

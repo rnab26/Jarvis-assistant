@@ -302,7 +302,7 @@ export function Notifications({ api }: { api: NotificationsApi }) {
                 qui reste à cadrer avec lui. */}
             <Interrupteur
               titre="Dire les rappels à voix haute"
-              description="Quand l'app est ouverte, ou quand tu appuies sur la notification, Jarvis la dit au lieu de seulement l'afficher. Jamais pendant les heures de silence, ni si sa voix est coupée."
+              description="Quand l'app est ouverte, ou quand tu appuies sur la notification, Jarvis la dit au lieu de seulement l'afficher. Pendant les heures de silence, seulement si tu viens de t'en servir. Jamais si sa voix est coupée."
               actif={prefs.direAVoixHaute}
               onChange={(actif) => setPrefs({ direAVoixHaute: actif })}
             />
@@ -326,6 +326,17 @@ export function Notifications({ api }: { api: NotificationsApi }) {
                     label="Jusqu'à"
                     valeur={prefs.silenceFin}
                     onChange={(v) => setPrefs({ silenceFin: v })}
+                  />
+                  {/* Sa demande du 6 sept. 2026 : « si on l'utilise pour
+                      lancer une action, il faudrait que ça marche ». Les
+                      heures de silence protègent son sommeil, pas son
+                      attention. L'interrupteur existe pour le cas inverse —
+                      lire au lit à côté de quelqu'un qui dort. */}
+                  <Interrupteur
+                    titre="Sauf si je viens de te parler"
+                    description="Un rappel que tu as demandé toi-même se dit quand même, si l'app est ouverte ou si tu as parlé à Jarvis dans le quart d'heure. Ce que Jarvis annonce de lui-même reste muet."
+                    actif={prefs.silenceLeveParUsage}
+                    onChange={(actif) => setPrefs({ silenceLeveParUsage: actif })}
                   />
                 </div>
               )}

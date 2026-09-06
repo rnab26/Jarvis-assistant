@@ -51,10 +51,18 @@ const DATES_ECHANGES = [1, 10, 40, 200].map((j) =>
 )
 
 /** Le pont vers Android, en factice : le banc tourne dans un vrai navigateur,
- * où le plugin n'existe pas. Les trois états qui comptent (APK trop ancienne,
- * candidat mais pas choisi, choisi) se parcourent ainsi à 390 points de large,
- * comme Raphaël les verra. */
-function pontFactice(assistant: { candidat: boolean; role: "actif" | "inactif" | "inconnu" } | null): PontAssistant {
+ * où le plugin n'existe pas. Les quatre états qui comptent (APK trop ancienne,
+ * APK qui déclare l'activité mais PAS le service — le cas réel du 6 sept.,
+ * celui qui laissait croire que tout allait bien —, candidat mais pas choisi,
+ * choisi) se parcourent ainsi à 390 points de large, comme Raphaël les
+ * verra. */
+function pontFactice(
+  assistant: {
+    candidat: boolean
+    service?: boolean
+    role: "actif" | "inactif" | "inconnu"
+  } | null,
+): PontAssistant {
   return {
     natif: true,
     lire: async () => {
@@ -218,15 +226,27 @@ function BancDesReglages() {
         </Section>
       </div>
 
+      {/* LE CAS RÉEL DU 6 SEPT. : l'activité ACTION_ASSIST est là (candidat),
+          mais pas le VoiceInteractionService — et la liste de Samsung ne
+          regarde que celui-là. Sans ce cas, la carte disait « Jarvis peut être
+          choisi » devant une liste où il n'était pas. */}
+      <div id="assistant-sans-service">
+        <Section titre="Assistant (sans le service)" cle="banc-assist-sans-service" ouverteParDefaut>
+          <AssistantTelephone
+            pont={pontFactice({ candidat: true, service: false, role: "inactif" })}
+          />
+        </Section>
+      </div>
+
       <div id="assistant-candidat">
         <Section titre="Assistant (choisissable)" cle="banc-assist-candidat" ouverteParDefaut>
-          <AssistantTelephone pont={pontFactice({ candidat: true, role: "inactif" })} />
+          <AssistantTelephone pont={pontFactice({ candidat: true, service: true, role: "inactif" })} />
         </Section>
       </div>
 
       <div id="assistant-actif">
         <Section titre="Assistant (actif)" cle="banc-assist-actif" ouverteParDefaut>
-          <AssistantTelephone pont={pontFactice({ candidat: true, role: "actif" })} />
+          <AssistantTelephone pont={pontFactice({ candidat: true, service: true, role: "actif" })} />
         </Section>
       </div>
 

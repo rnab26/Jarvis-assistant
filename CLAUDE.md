@@ -1326,6 +1326,7 @@ node --experimental-strip-types scripts/verifier-musique.ts       # « je lance 
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
+node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
@@ -1540,6 +1541,38 @@ next-themes plutôt qu'un bricolage maison parce que `components/ui/sonner.tsx`
 lit déjà son état — sinon un toast clair s'afficherait au-dessus d'un écran
 sombre.
 
+## Les heures de silence protègent son sommeil, pas son attention
+
+Sa demande du 6 sept. 2026 : « concernant les heures de silence, si on
+l'utilise pour lancer une action, il faudrait que ça marche, oui. » Le cas
+visé est le rappel qu'il a demandé LUI-MÊME le soir (« rappelle-moi dans dix
+minutes ») : il partait sur le canal muet, et vu de son fauteuil il avait
+demandé quelque chose sans que rien ne se passe.
+
+La règle, en une phrase : **elles taisent ce que Jarvis INITIE pendant qu'il
+ne s'en sert pas, jamais ce qu'il a demandé.** En pratique, deux signes
+suffisent à lever le silence (`ilSenSertMaintenant`, pur, dans
+`annonceVocale.ts`) : l'app est à l'écran, ou il a parlé à Jarvis il y a moins
+de quinze minutes.
+
+**Le quart d'heure se raisonne à partir de SA phrase type**, « rappelle-moi
+dans dix minutes » : dix minutes tomberaient exactement sur la limite et
+rateraient le cas qu'il décrit. Au-delà, on parlerait la nuit longtemps après
+qu'il a reposé le téléphone.
+
+**`dansLaPlageSilencieuse` n'a pas bougé**, et son passage par minuit non plus
+— c'est `raisonDuSilence` qui ne l'applique plus quand il s'en sert. Et
+l'interrupteur « Sauf si je viens de te parler » (Paramètres › Notifications,
+sous les heures de silence) existe pour le cas inverse : lire au lit à côté de
+quelqu'un qui dort.
+
+**« Il vient de me parler » se lit dans `journalEcoute.ts`** (`derniereParole`),
+pas dans le moteur d'écoute : tout ce qui l'entend passe déjà par
+`noterEcoute` — micro classique, mode Live, widget. Un seul point à brancher,
+aucun chemin oublié. C'est en mémoire et pas en base, exprès : la question est
+« est-ce qu'il s'en sert EN CE MOMENT », et une valeur relue après un
+redémarrage répondrait « oui » à propos d'hier soir.
+
 ## Les notifications : Jarvis ne notifie QUE ce qui vit chez lui
 
 Livré le 4 sept. 2026 (chantier 5d03a192). `@capacitor/local-notifications`,
@@ -1750,18 +1783,33 @@ android.googlesource.com). Deux branches, l'une OU l'autre suffit : un
 `VoiceInteractionService` protégé par `BIND_VOICE_INTERACTION` (avec
 `sessionService`, `recognitionService`, `supportsAssist`), **ou** une simple
 activité EXPORTÉE répondant à `ACTION_ASSIST` avec `MATCH_DEFAULT_ONLY`.
-`AssistOverlayActivity` remplit la seconde depuis le 4 sept., et l'APK publiée
-la porte bien — vérifié en téléchargeant la release et en lisant son manifeste
-binaire.
 
-**Donc quand la liste d'Android ne montre pas Jarvis, ne cherche pas dans le
-code : c'est l'APK INSTALLÉE qui est trop ancienne.** Le piège est neuf depuis
+**MAIS LA LISTE DE SAMSUNG NE REGARDE QUE LA PREMIÈRE.** Constaté par Raphaël
+le 6 sept. 2026, captures à l'appui : `AssistOverlayActivity` remplissait la
+seconde depuis le 4 sept., l'APK publiée la portait bien (vérifié en lisant
+son manifeste binaire), et Jarvis n'apparaissait toujours pas dans « Autres
+applications ». D'où `JarvisVoiceInteractionService` + sa session + un
+`JarvisRecognitionService` qui ne reconnaît rien.
+
+**Ce dernier n'est pas une fonctionnalité, c'est une case à cocher du
+système** : `VoiceInteractionServiceInfo` refuse tout le service avec « No
+recognitionService specified » si le XML n'en déclare pas — relevé dans la
+source le 6 sept. Et le rejet est SILENCIEUX : rien à l'écran, rien dans les
+journaux de l'app, Jarvis disparaît simplement de la liste. C'est pour ça que
+`scripts/verifier-assistant.ts` lit le manifeste et le XML plutôt que de faire
+confiance.
+
+**Donc quand la liste d'Android ne montre pas Jarvis, la première question
+reste : l'APK INSTALLÉE est-elle assez récente ?** Le piège est neuf depuis
 la mise à jour rapide, et il trompe : l'interface est à jour, ce qui donne
 toutes les raisons de croire l'app à jour, alors que le manifeste vit dans la
 coquille Android, que seule une vraie installation remplace. La carte
 « L'appui long sur la touche latérale » (Paramètres › Ce que Jarvis utilise)
 interroge le système sur notre propre paquet, sur l'appareil, et le dit —
-plutôt que de le laisser deviner.
+plutôt que de le laisser deviner. Depuis le 6 sept., elle regarde `service`
+(le VoiceInteractionService réellement déclaré par l'APK installée), pas
+`candidat` : se fier à `candidat` seul lui disait « Jarvis peut être choisi »
+devant une liste où il n'était pas.
 
 **Deux chemins qui n'existent pas, vérifiés : ne les retente pas.** L'action
 qui mène pile sur l'écran du choix (`MANAGE_DEFAULT_APP` + `EXTRA_ROLE_NAME`)

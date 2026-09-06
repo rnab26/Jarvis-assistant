@@ -9,6 +9,15 @@ export interface EtatAssistant {
    * rapide ne remplace que l'interface.
    */
   candidat: boolean
+  /**
+   * L'APK installée déclare-t-elle le VoiceInteractionService ?
+   *
+   * C'est la SECONDE branche d'AOSP, et la seule que la liste de Samsung
+   * regarde : le 6 sept. 2026, avec l'activité ACTION_ASSIST seule (donc
+   * `candidat` à vrai), Jarvis n'apparaissait toujours pas dans « Application
+   * d'assistant numérique par défaut ». Absent des APK d'avant le 6 sept.
+   */
+  service?: boolean
   /** "actif" = Jarvis est l'assistant du téléphone ; "inconnu" avant
    * Android 10 ou si le système refuse de répondre. */
   role: "actif" | "inactif" | "inconnu"

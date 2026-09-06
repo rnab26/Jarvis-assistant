@@ -158,6 +158,12 @@ jobs:
       - name: La bulle flottante
         run: node --experimental-strip-types scripts/verifier-bulle.ts
 
+      # Quand une déclaration du VoiceInteractionService manque, Android
+      # rejette le service EN SILENCE : Jarvis disparaît de la liste des
+      # assistants et rien, nulle part, ne dit pourquoi.
+      - name: Jarvis peut être choisi comme assistant du téléphone
+        run: node --experimental-strip-types scripts/verifier-assistant.ts
+
       - name: Les autorisations du téléphone
         run: node --experimental-strip-types scripts/verifier-autorisations.ts
 
