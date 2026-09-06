@@ -637,7 +637,11 @@ export function SettingsPage() {
           <CardHeader>
             <CardTitle>Voix de Jarvis</CardTitle>
             <CardDescription>
-              Choisis parmi les voix déjà installées sur l'appareil (gratuit, hors-ligne).
+              Choisis parmi les voix déjà installées sur l'appareil (gratuit, hors-ligne). Il n'y a
+              pas de bouton pour importer un échantillon : ces voix ne peuvent pas être clonées à
+              partir d'un enregistrement, c'est une limite du téléphone, pas un réglage qui
+              manquerait ici. Une voix construite sur mesure passerait par un service payant, à
+              chaque phrase — une décision à part, pas encore prise.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">

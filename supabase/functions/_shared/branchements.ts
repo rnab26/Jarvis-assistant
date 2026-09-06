@@ -117,23 +117,31 @@ export async function rappelerBranchements(supabase: ClientLecture): Promise<str
   let googleScopes = ""
   let reglages: Record<string, unknown> = {}
 
-  try {
-    const { data } = await supabase.from("google_accounts").select("email, scopes").maybeSingle()
-    if (data) {
-      googleEmail = typeof data.email === "string" ? data.email : null
-      googleScopes = typeof data.scopes === "string" ? data.scopes : ""
-    }
-  } catch {
-    // Pas de compte, ou lecture refusée : on le dira comme « non branché ».
-  }
+  // LES DEUX EN PARALLÈLE. Mesuré le 6 sept. sur live-jeton (chantier
+  // ba140853) : trois lectures Supabase à la suite (dont celle-ci comptait
+  // pour deux) faisaient de ms_jeton le plus gros morceau d'une ouverture
+  // Live. Ces deux lectures sont indépendantes ; rien ne justifie de les
+  // enchaîner plutôt que de les lancer ensemble.
+  const [compte, reglagesLus] = await Promise.all([
+    supabase
+      .from("google_accounts")
+      .select("email, scopes")
+      .maybeSingle()
+      .catch(() => ({ data: null })),
+    supabase
+      .from("reglages")
+      .select("valeurs")
+      .maybeSingle()
+      .catch(() => ({ data: null })),
+  ])
 
-  try {
-    const { data } = await supabase.from("reglages").select("valeurs").maybeSingle()
-    const v = data?.valeurs
-    if (v && typeof v === "object") reglages = v as Record<string, unknown>
-  } catch {
-    // Réglages illisibles : le bloc dira qu'aucune application n'est choisie.
+  const dataCompte = compte?.data
+  if (dataCompte) {
+    googleEmail = typeof dataCompte.email === "string" ? dataCompte.email : null
+    googleScopes = typeof dataCompte.scopes === "string" ? dataCompte.scopes : ""
   }
+  const v = reglagesLus?.data?.valeurs
+  if (v && typeof v === "object") reglages = v as Record<string, unknown>
 
   return `\n${consigneBranchements({ googleEmail, googleScopes, reglages })}`
 }
