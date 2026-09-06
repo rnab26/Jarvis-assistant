@@ -1,4 +1,4 @@
-import { Pencil, Trash2 } from "lucide-react"
+import { ArrowRightLeft, Pencil, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { lireEcheance } from "@/lib/echeance"
+import { chantierDeguise } from "@/lib/tacheOuChantier"
 import type { Category, Task, TaskInput } from "@/types/database"
 
 /**
@@ -31,6 +32,9 @@ interface TaskItemProps {
   onToggle: (task: Task) => Promise<void>
   onUpdate: (id: string, input: TaskInput) => Promise<void>
   onDelete: (id: string) => Promise<void>
+  /** Créer le chantier correspondant, quand cette « tâche » n'en est pas une.
+   * Absent = la proposition ne s'affiche pas (banc d'essai, écran réduit). */
+  onEnFaireUnChantier?: (titre: string, notes: string | null) => Promise<void>
 }
 
 export function TaskItem({
@@ -39,12 +43,18 @@ export function TaskItem({
   onToggle,
   onUpdate,
   onDelete,
+  onEnFaireUnChantier,
 }: TaskItemProps) {
   const [deplie, setDeplie] = useState(false)
+  const [enCours, setEnCours] = useState(false)
   const isDone = task.status === "done"
   // Une tâche faite n'est plus en retard : garder l'étiquette rouge sur
   // quelque chose de terminé ne signale rien, ça alarme pour rien.
   const echeance = lireEcheance(task.due_date, task.due_time)
+  // Une demande faite à Claude, atterrie dans sa liste de courses : au 5 sept.
+  // six de ses tâches étaient dans ce cas, dont une qui n'existait nulle part
+  // ailleurs. Rien n'est proposé sur une tâche déjà faite.
+  const deguise = isDone ? null : chantierDeguise(task.title, task.notes)
 
   return (
     <div className="py-1.5">
@@ -103,6 +113,33 @@ export function TaskItem({
           }
         />
       </div>
+      {/* La proposition, jamais l'action : c'est SA liste. On crée le chantier
+          et on marque la tâche faite — on ne la supprime pas, il doit pouvoir
+          retrouver ce qu'il a dicté. */}
+      {deguise && onEnFaireUnChantier && (
+        <div className="mt-1 ml-6 flex flex-wrap items-center gap-2 rounded-lg border border-dashed px-2 py-1.5">
+          <span className="text-xs text-muted-foreground">
+            <ArrowRightLeft className="mr-1 inline size-3 align-[-1px]" />
+            Ça commence par {deguise.indice} : c'est une demande à Claude, pas une tâche.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7"
+            disabled={enCours}
+            onClick={async () => {
+              setEnCours(true)
+              try {
+                await onEnFaireUnChantier(deguise.titre, task.notes)
+              } finally {
+                setEnCours(false)
+              }
+            }}
+          >
+            {enCours ? "…" : "En faire un chantier"}
+          </Button>
+        </div>
+      )}
       {task.notes && (
         // Alignée sous le titre, pas sous la case : la note appartient au
         // titre. Deux lignes au plus, sinon une note dictée d'un trait occupe
