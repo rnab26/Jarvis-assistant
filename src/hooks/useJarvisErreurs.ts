@@ -89,7 +89,12 @@ export function useJarvisErreurs(userId: string | undefined) {
 
   async function modifierErreur(
     id: string,
-    patch: Partial<Pick<JarvisErreur, "categorie" | "titre" | "detail" | "contexte" | "correction" | "statut" | "dev_item_id">>,
+    patch: Partial<
+      Pick<
+        JarvisErreur,
+        "categorie" | "titre" | "detail" | "contexte" | "correction" | "correction_suggeree" | "statut" | "dev_item_id"
+      >
+    >,
   ) {
     await withErrorToast("Impossible de modifier l'erreur", async () => {
       const { error } = await supabase
@@ -103,6 +108,21 @@ export function useJarvisErreurs(userId: string | undefined) {
 
   async function changerStatut(id: string, statut: ErreurStatut) {
     await modifierErreur(id, { statut })
+  }
+
+  /**
+   * Le seul chemin qui fait passer une suggestion détectée automatiquement
+   * dans la vraie `correction` — celle que `_shared/corrections.ts` envoie au
+   * modèle. Jamais l'inverse : une suggestion ne s'applique jamais toute
+   * seule (chantier 89c3ceca).
+   */
+  async function adopterSuggestion(id: string, suggestion: string) {
+    await modifierErreur(id, { correction: suggestion, correction_suggeree: null })
+  }
+
+  /** Écarter sans adopter : elle pourra revenir si l'erreur se reproduit. */
+  async function ecarterSuggestion(id: string) {
+    await modifierErreur(id, { correction_suggeree: null })
   }
 
   async function supprimerErreur(id: string) {
@@ -121,6 +141,8 @@ export function useJarvisErreurs(userId: string | undefined) {
     ajouterErreur,
     modifierErreur,
     changerStatut,
+    adopterSuggestion,
+    ecarterSuggestion,
     supprimerErreur,
   }
 }

@@ -247,6 +247,7 @@ export function MicButton({
       detail: echec.detail,
       contexte: echec.contexte,
       source,
+      correctionSuggeree: echec.correctionSuggeree,
     })
   }
 

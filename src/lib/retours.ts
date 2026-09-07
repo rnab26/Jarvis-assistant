@@ -59,6 +59,13 @@ export interface Echec {
   contexte: string
   /** Le thème du chantier à ouvrir si l'échec se répète. */
   theme: string
+  /**
+   * Ce que Raphaël vient de dire, comme candidat de correction (chantier
+   * 89c3ceca) — JAMAIS appliqué tout seul : `jarvis_erreurs.correction_suggeree`
+   * n'atteint le modèle qu'une fois recopiée dans `correction`, d'un tap
+   * depuis le cockpit. Null la plupart du temps : voir `correctionDite`.
+   */
+  correctionSuggeree: string | null
 }
 
 /**
@@ -121,6 +128,32 @@ export function aplatir(texte: string): string {
 export function estUnePlainte(phrase: string): boolean {
   const plat = aplatir(phrase)
   return PLAINTES.some((p) => plat.includes(p))
+}
+
+/**
+ * Une plainte de plus, mesurée en mots utiles, au-delà du simple reproche :
+ * c'est ce qui distingue « tu n'as pas fait ce que je t'ai demandé » (rien à
+ * en tirer) de « tu n'as pas lancé la bonne chanson, c'était Dolce Camara de
+ * Booba » (ça dit QUOI faire).
+ */
+const MOTS_SUPPLEMENTAIRES_MIN = 4
+
+/**
+ * Ce que Raphaël vient de dire, comme candidat de correction (chantier
+ * 89c3ceca — « qu'il apprenne quand tu le reprends »). Rend `null` la plupart
+ * du temps : une plainte qui ne dit rien de plus qu'échouer n'apprend rien.
+ *
+ * VOLONTAIREMENT LARGE PLUTÔT QUE PRÉCIS : contrairement à `estUnePlainte`
+ * (qui doit rester étroite pour ne pas remplir le registre de bruit), ceci ne
+ * FAIT rien tout seul — c'est une SUGGESTION, relue et confirmée d'un tap
+ * depuis le cockpit avant d'atteindre le modèle. Une suggestion écartée à tort
+ * ne coûte qu'un tap ; une plainte manquée coûterait une correction à retaper
+ * à la main, ce qu'on essaie justement d'éviter.
+ */
+export function correctionDite(phrase: string): string | null {
+  if (!estUnePlainte(phrase)) return null
+  if (motsUtiles(phrase).length < MOTS_MINIMUM + MOTS_SUPPLEMENTAIRES_MIN) return null
+  return phrase.replace(/\s+/g, " ").trim()
 }
 
 /**
@@ -202,6 +235,10 @@ export function echecDeLAction(
     detail: erreur instanceof Error ? erreur.message : String(erreur ?? ""),
     contexte: transcript,
     theme: themeDeLAction(action),
+    // L'échec certain n'a rien à tirer d'une phrase de Raphaël : ce n'est
+    // même pas lui qui vient de parler, c'est l'action qui a levé toute
+    // seule.
+    correctionSuggeree: null,
   }
 }
 
@@ -244,5 +281,9 @@ export function echecSignalePar(
       ? `Demande : « ${precedent.transcript} ». Reproche : « ${phrase} ».`
       : `Demandé deux fois : « ${precedent.transcript} », puis « ${phrase} ».`,
     theme: themeDeLAction(precedent.actions[0] ?? ""),
+    // Une redite est juste... la même demande répétée : elle ne dit rien de
+    // plus sur ce qu'il fallait faire. Seule une VRAIE plainte peut porter
+    // une instruction.
+    correctionSuggeree: plainte ? correctionDite(phrase) : null,
   }
 }
