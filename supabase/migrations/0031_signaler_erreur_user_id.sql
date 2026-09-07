@@ -1,4 +1,9 @@
--- 0030 — signaler_erreur : accepter un user_id explicite.
+-- 0031 — signaler_erreur : accepter un user_id explicite.
+--
+-- Numérotée 0031 et pas 0030 : une autre session a livré 0030 (« les erreurs
+-- ouvrent un chantier ») pendant ce travail. Sa logique est CONSERVÉE ici —
+-- ce fichier reprend le corps tel qu'il était en base et n'y ajoute que le
+-- paramètre.
 --
 -- LE DÉFAUT, constaté le 7 sept. 2026 et pas supposé. `jarvis_erreurs.user_id`
 -- est NOT NULL avec pour défaut `auth.uid()`. Toutes les fonctions qui
@@ -38,8 +43,12 @@ create or replace function public.signaler_erreur(
   p_user_id uuid default null
 ) returns uuid
 language plpgsql
-security definer
-set search_path = public
+-- SECURITY INVOKER et search_path comme dans la 0030 : cette migration ne fait
+-- qu'AJOUTER un paramètre, elle ne doit rien changer d'autre. Repasser en
+-- « definer » élèverait les privilèges de la fonction sans que personne l'ait
+-- décidé — c'est arrivé une première fois le 7 sept. 2026, corrigé aussitôt.
+security invoker
+set search_path = public, pg_temp
 as $fn$
 declare
   cat text := coalesce(nullif(trim(p_categorie), ''), 'autre');
