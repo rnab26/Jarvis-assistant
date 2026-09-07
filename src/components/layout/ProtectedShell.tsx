@@ -58,7 +58,7 @@ export function ProtectedShell() {
 
   if (loading) {
     return (
-      <div className="flex min-h-svh items-center justify-center text-muted-foreground">
+      <div className="flex ecran-plein items-center justify-center text-muted-foreground">
         Chargement...
       </div>
     )

@@ -27,7 +27,7 @@ function AssistantOverlayContent() {
   } = useJarvisData()
 
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center gap-2 rounded-t-3xl bg-background/95 px-6 pb-10 pt-8">
+    <div className="flex ecran-plein flex-col items-center justify-center gap-2 rounded-t-3xl bg-background/95 px-6 pb-10 pt-8">
       <MicButton
         tasksApi={tasksState}
         devItemsApi={devItemsState}
@@ -59,7 +59,7 @@ export function AssistantOverlayPage() {
 
   if (!session) {
     return (
-      <div className="flex min-h-svh items-center justify-center rounded-t-3xl bg-background/95 px-6 py-8 text-center text-sm text-muted-foreground">
+      <div className="flex ecran-plein items-center justify-center rounded-t-3xl bg-background/95 px-6 py-8 text-center text-sm text-muted-foreground">
         Connecte-toi dans Jarvis pour utiliser cette fenêtre.
       </div>
     )
