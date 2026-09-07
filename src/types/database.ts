@@ -194,6 +194,8 @@ export interface Echange {
   transcript: string
   reponse: string | null
   created_at: string
+  /** Vrai quand `transcript` est un résumé compact (compactage, chantier 470d9c4d), pas le mot-à-mot d'origine. */
+  resume: boolean
 }
 
 export interface Souvenir {
