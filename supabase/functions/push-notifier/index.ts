@@ -274,6 +274,8 @@ Deno.serve(async (req: Request) => {
         "La clé Firebase déposée n'est pas le bon fichier : aucune notification ne peut partir",
         err,
         "FIREBASE_SERVICE_ACCOUNT doit contenir le fichier .json téléchargé par « Générer une nouvelle clé privée » (il commence par { et contient project_id, private_key, client_email) — pas l'exemple de code Node.js affiché à côté du bouton.",
+        userId,
+        "push",
       )
       return new Response(JSON.stringify({ error: "FIREBASE_SERVICE_ACCOUNT n'est pas un JSON valide." }), {
         status: 500,
@@ -285,6 +287,8 @@ Deno.serve(async (req: Request) => {
         "La clé Firebase déposée n'a pas de project_id : aucune notification ne peut partir",
         new Error("project_id absent"),
         "Le fichier est bien du JSON, mais ce n'est pas un compte de service Firebase.",
+        userId,
+        "push",
       )
       return new Response(JSON.stringify({ error: "FIREBASE_SERVICE_ACCOUNT sans project_id." }), {
         status: 500,

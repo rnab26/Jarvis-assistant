@@ -125,9 +125,9 @@ for (const { fichier, fonction, fin } of RAPPELS) {
     "un registre d'erreurs qui fait échouer l'action qu'il observe serait la pire des ironies",
   )
   verifier(
-    "et elle classe la panne en « serveur », source « memoire »",
-    code.includes('p_categorie: "serveur"') && code.includes('p_source: "memoire"'),
-    "sante_memoire() lit la source « memoire » : une autre valeur rendrait le témoin aveugle",
+    "et elle classe la panne en « serveur », source « memoire » PAR DÉFAUT",
+    code.includes('p_categorie: "serveur"') && /source: string = "memoire"/.test(code),
+    "sante_memoire() lit la source « memoire » : une autre valeur rendrait le témoin aveugle. La source est devenue un paramètre le 7 sept. 2026 (le push signale « push », sans quoi Raphaël chercherait une panne de mémoire pour une notification) — mais son DÉFAUT doit rester « memoire », sinon les appelants de la mémoire, qui ne le passent pas, disparaîtraient du témoin.",
   )
 }
 
