@@ -45,6 +45,7 @@ public class MainActivity extends BridgeActivity {
         if (intent == null) return;
         if (intent.getBooleanExtra("demarrer_ecoute", false)) {
             JarvisWidgetPlugin.demarrerEcoute = true;
+            JarvisWidgetPlugin.demarreeA = System.currentTimeMillis();
         }
     }
 }

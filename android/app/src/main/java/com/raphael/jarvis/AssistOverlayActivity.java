@@ -33,6 +33,7 @@ public class AssistOverlayActivity extends BridgeActivity {
         // même mécanisme que le widget d'écran d'accueil (JarvisWidgetPlugin
         // .demarrerEcoute, lu une fois au montage par MicButton).
         JarvisWidgetPlugin.demarrerEcoute = true;
+        JarvisWidgetPlugin.demarreeA = System.currentTimeMillis();
 
         positionnerFenetre();
     }
