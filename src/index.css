@@ -126,9 +126,21 @@
     /* L'encoche et les coins arrondis d'un iPhone en paysage mordent sur les
        bords latéraux — sans ça, du texte peut se retrouver sous l'encoche.
        Sans effet ailleurs : env() vaut 0 quand il n'y a rien à éviter
-       (chantier a40fccaa, "soigne-le pour iPhone"). */
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+       (chantier a40fccaa, "soigne-le pour iPhone").
+
+       Le bas manquait, et c'est ce qui coupait le dernier texte des listes
+       sur Android (chantier 4f77dcd8, 7 sept. 2026) : depuis Android 15 (on
+       cible le SDK 36), le mode "bord à bord" est imposé à toute application,
+       et la barre de navigation système dessine PAR-DESSUS le bas de la
+       WebView au lieu de lui laisser sa place. Capacitor (>= 8.3.2, le
+       plugin natif SystemBars) pose --safe-area-inset-* sur <html> pour
+       compenser — plus fiable que env() seul, dont certaines versions de la
+       WebView Android rendent une valeur fausse. var() retombe sur env()
+       (donc sur Safari iOS, qui n'a pas ce plugin, et sur le web) puis sur 0
+       si aucun des deux n'existe. */
+    padding-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+    padding-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+    padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
     }
   html {
     @apply font-sans;

@@ -311,6 +311,61 @@ try {
     (await page.getByText("Appeler le plombier").count()) === 0,
     "la tâche est toujours là après confirmation",
   )
+
+  // ── La liste défile jusqu'en bas, même sous la barre de navigation Android ──
+  // Chantier 4f77dcd8, signalé le 7 sept. : « l'écran ne défile pas jusqu'en
+  // bas, ça bouffe un petit peu sur le reste du texte ». Depuis Android 15
+  // (on cible le SDK 36), le mode bord à bord est imposé à toute application :
+  // sans marge de sécurité, la barre de navigation système dessine PAR-DESSUS
+  // le bas de la page. Capacitor (>= 8.3.2) pose --safe-area-inset-bottom sur
+  // <html> pour la donner ; on simule ici son injection, comme le ferait le
+  // plugin natif sur un vrai téléphone.
+  {
+    const INSET_PX = 48 // barre de navigation à 3 boutons, taille courante
+
+    // Témoin négatif d'abord : SANS injection, le comportement doit rester
+    // celui d'aujourd'hui (aucune marge) — sinon ce contrôle se déclencherait
+    // même sur le web, où Capacitor n'existe pas.
+    const paddingSansInset = await page.evaluate(
+      () => getComputedStyle(document.body).paddingBottom,
+    )
+    verifier(
+      "sans le plugin natif (web), aucune marge n'est ajoutée en bas",
+      paddingSansInset === "0px",
+      `padding-bottom mesuré : ${paddingSansInset}`,
+    )
+
+    await page.evaluate((px) => {
+      document.documentElement.style.setProperty("--safe-area-inset-bottom", `${px}px`)
+    }, INSET_PX)
+    await pause(50)
+
+    const paddingAvecInset = await page.evaluate(
+      () => getComputedStyle(document.body).paddingBottom,
+    )
+    verifier(
+      "l'injection Capacitor se traduit en vraie marge de bas de page",
+      paddingAvecInset === `${INSET_PX}px`,
+      `padding-bottom mesuré : ${paddingAvecInset}`,
+    )
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    await pause(100)
+    const fin = page.locator("#fin-de-liste")
+    const boite = await fin.boundingBox()
+    const hauteurEcran = page.viewportSize()?.height ?? 844
+    verifier(
+      "le tout dernier texte de la liste reste entièrement au-dessus de la barre de navigation",
+      boite !== null && boite.y + boite.height <= hauteurEcran - INSET_PX + 1,
+      `bas du texte à ${boite ? Math.round(boite.y + boite.height) : "?"}px, ` +
+        `zone protégée à partir de ${hauteurEcran - INSET_PX}px (écran de ${hauteurEcran}px)`,
+    )
+
+    // On retire l'injection pour ne pas fausser les contrôles suivants.
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty("--safe-area-inset-bottom")
+    })
+  }
 } finally {
   if (navigateur) await navigateur.close()
   vite.kill()

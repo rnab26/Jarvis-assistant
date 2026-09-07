@@ -231,6 +231,13 @@ function BancDesTaches() {
           />
         ))}
       </div>
+
+      {/* Sentinelle de fin de page (chantier 4f77dcd8) : c'est exactement ce
+          texte-là que la barre de navigation Android mangeait, en bord à
+          bord, quand le bas de <body> n'avait pas sa marge de sécurité. */}
+      <p id="fin-de-liste" className="text-xs text-muted-foreground">
+        Fin de la liste.
+      </p>
     </div>
   )
 }
