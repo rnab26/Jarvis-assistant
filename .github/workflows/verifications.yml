@@ -50,6 +50,14 @@ jobs:
       - name: Jarvis répond à la question posée
         run: node --experimental-strip-types scripts/verifier-question-posee.ts
 
+      # Sa demande du 7 sept. : « je n'ai aucune réelle confirmation que les
+      # chantiers sont traités ». Ce contrôle tient surtout ce qu'on n'affiche
+      # PAS — une pastille de plus sur chaque ligne serait le bruit qu'il
+      # reproche au cockpit — et le trou d'origine : une réservation expirée
+      # qui laissait croire qu'un chantier était libre.
+      - name: L'état d'un chantier, tel qu'il le lit sur la ligne
+        run: node --experimental-strip-types scripts/verifier-etat-chantier.ts
+
       - name: La mise à jour rapide de l'app
         run: node --experimental-strip-types scripts/verifier-maj-web.ts
 

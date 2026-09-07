@@ -4,6 +4,7 @@
 // et peuvent, eux, garder l'alias.
 import { enAttenteDeRaphael } from "./journalDestinataire.ts"
 import { marqueurDe } from "./marqueurChantier.ts"
+import { etatChantier } from "./etatChantier.ts"
 import { SANS_SECTION, sectionDe } from "./sections.ts"
 import { cleTheme } from "./themeChantier.ts"
 import type { DevItem, DevLogEntry, DevSection } from "@/types/database"
@@ -140,8 +141,6 @@ function enSuspens(item: DevItem): boolean {
   return m === "bloque" || m === "reporte" || m === "doublon"
 }
 
-const nomCourt = (session: string) => session.replace(/^claude\//, "")
-
 export function ouJenSuis(
   items: DevItem[],
   sections: DevSection[],
@@ -209,17 +208,20 @@ export function ouJenSuis(
       continue
     }
 
-    const expire = item.claim_expires_at ? new Date(item.claim_expires_at).getTime() : null
-    const pris: ChantierPris | null =
-      item.claimed_by && expire !== null && !Number.isNaN(expire)
-        ? { item, session: nomCourt(item.claimed_by), expireA: item.claim_expires_at! }
-        : null
+    // La classification vit dans `etatChantier` (src/lib/etatChantier.ts),
+    // partagée avec la pastille affichée sur chaque ligne du cockpit. Deux
+    // lectures séparées finiraient par se contredire : la ligne dirait
+    // « dort » pendant que ce résumé-ci compte le chantier dans « bouge ».
+    const lu = etatChantier(item, maintenant, questionsParItem.has(item.id))
+    const pris: ChantierPris | null = lu.session
+      ? { item, session: lu.session, expireA: item.claim_expires_at! }
+      : null
 
-    if (pris && expire! > maintenant) {
+    if (lu.etat === "pris" && pris) {
       etat.bouge.push(pris)
       continue
     }
-    if (pris) {
+    if (lu.etat === "abandonne" && pris) {
       etat.abandonnees.push(pris)
       // Et on s'arrête là : ce chantier n'est PAS « ce qui dort ». Tant que
       // la réservation morte n'est pas libérée, il affiche « Prise par … » et

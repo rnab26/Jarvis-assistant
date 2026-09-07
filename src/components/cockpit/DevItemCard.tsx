@@ -3,6 +3,7 @@ import { useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
+import { etatChantier, pastilleDe } from "@/lib/etatChantier"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
@@ -65,14 +66,24 @@ function renderNotes(notes: string) {
 }
 
 /**
- * Session qui travaille actuellement sur ce chantier, si la réservation court
- * toujours. Une réservation expirée ne compte pas : la session qui l'avait
- * prise a pu être arrêtée sans la libérer.
+ * Où en est ce chantier, dit sur la ligne — même repliée.
+ *
+ * SA DEMANDE DU 7 SEPT. 2026 : « je n'ai aucune réelle confirmation que les
+ * chantiers [...] sont envoyés à une session afin qu'ils soient traités. »
+ *
+ * CE QUI MANQUAIT VRAIMENT, et ce n'était pas ce qu'on croyait : « Prise
+ * par … » s'affichait déjà, et « Archivé le … » aussi. Le seul état INVISIBLE
+ * était la réservation EXPIRÉE — l'ancienne fonction rendait `null` dans ce
+ * cas, donc la ligne n'affichait rien et le chantier avait l'air libre. Il ne
+ * l'est pas : tant que la réservation morte n'est pas rendue, il porte encore
+ * un `claimed_by` et aucune session ne le prendra. C'est exactement ce que
+ * « Où j'en suis » compte à part sous `abandonnees`, et que la ligne taisait.
+ *
+ * La lecture vient de `etatChantier`, partagée avec ce résumé-là : deux
+ * lectures séparées finiraient par se contredire.
  */
-function reservePar(item: DevItem) {
-  if (!item.claimed_by || !item.claim_expires_at) return null
-  if (new Date(item.claim_expires_at).getTime() < Date.now()) return null
-  return item.claimed_by.replace(/^claude\//, "")
+function etatLigne(item: DevItem) {
+  return pastilleDe(etatChantier(item))
 }
 
 const STATUTS: { valeur: DevStatus; libelle: string }[] = [
@@ -226,11 +237,23 @@ export function DevItemCard({
         {deplie && marqueur && (
           <p className="text-xs text-muted-foreground">{EXPLICATION_MARQUEUR[marqueur]}</p>
         )}
-        {reservePar(item) && (
-          <p className="truncate text-xs text-muted-foreground">
-            Prise par {reservePar(item)}
-          </p>
-        )}
+        {/* Deux états seulement ici : pris et laissé en plan. « Livré » n'y
+            est pas — « Archivé le … » juste au-dessus le dit déjà, et le
+            répéter serait la redondance qu'il reproche au cockpit. */}
+        {(() => {
+          const p = etatLigne(item)
+          if (!p || p.ton === "fini") return null
+          return (
+            <p
+              className={`truncate text-xs ${
+                p.ton === "alerte" ? "text-destructive" : "text-muted-foreground"
+              }`}
+            >
+              {p.ton === "alerte" ? "Réservation expirée — " : ""}
+              {p.texte[0].toUpperCase() + p.texte.slice(1)}
+            </p>
+          )
+        })()}
         {notesSansMarqueur(item.notes) && (
           // Trois lignes ici, contre deux pour une tâche : les notes d'un
           // chantier portent le cadrage, et c'est ce qu'on vient y lire.

@@ -123,7 +123,9 @@ try {
     "L'heure d'une tâche arrive",
     "Le point du matin",
     "Une nouvelle version de l'app",
-    "Une session a livré des chantiers",
+    // Renommé le 7 sept. 2026 : il ne notifie plus TOUS les chantiers livrés,
+    // seulement ceux où Raphaël a répondu (~1 par jour contre ~28 mesurés).
+    "Un chantier que tu suis a été livré",
     "Une session est bloquée et t'attend",
   ]) {
     verifier(`« ${ligne} » est réglable`, await ok.getByText(ligne, { exact: true }).first().isVisible())

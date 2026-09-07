@@ -283,8 +283,8 @@ export function Notifications({ api, taches = [] }: { api: NotificationsApi; tac
             />
 
             <Interrupteur
-              titre="Une session a livré des chantiers"
-              description="Silencieux, et groupé : six chantiers livrés d'affilée font une seule notification."
+              titre="Un chantier que tu suis a été livré"
+              description="Seulement ceux où tu as répondu ou commenté — mesuré sur ta base : environ un par jour, contre vingt-huit si on notifiait tout. Silencieux, et groupé."
               actif={prefs.livre}
               onChange={(actif) => setPrefs({ livre: actif })}
             />
