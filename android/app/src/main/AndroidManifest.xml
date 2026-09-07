@@ -204,6 +204,12 @@
              via GeofencingClient et affiche une notification. -->
         <receiver android:name=".GeofenceBroadcastReceiver" android:exported="false" />
 
+        <!-- Résultat d'une installation via PackageInstaller en mode
+             SESSION (chantier 0847b38f, "Installer sans analyser"). Non
+             exporté : seul le PendingIntent que ApkDownloaderPlugin fournit
+             à session.commit() peut la déclencher. -->
+        <receiver android:name=".ApkInstallReceiver" android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

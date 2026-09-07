@@ -1,8 +1,10 @@
 package com.raphael.jarvis;
 
 import android.app.DownloadManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageInstaller;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
@@ -16,8 +18,10 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
@@ -350,13 +354,89 @@ public class ApkDownloaderPlugin extends Plugin {
     }
 
     private void lancerInstallation(PluginCall call, File apk) {
-        Context context = getContext();
         // Un fichier vide ou tronqué déclencherait un "Échec de l'analyse
         // du package" sans explication : autant le dire ici.
         if (!apk.exists() || apk.length() == 0) {
             call.reject("Le fichier téléchargé est introuvable ou vide.");
             return;
         }
+        // ESSAI SILENCIEUX D'ABORD (chantier 0847b38f, API 31+ seulement :
+        // SessionParams.setRequireUserAction n'existe pas avant). Sur un
+        // échec de CE chemin précis (paquet system indisponible, session
+        // refusée...) on se rabat sur l'intent classique plutôt que de
+        // laisser le bouton mort — seule la toute première installation par
+        // cette voie réaffiche la fenêtre Android (le temps que Jarvis
+        // devienne son propre "installer of record"), voir ApkInstallReceiver.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                installerSansFenetre(apk);
+                call.resolve();
+                return;
+            } catch (Exception e) {
+                // on continue vers le repli, volontairement muet ici : le
+                // repli lui-même dit à Raphaël si LUI échoue.
+            }
+        }
+        lancerInstallationAvecIntent(call, apk);
+    }
+
+    /**
+     * PackageInstaller en mode SESSION, sans passer par une application tierce.
+     *
+     * setRequireUserAction(USER_ACTION_NOT_REQUIRED) — lu dans la doc Android
+     * (PackageInstaller.SessionParams, API 31) — ne supprime la fenêtre de
+     * confirmation QUE si l'app appelante est déjà l'"installer of record" du
+     * paquet ET possède REQUEST_INSTALL_PACKAGES (déjà demandée et vérifiée
+     * par hasInstallPermission avant tout appel ici). Dans tous les autres
+     * cas Android répond STATUS_PENDING_USER_ACTION dans le broadcast du
+     * commit : ApkInstallReceiver relance alors la fenêtre système. Ce n'est
+     * PAS une erreur qu'il faut rattraper ici — c'est le fonctionnement
+     * normal de l'API, géré à l'endroit prévu pour ça.
+     */
+    private void installerSansFenetre(File apk) throws Exception {
+        Context context = getContext();
+        PackageInstaller installer = context.getPackageManager().getPackageInstaller();
+        PackageInstaller.SessionParams params =
+            new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+        params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+
+        int sessionId = installer.createSession(params);
+        PackageInstaller.Session session = installer.openSession(sessionId);
+        try {
+            try (InputStream entree = new FileInputStream(apk);
+                 OutputStream sortie = session.openWrite("jarvis-update", 0, apk.length())) {
+                byte[] tampon = new byte[64 * 1024];
+                int lus;
+                while ((lus = entree.read(tampon)) != -1) {
+                    sortie.write(tampon, 0, lus);
+                }
+                session.fsync(sortie);
+            }
+
+            Intent intent = new Intent(context, ApkInstallReceiver.class);
+            // FLAG_MUTABLE : le système doit pouvoir AJOUTER l'extra
+            // EXTRA_STATUS à cet intent avant de le diffuser — un
+            // PendingIntent immuable ferait échouer le commit en silence
+            // depuis Android 12 (comportement documenté, pas une supposition).
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                context,
+                sessionId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE
+            );
+            session.commit(pendingIntent.getIntentSender());
+        } catch (Exception e) {
+            try {
+                session.abandon();
+            } catch (Throwable ignore) {
+                // la session est de toute façon perdue
+            }
+            throw e;
+        }
+    }
+
+    private void lancerInstallationAvecIntent(PluginCall call, File apk) {
+        Context context = getContext();
         try {
             Uri contentUri = FileProvider.getUriForFile(
                 context, context.getPackageName() + ".fileprovider", apk

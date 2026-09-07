@@ -2867,6 +2867,52 @@ supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle li
 maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
 Playwright du 4 sept.
 
+## Ne plus avoir à cliquer « Installer sans analyser » à chaque mise à jour
+
+Chantier `0847b38f`, 7 sept. 2026. Ses mots, le 6 sept. : « j'en ai marre
+d'avoir à cliquer sur installer sans analyser à chaque mise à jour. »
+Aujourd'hui l'installation passait par un intent `ACTION_VIEW` : Android la
+traite comme une installation manuelle venue d'une source inconnue, d'où
+Play Protect ET l'écran de confirmation, à chaque fois.
+
+**Le chemin qui l'évite** : `PackageInstaller` en mode SESSION, avec
+`setRequireUserAction(SessionParams.USER_ACTION_NOT_REQUIRED)` (API 31+, lu
+dans la doc Android, pas supposé). Cette option ne supprime la fenêtre QUE
+si l'app est déjà son propre « installer of record » pour ce paquet ET
+possède `REQUEST_INSTALL_PACKAGES` (déjà en place). **La toute première
+installation par cette voie redemandera donc encore confirmation** — c'est
+elle qui fait de Jarvis son propre installer, une fois pour toutes.
+
+- `ApkDownloaderPlugin.lancerInstallation` tente `installerSansFenetre`
+  d'abord (SDK 31+ uniquement), et se rabat sur l'ancien intent
+  `ACTION_VIEW` sur toute exception ou en dessous de l'API 31 : jamais de
+  bouton mort si PackageInstaller refuse pour une raison quelconque.
+- `ApkInstallReceiver` (déclaré non exporté dans le manifeste) reçoit le
+  résultat du `commit()`. **`STATUS_PENDING_USER_ACTION` doit être traité
+  dans TOUS les cas**, y compris avec `USER_ACTION_NOT_REQUIRED` posé : sans
+  ce relais, la confirmation de la toute première installation ne
+  s'afficherait jamais, et la mise à jour resterait bloquée en silence.
+- **Le `PendingIntent` du commit doit être `FLAG_MUTABLE`** : depuis
+  Android 12, un `PendingIntent` immuable empêche le système d'y ajouter
+  `EXTRA_STATUS` avant de le diffuser, et le commit échoue en silence —
+  comportement documenté par Android, pas une hypothèse.
+- Condition vérifiée avant d'écrire une ligne de code, comme demandé par la
+  note du chantier : le keystore de debug est **fixe et committé**
+  (`android/keystore/debug.keystore`), pas régénéré à chaque run de CI —
+  sinon la signature changerait à chaque build et rien de tout ça ne
+  marcherait, ni l'installation silencieuse ni même une mise à jour
+  ordinaire.
+
+`scripts/verifier-telechargement-apk.ts` (déjà dans la CI) tient les
+contrôles, essayés à l'envers (retirer `FLAG_MUTABLE` fait rougir le contrôle
+correspondant, remis en place immédiatement après).
+
+**Non vérifiable ici** (pas de SDK Android) : le comportement réel du
+`commit()` sur un appareil. La CI prouve que ça compile, pas que ça
+s'installe sans fenêtre — à confirmer par Raphaël après une installation
+manuelle de cette version (qui redemandera encore confirmation UNE fois),
+puis la suivante devrait passer sans rien demander.
+
 ## Télécharger l'APK : DownloadManager ne peut pas être le seul chemin
 
 Le 6 sept. 2026, Raphaël ne pouvait plus mettre à jour DU TOUT — « installée
