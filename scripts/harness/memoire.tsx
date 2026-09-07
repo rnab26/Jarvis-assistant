@@ -43,7 +43,7 @@ function echange(
 const ECHANGES: Echange[] = [
   echange("e1", "On part sur quoi comme matériau pour la villa Dan ?", "Sur du grès cérame, tu me l'as dit lundi.", 3600_000),
   echange("e2", "Rappelle-moi d'appeler le carreleur demain matin.", "C'est noté pour demain 9 h.", 5 * 3600_000),
-  echange("e3", "Où est-ce que je réponds aux questions des sessions ?", "Dans le cockpit dev, sous « Envoyer à Claude Code ».", JOUR),
+  echange("e3", "Où est-ce que je réponds aux questions des sessions ?", "Dans le cockpit dev, sous « + Nouveau chantier ».", JOUR),
   echange("e4", "Combien il reste de chantiers en cours ?", "Cinquante-quatre, dont neuf en priorité haute.", JOUR + 3600_000),
   echange("e5", "Mets la musique de Brassens sur Spotify.", "Je te l'ouvre.", 2 * JOUR),
   // Une ligne compactée (chantier 470d9c4d) : le banc doit montrer l'étiquette

@@ -45,16 +45,41 @@ const AMORCES: { motif: RegExp; indice: string }[] = [
   // mangé par la commande vocale. Cinq lignes de sa base au 5 sept.
   { motif: /^r?\s*une? (?:nouveau |nouvelle )?chantier\b/, indice: "« un chantier »" },
   {
-    motif: /^r?\s*une? (?:nouvelle )?section (?:de chantiers?)?\b/,
-    indice: "« une section de chantiers »",
-  },
-  {
     motif: /^(?:cree|creer|ajoute|ajouter|rajoute|lance|nouveau|nouvelle)\s+(?:un |une )?chantier\b/,
     indice: "« créer un chantier »",
   },
   { motif: /^chantier\s*:/, indice: "« chantier : »" },
   { motif: /^pour claude(?: code)?\b/, indice: "« pour Claude Code »" },
   { motif: /^(?:demande|dis|dire) a claude\b/, indice: "« demande à Claude »" },
+]
+
+/**
+ * Les amorces qui annoncent une demande de SECTION, et non un chantier.
+ *
+ * CHANTIER 2d575977, 6 sept. 2026. « une section de chantiers » vivait AVANT
+ * dans `AMORCES` ci-dessus : sa vraie dictée du 4 sept., « R une nouvelle
+ * section de chantier qui s'appelle fonctionnalité », était donc reconnue
+ * comme un CHANTIER, avec pour titre « Fonctionnalité » — le sujet créé était
+ * exactement ce chantier vide et incompréhensible (c860e4d8, archivé le
+ * 6 sept.) que Raphaël n'a jamais demandé. Il voulait une SECTION.
+ */
+const AMORCES_SECTION: { motif: RegExp; indice: string }[] = [
+  // « nouvelle » explicite, ou « qui s'appelle » juste après : une simple
+  // « une section … » sans l'un des deux (« une section du chantier Hipouy
+  // est terminée ») est une vraie phrase de maçonnerie, pas une demande de
+  // rangement — la même prudence que `chantierDeguise` pour le mot chantier.
+  {
+    motif: /^r?\s*une? nouvelle section (?:de chantiers?)?\b/,
+    indice: "« une nouvelle section »",
+  },
+  {
+    motif: /^r?\s*une? section (?:de chantiers?)? qui s'appelle\b/,
+    indice: "« une section qui s'appelle »",
+  },
+  {
+    motif: /^range(?:r|ons|ez)?\s*(?:ca|cela|ça)?\s*dans une (?:nouvelle )?section\b/,
+    indice: "« range ça dans une section »",
+  },
 ]
 
 /** Ce qui suit l'amorce et n'apporte rien au titre du chantier. Retiré en
@@ -140,10 +165,77 @@ export function chantiersEgares<T extends TacheComparable>(taches: T[]): TacheEg
   return trouves
 }
 
+/** Ce qui a fait prendre cette tâche pour une demande de SECTION — même
+ * principe qu'`IndiceChantier`, mais `nom` plutôt que `titre` : ce n'est pas
+ * un chantier qu'on crée, c'est un rangement. */
+export interface IndiceSection {
+  indice: string
+  nom: string
+}
+
+/**
+ * Cette tâche est-elle une demande de SECTION déguisée ?
+ *
+ * Chantier 2d575977 : « une section de chantiers » annonce un RANGEMENT, pas
+ * un travail à faire — la confondre avec `chantierDeguise` a produit un
+ * chantier vide et incompréhensible (« Fonctionnalité », sans notes). Testée
+ * AVANT `chantierDeguise` par `ChantiersEgares.tsx` : les deux jeux d'amorces
+ * sont mutuellement exclusifs par construction, mais l'ordre documente quelle
+ * lecture prime en cas de recouvrement futur.
+ */
+// « une nouvelle section du chantier Hipouy a été livrée » commence pareil
+// que « une nouvelle section Entraînement » : dans le doute, un nom de
+// section ne débute jamais par un mot de LIAISON — une vraie phrase de
+// maçonnerie, elle, continue par « du », « a été », etc. juste après
+// « section ». Même prudence que les tâches de maçonnerie de `chantierDeguise`.
+const MOTS_CONTINUATION = new Set([
+  "du", "de", "des", "au", "aux", "a", "est", "etait", "etaient", "sont",
+  "sera", "seront", "va", "vont", "doit", "doivent", "avec", "pour", "sur",
+])
+
+function ressembleAUneContinuation(texte: string): boolean {
+  const premier = normaliserRecherche(texte).split(/\s+/)[0] ?? ""
+  return MOTS_CONTINUATION.has(premier)
+}
+
+export function sectionDeguisee(titre: string, notes?: string | null): IndiceSection | null {
+  const propre = normaliserRecherche(titre)
+  if (!propre) return null
+
+  for (const { motif, indice } of AMORCES_SECTION) {
+    const trouve = propre.match(motif)
+    if (!trouve) continue
+
+    let propose = nettoyer(titre.slice(retrouverFin(titre, trouve[0])))
+    if (propose.length < 3 && notes) propose = retirerAmorce(notes, AMORCES_SECTION)
+    if (propose.length < 3) return null
+    if (ressembleAUneContinuation(propose)) return null
+    return { indice, nom: propose }
+  }
+  return null
+}
+
+export interface TacheEgareeSection<T extends TacheComparable> {
+  tache: T
+  indice: IndiceSection
+}
+
+/** Même principe que `chantiersEgares`, pour les demandes de section — voir
+ * `sectionDeguisee`. */
+export function sectionsEgarees<T extends TacheComparable>(taches: T[]): TacheEgareeSection<T>[] {
+  const trouves: TacheEgareeSection<T>[] = []
+  for (const tache of taches) {
+    if (tache.status === "done") continue
+    const indice = sectionDeguisee(tache.title, tache.notes)
+    if (indice) trouves.push({ tache, indice })
+  }
+  return trouves
+}
+
 /** Le texte débarrassé de son amorce, quelle qu'elle soit. */
-function retirerAmorce(texte: string): string {
+function retirerAmorce(texte: string, amorces: { motif: RegExp; indice: string }[] = AMORCES): string {
   const propre = normaliserRecherche(texte)
-  for (const { motif } of AMORCES) {
+  for (const { motif } of amorces) {
     const trouve = propre.match(motif)
     if (trouve) return nettoyer(texte.slice(retrouverFin(texte, trouve[0])))
   }

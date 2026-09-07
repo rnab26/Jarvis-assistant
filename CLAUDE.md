@@ -352,6 +352,18 @@ cite souvent un autre chantier en écrivant « [LIBRE] » au passage — le pren
 pour le marqueur du chantier ferait démarrer une session sur un sujet qu'il
 voulait cadrer d'abord. Le contrôle hors réseau garde exactement ce cas.
 
+**`[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]`, ajouté le 7 sept. 2026
+(chantier `cc2d9392`) : NE PAS le confondre avec `[LIBRE]`.** Le code est
+fini, seul un essai sur l'appareil manque (installer l'APK, activer un accès
+spécial…) — personne d'ici ne peut le faire. Deux chantiers réels
+(`3f3ad20b`, `f5621562`) marqués `[LIBRE — reste la vérification…]` ont été
+repris par une session autonome qui a refait un travail déjà livré, parce que
+`chantiersPrenables` (`src/lib/passeAutonome.ts`) n'accepte QUE le marqueur
+exact `libre`. Ce nouveau marqueur compte aussi dans « pour toi » (voir
+`attendSaDecision`, `src/lib/etatChantier.ts`) — même mécanisme que
+`[À CADRER]`, une seule notion pour « ça attend une décision ou un geste de
+Raphaël », pas une deuxième à côté.
+
 ### Un chantier garde ce qu'on y a écrit (migration 0027)
 
 Initiative d'une session le 6 sept. 2026, chantier `765b3d02`. La raison est
@@ -391,6 +403,42 @@ Deux contrôles : `verifier-historique-chantier.ts` (hors ligne, la lecture) et
 `ANON_KEY=... node scripts/verifier-historique-reel.mjs` (le trigger depuis
 n'importe quel chemin, le silence sur les réservations, la restauration tracée,
 le cloisonnement RLS, et la suppression qui emporte l'historique).
+
+### Une SUPPRESSION de dev_items, elle, ne laissait aucune trace (migration 0036)
+
+Trouvé le 7 sept. 2026 (chantier `019144d8`) en enquêtant sur la disparition
+sans explication du chantier `348ca1d3` : un vrai `DELETE`, pas un archivage,
+entre le 6 sept. ~17h et le 7 sept. 04h12 UTC — zéro ligne dans `dev_log`,
+zéro ligne dans `dev_items_historique`. Son contenu n'a été récupéré que
+parce qu'une copie traînait par ailleurs dans une conversation ; sans elle,
+il aurait été perdu pour de bon.
+
+**La cause, vérifiée et pas supposée** :
+`select * from information_schema.triggers where event_object_table =
+'dev_items'` ne montrait qu'UPDATE. `tracer_changement_dev_item()` (migration
+0027) ne s'était jamais déclenchée sur DELETE.
+
+**Bloquer le DELETE aurait été plus simple, et c'était faux** : la
+suppression est une vraie fonctionnalité du cockpit (bouton « Choisir » >
+Supprimer, confirmée à l'écran) — `dev_items_delete_own` existe depuis la
+migration 0003. La bonne réponse est de TRACER, pas d'interdire.
+
+**Pourquoi une table séparée (`dev_items_supprimes`), pas
+`dev_items_historique`** : `item_id` y référence `dev_items(id) on delete
+cascade`. Une ligne de trace insérée avant le DELETE y serait emportée par ce
+même DELETE — exactement le trou qu'on rebouchait. `dev_items_supprimes` n'a
+aucun lien de cascade vers `dev_items` : elle survit à la suppression qu'elle
+décrit. Un trigger `BEFORE DELETE` y copie la ligne complète (titre, notes,
+statut, priorité, thème, dates), et `restaurer_chantier_supprime(p_id)`
+recrée le chantier à l'identique — même logique que `restaurer_note_chantier`
+de la migration 0027 : la restauration efface la trace pour ne pas pouvoir
+recréer le même chantier deux fois.
+
+Vérifié pour de vrai, avec un chantier créé et supprimé exprès (jamais un
+vrai chantier de quelqu'un d'autre) : `ANON_KEY=... node
+scripts/verifier-historique-reel.mjs` couvre maintenant aussi la trace posée
+par le DELETE, son cloisonnement RLS, et la restauration qui rend le même
+titre et la même note.
 
 ### Un chantier porte sa conversation
 
@@ -466,6 +514,22 @@ tâches réelles : 6 signalées, 6 justes, 0 à tort.
 un titre, des notes, rien de plus) — trois « racheter un spot pour l'entrée »
 identiques dormaient dans ses tâches pendant que le cockpit prévenait depuis
 des jours.
+
+**Une demande de SECTION n'est pas un chantier**, depuis le 7 sept. 2026
+(chantier `2d575977`). Sa dictée du 4 sept., « une nouvelle section de
+chantier qui s'appelle fonctionnalité », était comprise par `chantierDeguise`
+comme un CHANTIER — l'amorce « section » y vivait par erreur — et a produit un
+chantier vide et incompréhensible (« Fonctionnalité », sans notes, archivé le
+6 sept.). `sectionDeguisee` (même fichier) reconnaît maintenant à part les
+tournures « une nouvelle section X », « une section qui s'appelle X », « range
+ça dans une section X », avec la même prudence que pour le mot « chantier » :
+une phrase de maçonnerie qui commence pareil (« une nouvelle section du
+chantier Hipouy a été livrée ») ne doit PAS matcher — `ressembleAUneContinuation`
+rejette un nom de section qui commencerait par un mot de liaison (« du »,
+« est », « a »…) plutôt qu'un vrai nom. `ChantiersEgares.tsx` propose alors
+« Créer la section » et vérifie D'ABORD qu'une section équivalente n'existe
+pas déjà (`cleTheme`, insensible aux accents) — sinon « Ranger la tâche »
+sans rien créer, même logique que pour un chantier déjà livré.
 
 ### Les actions groupées et le « Annuler »
 
