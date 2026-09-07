@@ -151,6 +151,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/AppsParDefaut.tsx",
   },
   {
+    cle: "jarvis_envoi_auto_messages",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
+    fichier: "src/components/settings/AppsParDefaut.tsx",
+  },
+  {
     cle: "jarvis_bulle_flottante",
     ou: "Paramètres › Ce que Jarvis utilise › La bulle Jarvis, par-dessus tout",
     fichier: "src/components/settings/BulleFlottante.tsx",

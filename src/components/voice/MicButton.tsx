@@ -28,10 +28,19 @@ import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appPreferee,
   canalMessagesPrefere,
+  cibleAnnoncee,
   executerActionTelephone,
   questionAppPreferee,
   type CategorieAppTelephone,
 } from "@/lib/actionsTelephoneVocales"
+import {
+  envoiAutoActif,
+  estReponseNon,
+  estReponseOui,
+  phraseRelecture,
+  DELAI_OUVERTURE_MS,
+} from "@/lib/confirmationEnvoiVocale"
+import { agirSurEcran } from "@/lib/controleEcran"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
@@ -441,6 +450,85 @@ export function MicButton({
       setLastUserText(reponse)
       await executerActionTelephone({ action: "set_app_preference", category: question.category, app_name: reponse }, [])
       return await runTurn(originalTranscript, originalTranscript, round + 1)
+    }
+
+    // La relecture vocale avant l'envoi WhatsApp (chantier ed32cbcc), décidée
+    // par Raphaël le 5 sept. au soir — décochée par défaut dans Paramètres.
+    // Réglée, Jarvis dit le destinataire ET le texte AVANT d'ouvrir WhatsApp,
+    // et n'appuie sur Envoyer que sur un « oui » entendu. Sans elle : rien ne
+    // change, le message se prépare comme avant et attend un « envoie » une
+    // fois WhatsApp déjà ouvert (confirmationEnvoi.ts).
+    if (
+      Capacitor.isNativePlatform() &&
+      premiere.action === "send_message" &&
+      actions.length === 1 &&
+      round < 3 &&
+      (premiere.message_channel ?? canalMessagesPrefere() ?? "whatsapp") === "whatsapp" &&
+      envoiAutoActif()
+    ) {
+      const messageAction = premiere
+      const cible = cibleAnnoncee(messageAction, contactsApi.contacts)
+      const relecture = phraseRelecture(cible, messageAction.message_text)
+      setLastReply(relecture)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(relecture, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+
+      setStatus("listening")
+      const reponse = await listen("command", { onTexte: setLastUserText })
+      setLastUserText(reponse)
+
+      if (estReponseNon(reponse)) {
+        const dit = "D'accord, je n'envoie rien."
+        setLastReply(dit)
+        setStatus("speaking")
+        bargeInRef.current = false
+        await speak(dit, voiceIndex ?? undefined)
+        if (bargeInRef.current) return false
+        if (suiteMs > 0) return true
+        setStatus("idle")
+        return false
+      }
+
+      if (!estReponseOui(reponse)) {
+        // Ni oui ni non : une correction du texte, pas une réponse fermée.
+        // On la repasse par le pipeline habituel plutôt que de deviner ici
+        // ce qu'il veut changer — c'est le même principe que la boucle de
+        // clarification ci-dessus.
+        const combined = `Message proposé${cible ? ` à ${cible}` : ""} sur WhatsApp : "${messageAction.message_text}". Réponse de Raphaël à la relecture : "${reponse}". Rédige le message WhatsApp en conséquence.`
+        return await runTurn(combined, originalTranscript, round + 1)
+      }
+
+      // « oui » : on prépare vraiment, PUIS on appuie nous-mêmes sur Envoyer.
+      // Pas de fenêtre d'annulation passive ici (sauterFenetre) : la relecture
+      // qu'on vient de faire EST la confirmation, la redire une seconde fois
+      // par-dessus n'apporterait rien.
+      let clic: string
+      try {
+        await executerActionTelephone(messageAction, contactsApi.contacts, { sauterFenetre: true })
+        await new Promise((r) => setTimeout(r, DELAI_OUVERTURE_MS))
+        clic = await agirSurEcran("clic", "Envoyer")
+      } catch (e) {
+        const echec = echecDeLAction("send_message", cible, transcript, e)
+        signalerErreur(echec.categorie, echec.titre, {
+          detail: echec.detail,
+          contexte: echec.contexte,
+          source: "voix",
+        })
+        clic = "Je n'ai pas réussi à l'envoyer."
+      }
+      tracerSiLocale(transcript, clic)
+      retenirLeTour(transcript, [messageAction], clic)
+
+      setLastReply(clic)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(clic, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+      if (suiteMs > 0) return true
+      setStatus("idle")
+      return false
     }
 
     const reply = await executerActions(actions, originalTranscript)
