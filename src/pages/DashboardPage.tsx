@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { BarreActualiser } from "@/components/BarreActualiser"
 import { LoadError } from "@/components/LoadError"
 import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
 import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
@@ -19,6 +20,10 @@ export function DashboardPage() {
     loading,
     error,
     refresh,
+    derniereMaj,
+    statutDirect,
+    actualisationEnCours,
+    actualiser,
     addTask,
     updateTask,
     deleteTask,
@@ -107,6 +112,22 @@ export function DashboardPage() {
           jour où il y en a. Elle est au-dessus de la liste et pas dedans,
           parce que le filtre de catégorie ne doit pas pouvoir la masquer. */}
       <EnAttenteDenvoi file={fileEnAttente} illisible={fileIllisible} />
+
+      {/* SA PLAINTE, MOT POUR MOT : « Les taches ne s'affichent pas en live et
+          il n'y a aucun moyen d'actualiser ». La seconde moitié était vraie
+          sans réserve — `refresh` n'était atteignable que depuis l'écran
+          d'erreur, donc jamais quand le chargement avait RÉUSSI et que c'est
+          le direct qui était tombé.
+
+          Une ligne, pas une carte : l'écran vient d'être réorganisé pour que
+          « Nouvelle tâche » soit au centre, et lui reprendre cinquante points
+          pour un bandeau serait défaire ce travail. */}
+      <BarreActualiser
+        statut={statutDirect}
+        derniereMaj={derniereMaj}
+        enCours={actualisationEnCours}
+        onActualiser={actualiser}
+      />
 
       {loading ? (
         <p className="py-8 text-center text-muted-foreground">Chargement...</p>

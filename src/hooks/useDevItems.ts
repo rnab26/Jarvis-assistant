@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useActualisation } from "@/hooks/useActualisation"
 import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
@@ -32,6 +33,9 @@ export function useDevItems(userId: string | undefined) {
   const [devItems, setDevItems] = useState<DevItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Quand la liste a été chargée pour de bon. Dit depuis combien de temps
+  // l'écran peut mentir, une fois le direct coupé.
+  const [derniereMaj, setDerniereMaj] = useState<number | null>(null)
   // Voir useTasks : garde-fou contre deux chargements simultanés qui
   // reviendraient dans le désordre.
   const latestRequest = useRef(0)
@@ -58,6 +62,7 @@ export function useDevItems(userId: string | undefined) {
 
       setDevItems(data ?? [])
       setError(null)
+      setDerniereMaj(Date.now())
     } catch (e) {
       // Sans ce catch, une coupure réseau bloquait le cockpit sur
       // "Chargement..." définitivement.
@@ -73,7 +78,8 @@ export function useDevItems(userId: string | undefined) {
   }, [refresh])
 
   useRefreshOnForeground(refresh)
-  useRealtimeRefresh("dev_items", userId, refresh)
+  const canal = useRealtimeRefresh("dev_items", userId, refresh)
+  const { statut, enCours, actualiser } = useActualisation(refresh, [canal])
 
   /** Renvoie le chantier créé : le registre des erreurs en a besoin pour
    * rattacher l'erreur au chantier qu'elle vient d'ouvrir. */
@@ -233,6 +239,10 @@ export function useDevItems(userId: string | undefined) {
   }
 
   return {
+    derniereMaj,
+    statutDirect: statut,
+    actualisationEnCours: enCours,
+    actualiser,
     devItems,
     loading,
     error,
