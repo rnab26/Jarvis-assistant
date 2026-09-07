@@ -63,6 +63,13 @@ export function enregistrerEchangeLocal(transcript: string, reponse: string | nu
             user_id: session.session.user.id,
             transcript: dit,
             reponse: reponse?.replace(/\s+/g, " ").trim() || null,
+            // « appareil » : cette commande a été comprise ICI, sans passer par
+            // voice-command — donc SANS extraction de souvenirs, et c'est
+            // voulu. Le témoin de la mémoire s'en sert pour ne pas compter cet
+            // échange comme « la mémoire n'a rien retenu » : il ne pouvait rien
+            // produire. Sans ça, plus il dicte de tâches, plus la mémoire a
+            // l'air morte (constaté le 7 sept. 2026).
+            source: "appareil",
           })
           .select("id"),
         DELAI_MAX_MS,

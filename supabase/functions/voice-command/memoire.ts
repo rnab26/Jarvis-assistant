@@ -325,6 +325,9 @@ export async function memoriser(
       transcript,
       reponse,
       embedding: empreinteEchange ? JSON.stringify(empreinteEchange) : null,
+      // « serveur » : celui-ci EST passé par l'extraction de souvenirs, donc il
+      // compte pour le témoin de la mémoire. Voir migration 0034.
+      source: "serveur",
     })
     // Purge paresseuse : pas de tâche planifiée à maintenir.
     await supabase.rpc("purger_echanges")

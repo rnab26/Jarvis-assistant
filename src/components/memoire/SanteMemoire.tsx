@@ -1,4 +1,5 @@
 import { AlertTriangle, Brain, RefreshCw } from "lucide-react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SILENCE_SUSPECT, type SanteMemoireApi } from "@/hooks/useSanteMemoire"
 
@@ -29,6 +30,30 @@ function ilYA(iso: string): string {
  */
 export function SanteMemoire({ api }: { api: SanteMemoireApi }) {
   const { sante, loading, error, refresh } = api
+  // CE QUE « REVÉRIFIER » NE FAISAIT PAS, et qui le faisait passer pour cassé
+  // (son signalement du 7 sept. 2026 : « le bouton reverifier ne fonctionne
+  // pas ») : il relançait bien la requête, mais quand l'état était inchangé,
+  // RIEN ne bougeait à l'écran — pas de « en cours », pas de résultat. On
+  // appuie, il ne se passe rien, on conclut qu'il est mort.
+  //
+  // C'est la règle de Raphaël, écrite dans son CLAUDE.md : « une action peut
+  // échouer sans que je le voie — chaque action doit dire visiblement qu'elle
+  // a réussi ou échoué ». Elle vaut aussi quand l'action réussit sans rien
+  // changer.
+  const [verification, setVerification] = useState<"repos" | "encours" | "fait">("repos")
+
+  async function revérifier() {
+    setVerification("encours")
+    await refresh()
+    setVerification("fait")
+  }
+
+  const bouton = (
+    <Button variant="outline" size="sm" onClick={() => void revérifier()} disabled={verification === "encours"}>
+      <RefreshCw className={`size-4 ${verification === "encours" ? "animate-spin" : ""}`} />
+      {verification === "encours" ? "Vérification…" : "Revérifier"}
+    </Button>
+  )
 
   if (loading) {
     return <p className="text-xs text-muted-foreground">Vérification de la mémoire...</p>
@@ -94,11 +119,15 @@ export function SanteMemoire({ api }: { api: SanteMemoireApi }) {
         Le reste de Jarvis n'est pas touché : tes tâches, tes chantiers et tes conversations
         continuent d'être enregistrés. Le détail est dans le registre des erreurs du cockpit.
       </p>
-      <div>
-        <Button variant="outline" size="sm" onClick={refresh}>
-          <RefreshCw className="size-4" />
-          Revérifier
-        </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        {bouton}
+        {/* Le résultat, dit en toutes lettres. Sans lui, revérifier un état
+            qui n'a pas changé ne se distingue pas d'un bouton mort. */}
+        {verification === "fait" && (
+          <span className="text-xs text-muted-foreground">
+            Vérifié à l'instant — rien de nouveau retenu pour le moment.
+          </span>
+        )}
       </div>
     </div>
   )

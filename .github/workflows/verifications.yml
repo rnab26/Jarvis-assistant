@@ -65,6 +65,14 @@ jobs:
       - name: L'ordre de ses catégories, et ce qu'on refuse de renommer
         run: node --experimental-strip-types scripts/verifier-ordre-categories.ts
 
+      # Le 7 sept. 2026, le bandeau « la mémoire ne retient plus rien » s'est
+      # affiché à la seconde où un souvenir venait d'être créé : le compteur
+      # montait sur des commandes comprises SUR L'APPAREIL, qui ne passent
+      # jamais par l'extraction et ne pouvaient donc pas le faire redescendre.
+      # Un témoin qui s'allume à tort n'est plus lu le jour de la vraie panne.
+      - name: Le témoin de la mémoire ne crie pas au loup
+        run: node --experimental-strip-types scripts/verifier-temoin-memoire.ts
+
       - name: La mise à jour rapide de l'app
         run: node --experimental-strip-types scripts/verifier-maj-web.ts
 
