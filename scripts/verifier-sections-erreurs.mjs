@@ -341,6 +341,149 @@ try {
     encore.corps === e1.corps,
     "les occurrences suivantes seraient reparties sur une nouvelle ligne",
   )
+
+  // ─────────── Une erreur vue deux fois ouvre son chantier ───────────
+  const auto1 = await rpc(a.jeton, "signaler_erreur", {
+    p_categorie: "comprehension",
+    p_titre: "Il confond deux clients qui portent le même prénom",
+    p_contexte: "premier signalement",
+  })
+  const [apres1] = await lire(a.jeton, `jarvis_erreurs?id=eq.${auto1.corps}&select=*`)
+  verifier(
+    "une seule occurrence n'ouvre encore rien",
+    apres1?.occurrences === 1 && apres1?.dev_item_id === null,
+    JSON.stringify(apres1),
+  )
+
+  const auto2 = await rpc(a.jeton, "signaler_erreur", {
+    p_categorie: "comprehension",
+    p_titre: "Il confond deux clients qui portent le même prénom",
+    p_contexte: "deuxième signalement",
+  })
+  const [apres2] = await lire(a.jeton, `jarvis_erreurs?id=eq.${auto2.corps}&select=*`)
+  verifier(
+    "la deuxième occurrence ouvre le chantier",
+    apres2?.occurrences === 2 && !!apres2?.dev_item_id,
+    JSON.stringify(apres2),
+  )
+  const [chantierAuto] = await lire(
+    a.jeton,
+    `dev_items?id=eq.${apres2?.dev_item_id}&select=*`,
+  )
+  verifier(
+    "le chantier porte le titre de l'erreur, priorité haute, la bonne section",
+    chantierAuto?.title === "Il confond deux clients qui portent le même prénom" &&
+      chantierAuto?.priority === "high" &&
+      chantierAuto?.theme === "Ce qu'il me signale" &&
+      chantierAuto?.status === "todo",
+    JSON.stringify(chantierAuto),
+  )
+  verifier(
+    "sa note est marquée « ouvert automatiquement » et cite le contexte",
+    chantierAuto?.notes?.startsWith("[OUVERT AUTOMATIQUEMENT PAR JARVIS]") &&
+      chantierAuto?.notes?.includes("deuxième signalement"),
+    chantierAuto?.notes,
+  )
+
+  await rpc(a.jeton, "signaler_erreur", {
+    p_categorie: "comprehension",
+    p_titre: "Il confond deux clients qui portent le même prénom",
+    p_contexte: "troisième signalement",
+  })
+  const [apres3] = await lire(a.jeton, `jarvis_erreurs?id=eq.${auto2.corps}&select=dev_item_id`)
+  verifier(
+    "une troisième occurrence ne crée pas un second chantier",
+    apres3?.dev_item_id === apres2?.dev_item_id,
+    JSON.stringify(apres3),
+  )
+  const [chantierApres3] = await lire(a.jeton, `dev_items?id=eq.${apres2?.dev_item_id}&select=notes`)
+  verifier(
+    "mais sa note s'allonge avec la nouvelle occurrence",
+    chantierApres3?.notes?.includes("troisième signalement") &&
+      chantierApres3?.notes?.includes("[OUVERT AUTOMATIQUEMENT PAR JARVIS]"),
+    chantierApres3?.notes,
+  )
+
+  const autoSysteme = await rpc(a.jeton, "signaler_erreur", {
+    p_categorie: "systeme",
+    p_titre: "Une panne système répétée qui n'ouvre rien",
+  })
+  await rpc(a.jeton, "signaler_erreur", {
+    p_categorie: "systeme",
+    p_titre: "Une panne système répétée qui n'ouvre rien",
+  })
+  const [apresSysteme] = await lire(a.jeton, `jarvis_erreurs?id=eq.${autoSysteme.corps}&select=*`)
+  verifier(
+    "une catégorie systeme/serveur/ecoute/utilisation/autre n'ouvre JAMAIS de chantier",
+    apresSysteme?.occurrences === 2 && apresSysteme?.dev_item_id === null,
+    JSON.stringify(apresSysteme),
+  )
+
+  const autoCorrigee = await rpc(a.jeton, "signaler_erreur", {
+    p_categorie: "action",
+    p_titre: "Erreur déjà diagnostiquée par Raphaël",
+  })
+  await commeUtilisateur(a.jeton, `jarvis_erreurs?id=eq.${autoCorrigee.corps}`, {
+    method: "PATCH",
+    body: JSON.stringify({ correction: "toujours confirmer le contact avant d'appeler" }),
+  })
+  await rpc(a.jeton, "signaler_erreur", {
+    p_categorie: "action",
+    p_titre: "Erreur déjà diagnostiquée par Raphaël",
+  })
+  const [apresCorrigee] = await lire(
+    a.jeton,
+    `jarvis_erreurs?id=eq.${autoCorrigee.corps}&select=*`,
+  )
+  verifier(
+    "une erreur qui a déjà sa correction écrite n'ouvre pas de chantier non plus",
+    apresCorrigee?.occurrences === 2 && apresCorrigee?.dev_item_id === null,
+    "la correction part déjà au modèle (corrections.ts), un chantier en plus ferait doublon",
+  )
+
+  // Une erreur réglée puis archivée qui revient doit rouvrir SON chantier,
+  // pas en fabriquer un second.
+  const [chantierAvantArchive] = await lire(
+    a.jeton,
+    `dev_items?id=eq.${apres2?.dev_item_id}&select=id`,
+  )
+  await commeUtilisateur(a.jeton, `dev_items?id=eq.${chantierAvantArchive.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "done", archived_at: new Date().toISOString() }),
+  })
+  await commeUtilisateur(a.jeton, `jarvis_erreurs?id=eq.${auto2.corps}`, {
+    method: "PATCH",
+    body: JSON.stringify({ statut: "corrige", correction: "il vérifie le nom de famille aussi" }),
+  })
+  await rpc(a.jeton, "signaler_erreur", {
+    p_categorie: "comprehension",
+    p_titre: "Il confond deux clients qui portent le même prénom",
+    p_contexte: "ça revient après correctif",
+  })
+  const [chantierReouvert] = await lire(
+    a.jeton,
+    `dev_items?id=eq.${chantierAvantArchive.id}&select=*`,
+  )
+  verifier(
+    "un chantier archivé se rouvre si l'erreur qu'il portait revient",
+    chantierReouvert?.archived_at === null && chantierReouvert?.status === "todo",
+    JSON.stringify(chantierReouvert),
+  )
+  verifier(
+    "sa note dit que ça a régressé, pas juste qu'une occurrence de plus est arrivée",
+    chantierReouvert?.notes?.includes("avait été marquée réglée, elle revient"),
+    chantierReouvert?.notes,
+  )
+  const comptageChantiersAuto = await lire(
+    a.jeton,
+    `dev_items?title=eq.${encodeURIComponent("Il confond deux clients qui portent le même prénom")}&select=id`,
+  )
+  verifier(
+    "et un seul chantier existe pour cette empreinte, jamais deux",
+    comptageChantiersAuto.length === 1,
+    JSON.stringify(comptageChantiersAuto),
+  )
+
   // ─────────────────────── Les actions groupées ───────────────────────
   // Un appel par chantier ferait vingt allers-retours pour reclasser un thème,
   // et laisserait le travail à moitié fait si la connexion lâche au milieu.
