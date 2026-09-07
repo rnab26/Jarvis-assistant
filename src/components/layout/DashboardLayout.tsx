@@ -26,6 +26,10 @@ const TABS = [
   // « Docs » et pas « Documents » : trois lettres de moins, et c'est ce qui
   // fait tenir la barre sur une ligne. Sa demande du 7 sept.
   { to: "/documents", label: "Docs", end: false },
+  // Chantier 5ad49cc0, 6 sept. 2026 : du texte libre pour lui, distinct des
+  // tâches (échéance), des documents (fichiers) et de la mémoire (ce que
+  // Jarvis retient tout seul).
+  { to: "/notes", label: "Notes", end: false },
   // Plus d'onglet Contacts depuis le 5 sept. 2026. Raphaël : « ça ne sert à
   // rien, sachant que tu as déjà une mémoire active dans Jarvis qui retient
   // tout ce qu'on dit. À partir du moment où il est connecté à mes contacts

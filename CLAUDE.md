@@ -721,6 +721,78 @@ que « mets-le en chantier ». La prendre pour une correction déplacerait la
 ligne précédente AU LIEU de créer celle-ci — on perdrait sa demande et on
 abîmerait la précédente, d'un coup.
 
+## Une tâche sans date se rappelle d'elle-même ; sans catégorie, il valide
+
+Chantier `eeca8cca`, élargi par Raphaël le 7 sept. 2026 à 13h40 : « mise a
+part la date jarvis doit apprendre a me connaître […] il doit aussi savoir
+définir dans quel contexte quel catégorie de tâche il faut l'ajouter si je ne
+lui dit pas il doit me le suggérer a voix haute et je lui valide ».
+
+**Deux règles différentes, et il ne faut pas les confondre.** La DATE
+manquante suit la règle du 5 sept. (« on annonce, on ne demande pas ») :
+Jarvis dit « sans date, dis-moi pour quand » et n'attend rien. La CATÉGORIE
+supposée, elle, EST une vraie question — sa demande explicite pour ce cas
+précis, l'inverse de la règle générale — et rien n'est écrit avant qu'il
+valide.
+
+- `src/lib/tacheDateEtCategorie.ts` (pur) reconnaît une réponse qui arrive
+  dans la foulée (« vendredi », « demain matin », « oui », « plutôt dans
+  Perso »), et surtout ce qu'il ne faut PAS prendre pour une réponse : une
+  phrase longue qui ne fait que CONTENIR une date ou le nom d'une catégorie
+  en passant (« demain je pars en voyage, ajoute une tâche pour réserver
+  l'hôtel ») est une NOUVELLE demande, pas une réponse — la prendre pour
+  telle daterait ou rangerait la MAUVAISE tâche.
+- `src/lib/suggestionCategorie.ts` (pur) — même algorithme que
+  `suggestionTheme.ts` (recouvrement de vocabulaire, silence quand rien ne se
+  détache), adapté aux tâches et catégories plutôt qu'aux chantiers et
+  sections.
+- `commandeLocale.ts` reconnaît la réponse SUR L'APPAREIL, contre l'état tenu
+  par `voiceActions.ts` (`derniereTacheEnAttente`, même mécanisme que
+  `derniereCreation` pour « non, mets-le en chantier ») — fenêtre de 5
+  minutes, comme la correction de destination.
+- **Le serveur ne devine plus une catégorie en silence.** Avant, la consigne
+  de `voice-command` lui disait de poser `category_id` « le mieux
+  correspondant » sans le dire — l'inverse exact de sa demande. Une seule
+  source de vérité désormais : le serveur ne pose `category_id` que si
+  l'utilisateur l'a dit explicitement, sinon c'est le téléphone qui suggère
+  et attend sa validation.
+- `useTasks().addTask` rend maintenant l'id de la tâche créée (`{ id }`,
+  jamais un objet reconstitué de valeurs qu'on n'a pas vraiment lues) : sans
+  lui, impossible de compléter la MÊME tâche plutôt que d'en créer une
+  seconde.
+
+`scripts/verifier-tache-date-categorie.ts`, essayé à l'envers (désactiver le
+garde-fou contre une phrase longue fait effectivement rougir le contrôle
+avant d'être remis en place).
+
+## Un onglet dédié aux notes personnelles
+
+Chantier `5ad49cc0`, 6 sept. 2026. Sa dictée : « creer un onglet dedie aux
+notes personnelles pour une meilleure organisation, distinct des taches, des
+documents et de la memoire ». Du texte libre, sans échéance et sans que
+Jarvis en fasse quoi que ce soit tout seul — le seul des quatre endroits où
+atterrit du texte à ne rien déclencher.
+
+Table `notes` (migration 0036), même cloisonnement RLS que `tasks`, même
+mécanisme temps réel que `tasks`/`categories`/`dev_items` (REPLICA IDENTITY
+FULL + publication) — sans ça une note créée depuis le web resterait
+invisible dans l'app ouverte. `src/hooks/useNotes.ts`, `NotesPage.tsx`
+(onglet « Notes », entre Docs et Mémoire), `NoteFormDialog.tsx` (créer et
+modifier, même dialogue). Le jeu complet attendu d'une liste : créer, voir,
+modifier, supprimer (`ConfirmerAction`, comme partout dans l'app), chercher
+(titre et contenu), et les états vide / chargement / erreur / « rien trouvé ».
+Vérifié dans un vrai navigateur, écran de téléphone :
+`scripts/verifier-notes-web.mjs`.
+
+**L'action vocale n'est PAS livrée ici, et ce n'est pas un oubli** : elle
+touche `src/lib/commandeLocale.ts` et `supabase/functions/voice-command/`,
+propriété de la session « Le téléphone » — laissée en `dev_log` pour elle.
+`_shared/environnement.ts` (les deux consignes) connaît déjà l'onglet, pour
+que Jarvis n'envoie pas Raphaël vers un écran qu'il ignore. Au passage, la
+même mise à jour a corrigé une description devenue fausse depuis le 7 sept. :
+elle comptait encore Paramètres comme un onglet alors qu'il vit désormais
+dans un bouton en haut à droite.
+
 ## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
 
 Raphaël, 6 sept. 2026 : « il a une certaine logique de me demander pour un
@@ -2172,6 +2244,7 @@ node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton �
 node --experimental-strip-types scripts/verifier-musique.ts       # « je lance » n'est dit que si ça joue vraiment, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
+node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
@@ -2196,6 +2269,7 @@ ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce 
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
+node scripts/verifier-notes-web.mjs                      # l'onglet Notes : créer/modifier/supprimer avec confirmation/chercher, vrai navigateur
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer

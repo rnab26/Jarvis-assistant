@@ -1,5 +1,22 @@
 export type TaskStatus = "todo" | "done"
 
+/** Une note personnelle (chantier 5ad49cc0) : du texte libre, sans échéance
+ * et sans que Jarvis en fasse quoi que ce soit tout seul — distincte des
+ * tâches, des documents et de la mémoire longue durée. */
+export interface Note {
+  id: string
+  user_id: string
+  title: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export interface NoteInput {
+  title: string
+  content: string
+}
+
 export interface Category {
   id: string
   user_id: string
