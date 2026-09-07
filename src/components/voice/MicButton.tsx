@@ -24,6 +24,7 @@ import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
 import { signalerErreur } from "@/lib/erreurs"
 import { cibleDeLAction, echecDeLAction, echecSignalePar, type TourJarvis } from "@/lib/retours"
+import { delaiAvantAction } from "@/lib/enchainementActions"
 import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appPreferee,
@@ -470,7 +471,14 @@ export function MicButton({
     // et on n'annonce qu'une fois le tout, plutôt que de n'en traiter qu'une
     // en laissant croire que le reste a été fait.
     const reponses: string[] = []
+    let derniereAction: string | null = null
     for (const action of actions) {
+      // Une action qui ouvre une autre application (YouTube, Waze, WhatsApp…)
+      // ne se voit pas à l'écran instantanément : lire ou cliquer trop tôt
+      // trouve encore l'écran précédent, en silence (chantier b57b30ce).
+      const delai = delaiAvantAction(derniereAction, action.action)
+      if (delai > 0) await new Promise((resolve) => setTimeout(resolve, delai))
+      derniereAction = action.action
       try {
         reponses.push(
           await executeVoiceAction(
