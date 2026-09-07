@@ -39,6 +39,15 @@ import type { DevItem, Task } from "@/types/database"
  * refaire à une session un travail terminé. Quand un chantier proche existe,
  * le bouton qui mène ne propose donc plus d'en créer un : il propose de
  * ranger la tâche. Créer reste possible — c'est lui qui juge, pas nous.
+ *
+ * DÉPLACÉE DE L'ONGLET TÂCHES AU COCKPIT, 7 sept. 2026. Sa demande, capture à
+ * l'appui : « c'est une tâche côté développement, donc ça n'a rien à faire
+ * dans les tâches quotidiennes […] tout ce qui est cockpit dev, ça concerne
+ * ce genre de choses. » Elle vivait dans DashboardPage et s'affichait à
+ * chaque ouverture de l'onglet, quel que soit le filtre de catégorie — un
+ * sujet de développement au milieu de ses courses et rendez-vous. Le
+ * signalement PAR LIGNE, dans TaskItem.tsx (chantierDeguise), reste en place :
+ * il ne s'affiche qu'en dépliant la tâche concernée, jamais en permanence.
  */
 interface ChantiersEgaresProps {
   tasks: Task[]
