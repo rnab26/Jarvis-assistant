@@ -86,6 +86,21 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/ModeLive.tsx",
   },
   {
+    cle: "jarvis_live_cloture_actif",
+    ou: "Paramètres › Voix et écoute › Mode conversation Live (essai) › Clôturer à la voix",
+    fichier: "src/components/settings/ModeLive.tsx",
+  },
+  {
+    cle: "jarvis_live_cloture_formules",
+    ou: "Paramètres › Voix et écoute › Mode conversation Live (essai) › Clôturer à la voix",
+    fichier: "src/components/settings/ModeLive.tsx",
+  },
+  {
+    cle: "jarvis_live_cloture_delai_ms",
+    ou: "Paramètres › Voix et écoute › Mode conversation Live (essai) › Clôturer à la voix",
+    fichier: "src/components/settings/ModeLive.tsx",
+  },
+  {
     cle: "jarvis_sessions_autonomes",
     ou: "Paramètres › Le cockpit › Sessions autonomes",
     fichier: "src/components/settings/SessionsAutonomes.tsx",

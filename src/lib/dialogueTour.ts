@@ -115,7 +115,26 @@ const MOTS_SUSPENDUS = new Set([
   "plus", "moins", "tres", "trop", "euh", "hum", "ben", "bah", "enfin",
 ])
 
-/** La phrase a-t-elle l'air finie ? Faux si vide ou si le dernier mot est suspendu. */
+/**
+ * Sous ce nombre de mots, on ne pr\u00e9tend rien : un seul mot (ou une seule
+ * lettre) ne dit pas si la phrase est finie, il n'y a simplement pas encore
+ * assez dit pour en juger.
+ *
+ * TROUV\u00c9 le 6 sept. 2026 (chantier 6b33ee97), en cherchant pourquoi
+ * l'\u00e9pellation \u00ab quand j'\u00e9pelle des lettres, il s'arr\u00eate et note n'importe
+ * quoi \u00bb : chaque lettre arrive comme un segment isol\u00e9, le moteur se coupe
+ * entre deux (moteurArreteDepuisDernierMot), et une lettre seule n'est
+ * presque jamais dans MOTS_SUSPENDUS \u2014 phraseSembleFinie() la jugeait donc
+ * \u00ab finie \u00bb apr\u00e8s la toute premi\u00e8re lettre, et le tour se terminait avant
+ * qu'il ait fini d'\u00e9peler. Le m\u00eame m\u00e9canisme explique une partie de \u00ab coupe
+ * la parole en plein milieu des phrases \u00bb : une pause pour respirer apr\u00e8s un
+ * mot isol\u00e9 qui ne tient pas debout seul (un nom, un chiffre) pouvait d\u00e9j\u00e0
+ * clore le tour sur la foi d'un seul mot.
+ */
+const MIN_MOTS_POUR_JUGER = 2
+
+/** La phrase a-t-elle l'air finie ? Faux si vide, si le dernier mot est
+ * suspendu, ou s'il n'y a pas encore assez de mots pour en juger. */
 export function phraseSembleFinie(texte: string): boolean {
   const mots = texte
     .toLowerCase()
@@ -125,7 +144,7 @@ export function phraseSembleFinie(texte: string): boolean {
     .replace(/'/g, " ")
     .split(/\s+/)
     .filter(Boolean)
-  if (mots.length === 0) return false
+  if (mots.length < MIN_MOTS_POUR_JUGER) return false
   return !MOTS_SUSPENDUS.has(mots[mots.length - 1])
 }
 

@@ -12,7 +12,7 @@ import {
   type OptionsTour,
 } from "@/lib/dialogueTour"
 import { extraitEntendu, noterEcoute } from "@/lib/journalEcoute"
-import { raisonDepuisCode, type RaisonEcoute } from "@/lib/raisonEcoute"
+import { estUnePanne, raisonDepuisCode, type RaisonEcoute } from "@/lib/raisonEcoute"
 
 type SpeechRecognitionCtor = new () => SpeechRecognition
 
@@ -424,7 +424,24 @@ export function useSpeechRecognition() {
           code: codeAndroid,
           entendu: extraitEntendu(transcript),
         })
-        if (!transcript) throw new Error(demarrageRefuse ? MOTEUR_OCCUPE : RIEN_ENTENDU)
+        if (!transcript) {
+          // UNE VRAIE PANNE N'EST PAS UN SILENCE. Mesuré le 6 sept. sur son
+          // téléphone : 58 rafales sur ~360 meurent avec le code 11
+          // (ERROR_SERVER_DISCONNECTED), en 27 à 148 ms — le service était
+          // déjà mort avant même qu'on essaie de l'ouvrir. Avant ce correctif,
+          // ces rafales comptaient comme des rafalesMuettes ordinaires : la
+          // veille appliquait le recul EXPONENTIEL prévu pour un silence
+          // normal (1 s, 2 s, 4 s, 8 s), donc devenait de moins en moins
+          // réactive pile au moment où le micro était réellement en panne —
+          // une bonne partie du symptôme « le réveil ne marche pas ».
+          //
+          // On la traite donc comme un démarrage refusé : recul COURT et
+          // fixe (RECUL_APRES_ECHEC_MS), pour réessayer vite plutôt que
+          // d'attendre en silence un mot qui n'a jamais eu la moindre chance
+          // d'être entendu.
+          const panneReelle = raison !== null && estUnePanne(raison)
+          throw new Error(demarrageRefuse || panneReelle ? MOTEUR_OCCUPE : RIEN_ENTENDU)
+        }
         return transcript
       } finally {
         if (filet) clearTimeout(filet)

@@ -1,5 +1,5 @@
 diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
-index a99ea69..bd79d36 100644
+index a99ea69..51297f5 100644
 --- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 +++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 @@ -2,10 +2,17 @@ package com.getcapacitor.community.speechrecognition;
@@ -226,15 +226,21 @@ index a99ea69..bd79d36 100644
                  } catch (Exception ex) {
                      throw ex;
                  } finally {
-@@ -245,6 +408,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -245,6 +408,13 @@ public class SpeechRecognition extends Plugin implements Constants {
          public void onBeginningOfSpeech() {
              try {
                  SpeechRecognition.this.lock.lock();
-+                SpeechRecognition.this.retablirSon();
++                // PAS retablirSon() ICI. Trouve le 6 sept. au soir, apres la
++                // remarque de Raphael sur une "regression cote Apple Music" :
++                // cet appel rendait le focus audio -- donc remontait la
++                // musique -- au moment EXACT ou il commence a parler, soit
++                // l'instant ou baisser le son sert le plus. Le son ne devait
++                // remonter qu'a la vraie fin de l'ecoute (onEndOfSpeech,
++                // onError, stop), pas des que la parole commence.
                  // Notify listeners that recording has started
                  JSObject ret = new JSObject();
                  ret.put("status", "started");
-@@ -268,6 +432,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -268,6 +438,7 @@ public class SpeechRecognition extends Plugin implements Constants {
                      try {
                          SpeechRecognition.this.lock.lock();
                          SpeechRecognition.this.listening(false);
@@ -242,7 +248,7 @@ index a99ea69..bd79d36 100644
  
                          JSObject ret = new JSObject();
                          ret.put("status", "stopped");
-@@ -281,8 +446,24 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -281,8 +452,24 @@ public class SpeechRecognition extends Plugin implements Constants {
          @Override
          public void onError(int error) {
              SpeechRecognition.this.stopListening();

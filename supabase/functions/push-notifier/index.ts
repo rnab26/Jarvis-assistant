@@ -11,27 +11,16 @@
 // est le secret partagé x-push-secret (déposé dans Vault côté base et dans
 // les secrets Edge Functions, jamais dans un fichier versionné).
 //
-// LE TRI « est-ce que ça concerne Raphaël » est réimplémenté ici en
-// TypeScript plutôt qu'en SQL, pour rester le plus proche possible de
-// l'original : src/lib/journalDestinataire.ts (estPourRaphael) côté client.
-// Les deux copies doivent rester identiques — si tu changes l'une, change
-// l'autre.
+// LE TRI « est-ce que ça concerne Raphaël » vit dans
+// ../_shared/destinataire.ts, partagé avec voice-command — et non recopié
+// ici, comme il l'était jusqu'au 7 sept. 2026. Même motif
+// qu'environnement.ts et corrections.ts : une troisième lecture du même
+// concept finirait par dire autre chose que le cockpit.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
-
-const AUTEUR_RAPHAEL = "Raphaël"
-
-function adresseeAUneSession(body: string): boolean {
-  return /^pour la session\b/i.test(body.trim())
-}
-
-/** Copie de estPourRaphael (src/lib/journalDestinataire.ts). */
-function estPourRaphael(entry: { author: string; kind: string; body: string; answered_at: string | null }): boolean {
-  if (entry.author === AUTEUR_RAPHAEL) return false
-  if (entry.answered_at || adresseeAUneSession(entry.body)) return false
-  return entry.kind === "question" || entry.kind === "blocage" || entry.kind === "action"
-}
+import { estPourRaphael } from "../_shared/destinataire.ts"
+import { signalerPanne } from "../_shared/pannes.ts"
 
 /** Copie de corpsChantiersLivres (src/lib/notifications/plan.ts). */
 function corpsChantiersLivres(titres: string[]): string {
@@ -202,7 +191,9 @@ Deno.serve(async (req: Request) => {
     } else if (body.type === "dev_log") {
       const { data: entree, error } = await supabase
         .from("dev_log")
-        .select("author, kind, body, answered_at, user_id")
+        // `pourquoi` sert à distinguer une demande qui l'attend du compte
+        // rendu d'une session : sans lui, estPourRaphael les confond.
+        .select("author, kind, body, answered_at, user_id, pourquoi")
         .eq("id", body.id)
         .maybeSingle()
       if (error || !entree || !estPourRaphael(entree)) {
@@ -255,13 +246,56 @@ Deno.serve(async (req: Request) => {
         status: 500,
       })
     }
-    const compte = JSON.parse(compteServiceJson) as { project_id: string }
+    // CE SECRET EST LU ICI, ET SEULEMENT ICI — après le test « aucun jeton ».
+    // Tant qu'aucun téléphone n'était enregistré, un secret mal formé ne
+    // pouvait donc pas se voir : la fonction s'arrêtait avant. C'est
+    // exactement ce qui est arrivé — le jeton de Raphaël est arrivé le 6 sept.
+    // à 18 h 40, et le premier appel qui est allé jusqu'au bout, le 7 à
+    // 04 h 12, a rendu 500 sur « SyntaxError: Unexpected token 'v', "var
+    // admin "... is not valid JSON ».
+    //
+    // « var admin … » est le début de l'EXEMPLE DE CODE Node.js que Firebase
+    // affiche juste à côté du bouton « Générer une nouvelle clé privée ». Ce
+    // qu'il faut déposer est le contenu du FICHIER .json téléchargé, pas cet
+    // extrait.
+    //
+    // Un JSON.parse nu ici partait dans le catch général : « erreur
+    // inattendue », un 500 que le déclencheur avale par construction (une
+    // notification ratée ne doit jamais casser l'écriture qu'elle observe).
+    // Autrement dit, le push était mort et RIEN ne le disait. D'où le
+    // signalement explicite : c'est la seule chose qui le fasse remonter
+    // jusqu'à lui, dans le registre des erreurs.
+    let compte: { project_id?: string }
+    try {
+      compte = JSON.parse(compteServiceJson) as { project_id?: string }
+    } catch (err) {
+      await signalerPanne(
+        supabase,
+        "La clé Firebase déposée n'est pas le bon fichier : aucune notification ne peut partir",
+        err,
+        "FIREBASE_SERVICE_ACCOUNT doit contenir le fichier .json téléchargé par « Générer une nouvelle clé privée » (il commence par { et contient project_id, private_key, client_email) — pas l'exemple de code Node.js affiché à côté du bouton.",
+      )
+      return new Response(JSON.stringify({ error: "FIREBASE_SERVICE_ACCOUNT n'est pas un JSON valide." }), {
+        status: 500,
+      })
+    }
+    if (!compte.project_id) {
+      await signalerPanne(
+        supabase,
+        "La clé Firebase déposée n'a pas de project_id : aucune notification ne peut partir",
+        new Error("project_id absent"),
+        "Le fichier est bien du JSON, mais ce n'est pas un compte de service Firebase.",
+      )
+      return new Response(JSON.stringify({ error: "FIREBASE_SERVICE_ACCOUNT sans project_id." }), {
+        status: 500,
+      })
+    }
     const jetonAcces = await jetonFCM(compteServiceJson)
 
     const aRetirer: string[] = []
     let envoyes = 0
     for (const { token } of jetons) {
-      const resultat = await envoyerAUnJeton(jetonAcces, compte.project_id, token, push)
+      const resultat = await envoyerAUnJeton(jetonAcces, compte.project_id!, token, push)
       if (resultat.ok) envoyes++
       else if (resultat.retirer) aRetirer.push(token)
     }

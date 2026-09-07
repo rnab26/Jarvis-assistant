@@ -30,6 +30,34 @@ function adresseeAUneSession(entry: DevLogEntry): boolean {
   return /^pour la session\b/i.test(entry.body.trim())
 }
 
+/**
+ * `kind = "action"` porte DEUX sens opposés, et rien dans le schéma ne les
+ * sépare : « une action que RAPHAËL doit faire » (ce que pose
+ * `scripts/demander.sh`) et « une action qu'une SESSION a faite », que les
+ * sessions écrivent en compte rendu (« Fait et archivé. Commit … »).
+ *
+ * Les compter ensemble faisait dire au cockpit que cinq points attendaient sa
+ * décision quand un seul l'attendait — MESURÉ le 7 sept. 2026 sur la totalité
+ * de son journal : sur les 4 lignes `action` en attente, 4 étaient des comptes
+ * rendus. Et la même règle fait SONNER son téléphone : il aurait été réveillé
+ * par le compte rendu d'une session.
+ *
+ * Le discriminant n'est pas une devinette sur le texte : une demande posée par
+ * `demander.sh` renseigne toujours `pourquoi` (colonne de la migration 0022),
+ * un compte rendu jamais. Vérifié sur tout l'historique — 4 `action` en base,
+ * toutes sans `pourquoi`, toutes des comptes rendus ; aucune vraie demande
+ * n'existe sans lui.
+ *
+ * Les QUESTIONS ne passent pas par ce filtre, et c'est voulu : 9 des 14
+ * questions du journal ont été posées à la main, sans `pourquoi`, et ce sont
+ * de vraies questions. Une question s'adresse à quelqu'un par nature ; une
+ * « action », non.
+ */
+function compteRenduDeSession(entry: DevLogEntry): boolean {
+  if (entry.kind !== "action") return false
+  return entry.pourquoi == null || entry.pourquoi.trim() === ""
+}
+
 /** Une question posée à Raphaël, à laquelle personne n'a encore répondu. */
 export function questionPourRaphael(entry: DevLogEntry): boolean {
   return entry.kind === "question" && !entry.answered_at && !adresseeAUneSession(entry)
@@ -50,7 +78,8 @@ export function enAttenteDeRaphael(entry: DevLogEntry): boolean {
   return (
     (entry.kind === "question" || entry.kind === "action") &&
     !entry.answered_at &&
-    !adresseeAUneSession(entry)
+    !adresseeAUneSession(entry) &&
+    !compteRenduDeSession(entry)
   )
 }
 
@@ -63,6 +92,8 @@ export function estPourRaphael(entry: DevLogEntry): boolean {
   if (entry.author === AUTEUR_RAPHAEL) return false
   if (entry.answered_at || adresseeAUneSession(entry)) return false
   // « action » comprise : une clé qu'il doit déposer bloque douze chantiers,
-  // et personne d'autre que lui ne peut la déposer.
+  // et personne d'autre que lui ne peut la déposer. Mais pas un compte rendu
+  // de session, qui porte le même `kind` — ça le réveillerait pour rien.
+  if (compteRenduDeSession(entry)) return false
   return entry.kind === "question" || entry.kind === "blocage" || entry.kind === "action"
 }

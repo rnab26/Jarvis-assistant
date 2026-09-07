@@ -5,6 +5,7 @@ import { noterEcoute } from "@/lib/journalEcoute"
 import { LecteurAudio, capturerMicro, type CaptureMicro } from "@/lib/live/audio"
 import { demandeFinDeConversation } from "@/lib/live/finConversation"
 import { retourOuAveu } from "@/lib/retourVide"
+import { lireClotureLive } from "@/lib/livePrefs"
 
 /**
  * Une conversation Live avec Gemini : l'audio part en continu, Google décide
@@ -73,8 +74,6 @@ const NOM_OUTIL = "commande_jarvis"
 
 /** Temps laissé à la fonction serveur pour rendre un jeton. */
 const JETON_MAX_MS = 15000
-/** Après « terminé », on laisse Jarvis dire au revoir — mais pas plus que ça. */
-const ADIEU_MAX_MS = 8000
 
 /**
  * Ouvre une session. Rend de quoi l'arrêter ; les événements arrivent au fil
@@ -83,6 +82,17 @@ const ADIEU_MAX_MS = 8000
 export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLive> {
   ev.onEtat("connexion")
   const debut = Date.now()
+
+  // Réglable depuis Paramètres (chantier b68f3b21, 6 sept. 2026) : interrupteur,
+  // liste des formules, délai d'adieu. Lu une fois à l'ouverture — un
+  // changement en cours de conversation s'appliquera à la suivante, comme
+  // tous les réglages relus au montage de MicButton.
+  const clotureLive = lireClotureLive()
+  /** `null` (pas de personnalisation) devient `undefined` : c'est ce que
+   * demandeFinDeConversation() attend pour utiliser sa liste par défaut. Un
+   * tableau vide, lui, reste un tableau vide — c'est la liste qu'il a choisie. */
+  const formulesCloture = clotureLive.formules ?? undefined
+  const clotureVocaleDemandee = (texte: string) => clotureLive.actif && demandeFinDeConversation(texte, formulesCloture)
 
   // 1. Un jeton éphémère, jamais la clé.
   const { data, error } = await withTimeout(
@@ -133,7 +143,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
 
   /** Clôture à la voix : Jarvis finit de parler, puis la session se ferme. */
   const clore = async () => {
-    const limite = Date.now() + ADIEU_MAX_MS
+    const limite = Date.now() + clotureLive.delaiMs
     while (!fermee && lecteur.enCours && Date.now() < limite) await new Promise((r) => setTimeout(r, 100))
     parRaphael = true
     fermer("clôture à la voix")
@@ -142,7 +152,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     if (finDemandee) return
     finDemandee = true
     // Si Google ne rend jamais la fin du tour, on ferme quand même.
-    setTimeout(() => void clore(), ADIEU_MAX_MS)
+    setTimeout(() => void clore(), clotureLive.delaiMs)
   }
 
   const surMessage = (m: LiveServerMessage) => {
@@ -156,7 +166,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     if (contenu?.inputTranscription?.text) {
       entenduEnCours += contenu.inputTranscription.text
       ev.onEntendu(entenduEnCours, contenu.inputTranscription.finished === true)
-      if (demandeFinDeConversation(entenduEnCours)) surFinDemandee()
+      if (clotureVocaleDemandee(entenduEnCours)) surFinDemandee()
       if (contenu.inputTranscription.finished) entenduEnCours = ""
     }
     if (contenu?.outputTranscription?.text) {
@@ -175,7 +185,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       // Ce tour est clos : ce qui a été entendu ne s'additionne pas au
       // suivant. Et si la transcription n'a jamais été marquée finie, c'est
       // ici qu'un « terminé » est reconnu.
-      if (demandeFinDeConversation(entenduEnCours)) surFinDemandee()
+      if (clotureVocaleDemandee(entenduEnCours)) surFinDemandee()
       entenduEnCours = ""
       if (finDemandee) void clore()
       else ev.onEtat("ecoute")

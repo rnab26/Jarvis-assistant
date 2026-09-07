@@ -63,6 +63,25 @@ if [ -z "${question//[[:space:]]/}" ]; then
   exit 2
 fi
 
+# --pourquoi est OBLIGATOIRE, et ce n'est pas seulement une exigence de forme.
+#
+# Pour lui d'abord : sa consigne dit qu'une question doit dire « pourquoi tu la
+# poses et ce que tu sais déjà ». Une question sans son pourquoi le force à
+# rouvrir le chantier pour comprendre ce qu'on lui demande.
+#
+# Et pour le CODE ensuite, depuis le 7 sept. 2026 : `kind = "action"` porte
+# deux sens opposés — une action qu'IL doit faire (ce script) et le compte
+# rendu d'une action qu'une SESSION a faite. C'est `pourquoi` qui les sépare
+# dans `src/lib/journalDestinataire.ts`, donc dans la carte « Ce qui attend ta
+# décision », dans la colonne « pour toi », et dans ce qui fait sonner son
+# téléphone. Tant qu'il était facultatif ici, cette séparation ne tenait que
+# par habitude : une demande postée sans lui aurait disparu de son cockpit
+# sans un bruit.
+if [ -z "${pourquoi//[[:space:]]/}" ]; then
+  echo "Erreur : --pourquoi est obligatoire — il dit pourquoi tu poses la question, et c'est aussi ce qui distingue une demande qui l'attend d'un compte rendu de session (voir src/lib/journalDestinataire.ts)." >&2
+  exit 2
+fi
+
 # Une action ne se choisit pas, elle se fait : proposer des options y serait un
 # contresens, et l'écran n'en afficherait aucune.
 if [ "$kind" = "action" ] && [ ${#options[@]} -gt 0 ]; then

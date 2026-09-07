@@ -26,6 +26,7 @@ import {
   QUALITES_PHOTO,
   cheminPhoto,
 } from "../src/lib/decisions.ts"
+import { estPourRaphael } from "../src/lib/journalDestinataire.ts"
 import type { DevLogEntry } from "../src/types/database.ts"
 
 let echecs = 0
@@ -53,7 +54,41 @@ function entree(p: Partial<DevLogEntry> = {}): DevLogEntry {
 // ───────────────── Ce qui l'attend, et ce qui ne l'attend plus ─────────────────
 {
   verifier("une question sans réponse l'attend", enAttenteDeRaphael(entree()))
-  verifier("une action sans réponse aussi", enAttenteDeRaphael(entree({ kind: "action" })))
+  verifier(
+    "une action sans réponse aussi",
+    enAttenteDeRaphael(entree({ kind: "action", pourquoi: "Sans cette clé, douze chantiers restent bloqués." })),
+  )
+
+  // MESURÉ le 7 sept. 2026 sur la TOTALITÉ de son journal : les 4 lignes
+  // `kind = "action"` en attente étaient toutes des comptes rendus de
+  // sessions (« Fait et archivé. Commit … »), pas des demandes. Le cockpit lui
+  // annonçait donc cinq points à trancher quand un seul l'attendait, et la
+  // même règle aurait fait SONNER son téléphone pour un compte rendu.
+  //
+  // Le corps du message n'est pas le discriminant — ce serait une devinette.
+  // C'est `pourquoi`, que `scripts/demander.sh` exige désormais et qu'un
+  // compte rendu n'a jamais.
+  const compteRendu = { kind: "action" as const, body: "Fait et archivé. Commit df756ac, déployé." }
+  verifier(
+    "le compte rendu d'une session ne réclame rien de lui",
+    !enAttenteDeRaphael(entree(compteRendu)),
+    "quatre comptes rendus s'affichaient dans « Ce qui attend ta décision »",
+  )
+  verifier(
+    "   et il ne fait pas sonner son téléphone",
+    !estPourRaphael(entree(compteRendu)),
+    "être réveillé par « Fait et archivé » est exactement le bruit qu'il refuse",
+  )
+  verifier(
+    "une vraie action, elle, le réveille toujours",
+    estPourRaphael(entree({ kind: "action", pourquoi: "Il faut déposer la clé." })),
+    "une clé qu'il est seul à pouvoir déposer bloque douze chantiers",
+  )
+  verifier(
+    "un « info » ne réveille personne, même avec un pourquoi",
+    !estPourRaphael(entree({ kind: "info", pourquoi: "quelque chose" })),
+    "piège de rédaction : une règle écrite en disjonction laissait passer tous les autres kinds",
+  )
   verifier(
     "une question déjà répondue ne l'attend plus",
     !enAttenteDeRaphael(entree({ answered_at: "2026-09-05T12:00:00Z" })),
@@ -72,7 +107,13 @@ function entree(p: Partial<DevLogEntry> = {}): DevLogEntry {
   // Les actions passent devant : une clé non déposée bloque douze chantiers,
   // une décision n'en bloque qu'un.
   const vieilleQuestion = entree({ kind: "question", created_at: "2026-09-01T08:00:00Z" })
-  const action = entree({ kind: "action", created_at: "2026-09-05T08:00:00Z" })
+  // `pourquoi` renseigné : c'est ce qui fait d'une ligne « action » une
+  // demande qui l'attend, et non le compte rendu d'une session.
+  const action = entree({
+    kind: "action",
+    created_at: "2026-09-05T08:00:00Z",
+    pourquoi: "Sans cette clé, les rappels de lieu ne géocodent rien.",
+  })
   const jeuneQuestion = entree({ kind: "question", created_at: "2026-09-05T09:00:00Z" })
   const ordre = questionsEnAttente([jeuneQuestion, vieilleQuestion, action])
   verifier(

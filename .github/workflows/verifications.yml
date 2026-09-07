@@ -41,6 +41,15 @@ jobs:
       - name: Ce que Jarvis fera sonner, et quand
         run: node --experimental-strip-types scripts/verifier-notifications.ts
 
+      # Sa demande du 5 sept. : « tout ce qu'on lui demande ça ne doit pas être
+      # figé […] il doit être en mesure de répondre ». Ce contrôle tient les
+      # trois moitiés : le bloc « ce qui t'attend » (et son SILENCE quand il n'y
+      # a rien), l'arrivée de la consigne dans les DEUX moteurs, et le fait que
+      # l'app et le serveur rendent le même verdict sur « à qui s'adresse ce
+      # message » — deux fichiers, deux occasions de diverger.
+      - name: Jarvis répond à la question posée
+        run: node --experimental-strip-types scripts/verifier-question-posee.ts
+
       - name: La mise à jour rapide de l'app
         run: node --experimental-strip-types scripts/verifier-maj-web.ts
 

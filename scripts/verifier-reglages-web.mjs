@@ -492,6 +492,51 @@ try {
     await live.getByText("signaux : 1").isVisible(),
     "sans ce signal, l'interrupteur n'aurait d'effet qu'au prochain lancement de l'app",
   )
+
+  // ── La clôture à la voix du Live, réglable (chantier b68f3b21) ──
+  verifier(
+    "le mode Live actif révèle « Clôturer à la voix »",
+    await live.getByLabel("Clôturer à la voix").isVisible(),
+  )
+  verifier("la liste par défaut est affichée", await live.getByText("termine", { exact: true }).isVisible())
+  await live.getByPlaceholder("Ajouter une formule").fill("à la revoyure")
+  await live.getByRole("button", { name: "Ajouter la formule" }).click()
+  await pause(150)
+  verifier(
+    "une formule ajoutée s'affiche",
+    await live.getByText("à la revoyure", { exact: true }).isVisible(),
+  )
+  verifier(
+    "et part en base, ajoutée à la liste par défaut",
+    JSON.parse((await page.evaluate(() => localStorage.getItem("jarvis_live_cloture_formules"))) ?? "[]").includes(
+      "à la revoyure",
+    ),
+  )
+  // Retirer « termine » : confirmation d'abord, comme toute suppression.
+  const ligneTermine = live.locator("li", { hasText: "termine" }).first()
+  await ligneTermine.getByRole("button").click()
+  await pause(150)
+  verifier("la suppression demande confirmation", await page.getByRole("button", { name: "Retirer" }).isVisible())
+  await page.getByRole("button", { name: "Retirer" }).click()
+  await pause(150)
+  verifier(
+    "confirmée, la formule disparaît de la liste enregistrée",
+    !JSON.parse((await page.evaluate(() => localStorage.getItem("jarvis_live_cloture_formules"))) ?? "[]").includes(
+      "termine",
+    ),
+  )
+  await live.getByRole("button", { name: "Remettre la liste par défaut" }).click()
+  await pause(150)
+  verifier(
+    "« Remettre la liste par défaut » efface la personnalisation",
+    (await page.evaluate(() => localStorage.getItem("jarvis_live_cloture_formules"))) === null,
+  )
+  verifier(
+    "et la liste par défaut réapparaît à l'écran",
+    (await live.getByText("termine", { exact: true }).isVisible()) &&
+      !(await live.getByText("à la revoyure", { exact: true }).isVisible()),
+  )
+
   await live.getByLabel("Mode conversation Live").click()
   await pause(250)
   verifier(
