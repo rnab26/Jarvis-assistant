@@ -338,7 +338,7 @@ export function phraseEcran(
     case "echec": {
       const cause = resultat.cause
       if (cause === "service_inactif") {
-        return "Je ne peux pas encore appuyer sur l'écran à ta place : il faut activer Jarvis dans les réglages d'accessibilité d'Android. C'est dans Paramètres, « Appuyer sur l'écran à ta place »."
+        return "Je n'ai pas pu appuyer sur l'écran : le service qui me le permet semble endormi par Android, même s'il est autorisé. Éteins-le puis rallume-le dans Paramètres, « Appuyer sur l'écran à ta place ». Si ça revient, ouvre aussi « Ce que Jarvis a le droit de faire » et autorise-moi à ignorer les économies de batterie."
       }
       if (cause === "app_interdite") {
         return `Je ne touche pas à ${resultat.application ?? "cette application"} : tu l'as mise dans les applications où je n'ai pas le droit d'appuyer.`

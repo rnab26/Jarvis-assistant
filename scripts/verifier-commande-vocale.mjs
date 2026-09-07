@@ -90,6 +90,23 @@ const CHANTIERS = [
   { id: "c-widget", title: "Widget", notes: null, status: "todo", priority: "low", theme: "L'app elle-même" },
 ]
 const THEMES = ["Voix et écoute", "L'app elle-même"]
+
+// SES VRAIES CATÉGORIES, ses NEUF, lues dans sa base le 7 sept. 2026. Ce champ valait
+// `[]` jusque-là — le modèle n'avait donc AUCUNE catégorie à proposer, et
+// aucun contrôle ne pouvait attraper le défaut qu'il a signalé ce jour-là :
+// « il écrit mot pour mot ma demande quand je lui dit d'attribuer ca dans la
+// section leads ». Un banc sans catégories ne peut pas voir un rangement raté.
+const CATEGORIES = [
+  { id: "cat-leads", name: "Leads" },
+  { id: "cat-prelevements", name: "Prélèvements" },
+  { id: "cat-hipouy", name: "Hipouy" },
+  { id: "cat-serrurerie", name: "Serrurerie" },
+  { id: "cat-admin", name: "Admin" },
+  { id: "cat-perso", name: "Perso" },
+  { id: "cat-achat", name: "Achat" },
+  { id: "cat-notes", name: "Notes" },
+  { id: "cat-melissa", name: "Melissa" },
+]
 // « Entraînement » est DÉCLARÉE et ne porte aucun chantier : c'est le cas qui
 // a motivé le chantier a4348872. Elle n'apparaît donc pas dans THEMES.
 const SECTIONS = [
@@ -119,7 +136,7 @@ async function demander(phrase) {
     },
     body: JSON.stringify({
       transcript: phrase,
-      categories: [], tasks: TACHES, devItems: CHANTIERS, themes: THEMES, sections: SECTIONS, documents: [], contacts: CONTACTS,
+      categories: CATEGORIES, tasks: TACHES, devItems: CHANTIERS, themes: THEMES, sections: SECTIONS, documents: [], contacts: CONTACTS,
       placeReminders: [], pronunciations: PRONONCIATIONS,
       widgetConfig: { maxTasks: 3, urgentOnly: false, categoryId: null },
       todayISO: new Date().toISOString().slice(0, 10),
@@ -945,6 +962,72 @@ cas.push(
       if (/(oui|non),? (il est|c'est) (bien )?(activé|désactivé)/i.test(message)) {
         return [false, `il tranche alors qu'il ne peut pas le voir : "${message}"`]
       }
+      return [true]
+    },
+  },
+
+  // ── Ranger une tâche dans la catégorie qu'il NOMME ──
+  // Son signalement du 7 sept. 2026, capture à l'appui : « il écrit mot pour
+  // mot ma demande quand je lui dit d'attribuer ca dans la section leads ou
+  // autres du coup les taches restes sans catégories et je doit les replacer a
+  // la main ». Les phrases ci-dessous sont les SIENNES, relevées sur la capture.
+  //
+  // AUCUN CONTRÔLE NE POUVAIT L'ATTRAPER avant : ce banc envoyait
+  // `categories: []`, donc le modèle n'avait aucune catégorie à proposer.
+  {
+    nom: "« Alexis dans la tâche des leads » : le rangement va dans la catégorie",
+    phrase: "ajoute Alexis dans la tâche des leads",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_task")
+      if (!a) return [false, `pas d'add_task : ${(r.actions ?? []).map((x) => x.action).join(", ")}`]
+      if (a.category_id !== "cat-leads") return [false, `category_id = ${JSON.stringify(a.category_id)}`]
+      if (!/alexis/i.test(a.title ?? "")) return [false, `title = ${JSON.stringify(a.title)}`]
+      if (/leads/i.test(a.title ?? "")) return [false, `le rangement est resté dans le titre : ${JSON.stringify(a.title)}`]
+      return [true]
+    },
+  },
+  {
+    nom: "« dans l'administratif » trouve « Admin », dit autrement",
+    phrase: "dans l'administratif, régler l'arnaque bancaire",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_task")
+      if (!a) return [false, `pas d'add_task : ${(r.actions ?? []).map((x) => x.action).join(", ")}`]
+      if (a.category_id !== "cat-admin") return [false, `category_id = ${JSON.stringify(a.category_id)}`]
+      if (/administratif/i.test(a.title ?? "")) return [false, `title = ${JSON.stringify(a.title)}`]
+      return [true]
+    },
+  },
+  {
+    // Un rangement ET une heure dans la même phrase : le rangement ne doit pas
+    // manger l'heure, ni l'inverse.
+    //
+    // PREMIÈRE VERSION DE CE CAS, ET POURQUOI ELLE ÉTAIT FAUSSE : elle disait
+    // « rendez-vous avec Daniel Nakache demain à midi dans la section leads »
+    // et exigeait un due_time. Le modèle a rendu DEUX actions — un événement
+    // d'agenda à 12:00 (un rendez-vous occupe un créneau, la consigne le dit)
+    // et la tâche, rangée dans Leads. Il avait raison ; c'est le contrôle qui
+    // demandait la mauvaise chose. La phrase dit maintenant « rappelle-moi »,
+    // qui est sans ambiguïté une tâche.
+    nom: "un rangement ET une heure dans la même phrase : les deux sont pris",
+    phrase: "rappelle-moi d'appeler Daniel Nakache demain à midi, dans la section leads",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_task")
+      if (!a) return [false, `pas d'add_task : ${(r.actions ?? []).map((x) => x.action).join(", ")}`]
+      if (a.category_id !== "cat-leads") return [false, `category_id = ${JSON.stringify(a.category_id)}`]
+      if (a.due_time !== "12:00") return [false, `due_time = ${JSON.stringify(a.due_time)}`]
+      if (/section|leads/i.test(a.title ?? "")) return [false, `title = ${JSON.stringify(a.title)}`]
+      return [true]
+    },
+  },
+  {
+    // LE REVERS, et il compte autant : mieux vaut une tâche à ranger qu'une
+    // tâche rangée au mauvais endroit, qu'il ne retrouvera jamais.
+    nom: "une catégorie qui n'existe pas ne s'invente pas",
+    phrase: "ajoute une tâche dans la catégorie plomberie : appeler le fournisseur",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "add_task")
+      if (!a) return [false, `pas d'add_task : ${(r.actions ?? []).map((x) => x.action).join(", ")}`]
+      if (a.category_id) return [false, `il a inventé un rangement : ${JSON.stringify(a.category_id)}`]
       return [true]
     },
   },

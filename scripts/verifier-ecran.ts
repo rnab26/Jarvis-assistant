@@ -38,6 +38,7 @@ import {
   lireReglagesListeNoire,
   listeEffective,
 } from "../src/lib/listeNoire.ts"
+import { erreurDepuisEcoute } from "../src/lib/erreurs.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -367,6 +368,51 @@ verifier(
   "la liste noire est consultée AVANT toute action, y compris défiler",
   corpsAgir.indexOf("entreeInterdisant") < corpsAgir.indexOf('commande === "retour"'),
   "sur l'écran d'une banque, Jarvis ne fait rien du tout",
+)
+
+// ----------------------------------------- le service endormi, dans le registre
+// Chantier 21cf48d2, 7 sept. 2026 : le clic sur "Envoyer" avait déjà marché
+// trois fois (journal_ecoute), puis "service_inactif" est apparu sans qu'aucun
+// signalement n'existe — cette panne n'était tout simplement pas dans
+// `ratees`. Elle doit maintenant remonter, et se regrouper en UNE ligne quel
+// que soit l'écran où elle survient : ce n'est pas un raté par application,
+// c'est Android qui endort le même service partout.
+const surWhatsApp = erreurDepuisEcoute("ecran_action", {
+  commande: "clic",
+  cible: "Envoyer",
+  resultat: "service_inactif",
+  application: "WhatsApp",
+})
+const surYoutube = erreurDepuisEcoute("ecran_action", {
+  commande: "clic",
+  cible: "la deuxième vidéo",
+  resultat: "service_inactif",
+  application: "YouTube",
+})
+verifier(
+  "le service endormi est signalé, pas avalé en silence",
+  surWhatsApp !== null && surWhatsApp.categorie === "systeme",
+  "sans ça, la panne du 7 sept. ne serait jamais apparue dans le registre",
+)
+verifier(
+  "et il se regroupe en UNE ligne, quelle que soit l'application",
+  surWhatsApp?.titre === surYoutube?.titre,
+  `${surWhatsApp?.titre} / ${surYoutube?.titre}`,
+)
+verifier(
+  "les autres échecs d'écran restent classés par application, eux",
+  erreurDepuisEcoute("ecran_action", {
+    commande: "clic",
+    cible: "x",
+    resultat: "introuvable",
+    application: "WhatsApp",
+  })?.titre !== erreurDepuisEcoute("ecran_action", {
+    commande: "clic",
+    cible: "x",
+    resultat: "introuvable",
+    application: "YouTube",
+  })?.titre,
+  "un bouton introuvable est spécifique à l'écran, contrairement au service endormi",
 )
 
 console.log("")

@@ -101,7 +101,7 @@ try {
   )
   verifier(
     "le compte accordées / total est affiché",
-    /0 accordée sur 7/.test((await neuf.locator("[data-resume]").textContent()) ?? ""),
+    /0 accordée sur 8/.test((await neuf.locator("[data-resume]").textContent()) ?? ""),
     (await neuf.locator("[data-resume]").textContent()) ?? "",
   )
 

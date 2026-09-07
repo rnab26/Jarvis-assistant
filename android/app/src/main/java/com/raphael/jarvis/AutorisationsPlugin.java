@@ -7,6 +7,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationManagerCompat;
@@ -119,6 +120,10 @@ public class AutorisationsPlugin extends Plugin {
             case "installer_maj":
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true;
                 return getContext().getPackageManager().canRequestPackageInstalls();
+            case "batterie": {
+                PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+                return pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
+            }
             default:
                 return false;
         }
@@ -166,6 +171,7 @@ public class AutorisationsPlugin extends Plugin {
         JSArray liste = new JSArray();
         for (String cle : RUNTIME) liste.put(etatDe(cle));
         liste.put(etatDe("installer_maj"));
+        liste.put(etatDe("batterie"));
         JSObject res = new JSObject();
         res.put("autorisations", liste);
         return res;
@@ -259,6 +265,13 @@ public class AutorisationsPlugin extends Plugin {
                 } else {
                     intent = ficheApplication();
                 }
+                break;
+            case "batterie":
+                // Contrairement aux autres acces speciaux, celui-ci ouvre
+                // directement la fenetre "Autoriser / Refuser" d'Android --
+                // un seul geste, pas une navigation dans ses reglages.
+                intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getContext().getPackageName()));
                 break;
             default:
                 intent = ficheApplication();

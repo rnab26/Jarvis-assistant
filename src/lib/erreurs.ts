@@ -163,6 +163,18 @@ export function erreurDepuisEcoute(
   // compteur, pas dix lignes que personne ne lira.
   if (evenement === "ecran_action") {
     const resultat = texte("resultat")
+    // Pas un raté par application : le service peut retomber quel que soit
+    // l'écran où on essaie. Une ligne unique, pas une par application
+    // touchée — sinon la même panne (Android qui endort le service) se
+    // relit comme dix pannes distinctes.
+    if (resultat === "service_inactif") {
+      return {
+        categorie: "systeme",
+        titre: "Le service qui permet à Jarvis d'appuyer sur l'écran s'est endormi",
+        detail: "Android a coupé le service d'accessibilité malgré l'autorisation accordée.",
+        source: "app",
+      }
+    }
     const ratees = new Set(["introuvable", "ambigu", "rang_trop_grand", "refus", "ecran_change"])
     if (!resultat || !ratees.has(resultat)) return null
     const ou = texte("application") ?? texte("paquet") ?? "une application"
