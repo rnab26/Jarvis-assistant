@@ -302,6 +302,76 @@ try {
   await page.keyboard.press("Escape")
   await pause(300)
 
+  // ── « AUCUN MOYEN D'ACTUALISER » ──
+  // Sa plainte du 7 sept. 2026, chantier ce69489b : « Les taches ne
+  // s'affichent pas en live et il n'y a aucun moyen d'actualiser ». La
+  // seconde moitié était vraie sans réserve : `refresh` n'était atteignable
+  // que depuis l'écran d'erreur, donc jamais quand le chargement avait RÉUSSI
+  // et que c'est le direct qui était tombé.
+  //
+  // LA MOITIÉ DE CES CONTRÔLES VÉRIFIE LE SILENCE. Un bandeau orange qui
+  // s'allume à chaque ouverture n'est plus lu du tout le jour où il compte.
+  {
+    // `data-etat` est porté par le composant lui-même, pas par le conteneur
+    // du banc : viser le conteneur rendait `null`, c'est-à-dire rouge pour une
+    // mauvaise raison.
+    const barre = page.locator("#barre-direct [data-etat]")
+    verifier(
+      "quand le direct marche, la barre ne crie pas",
+      (await barre.getAttribute("data-etat")) === "discret" &&
+        (await barre.innerText()).includes("À jour"),
+      await barre.innerText(),
+    )
+    verifier(
+      "mais le bouton Actualiser est là quand même",
+      await barre.getByRole("button", { name: "Actualiser la liste" }).isVisible(),
+      "« aucun moyen d'actualiser » était la moitié de sa plainte",
+    )
+
+    await barre.getByRole("button", { name: "Actualiser la liste" }).click()
+    await pause(200)
+    verifier(
+      "et il fait quelque chose",
+      (await page.locator("#appuis-actualiser").innerText()).includes("1"),
+      await page.locator("#appuis-actualiser").innerText(),
+    )
+
+    // Le direct tombe : c'est LE cas qui était parfaitement muet.
+    await page.getByRole("button", { name: "banc: couper" }).click()
+    await pause(200)
+    const texteCoupe = await barre.innerText()
+    verifier(
+      "une coupure du direct se voit",
+      (await barre.getAttribute("data-etat")) === "alerte" &&
+        /coupées/i.test(texteCoupe),
+      texteCoupe,
+    )
+    verifier(
+      "et elle dit depuis quand la liste peut mentir",
+      /il y a 12 min/.test(texteCoupe),
+      `${texteCoupe} — sans l'âge, il ne sait pas si c'est grave`,
+    )
+
+    // Pendant un rechargement, on le DIT : un bouton qui ne répond pas se lit
+    // comme un bouton mort, et il appuie six fois.
+    await page.getByRole("button", { name: "banc: en cours" }).click()
+    await pause(200)
+    verifier(
+      "pendant l'actualisation, le bouton se verrouille et le dit",
+      (await barre.innerText()).includes("Actualisation…") &&
+        (await barre.getByRole("button", { name: "Actualiser la liste" }).isDisabled()),
+      await barre.innerText(),
+    )
+    await page.getByRole("button", { name: "banc: en cours" }).click()
+    await page.getByRole("button", { name: "banc: rétablir" }).click()
+    await pause(200)
+    verifier(
+      "et le retour du direct fait taire l'alerte",
+      (await barre.getAttribute("data-etat")) === "discret",
+      await barre.innerText(),
+    )
+  }
+
   // ── L'ÉCRAN DÉFILE JUSQU'EN BAS, barre de gestes comprise ──
   // Son signalement du 7 sept. 2026 : « dans les tâches de façon générale,
   // l'écran ne défile pas jusqu'en bas, ça bouffe un petit peu sur le reste du
