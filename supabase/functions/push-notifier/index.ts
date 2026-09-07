@@ -122,6 +122,14 @@ interface EnvoiPush {
   route: string
 }
 
+/** Le canal court, celui que connaît apprentissage.ts côté app — pas
+ * l'identifiant du channel Android. Envoyé dans les données FCM pour que
+ * l'appui sur la notification puisse tracer sans avoir à retraduire
+ * "jarvis_livraisons" en "livraisons" de son côté. */
+function canalCourt(canal: EnvoiPush["canal"]): "livraisons" | "blocages" {
+  return canal === "jarvis_livraisons" ? "livraisons" : "blocages"
+}
+
 /** Envoie à un jeton, et dit s'il faut le retirer (désinstallé ou expiré :
  * FCM répond alors 404 UNREGISTERED — un jeton qui ne répond plus ne doit
  * pas être retenté indéfiniment). */
@@ -144,7 +152,7 @@ async function envoyerAUnJeton(
           token: jetonAppareil,
           notification: { title: push.titre, body: push.corps },
           android: { notification: { channel_id: push.canal } },
-          data: { route: push.route },
+          data: { route: push.route, canal: canalCourt(push.canal) },
         },
       }),
     },
@@ -305,6 +313,25 @@ Deno.serve(async (req: Request) => {
     }
     if (aRetirer.length > 0) {
       await supabase.from("push_tokens").delete().in("token", aRetirer)
+    }
+
+    // Ce que Jarvis apprend de ses propres notifications (chantier 05241cc7) :
+    // tracée ICI, côté serveur, parce que ces deux canaux sont les seuls qui
+    // peuvent sonner app FERMÉE — le client ne verrait jamais l'événement
+    // "reçue" pour les compter. AWAIT, contrairement au reste de ce module
+    // côté app : une fois la réponse HTTP rendue, l'isolate Edge Function
+    // peut être coupé avant qu'une écriture non attendue n'ait eu le temps
+    // de partir. Le try/catch garde la même règle que partout ailleurs : un
+    // push déjà envoyé ne doit jamais être annulé par l'échec d'une ligne de
+    // journal.
+    if (envoyes > 0) {
+      try {
+        await supabase
+          .from("notifications_journal")
+          .insert({ user_id: userId, canal: canalCourt(push.canal) })
+      } catch {
+        // Sans conséquence : seule la statistique d'apprentissage en pâtit.
+      }
     }
 
     return new Response(JSON.stringify({ envoyes, retires: aRetirer.length }), { status: 200 })

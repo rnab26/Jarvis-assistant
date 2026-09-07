@@ -12,6 +12,7 @@ import {
   corpsChantiersLivres,
   ID_CHANTIERS_LIVRES,
   ID_SESSION_BLOQUEE,
+  type CanalNotif,
 } from "@/lib/notifications/plan"
 import {
   ecrirePrefsNotifs,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/notifications/prefs"
 import {
   appliquerPlan,
+  canalDepuisChannelId,
   demanderPermission,
   envoyerTest,
   ETAT_INDISPONIBLE,
@@ -31,6 +33,12 @@ import {
   toutAnnuler,
   type EtatNotifications,
 } from "@/lib/notifications/service"
+import {
+  insistanceReduite,
+  statsParCanal,
+  type EntreeJournalNotif,
+} from "@/lib/notifications/apprentissage"
+import { lireJournal, noterEnvoyee, noterOuverte } from "@/lib/notifications/journalApprentissage"
 import { estPourRaphael } from "@/lib/journalDestinataire"
 import { supabase } from "@/lib/supabase"
 import type { DevItem, DevLogEntry, Task } from "@/types/database"
@@ -89,6 +97,24 @@ export function useNotifications(
 
   useRelireApresRestauration(() => setPrefsState(lirePrefsNotifs()))
 
+  // Ce que Jarvis a appris de ses propres notifications (chantier 05241cc7) :
+  // le journal des envois/ouvertures récents, en ref plutôt qu'en état — il
+  // n'a besoin de déclencher aucun rendu, seulement d'être à jour au moment où
+  // direRef.current() décide de parler ou pas. Chargé une fois par utilisateur,
+  // puis tenu à jour localement (miroir) à chaque écriture : pas de
+  // rechargement réseau à chaque notification.
+  const journalRef = useRef<EntreeJournalNotif[]>([])
+  useEffect(() => {
+    if (!userId) return
+    let annule = false
+    lireJournal(userId).then((lignes) => {
+      if (!annule && lignes) journalRef.current = lignes
+    })
+    return () => {
+      annule = true
+    }
+  }, [userId])
+
   const relireListe = useCallback(async () => {
     const liste = await listerProgrammees()
     const dates = liste
@@ -116,12 +142,34 @@ export function useNotifications(
   const { speak } = useSpeechSynthesis()
   const direRef = useRef<
     (
-      notification: { title?: string | null; body?: string | null },
+      notification: { title?: string | null; body?: string | null; channelId?: string },
       declencheur: "recue" | "appui",
     ) => void
   >(() => {})
   useEffect(() => {
     direRef.current = (notification, declencheur) => {
+      const maintenant = new Date()
+      const canal = canalDepuisChannelId(notification.channelId)
+
+      // Trace, avant tout le reste : "recue" est le plus proche qu'on ait
+      // d'un "envoyée" pour une notification locale (aucun événement natif
+      // ne dit "affichée pendant que l'app est fermée"). "appui" est
+      // l'ouverture. Miroir local en plus de l'écriture réseau : la décision
+      // qui suit doit voir le coup qu'on vient de jouer, pas celui d'avant.
+      if (canal && declencheur === "recue") {
+        noterEnvoyee(userId, canal)
+        journalRef.current = [
+          ...journalRef.current,
+          { canal, envoyee_at: maintenant.toISOString(), ouverte_at: null },
+        ]
+      } else if (canal && declencheur === "appui") {
+        noterOuverte(userId, canal)
+        const derniereNonOuverte = [...journalRef.current]
+          .reverse()
+          .find((e) => e.canal === canal && e.ouverte_at === null)
+        if (derniereNonOuverte) derniereNonOuverte.ouverte_at = maintenant.toISOString()
+      }
+
       // appVisible et derniereParole servent à UNE chose : pendant ses heures
       // de silence, un rappel qu'il vient de demander se dit quand même, alors
       // que ce que Jarvis initie reste muet (sa demande du 6 sept.). Les deux
@@ -130,9 +178,12 @@ export function useNotifications(
       const ctx = {
         prefs,
         voixCoupee: readVoicePrefs().muted,
-        maintenant: new Date(),
+        maintenant,
         appVisible: typeof document !== "undefined" && document.visibilityState === "visible",
         derniereParole: derniereParole(),
+        canalPeuSuivi: canal
+          ? insistanceReduite(canal, statsParCanal(journalRef.current, maintenant))
+          : false,
       }
       const phrase = phraseAnnonce(notification, ctx)
       // Écrit dans le journal d'écoute, dit ou pas dit : le pont Android ne se
@@ -331,8 +382,21 @@ export function useNotifications(
     const poigneeAppui = PushNotifications.addListener(
       "pushNotificationActionPerformed",
       (action) => {
-        const route = (action.notification.data as { route?: string } | undefined)?.route
-        if (route) navigate(route)
+        const donnees = action.notification.data as
+          | { route?: string; canal?: CanalNotif }
+          | undefined
+        if (donnees?.route) navigate(donnees.route)
+        // Appui sur un push reçu app fermée : le seul événement qu'on
+        // observera jamais pour lui (pas de "reçue" côté client dans ce cas —
+        // c'est push-notifier, côté serveur, qui a tracé l'envoi).
+        if (donnees?.canal) {
+          noterOuverte(userId, donnees.canal)
+          const maintenant = new Date().toISOString()
+          const derniereNonOuverte = [...journalRef.current]
+            .reverse()
+            .find((e) => e.canal === donnees.canal && e.ouverte_at === null)
+          if (derniereNonOuverte) derniereNonOuverte.ouverte_at = maintenant
+        }
       },
     )
 
