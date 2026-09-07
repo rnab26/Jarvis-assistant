@@ -81,6 +81,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/pages/SettingsPage.tsx",
   },
   {
+    cle: "jarvis_service_reconnaissance",
+    ou: "Paramètres › Voix et écoute › Moteur de reconnaissance vocale",
+    fichier: "src/components/settings/MoteurReconnaissance.tsx",
+  },
+  {
     cle: "jarvis_mode_live",
     ou: "Paramètres › Voix et écoute › Mode conversation Live (essai), et la case sous le cœur",
     fichier: "src/components/settings/ModeLive.tsx",

@@ -17,6 +17,7 @@ import { Confidentialite } from "@/components/settings/Confidentialite"
 import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
 import { ControleEcran } from "@/components/settings/ControleEcran"
 import { LectureNotifications } from "@/components/settings/LectureNotifications"
+import { MoteurReconnaissance } from "@/components/settings/MoteurReconnaissance"
 import { ConnecteursIA } from "@/components/settings/ConnecteursIA"
 import { MettreAJour } from "@/components/settings/MettreAJour"
 import { ModeLive } from "@/components/settings/ModeLive"
@@ -84,7 +85,7 @@ const SECTIONS = {
     titre: "Voix et écoute",
     resume: "Sa voix, le rythme, le mot-clé de réveil",
     motsCles:
-      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue mode live conversation continue essai",
+      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue mode live conversation continue essai moteur reconnaissance vocale android google automatique service",
   },
   taches: {
     cle: "taches",
@@ -796,6 +797,8 @@ export function SettingsPage() {
             />
           </CardContent>
         </Card>
+
+        <MoteurReconnaissance />
 
         <Card>
           <CardHeader>
