@@ -48,12 +48,30 @@ export function nomCourtSession(session: string): string {
   return session.replace(/^claude\//, "")
 }
 
-function attendSaDecision(item: DevItem): boolean {
+/**
+ * Un marqueur qui dit « ce chantier attend une décision de Raphaël » — SAUF
+ * s'il a déjà eu le dernier mot dessus (chantier c612ccdc, 7 sept. 2026).
+ *
+ * Le marqueur est un texte statique en tête des notes : une session l'écrit
+ * en posant la question, mais rien ne l'efface quand Raphaël répond — d'où
+ * `dernierMessageEstLeSien`, vrai quand le dernier message du journal
+ * rattaché à ce chantier est de lui (peu importe le kind). Tant que personne
+ * ne reprend la parole après lui sans avoir retiré le marqueur, la décision
+ * est prise pour l'instant ; si une session le fait, le chantier « revient »,
+ * exactement comme il l'a demandé : « à partir du moment où j'ai répondu, ça
+ * doit sortir des chantiers pour moi. Sauf si ça revient par la suite, si ce
+ * chantier n'est pas terminé côté Claude Code. »
+ *
+ * Exportée : `ouJenSuis.ts` s'en sert aussi, pour la même raison que le reste
+ * de ce fichier — une seule lecture, deux affichages.
+ */
+export function attendSaDecision(item: DevItem, dernierMessageEstLeSien = false): boolean {
   const m = marqueurDe(item)
-  return m === "a_cadrer" || m === "pour_raphael"
+  if (m !== "a_cadrer" && m !== "pour_raphael") return false
+  return !dernierMessageEstLeSien
 }
 
-function enSuspens(item: DevItem): boolean {
+export function enSuspens(item: DevItem): boolean {
   const m = marqueurDe(item)
   return m === "bloque" || m === "reporte" || m === "doublon"
 }
@@ -64,11 +82,13 @@ function enSuspens(item: DevItem): boolean {
  *
  * `aUneQuestionOuverte` vient du journal (`dev_log.item_id`, sans réponse) :
  * la carte du chantier l'a déjà sous la main, inutile de la recalculer ici.
+ * `dernierMessageEstLeSien` sert au marqueur — voir `attendSaDecision`.
  */
 export function etatChantier(
   item: DevItem,
   maintenant: number = Date.now(),
   aUneQuestionOuverte = false,
+  dernierMessageEstLeSien = false,
 ): EtatLu {
   if (item.archived_at) return { etat: "livre" }
 
@@ -79,7 +99,7 @@ export function etatChantier(
     return { etat: expire! > maintenant ? "pris" : "abandonne", session }
   }
 
-  if (attendSaDecision(item) || aUneQuestionOuverte) return { etat: "attend" }
+  if (attendSaDecision(item, dernierMessageEstLeSien) || aUneQuestionOuverte) return { etat: "attend" }
   if (enSuspens(item)) return { etat: "suspens" }
   if (item.status === "done") return { etat: "suspens" }
   return { etat: "dort" }
