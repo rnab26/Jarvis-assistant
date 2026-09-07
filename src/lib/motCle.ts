@@ -46,6 +46,41 @@ const VARIANTES = new Set([
   "harvis",
 ])
 
+/**
+ * Mots qui, juste avant « Jarvis », en font le complément d'un groupe
+ * nominal (« la nouvelle version de Jarvis », « c'est Jarvis qui envoie »)
+ * plutôt qu'un appel qui lui est adressé.
+ *
+ * Mesuré dans journal_ecoute le 7 sept. 2026 : « nouvelle version de Jarvis »
+ * a déclenché la veille — et son « Oui ? » dit à voix haute — à trois
+ * reprises en deux jours (06/09 09h02, 18h40 et 07/09 06h48), en pleine
+ * conversation avec quelqu'un d'autre. Raphaël parlait DE l'app, pas À elle.
+ * C'est très exactement ce qu'il a signalé le 7 sept. à 06h53 : « il
+ * interfère souvent dans mes conversations [...] sans que je l'active ».
+ * Un cas voisin, « [...] et dis-lui que c'est Jarvis qui envoie » (05/09
+ * 22h45), est du même genre : Jarvis cité en train d'être décrit à un tiers.
+ */
+const MOTS_MENTION = new Set([
+  "de",
+  "du",
+  "des",
+  "à",
+  "au",
+  "aux",
+  "le",
+  "la",
+  "les",
+  "ce",
+  "cet",
+  "cette",
+  "un",
+  "une",
+  "que",
+  "qui",
+  "dont",
+  "c'est",
+])
+
 export function normaliser(texte: string): string {
   return texte
     .toLowerCase()
@@ -112,6 +147,13 @@ export function chercherMotCle(transcript: string): Reveil {
   const mots = normaliser(transcript).split(" ").filter(Boolean)
   const index = mots.findIndex(ressembleAuMotCle)
   if (index === -1) return { trouve: false, reste: "" }
+
+  // « Jarvis » précédé d'un mot qui en fait un complément (« de Jarvis »,
+  // « c'est Jarvis ») : Raphaël parle DE l'app à quelqu'un d'autre, il ne
+  // l'appelle pas. Voir MOTS_MENTION.
+  if (index > 0 && MOTS_MENTION.has(mots[index - 1])) {
+    return { trouve: false, reste: "" }
+  }
 
   // Tout ce qui suit le mot-clé est la demande. Ce qui le précède
   // ("dis donc Jarvis", "eh Jarvis") n'en fait pas partie. Un mot-clé

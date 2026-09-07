@@ -21,7 +21,7 @@ export interface EchangesApi {
 }
 
 /**
- * Le mot-à-mot des conversations des sept derniers jours.
+ * Le mot-à-mot des conversations, tel que Jarvis le garde.
  *
  * Jarvis s'en sert pour répondre à « on avait parlé de quoi pour la villa
  * Dan ? » (chantier caa54df2) : il faut donc que Raphaël puisse voir ce qui
@@ -29,7 +29,11 @@ export interface EchangesApi {
  * seule façon de savoir ce que Jarvis peut ressortir serait de le lui
  * demander.
  *
- * La purge à sept jours est faite côté serveur, à chaque échange.
+ * La durée de conservation est un réglage (Paramètres › Mémoire, défaut sans
+ * limite) — la purge, quand elle est activée, est faite côté serveur à chaque
+ * phrase. Au-delà de 21 jours, un échange n'est pas supprimé mais COMPACTÉ :
+ * `transcript` devient un résumé (`resume: true`) plutôt que le mot-à-mot
+ * d'origine (chantier 470d9c4d).
  */
 export function useEchanges(userId: string | undefined): EchangesApi {
   const [echanges, setEchanges] = useState<Echange[]>([])
@@ -50,7 +54,7 @@ export function useEchanges(userId: string | undefined): EchangesApi {
       const { data, error: queryError } = await withTimeout(
         supabase
           .from("echanges")
-          .select("id, user_id, transcript, reponse, created_at")
+          .select("id, user_id, transcript, reponse, created_at, resume")
           .order("created_at", { ascending: false })
           .limit(300),
       )

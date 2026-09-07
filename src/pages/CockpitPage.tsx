@@ -1,4 +1,5 @@
 import { useRef, useState } from "react"
+import { BarreActualiser } from "@/components/BarreActualiser"
 import { LoadError } from "@/components/LoadError"
 import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
 import { ChantiersEgares } from "@/components/cockpit/ChantiersEgares"
@@ -73,6 +74,10 @@ export function CockpitPage() {
     deleteManyDevItems,
     restoreDevItems,
     libererReservation,
+    derniereMaj,
+    statutDirect,
+    actualisationEnCours,
+    actualiser,
   } = devItemsState
 
   // Les puces de la fenêtre d'envoi listent les sections déclarées ET les
@@ -201,6 +206,20 @@ export function CockpitPage() {
         devItems={devItems}
         sections={devSectionsState.sections}
         onCreerChantier={addDevItem}
+      />
+
+      {/* SILENCIEUSE TANT QUE LE DIRECT MARCHE, et c'est mesuré : le tableau
+          des chantiers doit commencer avant 482 points sur un écran de
+          téléphone (`verifier-cockpit-web.mjs`), et cette barre en coûte 44 —
+          essayé, le contrôle est monté à 526 et a rougi. La place n'est donc
+          prise que le jour où il y a quelque chose à dire. L'onglet Tâches,
+          lui, garde le bouton en permanence : c'est là qu'il l'a réclamé. */}
+      <BarreActualiser
+        seulementSiProbleme
+        statut={statutDirect}
+        derniereMaj={derniereMaj}
+        enCours={actualisationEnCours}
+        onActualiser={actualiser}
       />
 
       <div ref={tableauRef}>

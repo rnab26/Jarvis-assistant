@@ -276,6 +276,16 @@ export function interpreterLocalement(
   const correction = correctionDeDestination(texte)
   if (correction) return [{ action: "move_last_entry", vers: correction }]
 
+  /* ---------- « Garde ça » : reprendre la réponse d'une IA affichée ----------
+     Chantier 7d7967b2. Reconnue LOCALEMENT : lire l'écran est une décision
+     qui vit sur l'appareil (service d'accessibilité), le modèle ne voit pas
+     l'écran et n'a rien à faire dans cette boucle. Ensemble fermé exprès,
+     comme pour la confirmation d'un envoi : un faux négatif renvoie juste la
+     phrase au serveur, un faux positif lirait l'écran pour rien. */
+  if (/^(garde|retiens|note)(\s*-?\s*(ca|sa reponse|cette reponse|la reponse))\b/.test(texte)) {
+    return [{ action: "garder_reponse_ecran" }]
+  }
+
   /* ---------- La voix ---------- */
   if (/^(coupe|arrete|stoppe)( ta| la)? voix\b/.test(texte) ||
       /^(tais-toi pour de bon|ne parle plus|arrete de parler)\b/.test(texte) ||

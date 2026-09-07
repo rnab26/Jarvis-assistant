@@ -23,13 +23,20 @@ import type { Echange } from "@/types/database"
 
 const JOUR = 24 * 3600_000
 
-function echange(id: string, transcript: string, reponse: string | null, ilYAMs: number): Echange {
+function echange(
+  id: string,
+  transcript: string,
+  reponse: string | null,
+  ilYAMs: number,
+  resume = false,
+): Echange {
   return {
     id,
     user_id: "banc",
     transcript,
     reponse,
     created_at: new Date(Date.now() - ilYAMs).toISOString(),
+    resume,
   }
 }
 
@@ -39,6 +46,9 @@ const ECHANGES: Echange[] = [
   echange("e3", "Où est-ce que je réponds aux questions des sessions ?", "Dans le cockpit dev, sous « + Nouveau chantier ».", JOUR),
   echange("e4", "Combien il reste de chantiers en cours ?", "Cinquante-quatre, dont neuf en priorité haute.", JOUR + 3600_000),
   echange("e5", "Mets la musique de Brassens sur Spotify.", "Je te l'ouvre.", 2 * JOUR),
+  // Une ligne compactée (chantier 470d9c4d) : le banc doit montrer l'étiquette
+  // « Résumé », pas juste le cas où tout est encore mot-à-mot.
+  echange("e0", "Villa Dan : budget carrelage validé à 4 500 ILS, grès cérame.", null, 25 * JOUR, true),
 ]
 
 // De quoi dépasser la première page (20) sans écrire cinquante lignes à la main.

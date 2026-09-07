@@ -5,6 +5,8 @@ import { ShareReceiver } from "@/lib/shareReceiverPlugin"
 import { corpsDuDocument, rapprocher } from "@/lib/allerRetourIA"
 import { lireQuestionEnAttente, oublierQuestionEnAttente } from "@/lib/questionEnAttente"
 import { noterEcoute } from "@/lib/journalEcoute"
+import { CLE_RELAIS_IA_LECTURE, lectureVoulue } from "@/lib/relaisIA"
+import { parler } from "@/lib/parler"
 
 const isNative = Capacitor.isNativePlatform()
 
@@ -50,6 +52,17 @@ export function useShareReceiver(saveTextDocument: (filename: string, content: s
           toast.success(`Réponse de ${resultat.app} gardée`, {
             description: "Elle est dans Documents, avec ta question.",
           })
+          // « Jarvis lit la réponse » (chantier acad6f74, réglage dans « Tes
+          // applications d'IA ») : par défaut il se tait, l'IA a déjà répondu
+          // à l'écran. Ici on n'est pas dans un tour de voix — personne
+          // d'autre ne lira cette réponse à voix haute.
+          try {
+            if (lectureVoulue(localStorage.getItem(CLE_RELAIS_IA_LECTURE))) {
+              void parler(`${resultat.app} a répondu : ${resultat.reponse}`)
+            }
+          } catch {
+            // Stockage indisponible : on reste sur le comportement silencieux.
+          }
           return
         }
 
