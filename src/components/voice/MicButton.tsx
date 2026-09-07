@@ -11,7 +11,9 @@ import { AgendaError, agendaApi } from "@/lib/googleCalendar"
 import {
   apresRafale,
   delaiAvantRafaleSuivante,
+  enRefroidissement,
   peutEcouterEnVeille,
+  REFROIDISSEMENT_APRES_FIN_MS,
   sansAccuse,
   texteAAfficherEnVeille,
 } from "@/lib/veille"
@@ -549,6 +551,9 @@ export function MicButton({
   // Lu depuis la boucle de veille, qui vit dans un effet : une ref, pas l'état.
   const modeLiveRef = useRef(modeLive)
   modeLiveRef.current = modeLive
+  // Horodatage jusqu'auquel le mot-clé se tait après un « terminé » (voix ou
+  // appui) — voir REFROIDISSEMENT_APRES_FIN_MS. 0 = jamais déclenché.
+  const refroidissementRef = useRef(0)
 
   function basculerModeLive() {
     const suivant = !modeLive
@@ -638,12 +643,18 @@ export function MicButton({
         retenirLeTour(aRejouer, actions, reponse)
         return reponse
       },
-      onEtat: (etat, detail) => {
+      onEtat: (etat, detail, parRaphael) => {
         if (etat === "connexion") setStatus("processing")
         else if (etat === "ecoute") setStatus("listening")
         else if (etat === "parle") setStatus("speaking")
         else {
           liveRef.current = null
+          // « Terminé » (voix ou appui) : il vient de dire qu'il n'a plus
+          // besoin de Jarvis maintenant, le mot-clé se tait un moment avant
+          // de recommencer à réclamer le micro (chantier voix/écoute,
+          // 7 sept.). Une fermeture par Google ou une panne (parRaphael
+          // faux) n'a rien à voir avec sa volonté : elle ne déclenche rien.
+          if (parRaphael) refroidissementRef.current = Date.now() + REFROIDISSEMENT_APRES_FIN_MS
           if (detail) {
             setLastReply(detail)
             setStatus("error")
@@ -833,7 +844,7 @@ export function MicButton({
             // Relu à CHAQUE tour, pas capturé au montage : une mise à jour
             // commence après le démarrage de la boucle, pas avant.
             majEnCours: majEnCoursRef.current,
-          })
+          }) || enRefroidissement(Date.now(), refroidissementRef.current)
         ) {
           await new Promise((r) => setTimeout(r, 400))
           continue
