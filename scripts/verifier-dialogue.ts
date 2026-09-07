@@ -20,6 +20,7 @@ import {
 import {
   apresRafale,
   delaiAvantRafaleSuivante,
+  enRefroidissement,
   peutEcouterEnVeille,
   RECUL_APRES_ECHEC_MS,
   RECUL_MAX_MS,
@@ -121,6 +122,19 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
     peutEcouterEnVeille({ actif: true, visible: true, statut: "listening" }), false)
   verifier("veille : Jarvis parle → on attend",
     peutEcouterEnVeille({ actif: true, visible: true, statut: "speaking" }), false)
+}
+
+// 8bis. Le refroidissement après un « terminé » à la voix (7 sept. 2026) :
+//    « Jarvis » se tait un moment, un appui sur le cœur ne passe pas par ici.
+{
+  verifier("refroidissement : juste après un « terminé », on se tait",
+    enRefroidissement(1000, 9000), true)
+  verifier("refroidissement : le délai est écoulé, on écoute à nouveau",
+    enRefroidissement(9001, 9000), false)
+  verifier("refroidissement : jamais déclenché (jusqua=0) → jamais actif",
+    enRefroidissement(1000, 0), false)
+  verifier("refroidissement : pile à l'instant du délai → écoulé",
+    enRefroidissement(9000, 9000), false)
 }
 
 // 9. Fin de rafale (symptôme 3) : un appui sur le cœur pendant la rafale a

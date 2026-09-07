@@ -1855,6 +1855,21 @@ de voix, la fin de tour, l'interruption et la transcription. Derrière la case
   déployée, utilisateur de test éphémère). Le comportement audio réel ne se
   vérifie que sur un appareil ; `journal_ecoute` trace `live_debut`,
   `live_commande`, `live_echec`, `live_fin`.
+- **« Terminé » tait le mot-clé quelques secondes, plutôt que de laisser la
+  veille réclamer le micro aussitôt.** Sa demande du 7 sept. 2026, verbatim :
+  « quand je dis jarvis terminé, le micro reste activé […] ça me bloque le
+  micro sur plein d'autres choses. » Mesuré dans `journal_ecoute` le jour
+  même : quatre rafales de veille en douze secondes juste après un
+  `live_fin` volontaire, le service de reconnaissance par défaut (non-Google,
+  cause déjà établie plus bas) échouant en 37-41 ms à chaque fois et
+  redémarrant presque aussitôt — c'est ce qu'il voyait comme « le micro reste
+  allumé ». `src/lib/veille.ts` (`REFROIDISSEMENT_APRES_FIN_MS`,
+  `enRefroidissement`) fait taire la boucle de veille pendant 8 s après une
+  fermeture volontaire (`onEtat("fermee", …, parRaphael)` dans
+  `sessionLive.ts`, vrai pour la voix ET l'appui). **Un appui sur le cœur
+  reste obéi tout de suite, refroidissement ou pas** — seul le mot-clé se
+  tait, exactement comme `majEnCours`. Non vérifiable ici en conditions
+  réelles (pas d'appareil) ; `verifier-dialogue.ts` couvre la fonction pure.
 
 **Piège du build local** : sans `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`,
 `src/lib/supabase.ts` lève au chargement et le bundler jette TOUTE l'app comme

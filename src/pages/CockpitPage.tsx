@@ -1,6 +1,7 @@
 import { useRef, useState } from "react"
 import { LoadError } from "@/components/LoadError"
 import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
+import { ChantiersEgares } from "@/components/cockpit/ChantiersEgares"
 import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
@@ -14,6 +15,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useDevLog } from "@/hooks/useDevLog"
 import { FILTRE_VIDE, type FiltreCockpit } from "@/lib/sections"
 import { cleTheme } from "@/lib/themeChantier"
+import type { Task } from "@/types/database"
 
 /**
  * Le cockpit, de haut en bas : où on en est, ce qu'on envoie, ce qu'on se dit
@@ -43,7 +45,7 @@ import { cleTheme } from "@/lib/themeChantier"
  * — le crayon d'une carte, pour retoucher un chantier existant.
  */
 export function CockpitPage() {
-  const { devItemsState, devSectionsState, erreursState } = useJarvisData()
+  const { devItemsState, devSectionsState, erreursState, tasksState } = useJarvisData()
   const { session } = useAuth()
   const devLog = useDevLog(session?.user.id)
   // Le filtre du tableau vit ici, pas dans le tableau : « Où j'en suis » doit
@@ -77,6 +79,42 @@ export function CockpitPage() {
       (t) => !devSectionsState.sections.some((s) => cleTheme(s.nom) === cleTheme(t)),
     ),
   ]
+
+  /**
+   * Marque une tâche faite — MÊME quand elle n'est encore qu'une dictée en
+   * attente de réseau (`enAttente`). Repéré par une revue Copilot sur la
+   * PR #5 : `toggleStatus` fait un `update ... where id = ...` en base, et
+   * l'id d'une tâche en attente n'y existe pas encore — la ligne restait
+   * visible et repartait pour un second chantier au prochain appui.
+   * `oublierEnAttente` annule la création en attente à la place.
+   */
+  async function marquerTacheFaite(task: Task) {
+    if (task.enAttente) tasksState.oublierEnAttente(task.id)
+    else await tasksState.toggleStatus(task)
+  }
+
+  /**
+   * Une « tâche » qui est en fait une demande à Claude passe dans le cockpit.
+   *
+   * On crée le chantier ET on marque la tâche faite — on ne la SUPPRIME
+   * jamais : c'est sa liste, et il doit pouvoir retrouver ce qu'il a dicté.
+   * La note d'origine part avec le chantier, sinon le contexte resterait dans
+   * la tâche pendant que le travail part sans lui. Même logique que la
+   * conversion faite ligne par ligne depuis l'onglet Tâches (TaskItem.tsx) —
+   * ne pas en réécrire une seconde.
+   */
+  async function enFaireUnChantier(task: Task, titre: string, notes: string | null) {
+    await addDevItem({
+      title: titre,
+      notes: [notes, `Dicté comme tâche perso le ${new Date(task.created_at).toLocaleDateString("fr-FR")}, remis dans le cockpit depuis l'onglet Tâches.`]
+        .filter(Boolean)
+        .join("\n\n"),
+      status: "todo",
+      priority: "normal",
+      theme: null,
+    })
+    await marquerTacheFaite(task)
+  }
 
   /** Depuis « Où j'en suis » : le tableau ne garde que cette section, et on
    * l'amène sous les yeux — filtrer sans faire défiler laisserait croire qu'il
@@ -140,6 +178,16 @@ export function CockpitPage() {
         devItems={devItems}
         sections={devSectionsState.sections}
         onDeclarer={(nom) => devSectionsState.addSection(nom)}
+      />
+
+      {/* Silencieuse quand il n'y a rien à dire. Déplacée de l'onglet Tâches
+          le 7 sept. : une demande à Claude dictée par erreur dans ses tâches
+          quotidiennes est un sujet de développement, pas une course. */}
+      <ChantiersEgares
+        tasks={tasksState.tasks}
+        devItems={devItems}
+        onEnFaireUnChantier={enFaireUnChantier}
+        onMarquerFaite={marquerTacheFaite}
       />
 
       <ErreursJarvis

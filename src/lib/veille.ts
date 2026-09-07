@@ -33,6 +33,24 @@ export const RESPIRATION_MS = 150
 export const RECUL_APRES_ECHEC_MS = 700
 
 /**
+ * Après un « terminé » (à la voix ou d'un appui), la veille se tait un
+ * moment avant de recommencer à guetter « Jarvis ».
+ *
+ * Sa demande du 7 sept. 2026 : « quand je dis jarvis terminé, le micro reste
+ * activé […] ça me bloque le micro sur plein d'autres choses. » Mesuré dans
+ * journal_ecoute le même jour à 09h00 : quatre rafales de veille en douze
+ * secondes, juste après une conversation Live close volontairement — le
+ * service de reconnaissance par défaut (non-Google, cause déjà établie dans
+ * 6b33ee97) échouait en 37-41 ms à chaque fois, redémarrant presque aussitôt.
+ * Un « terminé » dit qu'il n'a plus besoin de Jarvis MAINTENANT : le mot-clé
+ * n'a donc pas à réclamer le micro dans la seconde qui suit.
+ *
+ * Ça ne touche QUE le mot-clé. Un appui sur le cœur reste obéi tout de suite,
+ * pendant le refroidissement comme en dehors — exactement comme majEnCours.
+ */
+export const REFROIDISSEMENT_APRES_FIN_MS = 8000
+
+/**
  * La veille n'écoute que si tout est réuni : le réglage est activé, l'app
  * est réellement à l'écran, et rien d'autre ne se sert du micro.
  *
@@ -65,6 +83,17 @@ export function peutEcouterEnVeille(p: {
   if (!p.actif || !p.visible) return false
   if (p.majEnCours) return false
   return p.statut === "idle" || p.statut === "error"
+}
+
+/**
+ * Vrai tant que le refroidissement après un « terminé » n'est pas écoulé.
+ *
+ * `maintenant` et `jusqua` sont deux horodatages en millisecondes (Date.now()
+ * côté appelant) : ce module reste pur, il ne lit jamais l'horloge lui-même.
+ * `jusqua` à 0 (aucun « terminé » encore vu) n'est jamais dans le futur.
+ */
+export function enRefroidissement(maintenant: number, jusqua: number): boolean {
+  return maintenant < jusqua
 }
 
 export type SuiteRafale =
