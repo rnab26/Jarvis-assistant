@@ -303,6 +303,13 @@ jobs:
       - name: Les autorisations du téléphone
         run: node --experimental-strip-types scripts/verifier-autorisations.ts
 
+      # Trouvé le 7 sept. en clôturant le chantier aab81d79 (doublon de
+      # b1b6172d, déjà livré le 6 sept., commit b8696b3) : le script existait
+      # mais n'était jamais lancé en CI, donc une régression sur « lire
+      # seulement sur demande » serait passée inaperçue.
+      - name: Lire les notifications, uniquement sur demande
+        run: node --experimental-strip-types scripts/verifier-notifications-lues.ts
+
       - name: Retrouver quelqu'un dans le répertoire du téléphone
         run: node --experimental-strip-types scripts/verifier-contact-repertoire.ts
 
