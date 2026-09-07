@@ -8,6 +8,8 @@ import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { messageErreurServeurVocal } from "@/lib/erreurServeurVocal"
 import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
+import { GmailError, gmailApi, type Brouillon } from "@/lib/googleGmail"
+import { estConfirmationEnvoiMail } from "@/lib/confirmationEnvoiMail"
 import {
   apresRafale,
   delaiAvantRafaleSuivante,
@@ -56,6 +58,7 @@ import {
   type ContactsApi,
   type DevItemsApi,
   type DocumentsApi,
+  type GmailApi,
   type PlaceRemindersApi,
   type PronunciationsApi,
   type TasksApi,
@@ -244,6 +247,11 @@ export function MicButton({
   // échec que Jarvis croit être une réussite (chantier 25a58902).
   const dernierTourRef = useRef<TourJarvis | null>(null)
 
+  // Le brouillon de réponse Gmail préparé (prepare_email_reply), en attente
+  // d'un « envoie » — même raison d'être que dernierTourRef : un mail part
+  // vers l'extérieur en son nom, rien ne s'envoie sans qu'il l'ait validé.
+  const brouillonMailRef = useRef<Brouillon | null>(null)
+
   /** Ce que la phrase courante dit du tour précédent — le plus souvent rien. */
   function constaterEchec(phrase: string, source: "voix" | "live") {
     const echec = echecSignalePar(phrase, dernierTourRef.current, Date.now())
@@ -284,6 +292,16 @@ export function MicButton({
       const confirmation: VoiceAction[] = [
         { action: "screen_action", screen_command: "clic", screen_target: "Envoyer" },
       ]
+      noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: confirmation.length })
+      derniereLocaleRef.current = transcript
+      return confirmation
+    }
+
+    // Même défaut, pour un mail préparé (prepare_email_reply) : le serveur ne
+    // voit jamais qu'un brouillon vient d'être relu, donc « envoie » tout seul
+    // doit être reconnu ICI (confirmationEnvoiMail.ts).
+    if (estConfirmationEnvoiMail(dernierTourRef.current, transcript, Date.now())) {
+      const confirmation: VoiceAction[] = [{ action: "send_email" }]
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: confirmation.length })
       derniereLocaleRef.current = transcript
       return confirmation
@@ -558,6 +576,20 @@ export function MicButton({
     // et on n'annonce qu'une fois le tout, plutôt que de n'en traiter qu'une
     // en laissant croire que le reste a été fait.
     const reponses: string[] = []
+    // Objet frais à chaque phrase : brouillonEnAttente doit lire l'état
+    // COURANT de la ref, pas celui du premier rendu qui a monté MicButton.
+    const gmailVoiceApi: GmailApi = {
+      ...gmailApi,
+      // Une réponse dictée n'attache jamais de fichier : pieces_jointes: []
+      // rend l'appel compatible avec le type plus large de googleGmail.ts,
+      // qui accepte des pièces jointes en plus d'un simple brouillon.
+      envoyerMessage: (brouillon, confirme) =>
+        gmailApi.envoyerMessage({ ...brouillon, pieces_jointes: [] }, confirme),
+      brouillonEnAttente: brouillonMailRef.current,
+      retenirBrouillon: (b) => {
+        brouillonMailRef.current = b
+      },
+    }
     for (const action of actions) {
       try {
         reponses.push(
@@ -573,13 +605,15 @@ export function MicButton({
             voiceSettingApi,
             widgetApi,
             agendaApi,
+            gmailVoiceApi,
           ),
         )
       } catch (e) {
-        // L'agenda est le seul domaine qui dépend d'un service extérieur :
-        // compte Google pas encore branché, accès retiré, Google qui refuse.
-        // Ces messages-là sont écrits pour être dits — les avaler ferait
-        // croire que Jarvis n'a pas entendu la demande.
+        // L'agenda et Gmail sont les seuls domaines qui dépendent d'un
+        // service extérieur : compte Google pas encore branché, accès
+        // retiré, Google qui refuse. Ces messages-là sont écrits pour être
+        // dits — les avaler ferait croire que Jarvis n'a pas entendu la
+        // demande.
         // Une action qui lève, c'est un échec sans le moindre doute : on le
         // range avant de laisser l'erreur remonter, sinon elle ne laisse
         // qu'un message rouge de cinq secondes à l'écran.
@@ -594,7 +628,7 @@ export function MicButton({
           contexte: echec.contexte,
           source: "voix",
         })
-        if (e instanceof AgendaError) reponses.push(e.message)
+        if (e instanceof AgendaError || e instanceof GmailError) reponses.push(e.message)
         else throw e
       }
     }
