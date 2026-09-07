@@ -12,6 +12,7 @@ import {
   type OptionsTour,
 } from "@/lib/dialogueTour"
 import { extraitEntendu, noterEcoute } from "@/lib/journalEcoute"
+import { serviceReconnaissanceSouhaite } from "@/lib/reconnaissanceVocale"
 import { estUnePanne, raisonDepuisCode, type RaisonEcoute } from "@/lib/raisonEcoute"
 
 type SpeechRecognitionCtor = new () => SpeechRecognition
@@ -364,7 +365,12 @@ export function useSpeechRecognition() {
           maxResults: 1,
           partialResults: true,
           popup: false,
-        })
+          // Le moteur choisi depuis Paramètres › Voix et écoute (ou
+          // "automatique" si rien n'est choisi) — même réglage que pour la
+          // rafale de commande, ci-dessous : c'est UN SEUL moteur qui
+          // transcrit, réveil et commande confondus.
+          serviceSouhaite: serviceReconnaissanceSouhaite() ?? undefined,
+        } as Parameters<typeof NativeSpeechRecognition.start>[0])
           .then((r) => {
             // En mode partiels, `start()` se résout dès que le service est
             // lancé : c'est LE moment où le micro devient vraiment ouvert.
@@ -581,6 +587,7 @@ export function useSpeechRecognition() {
               // remonter la musique à ce rythme la ferait « pomper » sans
               // arrêt — pire que le défaut qu'on corrige.
               baisserLeSon: true,
+              serviceSouhaite: serviceReconnaissanceSouhaite() ?? undefined,
             } as Parameters<typeof NativeSpeechRecognition.start>[0]),
             DELAI_PLUGIN_MS,
           )

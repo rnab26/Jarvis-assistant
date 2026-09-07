@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client"
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
 import { Toaster } from "@/components/ui/sonner"
+import { BarreActualiser } from "@/components/BarreActualiser"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
 import { lireRepereLocal, ecrireRepereLocal } from "@/lib/cockpitVu"
@@ -610,6 +611,10 @@ function BancDuCockpit() {
         sections={sections}
         onCreerChantier={async () => undefined}
       />
+      {/* Mirroir de `CockpitPage` : la barre vit JUSTE au-dessus du tableau,
+          sous le résumé dont la hauteur est mesurée. Si le banc ne la montait
+          pas, il mesurerait une page qui n'existe pas. */}
+      <BarreActualiser seulementSiProbleme statut="en_ligne" derniereMaj={null} enCours={false} onActualiser={() => {}} />
       <CockpitBoard
         devItems={devItems}
         sectionsState={sectionsState}
