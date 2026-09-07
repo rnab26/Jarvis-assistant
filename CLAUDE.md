@@ -352,6 +352,18 @@ cite souvent un autre chantier en écrivant « [LIBRE] » au passage — le pren
 pour le marqueur du chantier ferait démarrer une session sur un sujet qu'il
 voulait cadrer d'abord. Le contrôle hors réseau garde exactement ce cas.
 
+**`[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]`, ajouté le 7 sept. 2026
+(chantier `cc2d9392`) : NE PAS le confondre avec `[LIBRE]`.** Le code est
+fini, seul un essai sur l'appareil manque (installer l'APK, activer un accès
+spécial…) — personne d'ici ne peut le faire. Deux chantiers réels
+(`3f3ad20b`, `f5621562`) marqués `[LIBRE — reste la vérification…]` ont été
+repris par une session autonome qui a refait un travail déjà livré, parce que
+`chantiersPrenables` (`src/lib/passeAutonome.ts`) n'accepte QUE le marqueur
+exact `libre`. Ce nouveau marqueur compte aussi dans « pour toi » (voir
+`attendSaDecision`, `src/lib/etatChantier.ts`) — même mécanisme que
+`[À CADRER]`, une seule notion pour « ça attend une décision ou un geste de
+Raphaël », pas une deuxième à côté.
+
 ### Un chantier garde ce qu'on y a écrit (migration 0027)
 
 Initiative d'une session le 6 sept. 2026, chantier `765b3d02`. La raison est

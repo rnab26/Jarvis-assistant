@@ -84,6 +84,20 @@ verifier(
 )
 
 {
+  // Chantier cc2d9392, 6 sept. 2026 : un chantier LIVRÉ qui n'attend plus que
+  // Raphaël l'essaie sur son téléphone doit compter comme « pour toi »,
+  // exactement comme « à cadrer » — sa note le demandait explicitement plutôt
+  // que d'ouvrir une notion à part.
+  verifier(
+    "un chantier « livré, reste à constater » attend lui aussi une décision",
+    etatChantier(
+      item({ notes: "[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]\nLe code est fini." }),
+      MAINTENANT,
+    ).etat === "attend",
+  )
+}
+
+{
   // Chantier c612ccdc, 7 sept. 2026 : « à partir du moment où j'ai répondu,
   // ça doit sortir des chantiers pour moi. » Le 4ᵉ paramètre porte cette
   // réponse — la même fonction que « Où j'en suis » (une seule lecture, deux

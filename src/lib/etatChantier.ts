@@ -67,7 +67,10 @@ export function nomCourtSession(session: string): string {
  */
 export function attendSaDecision(item: DevItem, dernierMessageEstLeSien = false): boolean {
   const m = marqueurDe(item)
-  if (m !== "a_cadrer" && m !== "pour_raphael") return false
+  // `a_constater` (chantier cc2d9392) : un chantier livré qui n'attend plus
+  // que Raphaël l'essaie sur son téléphone. Sa note recommandait explicitement
+  // de réutiliser « pour toi » plutôt que d'ouvrir une deuxième notion à côté.
+  if (m !== "a_cadrer" && m !== "pour_raphael" && m !== "a_constater") return false
   return !dernierMessageEstLeSien
 }
 

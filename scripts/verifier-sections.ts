@@ -210,6 +210,11 @@ const AVEC_MARQUEURS: [string, string | null, string | null][] = [
   ["Libre en partie", "[LIBRE pour la phase 1] DEMANDE DE RAPHAEL", "libre"],
   ["Bloqué", '[BLOQUÉ PAR : "Mémoire longue durée"] Oui.', "bloque"],
   ["Doublon", "[DOUBLON — traité par le chantier X]", "doublon"],
+  [
+    "Livré, reste à constater",
+    "[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]\nLe code est fini.",
+    "a_constater",
+  ],
   ["Sans marqueur", "Une note ordinaire, sans crochets.", null],
   ["Note vide", null, null],
   [

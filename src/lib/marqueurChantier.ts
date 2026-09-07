@@ -9,7 +9,10 @@ import type { DevItem } from "@/types/database"
  * qui commande leur comportement : `[À CADRER AVEC RAPHAËL AVANT DE
  * COMMENCER]` (ne pas coder, il faut trancher d'abord), `[LIBRE]` (spécifié de
  * bout en bout, à prendre sans rien demander), `[BLOQUÉ PAR : …]`,
- * `[DOUBLON — …]`. C'est écrit dans le CLAUDE.md du projet, et toutes les
+ * `[DOUBLON — …]`, `[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]` (le code
+ * est fini, il ne manque qu'un essai sur l'appareil — chantier cc2d9392, ne
+ * PAS le confondre avec `[LIBRE]` : une session autonome reprendrait un
+ * travail déjà fait). C'est écrit dans le CLAUDE.md du projet, et toutes les
  * sessions s'y tiennent.
  *
  * Mais l'app, elle, n'en disait rien : ces marqueurs restaient noyés dans le
@@ -25,6 +28,7 @@ import type { DevItem } from "@/types/database"
 export type Marqueur =
   | "pour_raphael"
   | "a_cadrer"
+  | "a_constater"
   | "reporte"
   | "bloque"
   | "doublon"
@@ -33,6 +37,7 @@ export type Marqueur =
 export const LIBELLE_MARQUEUR: Record<Marqueur, string> = {
   pour_raphael: "pour toi",
   a_cadrer: "à cadrer",
+  a_constater: "à constater",
   reporte: "reporté",
   bloque: "bloqué",
   doublon: "doublon",
@@ -43,6 +48,8 @@ export const LIBELLE_MARQUEUR: Record<Marqueur, string> = {
 export const EXPLICATION_MARQUEUR: Record<Marqueur, string> = {
   pour_raphael: "Ce n'est pas du code : c'est une action de ton côté.",
   a_cadrer: "Une session ne le prendra pas : il attend une décision de toi.",
+  a_constater:
+    "Le code est livré : il ne reste qu'à l'essayer sur ton téléphone. Une session autonome ne le reprendra pas.",
   reporte: "Reporté par toi — aucune session ne le rouvrira d'elle-même.",
   bloque: "En attente d'un autre chantier.",
   doublon: "Déjà traité ailleurs — gardé pour la trace.",
@@ -53,6 +60,7 @@ export const VARIANTE_MARQUEUR: Record<Marqueur, "default" | "secondary" | "dest
   {
     pour_raphael: "destructive",
     a_cadrer: "destructive",
+    a_constater: "destructive",
     reporte: "secondary",
     bloque: "secondary",
     doublon: "secondary",
@@ -107,6 +115,7 @@ export function marqueurDe(item: DevItem): Marqueur | null {
 function classer(entete: string): Marqueur | null {
   if (entete.includes("doublon")) return "doublon"
   if (entete.includes("a faire par raphael")) return "pour_raphael"
+  if (entete.includes("reste a constater")) return "a_constater"
   if (entete.includes("cadrer")) return "a_cadrer"
   if (entete.includes("reporte")) return "reporte"
   if (entete.includes("bloque")) return "bloque"
@@ -146,6 +155,14 @@ export function compterMarqueurs(items: DevItem[]): { marqueur: Marqueur; nb: nu
   }
   // Ce qui attend Raphaël d'abord : c'est la question qu'il se pose en
   // ouvrant le cockpit.
-  const ordre: Marqueur[] = ["pour_raphael", "a_cadrer", "bloque", "reporte", "libre", "doublon"]
+  const ordre: Marqueur[] = [
+    "pour_raphael",
+    "a_cadrer",
+    "a_constater",
+    "bloque",
+    "reporte",
+    "libre",
+    "doublon",
+  ]
   return ordre.filter((m) => compte.has(m)).map((m) => ({ marqueur: m, nb: compte.get(m)! }))
 }
