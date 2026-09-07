@@ -283,6 +283,47 @@ try {
     "ce serait le rassurer juste avant un quota vide",
   )
 
+  // ── Ce que Jarvis a appris de ses propres notifications (chantier 05241cc7) ──
+  // La preuve qui compte : le badge « il le dit moins fort » doit apparaître
+  // UNIQUEMENT sur le canal peu suivi du jeu de données, jamais sur les
+  // autres — sinon on ne saurait pas si le calcul vise le bon canal.
+  {
+    const apprentissage = page.locator("#apprentissage")
+    const apprentissageVide = page.locator("#apprentissage-vide")
+    const apprentissagePanne = page.locator("#apprentissage-panne")
+
+    verifier(
+      "le canal peu suivi porte le badge « Jarvis le dit moins fort »",
+      await apprentissage
+        .locator("li", { hasText: "Chantiers livrés" })
+        .getByText("Jarvis le dit moins fort")
+        .isVisible(),
+    )
+    verifier(
+      "un canal bien suivi n'a PAS ce badge",
+      !(await apprentissage
+        .locator("li", { hasText: "Point du matin" })
+        .getByText("Jarvis le dit moins fort")
+        .isVisible()),
+      "sinon rien ne distinguerait un canal peu suivi d'un autre",
+    )
+    verifier(
+      "un échantillon trop petit pour juger le dit, plutôt que d'inventer un taux",
+      await apprentissage
+        .locator("li", { hasText: "Sessions bloquées" })
+        .getByText(/pas encore assez/)
+        .isVisible(),
+    )
+    verifier(
+      "rien à apprendre se dit, sans faire croire à une panne",
+      await apprentissageVide.getByText(/Rien à apprendre pour l'instant/).isVisible(),
+    )
+    verifier(
+      "une lecture en échec ne se lit pas comme « rien appris »",
+      await apprentissagePanne.getByText(/Ce n'est pas « rien appris »/).isVisible(),
+    )
+  }
+
   // ── La durée de conservation des conversations ──
   // Ce réglage EFFACE, à chaque phrase, sans corbeille. Ce qui compte à
   // l'écran n'est pas qu'il existe : c'est qu'il demande AVANT, et qu'il dise

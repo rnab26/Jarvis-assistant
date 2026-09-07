@@ -41,6 +41,9 @@ jobs:
       - name: Ce que Jarvis fera sonner, et quand
         run: node --experimental-strip-types scripts/verifier-notifications.ts
 
+      - name: Ce que Jarvis apprend de ses propres notifications
+        run: node --experimental-strip-types scripts/verifier-apprentissage-notifications.ts
+
       # Sa demande du 5 sept. : « tout ce qu'on lui demande ça ne doit pas être
       # figé […] il doit être en mesure de répondre ». Ce contrôle tient les
       # trois moitiés : le bloc « ce qui t'attend » (et son SILENCE quand il n'y

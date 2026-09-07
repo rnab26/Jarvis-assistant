@@ -38,6 +38,15 @@ export interface ContexteAnnonce {
   appVisible?: boolean
   /** Quand il a parlé à Jarvis pour la dernière fois, si on le sait. */
   derniereParole?: Date | null
+  /**
+   * Ce canal est peu suivi — ce que Jarvis a appris de ses propres
+   * notifications (src/lib/notifications/apprentissage.ts, chantier
+   * 05241cc7). N'AJUSTE QUE L'ANNONCE VOCALE : la notification elle-même
+   * continue de s'afficher et de sonner selon son canal Android, inchangé.
+   * `insistanceReduite()` garantit déjà qu'un canal critique (échéance) ne
+   * peut jamais faire passer ce booléen à vrai ; il est repris tel quel ici.
+   */
+  canalPeuSuivi?: boolean
 }
 
 /**
@@ -93,7 +102,12 @@ function propre(texte: string | null | undefined): string {
  * aucune cause lisible. C'est la même règle que partout dans ce projet : une
  * panne ne doit pas se lire comme une absence.
  */
-export type RaisonSilence = "desactive" | "voix_coupee" | "heures_de_silence" | "rien_a_dire"
+export type RaisonSilence =
+  | "desactive"
+  | "voix_coupee"
+  | "heures_de_silence"
+  | "peu_suivi"
+  | "rien_a_dire"
 
 export function raisonDuSilence(notif: NotifRecue, ctx: ContexteAnnonce): RaisonSilence | null {
   if (!ctx.prefs.direAVoixHaute) return "desactive"
@@ -105,6 +119,13 @@ export function raisonDuSilence(notif: NotifRecue, ctx: ContexteAnnonce): Raison
   if (dansLaPlageSilencieuse(ctx.maintenant, ctx.prefs) && !ilSenSertMaintenant(ctx)) {
     return "heures_de_silence"
   }
+  // Ce que Jarvis a appris de ses propres notifications : un canal secondaire
+  // qu'il ignore systématiquement (chantier 05241cc7) se dit moins fort —
+  // il continue de s'afficher et de sonner normalement, seule l'annonce
+  // vocale s'efface. `insistanceReduite()`, côté appelant, garantit déjà que
+  // ceci ne peut jamais être vrai pour un canal critique comme l'échéance
+  // d'une tâche.
+  if (ctx.canalPeuSuivi) return "peu_suivi"
   if (!propre(notif.title) && !propre(notif.body)) return "rien_a_dire"
   return null
 }
