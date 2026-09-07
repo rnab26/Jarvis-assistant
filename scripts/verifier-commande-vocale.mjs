@@ -313,6 +313,35 @@ cas.push(
       return [true]
     },
   },
+  // Chantier fa16146d, sa demande mot pour mot : « il peut soit rajouter un
+  // rappel dans Google Agenda, soit une alarme dans le téléphone, soit
+  // directement une alerte Jarvis c'est encore mieux, ou bien autant de ces
+  // solutions tant que je lui demande ! »
+  {
+    nom: "rappel : deux canaux nommés dans la même phrase font DEUX actions",
+    phrase:
+      "Ajoute le rappel de Yoni mardi prochain à 14 heures, note-le dans Google Agenda et toi aussi rappelle-le-moi.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      const agenda = (r.actions ?? []).find((x) => x.action === "add_calendar_event")
+      const tache = (r.actions ?? []).find((x) => x.action === "add_task")
+      if (!agenda) return [false, `pas d'add_calendar_event : ${types}`]
+      if (!tache) return [false, `pas d'add_task : ${types}`]
+      if (!/T14:00/.test(agenda.event_debut ?? "")) return [false, `debut agenda = ${agenda.event_debut}`]
+      if (tache.due_time && !/^14:00/.test(tache.due_time)) return [false, `due_time tâche = ${tache.due_time}`]
+      return [true]
+    },
+  },
+  {
+    nom: "rappel : agenda SEUL nommé ne crée pas de tâche en plus",
+    phrase: "Note un rendez-vous avec Yoni mardi à 14 heures dans Google Agenda, seulement dans l'agenda.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (!types.includes("add_calendar_event")) return [false, `pas d'add_calendar_event : ${types}`]
+      if (types.includes("add_task")) return [false, `une tâche en trop a été créée : ${types}`]
+      return [true]
+    },
+  },
 )
 
 cas.push({
