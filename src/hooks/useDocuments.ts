@@ -88,6 +88,27 @@ export function useDocuments(userId: string | undefined) {
     })
   }
 
+  /** Le pendant binaire de `saveTextDocument` : un PDF ou une image récupéré
+   * au bout d'un lien (chantier 13c39a9b), déjà encodé en base64 par la Edge
+   * Function (google-gmail, action document_lien). */
+  async function saveBinaryDocument(filename: string, base64: string, contentType: string | null) {
+    if (!userId) return
+    await withErrorToast("Impossible d'enregistrer le document", async () => {
+      const binaire = atob(base64)
+      const octets = new Uint8Array(binaire.length)
+      for (let i = 0; i < binaire.length; i++) octets[i] = binaire.charCodeAt(i)
+      const blob = new Blob([octets], { type: contentType ?? "application/octet-stream" })
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET)
+        .upload(`${userId}/${filename}`, blob, {
+          upsert: true,
+          contentType: contentType ?? "application/octet-stream",
+        })
+      if (uploadError) throw uploadError
+      await refresh()
+    })
+  }
+
   async function getDownloadUrl(path: string) {
     const { data, error } = await supabase.storage
       .from(BUCKET)
@@ -109,6 +130,7 @@ export function useDocuments(userId: string | undefined) {
     refresh,
     uploadFile,
     saveTextDocument,
+    saveBinaryDocument,
     getDownloadUrl,
     deleteDocument,
   }

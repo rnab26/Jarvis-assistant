@@ -109,6 +109,29 @@ Deno.serve(async (req: Request) => {
       )
     }
 
+    // ── Récupérer le document au bout d'un lien ──
+    //
+    // AVANT le jeton Google, et c'est volontaire (chantier 13c39a9b) : cette
+    // action ne touche pas Gmail, elle suit juste un lien. La faire attendre
+    // un compte Google branché lui dirait « connecte ton compte Google » pour
+    // rien — Raphaël veut pouvoir donner un lien à la voix ou par le partage
+    // Android sans que ça dépende de sa boîte mail.
+    //
+    // « ils m'envoient un SMS avec la facture DANS LE LIEN ». Par mail, même
+    // chose chez beaucoup de fournisseurs. Sans ça, `recus` sait dire qu'un
+    // reçu existe mais pas le rapporter.
+    if (action === "document_lien") {
+      if (!corps.url) return json({ error: "url manquante." }, 400)
+      try {
+        const doc = await recupererDocument(String(corps.url))
+        return json({ document: doc })
+      } catch (err) {
+        // Ces messages sont écrits pour être dits à voix haute : ils
+        // expliquent quoi faire, ils ne récitent pas une erreur technique.
+        return json({ error: "lien_inexploitable", message: String((err as Error).message) }, 422)
+      }
+    }
+
     const admin = clientAdmin()
     const accessToken = await obtenirAccessToken(admin, auth.user.id)
     if (!accessToken) {
@@ -353,23 +376,6 @@ Deno.serve(async (req: Request) => {
       // Base64url, tel que Gmail le rend : c'est à l'appelant d'en faire un
       // fichier, on ne le décode pas pour rien en mémoire.
       return json({ piece_jointe: { taille: donnees.size ?? null, contenu_base64: donnees.data } })
-    }
-
-    // ── Récupérer le document au bout d'un lien ──
-    //
-    // « ils m'envoient un SMS avec la facture DANS LE LIEN ». Par mail, même
-    // chose chez beaucoup de fournisseurs. Sans ça, `recus` sait dire qu'un
-    // reçu existe mais pas le rapporter.
-    if (action === "document_lien") {
-      if (!corps.url) return json({ error: "url manquante." }, 400)
-      try {
-        const doc = await recupererDocument(String(corps.url))
-        return json({ document: doc })
-      } catch (err) {
-        // Ces messages sont écrits pour être dits à voix haute : ils
-        // expliquent quoi faire, ils ne récitent pas une erreur technique.
-        return json({ error: "lien_inexploitable", message: String((err as Error).message) }, 422)
-      }
     }
 
     return json({ error: `Action inconnue : ${action}` }, 400)
