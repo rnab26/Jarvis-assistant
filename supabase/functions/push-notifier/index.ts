@@ -11,27 +11,15 @@
 // est le secret partagé x-push-secret (déposé dans Vault côté base et dans
 // les secrets Edge Functions, jamais dans un fichier versionné).
 //
-// LE TRI « est-ce que ça concerne Raphaël » est réimplémenté ici en
-// TypeScript plutôt qu'en SQL, pour rester le plus proche possible de
-// l'original : src/lib/journalDestinataire.ts (estPourRaphael) côté client.
-// Les deux copies doivent rester identiques — si tu changes l'une, change
-// l'autre.
+// LE TRI « est-ce que ça concerne Raphaël » vit dans
+// ../_shared/destinataire.ts, partagé avec voice-command — et non recopié
+// ici, comme il l'était jusqu'au 7 sept. 2026. Même motif
+// qu'environnement.ts et corrections.ts : une troisième lecture du même
+// concept finirait par dire autre chose que le cockpit.
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "jsr:@supabase/supabase-js@2"
-
-const AUTEUR_RAPHAEL = "Raphaël"
-
-function adresseeAUneSession(body: string): boolean {
-  return /^pour la session\b/i.test(body.trim())
-}
-
-/** Copie de estPourRaphael (src/lib/journalDestinataire.ts). */
-function estPourRaphael(entry: { author: string; kind: string; body: string; answered_at: string | null }): boolean {
-  if (entry.author === AUTEUR_RAPHAEL) return false
-  if (entry.answered_at || adresseeAUneSession(entry.body)) return false
-  return entry.kind === "question" || entry.kind === "blocage" || entry.kind === "action"
-}
+import { estPourRaphael } from "../_shared/destinataire.ts"
 
 /** Copie de corpsChantiersLivres (src/lib/notifications/plan.ts). */
 function corpsChantiersLivres(titres: string[]): string {
@@ -202,7 +190,9 @@ Deno.serve(async (req: Request) => {
     } else if (body.type === "dev_log") {
       const { data: entree, error } = await supabase
         .from("dev_log")
-        .select("author, kind, body, answered_at, user_id")
+        // `pourquoi` sert à distinguer une demande qui l'attend du compte
+        // rendu d'une session : sans lui, estPourRaphael les confond.
+        .select("author, kind, body, answered_at, user_id, pourquoi")
         .eq("id", body.id)
         .maybeSingle()
       if (error || !entree || !estPourRaphael(entree)) {

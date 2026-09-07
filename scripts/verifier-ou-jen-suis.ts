@@ -178,11 +178,32 @@ const bilanDe = (
   // règle que l'écran où il répond : deux lectures différentes du même
   // message sont ce qui lui a fait répondre deux fois au même point.
   const item = chantier()
-  const b = bilanDe([item], [message({ item_id: item.id, kind: "action" })])
+  // `pourquoi` renseigné : c'est ce qui distingue une action qu'IL doit faire
+  // (posée par scripts/demander.sh) du compte rendu d'une session, qui porte
+  // le même `kind`. Voir src/lib/journalDestinataire.ts.
+  const b = bilanDe(
+    [item],
+    [message({ item_id: item.id, kind: "action", pourquoi: "Sans cette clé, rien ne géocode." })],
+  )
   verifier(
     "une action qu'il doit faire compte comme « pour toi »",
     b.totaux.attend === 1,
     "elle n'apparaîtrait nulle part, alors qu'elle bloque tout ce qui en dépend",
+  )
+
+  // MESURÉ le 7 sept. 2026 sur ses 215 entrées de journal : sur les 5 points
+  // que cette colonne annonçait, 4 étaient des comptes rendus de sessions
+  // (« Fait et archivé. Commit … »), qui portent le même `kind` sans rien
+  // attendre de lui. Une colonne qui compte quatre fois trop cesse d'être lue.
+  const item2 = chantier()
+  const compteRendu = bilanDe(
+    [item2],
+    [message({ item_id: item2.id, kind: "action", body: "Fait et archivé. Commit df756ac, déployé." })],
+  )
+  verifier(
+    "le compte rendu d'une session ne compte PAS comme « pour toi »",
+    compteRendu.totaux.attend === 0,
+    `${compteRendu.totaux.attend} : c'est ce qui lui annonçait cinq décisions quand une seule l'attendait`,
   )
 
   // Une question qu'une session pose à une AUTRE session ne le concerne pas :

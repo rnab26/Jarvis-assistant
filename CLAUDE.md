@@ -2047,6 +2047,69 @@ envoyée : le correctif est peut-être dans le code, la consigne reste vraie.
 `verifier-memoire.mjs` prouve la chaîne entière : une correction écrite change
 ce que Jarvis fait dès la phrase suivante.
 
+## Jarvis répond à la QUESTION POSÉE, pas à un briefing figé
+
+Livré le 7 sept. 2026 (chantier `8fbd6d61`). Le 5 sept. je lui demandais de
+COCHER ce que devait contenir son briefing du matin. Il a coché, puis a
+expliqué que la question elle-même était mauvaise :
+
+> « Tout ce qu'on lui demande ça ne doit pas être figé. JARVIS doit développer
+> une finesse d'esprit […] Si je demande un point global ça me dit tout, si je
+> lui dis "j'ai quoi comme rdv aujourd'hui", ou si je lui dis "qu'est-ce qui
+> est en retard de mon côté", "j'ai quoi comme décision à prendre sur le
+> développement". Bref tout est n'importe quoi, il doit être en mesure de
+> répondre. »
+
+**Donc PAS de cases à cocher dans Paramètres pour ce sujet, et ce n'est pas un
+oubli** : elles seraient exactement le gabarit figé qu'il rejette. Le point du
+matin de 09:15 reste ce qu'il est — c'est une notification, pas une réponse.
+
+**Sur ses quatre exemples, trois avaient déjà de quoi être servis** : les
+tâches et leurs échéances partent à chaque phrase, l'agenda a son action, et
+« un point global » se compose avec le reste. **Le quatrième n'avait RIEN** —
+les questions des sessions vivent dans `dev_log`, qui n'était envoyé nulle
+part. « J'ai quoi comme décision à prendre » était la seule de ses phrases à
+laquelle Jarvis ne POUVAIT pas répondre. C'est ce trou-là qui est bouché,
+et rien de plus.
+
+- `_shared/questionPosee.ts` — la consigne, **une seule source**, importée par
+  `voice-command` ET `live-jeton` (comme `honnetete.ts`).
+- `_shared/ceQuiLAttend.ts` — le bloc, joint à chaque phrase parce qu'il est
+  COURT et que c'est mesuré : un seul point l'attendait le 7 sept., ~150
+  caractères contre ~45 000 pour une phrase. Plafonné à 8, le plus ancien
+  d'abord. **Vide, il ne rend RIEN** — pas même un titre.
+
+### Le compte rendu d'une session n'est pas une décision qui l'attend
+
+Trouvé en faisant ce chantier, et c'est le vrai défaut. `kind = "action"`
+porte **deux sens opposés** que rien dans le schéma ne sépare : une action que
+RAPHAËL doit faire (posée par `scripts/demander.sh`) et le compte rendu d'une
+action qu'une SESSION a faite (« Fait et archivé. Commit … »).
+
+**Mesuré sur ses 215 entrées de journal** : « en attente de sa décision »
+annonçait **5 points quand 1 seul l'attendait**, et **16 messages** pouvaient
+faire sonner son téléphone au lieu de **12**. Il aurait été réveillé par le
+compte rendu d'une session.
+
+Le discriminant n'est pas une devinette sur le texte : `demander.sh` renseigne
+toujours `pourquoi`, un compte rendu jamais. **Et `--pourquoi` y est devenu
+OBLIGATOIRE dans le même travail** — tant qu'il était facultatif, la séparation
+ne tenait que par habitude, et une demande postée sans lui aurait disparu de
+son cockpit sans un bruit.
+
+**La règle a maintenant DEUX copies, pas trois** : `src/lib/journalDestinataire.ts`
+côté app, `_shared/destinataire.ts` côté serveur — partagée par `push-notifier`
+(qui portait la sienne) et `voice-command`. Une Edge Function ne peut pas
+importer `src/`, d'où les deux ; `verifier-question-posee.ts` les fait tourner
+sur les mêmes cas et refuse qu'elles divergent, plutôt que de comparer leur
+texte.
+
+**Piège de rédaction payé au passage** : écrite en disjonction
+(`… || actionQuiLuiRevient(entry)`), la règle laissait passer TOUS les autres
+`kind` — un simple `info` aurait fait sonner le téléphone. La forme qui tient
+est d'exclure le compte rendu d'abord, puis d'énumérer les `kind`. Un contrôle
+garde ce cas précis.
+
 ## Ce que Jarvis sait de sa propre application
 
 `supabase/functions/_shared/environnement.ts` — **une seule source**, importée
@@ -2086,6 +2149,7 @@ node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis const
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
 node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
+node --experimental-strip-types scripts/verifier-question-posee.ts  # Jarvis répond à la question posée ; l'app et le serveur disent la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-maj-web.ts      # la mise à jour rapide : paquet, chemins, verdict, sans réseau
 node --experimental-strip-types scripts/verifier-telechargement-apk.ts  # télécharger l'APK : aucun chemin ne peut rester muet, sans réseau
 node --experimental-strip-types scripts/verifier-reglages.ts     # toute préférence est déclarée ET réglable, sans réseau
