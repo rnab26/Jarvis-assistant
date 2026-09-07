@@ -1,6 +1,7 @@
 import { BellRing, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { toast } from "sonner"
+import { AnnonceAppFermee } from "@/components/settings/AnnonceAppFermee"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -298,16 +299,18 @@ export function Notifications({ api, taches = [] }: { api: NotificationsApi; tac
 
             {/* Sa demande d'origine allait plus loin que la notification :
                 « Jarvis doit pouvoir intervenir à l'oral pour donner une
-                information tel un rappel » (chantier 7567cd47). Il le fait
-                quand l'app est ouverte ou qu'il vient d'appuyer dessus ;
-                parler app fermée demanderait un service Android permanent,
-                qui reste à cadrer avec lui. */}
+                information tel un rappel » (chantier 7567cd47). Cet
+                interrupteur couvre le cas app ouverte ; « Parler même app
+                fermée » juste en dessous (chantier 23ee3735) couvre l'autre
+                moitié, avec ses propres conditions. */}
             <Interrupteur
               titre="Dire les rappels à voix haute"
               description="Quand l'app est ouverte, ou quand tu appuies sur la notification, Jarvis la dit au lieu de seulement l'afficher. Pendant les heures de silence, seulement si tu viens de t'en servir. Jamais si sa voix est coupée."
               actif={prefs.direAVoixHaute}
               onChange={(actif) => setPrefs({ direAVoixHaute: actif })}
             />
+
+            {prefs.direAVoixHaute && <AnnonceAppFermee />}
 
             <Interrupteur
               titre="Ne rien faire sonner la nuit"

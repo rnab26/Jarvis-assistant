@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, type ReactNode } from "react"
+import { useAnnonceAppFermee } from "@/hooks/useAnnonceAppFermee"
 import { useAuth } from "@/hooks/useAuth"
 import { useContacts } from "@/hooks/useContacts"
 import { useDevItems } from "@/hooks/useDevItems"
@@ -101,6 +102,12 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   // changement vient de la voix ou d'un autre appareil. Un écran de réglages
   // qu'on n'ouvre pas ne reprogrammerait plus rien.
   const notificationsState = useNotifications(tasksState.tasks, devItemsState.devItems, userId)
+
+  // Le service natif qui parle même app fermée (chantier 23ee3735) a besoin
+  // de connaître ces deux réglages pour décider — pas monté dans Paramètres,
+  // sinon il resterait sur une valeur périmée tant que cet écran n'est pas
+  // rouvert.
+  useAnnonceAppFermee(notificationsState.prefs, voiceState.muted)
 
   // La vérification de version et la mise à jour rapide vivent ici, et pas
   // dans Paramètres : sans ça, rien ne se vérifie ni ne s'applique tant que
