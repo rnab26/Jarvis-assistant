@@ -27,6 +27,7 @@ import {
   phraseEcran,
   rangDemande,
   resumeEcran,
+  texteVisible,
   type ElementEcran,
   type LectureEcran,
 } from "../src/lib/ecranTelephone.ts"
@@ -324,6 +325,40 @@ verifier(
   "et le drapeau qui donne getWindows() est déclaré",
   /flagRetrieveInteractiveWindows/.test(config),
   "sans lui, getWindows() ne rend que la fenêtre active — la nôtre",
+)
+
+// ---------------------------------------------------------------------------
+// « Garde ça » (chantier 7d7967b2) : texteVisible() doit rendre les
+// PARAGRAPHES, pas seulement ce qui se clique — l'inverse de designer().
+// ---------------------------------------------------------------------------
+
+const reponsePerplexity = ecran("ai.perplexity.app.android", [
+  el("Des restaurants de viande réputés à Netanya", false, true),
+  el("Des restaurants de viande réputés à Netanya", false, true), // conteneur + enfant
+  el(
+    "À Netanya, trois adresses reviennent souvent pour la viande : le Meat Bar sur la promenade, Habasta dans le centre, et Carnivore près de la marina.",
+    false,
+    true,
+  ),
+  el("Partager", true, false),
+])
+
+verifier(
+  "texteVisible() garde le texte NON cliquable, pas seulement les boutons",
+  texteVisible(reponsePerplexity).includes("Meat Bar"),
+)
+verifier(
+  "texteVisible() écarte les doublons consécutifs (conteneur + enfant)",
+  texteVisible(reponsePerplexity).split("\n").filter((l) => l === "Des restaurants de viande réputés à Netanya")
+    .length === 1,
+)
+verifier(
+  "texteVisible() garde aussi ce qui EST cliquable (« Partager »)",
+  texteVisible(reponsePerplexity).includes("Partager"),
+)
+verifier(
+  "un écran sans rien affiché rend une chaîne vide",
+  texteVisible(ecran("com.exemple", [])) === "",
 )
 
 const controle = readFileSync("src/lib/controleEcran.ts", "utf8")

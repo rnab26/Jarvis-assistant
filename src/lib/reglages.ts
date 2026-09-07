@@ -136,6 +136,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/ConnecteursIA.tsx",
   },
   {
+    cle: "jarvis_ia_relais_lecture",
+    ou: "Paramètres › Ce que Jarvis utilise › Tes applications d'IA › Jarvis lit la réponse",
+    fichier: "src/components/settings/ConnecteursIA.tsx",
+  },
+  {
     cle: "jarvis_app_appels",
     ou: "Paramètres › Ce que Jarvis utilise › Tes applications par défaut",
     fichier: "src/components/settings/AppsParDefaut.tsx",

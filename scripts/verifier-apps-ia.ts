@@ -26,6 +26,7 @@ import {
   filtrerApps,
   trierAppsIA,
 } from "../src/lib/appsIA.ts"
+import { lectureVoulue } from "../src/lib/relaisIA.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -112,6 +113,23 @@ verifier(
   "la ligne « Question à une IA » a bien quitté l'autre carte",
   !/titre="Question à une IA"/.test(readFileSync("src/components/settings/AppsParDefaut.tsx", "utf8")),
   "deux façons de régler la même chose finiraient par ne plus dire pareil",
+)
+
+// --- « L'IA répond » ou « Jarvis lit la réponse » (chantier acad6f74) -----
+// Sa réponse du 5 sept. : « je pense que de façon générale c'est plus
+// logique que L'IA reprenne la main » — donc le défaut (rien de réglé
+// encore) doit être le silence, jamais la lecture à voix haute.
+verifier(
+  "par défaut, sans rien avoir choisi, l'IA reprend la main (Jarvis se tait)",
+  lectureVoulue(null) === false,
+)
+verifier(
+  "une valeur qui n'est pas '1' reste le silence, pas une supposition",
+  lectureVoulue("0") === false && lectureVoulue("autre chose") === false,
+)
+verifier(
+  "« Jarvis lit la réponse » ne s'active que sur '1'",
+  lectureVoulue("1") === true,
 )
 
 const consigne = readFileSync("supabase/functions/voice-command/index.ts", "utf8")

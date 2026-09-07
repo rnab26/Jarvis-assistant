@@ -12,6 +12,8 @@ import {
   filtrerApps,
 } from "@/lib/appsIA"
 import { ecrireReglage } from "@/lib/reglages"
+import { CLE_RELAIS_IA_LECTURE, lectureVoulue } from "@/lib/relaisIA"
+import { Interrupteur } from "@/components/settings/Interrupteur"
 
 /**
  * « Tes applications d'IA » : celles qui sont sur son téléphone, et celle qui
@@ -37,6 +39,18 @@ export function ConnecteursIA() {
   const [favorite, setFavorite] = useState<string | null>(() => appPreferee("ia"))
   const [recherche, setRecherche] = useState("")
   const [toutMontrer, setToutMontrer] = useState(false)
+  const [lit, setLit] = useState(() => {
+    try {
+      return lectureVoulue(localStorage.getItem(CLE_RELAIS_IA_LECTURE))
+    } catch {
+      return false
+    }
+  })
+
+  function changerLecture(actif: boolean) {
+    ecrireReglage(CLE_RELAIS_IA_LECTURE, actif ? "1" : null)
+    setLit(actif)
+  }
 
   const relire = useCallback(async () => {
     try {
@@ -182,9 +196,21 @@ export function ConnecteursIA() {
         <p className="text-xs text-muted-foreground">
           Il n'y a rien à brancher et rien à payer : Jarvis passe la question à l'application, elle
           répond avec ton abonnement, sur ton téléphone. Il ne se connecte pas à ton compte. Pour
-          récupérer la réponse dans Jarvis, appuie longuement dessus et fais « Partager » vers
-          Jarvis — il la range avec ta question.
+          récupérer la réponse dans Jarvis, dis « garde ça » une fois qu'elle a répondu — ou
+          appuie longuement dessus et fais « Partager » vers Jarvis. Les deux la rangent dans
+          Documents, avec ta question.
         </p>
+
+        <Interrupteur
+          titre="Jarvis lit la réponse"
+          description={
+            lit
+              ? "En plus de la ranger dans Documents, Jarvis la lit à voix haute."
+              : "L'IA reprend la main : Jarvis se tait, tu lis sa réponse dans l'application."
+          }
+          actif={lit}
+          onChange={changerLecture}
+        />
       </CardContent>
     </Card>
   )

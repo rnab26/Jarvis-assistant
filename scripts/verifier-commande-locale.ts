@@ -423,5 +423,21 @@ doitDonner("appelle Yoni", { action: "call_contact", contact_id: "ct-yoni" })
 doitDonner("appelle ma femme", { action: "call_contact", contact_name: "Ma femme" })
 doitDonner("appelle Mel", { action: "call_contact", contact_name: "Mel" })
 
+console.log("\n— « Garde ça » : reprendre la réponse d'une IA à l'écran (chantier 7d7967b2) —")
+
+doitDonner("garde ça", { action: "garder_reponse_ecran" })
+doitDonner("Jarvis, retiens sa réponse", { action: "garder_reponse_ecran" })
+doitDonner("note ça", { action: "garder_reponse_ecran" })
+doitDonner("garde cette réponse", { action: "garder_reponse_ecran" })
+doitDonner("retiens la réponse", { action: "garder_reponse_ecran" })
+
+// Le piège déjà payé pour « note » : « note un rendez-vous » et « note que
+// Dylan est le client de Melissa » ne doivent pas basculer là-dessus.
+doitDonner("note un rendez-vous avec Yoni mardi à 14h", { action: "add_calendar_event" })
+doitLaisserPasser(
+  "note que Dylan est le client de Melissa",
+  "une information sur une personne, pas une reprise d'écran",
+)
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

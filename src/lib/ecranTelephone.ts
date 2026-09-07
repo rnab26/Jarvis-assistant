@@ -267,6 +267,30 @@ export function designer(ordre: string, lecture: LectureEcran): Designation {
   return { etat: "ambigu", candidats }
 }
 
+/**
+ * Le texte affiché à l'écran, tel qu'un humain le lirait — pas seulement ce
+ * qui se clique.
+ *
+ * `estDesignable` (et donc `resumeEcran`) ne garde que ce qui est cliquable :
+ * c'est fait pour choisir un bouton, pas pour relire un paragraphe de
+ * réponse. Ici c'est l'inverse — sert à reprendre le texte d'une réponse
+ * affichée par une IA (chantier 7d7967b2, « garde ça ») : tout ce qui porte
+ * du texte, dans l'ordre où le service d'accessibilité l'a lu, en écartant
+ * les doublons consécutifs qu'Android produit souvent (le même texte porté
+ * à la fois par un conteneur et par son enfant direct).
+ */
+export function texteVisible(lecture: LectureEcran): string {
+  const lignes: string[] = []
+  let precedent = ""
+  for (const e of lecture.elements) {
+    const texte = e.libelle.trim()
+    if (!texte || texte === precedent) continue
+    lignes.push(texte)
+    precedent = texte
+  }
+  return lignes.join("\n")
+}
+
 /** Ce que Jarvis ÉNUMÈRE quand il n'a pas trouvé — pour que Raphaël puisse
  * redire autrement au lieu de rester devant un « je n'ai pas trouvé » sec. */
 export function resumeEcran(lecture: LectureEcran, maximum = 6): string {

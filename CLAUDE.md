@@ -790,6 +790,70 @@ les contacts.
 Côté consigne : « cherche X » part vers la favorite, « cherche X sur Y » vers
 l'application citée, et **« sur internet » n'est pas un nom d'application**.
 
+## « Garde ça » : reprendre la réponse d'une IA sans le geste de partage
+
+Livré le 7 sept. 2026 (chantier `7d7967b2`, NIVEAU 3 de `0262afdf`). Avant, la
+seule façon de ramener une réponse Perplexity/ChatGPT dans Jarvis était
+l'appui long puis « Partager » (`useShareReceiver.ts`, toujours en place et
+inchangé). Depuis le service d'accessibilité livré le 6 sept. (`3f3ad20b`),
+Jarvis lit déjà l'écran de l'application du dessous — plus besoin de
+`onHandleAssist`/`AssistStructure`, qui aurait exigé d'être l'assistant par
+défaut.
+
+`src/lib/ecranTelephone.ts` gagne `texteVisible()` : **l'inverse de
+`resumeEcran()`**, qui ne garde que ce qui est cliquable (pour désigner un
+bouton). Ici on veut tout le texte visible, paragraphes compris, dans l'ordre
+de lecture, en écartant les doublons consécutifs (le même texte porté par un
+conteneur ET son enfant — fréquent dans les arbres Android).
+
+`src/lib/garderReponseEcran.ts` (non pur : appelle le plugin d'accessibilité)
+relie lecture d'écran et rapprochement : il lit l'écran, passe le texte à
+`rapprocher()` de `allerRetourIA.ts` — **le même module, les mêmes
+garde-fous** que pour le partage (fenêtre de 30 min, texte trop court, « c'est
+ma propre question repartagée ») — et enregistre par le même chemin que
+`useShareReceiver.ts` (`saveTextDocument`). Pas un second mécanisme de
+rapprochement ni un second chemin d'enregistrement.
+
+**Reconnue LOCALEMENT** (`commandeLocale.ts`, action `garder_reponse_ecran`),
+comme `move_last_entry` : lire l'écran est une décision qui vit sur
+l'appareil, le modèle ne voit pas l'écran et n'a rien à faire dans cette
+boucle. « garde ça », « retiens ça/sa réponse/cette réponse/la réponse »,
+« note ça » — vocabulaire fermé exprès, comme pour la confirmation d'un envoi
+(`confirmationEnvoi.ts`) : un faux négatif renvoie la phrase au serveur (qui
+ne saura pas non plus, mais ne casse rien), un faux positif lirait l'écran
+pour rien.
+
+Si le service d'accessibilité n'est pas activé, la commande **le dit et
+renvoie vers Paramètres** (`phraseEcran({ fait: "echec", cause:
+"service_inactif" })`, déjà écrite) — jamais un échec silencieux.
+
+## Les applications d'IA : l'IA reprend la main, ou Jarvis lit sa réponse
+
+Chantier `acad6f74`, réponse de Raphaël le 5 sept. 2026 aux trois sens
+possibles d'« intégrer les IA » (relayer / rapporter / répartir) :
+
+1. **RELAYER** — « je pense que de façon générale c'est plus logique que
+   L'IA reprenne la main » → comportement par défaut : Jarvis passe le relais
+   et se tait. Et c'est un RÉGLAGE, pas une valeur en dur : `src/lib/relaisIA.ts`
+   (pur) porte la clé `jarvis_ia_relais_lecture` et sa lecture
+   (`lectureVoulue`, `false` tant qu'il n'a rien choisi). Le contrôle vit dans
+   la même carte que la favorite — Paramètres › Ce que Jarvis utilise › « Tes
+   applications d'IA » › « Jarvis lit la réponse » (`ConnecteursIA.tsx`).
+   Activé, la réponse captée (par « garde ça » ci-dessus OU par le partage
+   Android) est en plus lue à voix haute — depuis `garderReponseEcran.ts` en
+   la mettant dans la phrase que Jarvis dit ensuite (jamais un second appel à
+   la synthèse en parallèle, qui se couperait la parole), et depuis
+   `useShareReceiver.ts` par un appel direct à `parler()` puisque ce chemin
+   n'est pas un tour de voix.
+2. **RAPPORTER** — « pas encore nécessaire » → écarté, ne pas y consacrer de
+   temps.
+3. **RÉPARTIR** — nommer l'IA à l'oral l'emporte TOUJOURS sur la favorite
+   (« demande à Perplexity… » y va, quoi qu'il y ait dans les réglages), et
+   Raphaël a explicitement écarté un catalogue de catégories par sujet.
+   **Déjà en place avant ce chantier** (`app_name` absent seulement quand il
+   ne nomme personne, côté local ET côté serveur) — rien à refaire ici,
+   vérifié par `verifier-apps-ia.ts` et `verifier-commande-vocale.mjs`.
+
 ## Appuyer sur l'écran à sa place : une capacité GÉNÉRALE, pas un bouton WhatsApp
 
 Livré le 6 sept. 2026 (chantier `3f3ad20b`). Sa demande, en deux temps. Le
