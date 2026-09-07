@@ -197,8 +197,10 @@ export function CockpitPage() {
       <ChantiersEgares
         tasks={tasksState.tasks}
         devItems={devItems}
+        sections={devSectionsState.sections}
         onEnFaireUnChantier={enFaireUnChantier}
         onMarquerFaite={marquerTacheFaite}
+        onCreerSection={(nom) => devSectionsState.addSection(nom)}
       />
 
       <ErreursJarvis

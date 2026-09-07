@@ -515,6 +515,22 @@ un titre, des notes, rien de plus) — trois « racheter un spot pour l'entrée 
 identiques dormaient dans ses tâches pendant que le cockpit prévenait depuis
 des jours.
 
+**Une demande de SECTION n'est pas un chantier**, depuis le 7 sept. 2026
+(chantier `2d575977`). Sa dictée du 4 sept., « une nouvelle section de
+chantier qui s'appelle fonctionnalité », était comprise par `chantierDeguise`
+comme un CHANTIER — l'amorce « section » y vivait par erreur — et a produit un
+chantier vide et incompréhensible (« Fonctionnalité », sans notes, archivé le
+6 sept.). `sectionDeguisee` (même fichier) reconnaît maintenant à part les
+tournures « une nouvelle section X », « une section qui s'appelle X », « range
+ça dans une section X », avec la même prudence que pour le mot « chantier » :
+une phrase de maçonnerie qui commence pareil (« une nouvelle section du
+chantier Hipouy a été livrée ») ne doit PAS matcher — `ressembleAUneContinuation`
+rejette un nom de section qui commencerait par un mot de liaison (« du »,
+« est », « a »…) plutôt qu'un vrai nom. `ChantiersEgares.tsx` propose alors
+« Créer la section » et vérifie D'ABORD qu'une section équivalente n'existe
+pas déjà (`cleTheme`, insensible aux accents) — sinon « Ranger la tâche »
+sans rien créer, même logique que pour un chantier déjà livré.
+
 ### Les actions groupées et le « Annuler »
 
 Le bouton « Choisir » du cockpit passe le tableau en mode sélection : tout se
