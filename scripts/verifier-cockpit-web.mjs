@@ -384,7 +384,7 @@ try {
     !(await page.getByLabel("Ce qu'il faut faire").isVisible()),
     "elle coûtait 222 points en haut de l'écran, qu'on lise ou qu'on écrive",
   )
-  await page.getByRole("button", { name: "Envoyer à Claude Code" }).first().click()
+  await page.getByRole("button", { name: "Nouveau chantier" }).first().click()
   await pause(250)
   const quoiFaire = page.getByLabel("Ce qu'il faut faire")
   verifier("et s'ouvre d'un appui", await quoiFaire.isVisible())

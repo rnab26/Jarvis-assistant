@@ -6,7 +6,7 @@ import { CockpitBoard, themesDe } from "@/components/cockpit/CockpitBoard"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
 import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
-import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
+import { NouveauChantier } from "@/components/cockpit/NouveauChantier"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
 import { ThemesNonDeclares } from "@/components/cockpit/ThemesNonDeclares"
@@ -38,11 +38,17 @@ import type { Task } from "@/types/database"
  * Le registre des erreurs est au-dessus du tableau et replié : c'est une liste
  * qu'on vient consulter ou alimenter, pas celle qu'on lit tous les jours.
  *
- * Le bouton « + Chantier » qui ouvrait un formulaire à cinq champs a été
- * retiré : il faisait exactement la même chose que la fenêtre d'envoi, en
- * plus laborieux, et deux chemins vers le même résultat obligent à choisir
- * avant d'agir. Le formulaire complet reste accessible là où il sert vraiment
- * — le crayon d'une carte, pour retoucher un chantier existant.
+ * Un bouton « + Chantier » séparé, qui ouvrait un formulaire à cinq champs, a
+ * été retiré à l'origine : il faisait la même chose que la fenêtre de
+ * création, en plus laborieux. Le formulaire complet reste accessible là où
+ * il sert vraiment — le crayon d'une carte, pour retoucher un chantier
+ * existant.
+ *
+ * « Envoyer à Claude Code » (la fenêtre de création elle-même) s'appelle
+ * maintenant « Nouveau chantier » (chantier d0ac66f1, 7 sept. 2026) : Raphaël
+ * l'a signalée introuvable, et le nom lui-même le dérangeait. Ce n'était pas
+ * caché — c'est la même carte, au même endroit, toujours repliée par défaut
+ * pour le budget de hauteur — juste mal nommée pour qu'on la reconnaisse.
  */
 export function CockpitPage() {
   const { devItemsState, devSectionsState, erreursState, tasksState } = useJarvisData()
@@ -151,7 +157,7 @@ export function CockpitPage() {
         onEtat={devLog.changerEtatAction}
       />
 
-      <EnvoyerAClaudeCode
+      <NouveauChantier
         devItems={devItems}
         sections={devSectionsState.sections}
         themes={themes}
