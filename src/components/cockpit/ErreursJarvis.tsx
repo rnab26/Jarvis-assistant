@@ -1,11 +1,13 @@
 import {
   Check,
   EyeOff,
+  Lightbulb,
   Pencil,
   Plus,
   RotateCcw,
   Trash2,
   Wrench,
+  X,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
@@ -75,6 +77,13 @@ export function ErreursJarvis({
   const [toutVoir, setToutVoir] = useState(false)
 
   const ouvertes = useMemo(() => erreurs.filter((e) => OUVERTES.includes(e.statut)), [erreurs])
+  // Une suggestion (chantier 89c3ceca) est ce que Jarvis propose tout seul :
+  // elle mérite le même traitement qu'une erreur revenue — visible même
+  // repliée, parce que c'est la seule chose qui attend un geste de Raphaël.
+  const suggestions = useMemo(
+    () => erreurs.filter((e) => e.correction_suggeree?.trim()),
+    [erreurs],
+  )
   const affichees = useMemo(
     () =>
       erreurs
@@ -120,10 +129,20 @@ export function ErreursJarvis({
         </>
       }
       badge={
-        ouvertes.some((e) => e.reapparue_at) ? (
-          <Badge variant="destructive" className="shrink-0">
-            revenue
-          </Badge>
+        suggestions.length > 0 || ouvertes.some((e) => e.reapparue_at) ? (
+          <span className="flex shrink-0 gap-1">
+            {suggestions.length > 0 && (
+              <Badge className="shrink-0 gap-1">
+                <Lightbulb className="size-3" />
+                {suggestions.length}
+              </Badge>
+            )}
+            {ouvertes.some((e) => e.reapparue_at) && (
+              <Badge variant="destructive" className="shrink-0">
+                revenue
+              </Badge>
+            )}
+          </span>
         ) : undefined
       }
     >
@@ -310,6 +329,12 @@ function LigneErreur({
                 ×{erreur.occurrences}
               </Badge>
             )}
+            {erreur.correction_suggeree?.trim() && (
+              <Badge className="shrink-0 gap-1 px-1.5 text-xs font-normal">
+                <Lightbulb className="size-3" />
+                proposition
+              </Badge>
+            )}
           </div>
           <p className="truncate text-xs text-muted-foreground">
             {LIBELLE_STATUT[erreur.statut]} · vue {quand(erreur.last_seen)}
@@ -360,6 +385,39 @@ function LigneErreur({
             Vue {erreur.occurrences} fois — d'abord {quand(erreur.first_seen)}, la dernière{" "}
             {quand(erreur.last_seen)}. Source : {erreur.source}.
           </p>
+
+          {erreur.correction_suggeree?.trim() && (
+            <div className="flex flex-col gap-1.5 rounded-lg border border-primary/30 bg-primary/5 p-2.5">
+              <p className="flex items-center gap-1.5 text-xs font-medium">
+                <Lightbulb className="size-3.5 shrink-0" />
+                Jarvis propose cette correction, tirée de ce que tu as dit
+              </p>
+              <p className="text-sm">« {erreur.correction_suggeree} »</p>
+              <div className="flex gap-1.5">
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    erreursState.adopterSuggestion(erreur.id, erreur.correction_suggeree!.trim()).catch(alreadyNotified)
+                  }
+                >
+                  <Check className="size-3.5" />
+                  Adopter
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => erreursState.ecarterSuggestion(erreur.id).catch(alreadyNotified)}
+                >
+                  <X className="size-3.5" />
+                  Écarter
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Rien n'est appliqué tant que tu n'as pas appuyé sur « Adopter » — Jarvis ne
+                changera pas de comportement tout seul.
+              </p>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Textarea

@@ -12,6 +12,7 @@
  */
 import {
   cibleDeLAction,
+  correctionDite,
   echecDeLAction,
   echecSignalePar,
   estUnePlainte,
@@ -129,6 +130,69 @@ verifier(
     "et ce que Jarvis avait répondu aussi",
     !!e?.detail?.includes("J'ouvre Apple Music"),
     e?.detail ?? "(rien)",
+  )
+}
+
+// --- Corrections apprises automatiquement (chantier 89c3ceca) --------------
+// La moitié qui compte : le SILENCE. Une plainte qui ne dit rien de plus
+// qu'échouer ne doit RIEN proposer — sinon la « suggestion » ne serait qu'un
+// écho du reproche, et Raphaël perdrait son temps à l'écarter à chaque fois.
+verifier(
+  "une plainte nue ne suggère rien",
+  correctionDite("Tu n'as pas fait ce que je t'ai demandé") === null,
+)
+verifier(
+  "« ça ne marche pas », sans plus, ne suggère rien non plus",
+  correctionDite("Ça ne marche pas") === null,
+)
+verifier(
+  "une phrase qui n'est même pas une plainte ne suggère rien",
+  correctionDite("Ajoute une tâche pour demain") === null,
+)
+verifier(
+  "une plainte qui dit QUOI faire à la place devient une suggestion",
+  correctionDite("Tu n'as pas lancé la bonne chanson, c'était Dolce Camara de Booba qu'il fallait chercher") !== null,
+)
+verifier(
+  "la suggestion garde le texte de Raphaël, mot pour mot",
+  correctionDite("Tu n'as pas lancé la bonne chanson, c'était Dolce Camara de Booba qu'il fallait chercher") ===
+    "Tu n'as pas lancé la bonne chanson, c'était Dolce Camara de Booba qu'il fallait chercher",
+)
+
+// Le SIGNAL de bout en bout : une plainte avec instruction, dans un vrai
+// echecSignalePar, doit porter cette suggestion — et une redite (pas une
+// plainte) ne doit JAMAIS en porter, même longue : redemander la même chose
+// deux fois ne dit rien de plus sur ce qu'il fallait faire.
+{
+  const avecInstruction = echecSignalePar(
+    "Tu n'as pas lancé la bonne chanson, c'était Dolce Camara de Booba qu'il fallait chercher",
+    tour(),
+    T0 + 8_000,
+  )
+  verifier(
+    "l'échec porte la suggestion quand la plainte en dit assez",
+    avecInstruction?.correctionSuggeree ===
+      "Tu n'as pas lancé la bonne chanson, c'était Dolce Camara de Booba qu'il fallait chercher",
+  )
+
+  const sansInstruction = echecSignalePar("Tu n'as pas lancé la musique que je t'ai demandée", tour(), T0 + 8_000)
+  verifier(
+    "l'échec ne porte AUCUNE suggestion quand la plainte n'en dit pas plus",
+    sansInstruction?.correctionSuggeree === null,
+    JSON.stringify(sansInstruction?.correctionSuggeree),
+  )
+
+  const redite = echecSignalePar("Mets la musique de Booba Dolce Camara", tour(), T0 + 8_000)
+  verifier(
+    "une redite ne porte jamais de suggestion, même longue",
+    redite?.correctionSuggeree === null,
+    JSON.stringify(redite),
+  )
+
+  const exception = echecDeLAction("open_app", "Apple Music", "Mets la musique de Booba", new Error("boom"))
+  verifier(
+    "l'échec certain (l'action a levé) ne porte pas de suggestion : Raphaël n'a encore rien dit",
+    exception.correctionSuggeree === null,
   )
 }
 

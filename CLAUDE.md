@@ -880,6 +880,63 @@ les contacts.
 Côté consigne : « cherche X » part vers la favorite, « cherche X sur Y » vers
 l'application citée, et **« sur internet » n'est pas un nom d'application**.
 
+## La lecture de liens et de PDF (chantier 13c39a9b)
+
+La recherche (ci-dessus) était livrée depuis le 6 sept. ; il manquait la
+seconde moitié du chantier : donner un lien à Jarvis — à la voix, ou par le
+partage Android — et qu'il en rapporte le document.
+
+**Rien de nouveau côté téléchargement : tout existait déjà, orphelin.**
+`google-gmail/lien.ts` (SSRF, https seul, 8 Mo, PDF/image uniquement),
+l'action serveur `document_lien`, et même le client `recupererDocumentLien`
+dans `googleGmail.ts` étaient écrits depuis le 3 sept. (chantier `4dabe586`)
+— mais **personne ne les appelait**. Ne réécris jamais ce mécanisme, il est
+déjà vérifié par `verifier-gmail.mjs`.
+
+**Trouvé en passant, et volontairement PAS corrigé ici** (thème différent,
+chantier `4dabe586`) : `list_emails`, `read_email`, `prepare_email_reply`,
+`send_email`, `find_receipts` sont dans l'énumération que le modèle connaît
+et dans la consigne, mais **aucune de ces actions n'existe dans
+`voiceActions.ts`**, et `googleGmail.ts` n'est importé nulle part ailleurs
+que par ce chantier. Si le modèle les appelle, le client ne sait pas les
+exécuter. Noté dans `dev_log` et dans la note de `4dabe586` — à la session
+qui reprend ce chantier de vérifier ce que ça donne réellement.
+
+**`document_lien` a été décorrélée de Gmail** (`google-gmail/index.ts`) :
+elle répondait avant `compte_google_absent` si le compte Google n'était pas
+branché, alors qu'elle ne touche jamais Gmail. Elle est traitée maintenant
+avant la recherche du jeton Google — un lien donné à la voix marche même
+sans compte connecté.
+
+Deux chemins, tous les deux réels et vérifiés :
+- **La voix** : un verbe d'introduction (« récupère », « va chercher »,
+  « prends », « télécharge »…) suivi d'une adresse http(s) — reconnu
+  LOCALEMENT (`commandeLocale.ts`, action `read_link`), comme `ask_ai` :
+  une adresse dans la phrase ne veut jamais dire autre chose, pas la peine
+  de consommer le quota du modèle pour ça.
+- **Le partage Android** : `useShareReceiver.ts` distingue maintenant un
+  texte partagé qui **N'EST QUE** un lien (`texteEstUnLien()`,
+  `documentLien.ts`) d'un texte qui en contient un au milieu d'autre chose —
+  sinon un message qu'il voulait garder tel quel serait remplacé par le
+  document du lien. Ce n'est PAS le même chemin que le rapprochement d'une
+  réponse d'IA (`allerRetourIA.ts`) : celui-ci se vérifie en premier (une
+  question en attente prime), celui-là ne s'applique que si aucune réponse
+  d'IA n'a été rapprochée.
+
+`src/lib/documentLien.ts` (pur) décide tout ce qui peut se tromper en
+silence : extraire l'adresse sans avaler la ponctuation de fin de phrase,
+distinguer « lien seul » de « lien au milieu d'un message », et nommer le
+fichier enregistré par le SITE d'origine plutôt qu'un horodatage nu — sinon
+dix documents s'appelleraient tous « Document ». `lireDocumentLien.ts`
+(non pur) relie lecture et enregistrement, et rend `{ ok, message }` : la
+voix dit `message` dans tous les cas (succès ou échec), un toast le colore
+en vert ou en rouge selon `ok`.
+
+**Nouveau côté stockage** : `useDocuments.ts` gagne `saveBinaryDocument()`,
+le pendant de `saveTextDocument()` pour un contenu binaire (PDF/image) déjà
+encodé en base64 par le serveur — `saveTextDocument` écrirait un fichier
+texte illisible pour un vrai PDF.
+
 ## « Garde ça » : reprendre la réponse d'une IA sans le geste de partage
 
 Livré le 7 sept. 2026 (chantier `7d7967b2`, NIVEAU 3 de `0262afdf`). Avant, la
@@ -2302,6 +2359,7 @@ ANON_KEY=... node scripts/verifier-donnees.mjs           # temps réel + réglag
 node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole, sans réseau
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
+node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
 node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau

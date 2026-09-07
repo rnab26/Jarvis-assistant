@@ -7,6 +7,8 @@ import { lireQuestionEnAttente, oublierQuestionEnAttente } from "@/lib/questionE
 import { noterEcoute } from "@/lib/journalEcoute"
 import { CLE_RELAIS_IA_LECTURE, lectureVoulue } from "@/lib/relaisIA"
 import { parler } from "@/lib/parler"
+import { texteEstUnLien } from "@/lib/documentLien"
+import { lireDocumentLien } from "@/lib/lireDocumentLien"
 
 const isNative = Capacitor.isNativePlatform()
 
@@ -28,7 +30,10 @@ const isNative = Capacitor.isNativePlatform()
  * hors ligne : un mauvais rapprochement rangerait une réponse sous une
  * question qui n'est pas la sienne, sans que rien ne le signale.
  */
-export function useShareReceiver(saveTextDocument: (filename: string, content: string) => Promise<void>) {
+export function useShareReceiver(
+  saveTextDocument: (filename: string, content: string) => Promise<void>,
+  saveBinaryDocument: (filename: string, base64: string, contentType: string | null) => Promise<void>,
+) {
   useEffect(() => {
     if (!isNative) return
 
@@ -63,6 +68,19 @@ export function useShareReceiver(saveTextDocument: (filename: string, content: s
           } catch {
             // Stockage indisponible : on reste sur le comportement silencieux.
           }
+          return
+        }
+
+        // Le texte partagé N'EST QUE le lien (menu Partager d'un navigateur,
+        // de Gmail…) : chantier 13c39a9b, la LECTURE d'un lien. On va
+        // chercher le vrai document plutôt que d'enregistrer l'adresse comme
+        // un fichier texte inutile.
+        const lien = texteEstUnLien(resultat.texte)
+        if (lien) {
+          const { ok, message } = await lireDocumentLien(lien, saveBinaryDocument)
+          noterEcoute("partage_recu", { rapproche: false, pourquoi: "lien" })
+          if (ok) toast.success(message)
+          else toast.error(message)
           return
         }
 
