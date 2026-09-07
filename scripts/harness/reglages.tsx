@@ -13,8 +13,10 @@ import { Reinitialiser } from "@/components/settings/Reinitialiser"
 import { Section } from "@/components/settings/Section"
 import { Memoire } from "@/components/settings/Memoire"
 import { Consommation } from "@/components/settings/Consommation"
+import { ApprentissageNotifications } from "@/components/settings/ApprentissageNotifications"
 import { SessionsAutonomes } from "@/components/settings/SessionsAutonomes"
 import type { LigneConsommation } from "@/lib/consommationModele"
+import type { StatsCanal } from "@/lib/notifications/apprentissage"
 import type { PasseAutonome } from "@/lib/passeAutonome"
 import { Theme } from "@/components/settings/Theme"
 import type { NotificationsApi } from "@/hooks/useNotifications"
@@ -285,6 +287,14 @@ const CONSO_SECOURS: LigneConsommation[] = [
   },
 ]
 
+const APPRENTISSAGE_MELANGE: Partial<Record<string, StatsCanal>> = {
+  matin: { canal: "matin", envoyees: 12, ouvertes: 10, jugees: 12, taux: 10 / 12 },
+  // Peu suivi : c'est l'état qui affiche le badge — c'est lui qu'il faut voir
+  // à l'écran, pas juste calculer juste.
+  livraisons: { canal: "livraisons", envoyees: 9, ouvertes: 1, jugees: 9, taux: 1 / 9 },
+  blocages: { canal: "blocages", envoyees: 2, ouvertes: 1, jugees: 0, taux: null },
+}
+
 function BancDesReglages() {
   const [prefs, setPrefs] = useState<PrefsNotifications>(PREFS_NOTIFS_DEFAUT)
   // Ce que le micro écoute pour se relire : sans ce signal, l'interrupteur du
@@ -480,6 +490,38 @@ function BancDesReglages() {
             erreur: "Le serveur ne répond pas.",
             enCours: false,
             rafraichir: async () => {},
+          }}
+        />
+      </div>
+
+      {/* Ce que Jarvis a appris, dans les trois états qui comptent. Le badge
+          « Jarvis le dit moins fort » est celui qu'il faut VOIR, pas
+          seulement calculer juste — c'est la seule preuve visible qu'il a
+          bien retenu quelque chose. */}
+      <div id="apprentissage">
+        <ApprentissageNotifications
+          api={{
+            stats: APPRENTISSAGE_MELANGE,
+            erreur: null,
+            enCours: false,
+            rafraichir: async () => {},
+            remettreAZero: async () => {},
+          }}
+        />
+      </div>
+      <div id="apprentissage-vide">
+        <ApprentissageNotifications
+          api={{ stats: {}, erreur: null, enCours: false, rafraichir: async () => {}, remettreAZero: async () => {} }}
+        />
+      </div>
+      <div id="apprentissage-panne">
+        <ApprentissageNotifications
+          api={{
+            stats: null,
+            erreur: "Le serveur ne répond pas.",
+            enCours: false,
+            rafraichir: async () => {},
+            remettreAZero: async () => {},
           }}
         />
       </div>
