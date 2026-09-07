@@ -488,6 +488,48 @@ Deux règles :
   serait plus court et faux — PostgreSQL construit d'abord la ligne à insérer
   et la refuserait faute de titre.
 
+### « Ça ne s'actualise pas » : on rend la panne VISIBLE, on ne la devine pas
+
+Chantier `ce69489b`, ses mots : « Les taches ne s'affichent pas en live et il
+n'y a aucun moyen d'actualiser ». Deux reproches, et le second était vrai sans
+réserve : `refresh` n'était atteignable que depuis l'écran d'erreur — donc
+jamais quand le chargement avait RÉUSSI et que c'est le direct qui était tombé.
+
+**Deux fausses pistes écartées avant de corriger, à ne pas reprendre :**
+
+- Le temps réel marche côté serveur. `verifier-donnees.mjs` le prouve à chaque
+  passage, sur `tasks` comme sur `dev_items`. Ce n'est ni RLS ni la publication.
+- Le jeton qui expire n'est pas la cause. `useRealtimeRefresh` ne pose le jeton
+  qu'une fois, ce qui donne toutes les raisons de le soupçonner — mais lu dans
+  supabase-js 2.114 (`_handleTokenChanged`), un `TOKEN_REFRESHED` rappelle
+  `realtime.setAuth` tout seul.
+
+**Le vrai défaut : `subscribe()` était appelé SANS rappel.** Un
+`CHANNEL_ERROR`, un `TIMED_OUT`, une socket qu'Android ferme en veille
+passaient sans un mot. La bibliothèque retente d'elle-même (son `rejoinTimer`,
+lu dans `RealtimeChannel.js`) : **on ne double donc pas sa boucle de
+reconnexion**, on dit seulement où elle en est. Le hook rend
+`{ statut, rebrancher }`, et un rejoint recharge la liste — pendant qu'il était
+coupé, tout ce qui a changé ailleurs est passé à côté ; retrouver le direct
+avec une liste périmée serait le pire des deux.
+
+`src/lib/etatDirect.ts` est **pur** (`verifier-etat-direct.ts`) et **la moitié
+de ses contrôles vérifie le silence** : « connexion » ne dit rien d'alarmant
+(c'est l'état normal des deux premières secondes de chaque ouverture), et l'âge
+de la liste ne s'affiche QUE quand le direct est coupé — tant qu'il marche, la
+liste est juste par construction et « à jour il y a 3 min » serait du bruit
+permanent. Le réseau l'emporte sur la coupure : dans l'ascenseur les deux sont
+vrais, mais « les mises à jour ne passent plus » l'enverrait chercher une panne
+dans l'app.
+
+**Et la barre coûte 44 points, mesurés.** Sur l'onglet Tâches elle est
+permanente : c'est là qu'il a réclamé le bouton, et un bouton qui n'apparaît
+qu'en cas de panne DÉTECTÉE ne sert à rien le jour où la panne ne l'est pas.
+Dans le cockpit elle est en `seulementSiProbleme` — essayée en permanence, elle
+a fait passer le tableau des chantiers de 482 à 526 points et
+`verifier-cockpit-web.mjs` a rougi. La règle du projet tient : si tu ajoutes
+quelque chose au cockpit, prends sa place quelque part.
+
 ### La section suggérée à la saisie (`src/lib/suggestionTheme.ts`)
 
 Calcul **local**, jamais un appel au modèle : ranger un chantier n'a pas à
@@ -2152,6 +2194,7 @@ node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + ba
 node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
+node --experimental-strip-types scripts/verifier-etat-direct.ts  # « les tâches ne s'affichent pas en live » : ce qu'on dit, et surtout ce qu'on ne dit pas, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau

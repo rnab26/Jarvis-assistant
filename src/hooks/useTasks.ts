@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
+import { useActualisation } from "@/hooks/useActualisation"
 import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
@@ -30,6 +31,9 @@ export function useTasks(userId: string | undefined) {
   // faire clignoter toute la liste en "Chargement...".
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Quand la liste a été chargée pour de bon. Sert à dire depuis combien de
+  // temps l'écran peut mentir, une fois le direct coupé.
+  const [derniereMaj, setDerniereMaj] = useState<number | null>(null)
   // Numéro du dernier chargement lancé : deux refresh simultanés (la voix qui
   // ajoute une tâche pendant que l'utilisateur en modifie une) peuvent revenir
   // dans le désordre, et la réponse la plus ancienne écrasait la plus récente.
@@ -125,6 +129,10 @@ export function useTasks(userId: string | undefined) {
       setTasks(tasksResult.data ?? [])
       setCategories(categoriesResult.data ?? [])
       setError(null)
+      // Posé ICI et pas au retour de la promesse : seul un chargement dont on
+      // a gardé le résultat compte. Une réponse périmée (deux refresh en vol)
+      // sort plus haut, et daterait une liste qu'on n'affiche pas.
+      setDerniereMaj(Date.now())
     } catch (e) {
       // Sans ce catch, une simple coupure réseau laissait "loading" à true pour
       // toujours : l'écran restait sur "Chargement..." sans message ni retry.
@@ -140,8 +148,11 @@ export function useTasks(userId: string | undefined) {
   }, [refresh])
 
   useRefreshOnForeground(refresh)
-  useRealtimeRefresh("tasks", userId, refresh)
-  useRealtimeRefresh("categories", userId, refresh)
+  // Les DEUX canaux comptent : une catégorie renommée ailleurs et jamais
+  // reçue ferait afficher l'ancien nom sur toutes les lignes.
+  const canalTaches = useRealtimeRefresh("tasks", userId, refresh)
+  const canalCategories = useRealtimeRefresh("categories", userId, refresh)
+  const { statut, enCours, actualiser } = useActualisation(refresh, [canalTaches, canalCategories])
 
   async function addTask(input: TaskInput) {
     if (!userId) return
@@ -376,6 +387,10 @@ export function useTasks(userId: string | undefined) {
   }, [tasks, file, userId])
 
   return {
+    derniereMaj,
+    statutDirect: statut,
+    actualisationEnCours: enCours,
+    actualiser,
     tasks: tachesAvecFile,
     categories,
     /** Ce qui attend d'être écrit, pour l'écran qui le montre. */
