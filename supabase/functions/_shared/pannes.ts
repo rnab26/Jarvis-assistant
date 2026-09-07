@@ -29,6 +29,22 @@ export async function signalerPanne(
   titre: string,
   erreur: unknown,
   contexte?: string | null,
+  /**
+   * L'utilisateur concerné, quand l'appelant le connaît et que `auth.uid()`
+   * ne le donne pas. `jarvis_erreurs.user_id` est NOT NULL avec pour défaut
+   * `auth.uid()` : ça suffit pour voice-command et live-jeton, qui portent le
+   * jeton de Raphaël, mais PAS pour push-notifier, appelée par Postgres avec
+   * la clé service_role. Là, `auth.uid()` est nul, l'insertion échoue, et le
+   * catch ci-dessous l'avale — la panne restait invisible (constaté le
+   * 7 sept. 2026).
+   */
+  userId?: string | null,
+  /**
+   * D'où vient la panne, tel que Raphaël le lit dans le registre. Défaut
+   * « memoire » parce que c'est l'usage d'origine ; le push passe le sien,
+   * sans quoi il chercherait une panne de mémoire pour une notification.
+   */
+  source: string = "memoire",
 ): Promise<void> {
   try {
     const detail =
@@ -44,7 +60,8 @@ export async function signalerPanne(
       p_contexte: contexte ? contexte.slice(0, 1000) : null,
       // Le registre regroupe par empreinte : une panne qui se répète à chaque
       // phrase reste UNE ligne avec un compteur, pas cinquante.
-      p_source: "memoire",
+      p_source: source,
+      ...(userId ? { p_user_id: userId } : {}),
     })
   } catch {
     // Rien à faire de plus : on ne va pas signaler l'échec du signalement.
