@@ -64,6 +64,11 @@ const NE_DOIT_PAS_REVEILLER = [
   "il faut que je parte",
   "",
   "d'accord merci beaucoup",
+  // Mesuré dans journal_ecoute le 7 sept. 2026 : Raphaël PARLE DE Jarvis à
+  // quelqu'un d'autre, il ne l'appelle pas. Trois faux réveils en deux jours
+  // sur cette phrase précise (« il interfère dans mes conversations »).
+  "nouvelle version de Jarvis",
+  "message à mail ma femme et dis-lui que c'est Jarvis qui envoie",
 ]
 
 for (const phrase of NE_DOIT_PAS_REVEILLER) {
