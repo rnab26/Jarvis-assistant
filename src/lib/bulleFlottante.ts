@@ -29,6 +29,8 @@ interface BullePlugin {
   demanderAutorisation(): Promise<void>
   demarrer(): Promise<void>
   arreter(): Promise<void>
+  /** Oublie la position enregistrée et repose la bulle à sa place d'origine. */
+  replacer(): Promise<void>
 }
 
 export const Bulle = registerPlugin<BullePlugin>("Bulle")

@@ -73,6 +73,14 @@ jobs:
       - name: Le témoin de la mémoire ne crie pas au loup
         run: node --experimental-strip-types scripts/verifier-temoin-memoire.ts
 
+      # Le 7 sept. 2026 : « ma bulle jarvis est bloqué complètement en haut a
+      # droite j'arrive plus a la récupérer ». Le glissement n'était borné nulle
+      # part ET la position est enregistrée : une fois dehors, elle y restait
+      # pour toujours. Pas de SDK Android ici — ce contrôle lit donc le code,
+      # et vise les APPELS, pas la présence des mots.
+      - name: La bulle flottante ne peut pas sortir de l'écran
+        run: node --experimental-strip-types scripts/verifier-bulle-position.ts
+
       - name: La mise à jour rapide de l'app
         run: node --experimental-strip-types scripts/verifier-maj-web.ts
 

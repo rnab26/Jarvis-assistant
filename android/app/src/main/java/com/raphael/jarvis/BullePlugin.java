@@ -80,4 +80,32 @@ public class BullePlugin extends Plugin {
         getContext().stopService(new Intent(getContext(), BulleService.class));
         call.resolve();
     }
+
+    /**
+     * Remettre la bulle à sa place d'origine.
+     *
+     * LE FILET, écrit après le 7 sept. 2026 : « ma bulle jarvis est bloqué
+     * complètement en haut a droite j'arrive plus a la récupérer ». Le bornage
+     * du service empêche que ça se reproduise, mais il fallait aussi un moyen
+     * de la rappeler quand elle est déjà perdue — sinon le seul recours est de
+     * désinstaller l'application.
+     *
+     * On oublie la position AVANT de relancer : le service la relit à son
+     * démarrage, donc l'ordre compte.
+     */
+    @PluginMethod
+    public void replacer(PluginCall call) {
+        BulleService.oublierPosition(getContext());
+        Intent stop = new Intent(getContext(), BulleService.class);
+        getContext().stopService(stop);
+        if (BulleService.peutAfficher(getContext())) {
+            Intent demarrer = new Intent(getContext(), BulleService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getContext().startForegroundService(demarrer);
+            } else {
+                getContext().startService(demarrer);
+            }
+        }
+        call.resolve();
+    }
 }

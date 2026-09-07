@@ -12,6 +12,7 @@ import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
+import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -99,6 +100,16 @@ public class BulleService extends Service {
         params.x = prefs.getInt(POS_X, dp(12));
         params.y = prefs.getInt(POS_Y, dp(240));
 
+        // ON RÉPARE UNE POSITION DÉJÀ ENREGISTRÉE HORS ÉCRAN, et c'est le
+        // point essentiel de ce correctif. Le 7 sept. 2026, Raphaël : « ma
+        // bulle jarvis est bloqué complètement en haut a droite j'arrive plus
+        // a la récupérer ». Une position hors écran était SAUVEGARDÉE (voir
+        // ACTION_UP), donc elle survivait à l'arrêt du service, au
+        // redémarrage du téléphone et à la réinstallation de l'interface :
+        // borner seulement le glissement ne l'aurait jamais sorti de là.
+        bornerDansEcran(taille);
+        prefs.edit().putInt(POS_X, params.x).putInt(POS_Y, params.y).apply();
+
         try {
             fenetres.addView(bulle, params);
             active = true;
@@ -111,6 +122,43 @@ public class BulleService extends Service {
     static boolean peutAfficher(Context ctx) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true;
         return Settings.canDrawOverlays(ctx);
+    }
+
+    /**
+     * Ramener la bulle dans l'écran.
+     *
+     * POURQUOI ELLE POUVAIT EN SORTIR : FLAG_LAYOUT_NO_LIMITS autorise la vue
+     * à déborder des limites de l'écran (il sert à passer sous les barres
+     * système), et le glissement ci-dessous ajoutait le déplacement du doigt à
+     * la position SANS AUCUNE BORNE. Un geste un peu large la poussait donc
+     * dehors, et comme la position est enregistrée, elle y restait.
+     *
+     * MARGE_VISIBLE plutôt que « entièrement dans l'écran » : on garde
+     * volontairement la possibilité de la coller au bord — c'est ce qu'on fait
+     * naturellement pour la ranger — mais jamais au point qu'il ne reste plus
+     * assez de bulle pour la rattraper au doigt.
+     */
+    private void bornerDansEcran(int taille) {
+        DisplayMetrics ecran = getResources().getDisplayMetrics();
+        int margeVisible = Math.max(dp(24), taille / 2);
+        int xMin = margeVisible - taille;
+        int xMax = ecran.widthPixels - margeVisible;
+        int yMin = 0;
+        int yMax = ecran.heightPixels - margeVisible;
+
+        if (params.x < xMin) params.x = xMin;
+        if (params.x > xMax) params.x = xMax;
+        if (params.y < yMin) params.y = yMin;
+        if (params.y > yMax) params.y = yMax;
+    }
+
+    /**
+     * Remettre la bulle à sa place d'origine — le filet quand elle a été
+     * perdue. Appelée par le bouton de Paramètres via BullePlugin.
+     */
+    static void oublierPosition(Context ctx) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().remove(POS_X).remove(POS_Y).apply();
     }
 
     private int dp(int valeur) {
@@ -153,6 +201,11 @@ public class BulleService extends Service {
                         if (Math.abs(dx) > seuil || Math.abs(dy) > seuil) deplacee = true;
                         params.x = departX + dx;
                         params.y = departY + dy;
+                        // Borné À CHAQUE mouvement, pas seulement au relâcher :
+                        // sinon on la voit partir hors de l'écran pendant le
+                        // geste, et c'est ce départ-là qui donne l'impression
+                        // qu'on l'a perdue.
+                        bornerDansEcran(v.getWidth() > 0 ? v.getWidth() : dp(52));
                         try {
                             fenetres.updateViewLayout(bulle, params);
                         } catch (Exception ignore) {

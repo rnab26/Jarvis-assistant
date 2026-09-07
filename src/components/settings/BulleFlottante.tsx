@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import { Interrupteur } from "@/components/settings/Interrupteur"
+import { RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -29,6 +30,8 @@ export function BulleFlottante() {
   const [etat, setEtat] = useState<EtatBulle | null>(null)
   const [disponible, setDisponible] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
+  const [replacement, setReplacement] = useState(false)
+  const [replace, setReplace] = useState(false)
   const [voulue, setVoulue] = useState(() => bulleVoulue())
 
   const relire = useCallback(async () => {
@@ -74,6 +77,21 @@ export function BulleFlottante() {
     await relire()
   }
 
+  /** Oublie la position enregistrée et repose la bulle à sa place d'origine. */
+  async function replacer() {
+    setErreur(null)
+    setReplacement(true)
+    setReplace(false)
+    try {
+      await Bulle.replacer()
+      setReplace(true)
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : "La bulle n'a pas pu être replacée.")
+    } finally {
+      setReplacement(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -97,6 +115,27 @@ export function BulleFlottante() {
           <Button size="sm" variant="outline" onClick={() => void Bulle.demanderAutorisation()}>
             Ouvrir les réglages d'Android
           </Button>
+        )}
+
+        {/* LE FILET, écrit après son signalement du 7 sept. 2026 : « ma bulle
+            jarvis est bloqué complètement en haut a droite j'arrive plus a la
+            récupérer ». Le service borne désormais la position, mais ce bouton
+            reste : une bulle qu'on ne peut plus attraper n'a AUCUN autre
+            recours dans l'app — il faudrait désinstaller. Il ne s'affiche que
+            quand elle est réellement à l'écran, sinon il ne répondrait à
+            aucune question qu'il se pose. */}
+        {situation === "affichee" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => void replacer()} disabled={replacement}>
+              <RotateCcw className={`size-4 ${replacement ? "animate-spin" : ""}`} />
+              {replacement ? "Replacement…" : "Remettre la bulle en place"}
+            </Button>
+            {replace && (
+              <span className="text-xs text-muted-foreground">
+                Remise à gauche de l'écran.
+              </span>
+            )}
+          </div>
         )}
 
         {erreur && <p className="text-xs text-destructive">{erreur}</p>}
