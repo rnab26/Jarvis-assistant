@@ -58,6 +58,13 @@ jobs:
       - name: L'état d'un chantier, tel qu'il le lit sur la ligne
         run: node --experimental-strip-types scripts/verifier-etat-chantier.ts
 
+      # Sa demande du 7 sept. : le crayon de l'écran Tâches. Ce qui casse en
+      # silence ici : un ordre qui se réarrange tout seul (il retrouverait son
+      # écran mélangé sans avoir rien touché), et un renommage accepté qui rend
+      # une catégorie introuvable.
+      - name: L'ordre de ses catégories, et ce qu'on refuse de renommer
+        run: node --experimental-strip-types scripts/verifier-ordre-categories.ts
+
       - name: La mise à jour rapide de l'app
         run: node --experimental-strip-types scripts/verifier-maj-web.ts
 

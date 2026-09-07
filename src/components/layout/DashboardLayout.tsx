@@ -2,16 +2,30 @@ import type { ReactNode } from "react"
 import { NavLink } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Settings } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 
-// Paramètres en tête, à la demande de Raphaël (4 sept. 2026) : « il faut que
-// ça apparaisse aussi en premier ». C'est l'onglet par lequel il règle Jarvis,
-// et il était le dernier des six — donc en seconde ligne sur un téléphone.
+// PARAMÈTRES N'EST PLUS UN ONGLET depuis le 7 sept. 2026 : il est monté en
+// haut à droite, à la place de « Déconnexion ». Sa demande, capture à l'appui :
+// « remonté le menu parametre en haut a droite a la place de déconnexion et
+// intégrer la déconnexion dans les paramètres ».
+//
+// Ce n'est pas un déplacement décoratif : la place ainsi libérée, plus
+// « Documents » raccourci en « Docs », fait tenir les quatre onglets restants
+// sur UNE SEULE LIGNE sur un écran de téléphone. Ils étaient sur deux (sa
+// capture du 7 sept. : « Documents » et « Mémoire » seuls en seconde ligne),
+// et la seconde ligne se lit deux fois moins.
+//
+// Il avait demandé le 4 sept. que Paramètres « apparaisse en premier ». Le
+// besoin est le même — y accéder sans chercher — et le coin haut droit le sert
+// mieux : il est atteignable depuis n'importe quel onglet, sans occuper de
+// place dans la barre.
 const TABS = [
-  { to: "/settings", label: "Paramètres", end: false },
   { to: "/", label: "Tâches", end: true },
   { to: "/cockpit", label: "Cockpit dev", end: false },
-  { to: "/documents", label: "Documents", end: false },
+  // « Docs » et pas « Documents » : trois lettres de moins, et c'est ce qui
+  // fait tenir la barre sur une ligne. Sa demande du 7 sept.
+  { to: "/documents", label: "Docs", end: false },
   // Plus d'onglet Contacts depuis le 5 sept. 2026. Raphaël : « ça ne sert à
   // rien, sachant que tu as déjà une mémoire active dans Jarvis qui retient
   // tout ce qu'on dit. À partir du moment où il est connecté à mes contacts
@@ -21,7 +35,7 @@ const TABS = [
 ]
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
-  const { session, signOut } = useAuth()
+  const { session } = useAuth()
 
   return (
     <div className="mx-auto flex min-h-svh max-w-3xl flex-col gap-6 p-4">
@@ -30,8 +44,14 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           <h1 className="text-xl font-semibold">Jarvis</h1>
           <p className="text-sm text-muted-foreground">{session?.user.email}</p>
         </div>
-        <Button variant="outline" onClick={signOut}>
-          Déconnexion
+        {/* La Déconnexion vit maintenant DANS Paramètres : elle était le
+            bouton le plus visible de l'écran alors que c'est l'action la
+            plus rare, et la plus fâcheuse à déclencher par erreur. */}
+        <Button variant="outline" size="sm" asChild>
+          <NavLink to="/settings" aria-label="Paramètres">
+            <Settings className="size-4" />
+            Paramètres
+          </NavLink>
         </Button>
       </header>
 

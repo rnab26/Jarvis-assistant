@@ -5,6 +5,10 @@ export interface Category {
   user_id: string
   name: string
   created_at: string
+  /** L'ordre choisi par Raphaël (crayon de l'écran Tâches, migration 0033).
+   *  `null` = jamais réorganisée : on retombe alors sur `created_at`, pour que
+   *  son écran ne se réarrange pas tout seul. */
+  position?: number | null
 }
 
 export interface Task {

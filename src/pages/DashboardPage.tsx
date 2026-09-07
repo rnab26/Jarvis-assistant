@@ -1,13 +1,14 @@
 import { Plus } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { LoadError } from "@/components/LoadError"
 import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
 import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
+import { OrganiserCategories } from "@/components/tasks/OrganiserCategories"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import { categoriesOrdonnees } from "@/lib/ordreCategories"
 import type { Task } from "@/types/database"
 
 export function DashboardPage() {
@@ -23,13 +24,15 @@ export function DashboardPage() {
     deleteTask,
     toggleStatus,
     addCategory,
+    renameCategory,
+    deleteCategory,
+    reorderCategories,
     fileEnAttente,
     fileIllisible,
     relancerEnvoi,
     oublierEnAttente,
   } = tasksState
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
-  const [newCategoryName, setNewCategoryName] = useState("")
 
   /**
    * Une « tâche » qui est en fait une demande à Claude passe dans le cockpit.
@@ -61,48 +64,43 @@ export function DashboardPage() {
       ? tasks
       : tasks.filter((t) => t.category_id === categoryFilter)
 
-  async function handleAddCategory() {
-    if (!newCategoryName.trim()) return
-    try {
-      await addCategory(newCategoryName.trim())
-      setNewCategoryName("")
-    } catch {
-      // Erreur déjà signalée par un toast : on conserve la saisie.
-    }
-  }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
+      {/* SON REPROCHE DU 7 SEPT., et le pourquoi de cette disposition : « c'est
+          plus logique d'avoir une tâche a ajouter au milieu et sur le cote les
+          categorie modulable ». Avant, « + Tâche » était un petit bouton coincé
+          à droite, et le champ « Nouvelle catégorie » occupait une ligne pleine
+          largeur — alors qu'on crée une catégorie deux fois par an et une tâche
+          dix fois par jour. Tout ce qui touche aux catégories est passé
+          derrière le crayon, et l'ajout de tâche a pris la place. */}
+      <div className="flex items-center gap-2">
         <CategoryFilter
-          categories={categories}
+          categories={categoriesOrdonnees(categories)}
           value={categoryFilter}
           onChange={setCategoryFilter}
         />
-        <TaskFormDialog
+        <OrganiserCategories
           categories={categories}
           taches={tasks}
-          onSubmit={addTask}
-          trigger={
-            <Button size="sm">
-              <Plus className="size-4" />
-              Tâche
-            </Button>
-          }
+          onAjouter={addCategory}
+          onRenommer={renameCategory}
+          onSupprimer={deleteCategory}
+          onReordonner={reorderCategories}
         />
       </div>
 
-      <div className="flex gap-2">
-        <Input
-          placeholder="Nouvelle catégorie"
-          value={newCategoryName}
-          onChange={(e) => setNewCategoryName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAddCategory()}
-        />
-        <Button variant="outline" onClick={handleAddCategory}>
-          Ajouter
-        </Button>
-      </div>
+      <TaskFormDialog
+        categories={categoriesOrdonnees(categories)}
+        taches={tasks}
+        onSubmit={addTask}
+        trigger={
+          <Button className="w-full">
+            <Plus className="size-4" />
+            Nouvelle tâche
+          </Button>
+        }
+      />
 
       {/* Ce qu'il a dicté sans réseau. La carte ne s'affiche PAS quand il n'y
           a rien : un bandeau « 0 en attente » use le signal qui doit servir le

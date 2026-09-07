@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core"
 import { Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
+import { Deconnexion } from "@/components/settings/Deconnexion"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
 import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
@@ -136,8 +137,8 @@ const SECTIONS = {
   comptes: {
     cle: "comptes",
     titre: "Comptes et connexions",
-    resume: "Google",
-    motsCles: "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation",
+    resume: "Google, déconnexion",
+    motsCles: "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation deconnexion déconnexion se déconnecter quitter session sortir",
   },
 } as const
 
@@ -988,6 +989,7 @@ export function SettingsPage() {
 
       <Section {...SECTIONS.comptes} filtre={recherche}>
         <CompteGoogle />
+        <Deconnexion />
       </Section>
 
     </div>

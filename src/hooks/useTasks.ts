@@ -103,7 +103,18 @@ export function useTasks(userId: string | undefined) {
             // qui se voit exactement comme un affichage pas rafraîchi.
             .order("due_date", { ascending: true, nullsFirst: false })
             .order("created_at", { ascending: false }),
-          supabase.from("categories").select("*").order("name"),
+          // L'ordre qu'il a choisi au crayon (migration 0033), puis la date de
+          // création pour celles qu'il n'a jamais rangées. Trié ICI et pas dans
+          // chaque écran : la liste, le filtre, le formulaire et Paramètres
+          // reçoivent tous la même chose, sinon ils finiraient par se
+          // contredire. `nullsFirst: false` met les non rangées à la fin —
+          // une nouvelle catégorie arrive au bout, elle ne s'insère pas au
+          // milieu de son classement.
+          supabase
+            .from("categories")
+            .select("*")
+            .order("position", { ascending: true, nullsFirst: false })
+            .order("created_at", { ascending: true }),
         ]),
       )
 
@@ -282,6 +293,61 @@ export function useTasks(userId: string | undefined) {
     })
   }
 
+  /**
+   * Renommer une catégorie. La vérification (nom vide, doublon) vit dans
+   * `ordreCategories.ts` et se fait AVANT l'appel : un refus doit se voir
+   * tout de suite, pas après un aller-retour réseau.
+   */
+  async function renameCategory(id: string, name: string) {
+    if (!userId) return
+    await withErrorToast("Impossible de renommer la catégorie", async () => {
+      const { error } = await supabase
+        .from("categories")
+        .update({ name: name.trim() })
+        .eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
+  }
+
+  /**
+   * Supprimer une catégorie. Les tâches qui y étaient ne sont PAS supprimées :
+   * `category_id` retombe à null et elles reparaissent dans « Sans catégorie ».
+   * Perdre une catégorie est un rangement ; perdre les tâches dedans serait une
+   * perte de données, et il n'y a pas de corbeille pour les tâches.
+   */
+  async function deleteCategory(id: string) {
+    if (!userId) return
+    await withErrorToast("Impossible de supprimer la catégorie", async () => {
+      const { error: err1 } = await supabase
+        .from("tasks")
+        .update({ category_id: null })
+        .eq("category_id", id)
+      if (err1) throw err1
+      const { error } = await supabase.from("categories").delete().eq("id", id)
+      if (error) throw error
+      await refresh()
+    })
+  }
+
+  /**
+   * Écrire le nouvel ordre. UNE requête par catégorie déplacée serait dix
+   * allers-retours pour un geste : si la connexion lâche au milieu, l'ordre
+   * reste à moitié appliqué. On envoie donc tout d'un coup, en upsert.
+   */
+  async function reorderCategories(positions: { id: string; position: number }[]) {
+    if (!userId || positions.length === 0) return
+    await withErrorToast("Impossible d'enregistrer l'ordre", async () => {
+      const lignes = positions.map((p) => {
+        const existante = categories.find((c) => c.id === p.id)
+        return { id: p.id, user_id: userId, name: existante?.name ?? "", position: p.position }
+      })
+      const { error } = await supabase.from("categories").upsert(lignes)
+      if (error) throw error
+      await refresh()
+    })
+  }
+
   // Ce qui attend s'affiche DANS LA LISTE, marqué. Un tampon invisible serait
   // un mensonge de plus : il a dicté quelque chose, il doit le voir.
   // Les plus récentes en tête, comme une tâche fraîchement ajoutée.
@@ -328,6 +394,9 @@ export function useTasks(userId: string | undefined) {
     deleteTask,
     toggleStatus,
     addCategory,
+    renameCategory,
+    deleteCategory,
+    reorderCategories,
   }
 }
 
