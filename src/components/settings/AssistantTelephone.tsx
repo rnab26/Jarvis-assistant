@@ -2,7 +2,8 @@ import { Capacitor } from "@capacitor/core"
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { ReglagesSysteme, type EtatAssistant } from "@/lib/reglagesSystemePlugin"
 
 /**
@@ -127,14 +128,11 @@ export function AssistantTelephone({ pont = PONT_REEL }: { pont?: PontAssistant 
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">L'appui long sur la touche latérale</CardTitle>
-        <CardDescription>
-          Faire de Jarvis l'assistant du téléphone, à la place de celui d'origine.
-        </CardDescription>
-      </CardHeader>
+    <CarteRepliable titre="L'appui long sur la touche latérale">
       <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          Faire de Jarvis l'assistant du téléphone, à la place de celui d'origine.
+        </p>
         {!etat.pret && <p className="text-sm text-muted-foreground">Vérification…</p>}
 
         {etat.pret && etat.web && (
@@ -202,6 +200,6 @@ export function AssistantTelephone({ pont = PONT_REEL }: { pont?: PontAssistant 
           </>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

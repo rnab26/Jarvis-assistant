@@ -1,6 +1,7 @@
 import { useTheme } from "next-themes"
 import { useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { ecrireReglage } from "@/lib/reglages"
 import { CHOIX_THEME, estChoixTheme, THEME_KEY, type ChoixTheme } from "@/lib/theme"
@@ -51,15 +52,12 @@ export function Theme() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Thème</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Thème">
+      <CardContent className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">
           Clair, sombre, ou comme ton téléphone. Le choix suit ton compte : tu le retrouves sur le
           web et après une réinstallation.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+        </p>
         <div className="flex gap-1.5">
           {CHOIX_THEME.map(({ valeur, label }) => (
             <button
@@ -84,6 +82,6 @@ export function Theme() {
             : ""}
         </p>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

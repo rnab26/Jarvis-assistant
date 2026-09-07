@@ -6,16 +6,26 @@ import { withTimeout } from "@/lib/withTimeout"
 
 /**
  * Le plus long silence NORMAL jamais observé sur l'historique réel de
- * Raphaël : 5 échanges d'affilée sans qu'un seul fait mérite d'être retenu
- * (mesuré le 4 sept. 2026 sur ses 86 échanges et 21 souvenirs, tous les
- * intervalles). Zéro fait retenu est une réponse normale et fréquente — la
- * plupart des échanges n'ont rien à retenir — donc le seuil doit être NETTEMENT
- * au-dessus, sinon le témoin crie au loup et on cesse de le regarder.
+ * Raphaël. Remesuré le 7 sept. 2026 (chantier de vérification du témoin,
+ * sur ses 199 échanges et 32 souvenirs réels, tous les intervalles entre deux
+ * souvenirs créés ou fusionnés) : 12 se déclenchait à TORT plusieurs fois par
+ * jour depuis le 5 sept. — des rafales de 13, 14, 15, 15 puis 24 échanges
+ * d'affilée sans rien à retenir, toutes vérifiées une par une (les appels au
+ * modèle de mémoire y répondaient 200, et les échanges eux-mêmes ne
+ * contenaient aucun fait à extraire : créations de tâches et de chantiers,
+ * ouvertures d'application — exclues de la mémoire par consigne). Ce n'est
+ * pas la mémoire qui a changé, c'est l'usage : il enchaîne plus de commandes
+ * d'action pures qu'au moment de la première mesure.
  *
- * Douze, soit plus du double. Le jour de la panne, le compte était à 42 : le
- * témoin se serait allumé largement à temps.
+ * Trente, nettement au-dessus de ce 24 mesuré, tout en restant sous la seule
+ * vraie panne connue (42 échanges, le 4 sept.) : un témoin qui se tairait
+ * jusqu'à 42 rattraperait une vraie panne plus tard que ne le faisait déjà
+ * l'ancien seuil. Zéro fait retenu est une réponse normale et fréquente — la
+ * plupart des échanges n'ont rien à retenir — donc le seuil doit rester
+ * NETTEMENT au-dessus du silence normal, sinon le témoin crie au loup et on
+ * cesse de le regarder.
  */
-export const SILENCE_SUSPECT = 12
+export const SILENCE_SUSPECT = 30
 
 export interface SanteMemoire {
   dernierSouvenir: string | null

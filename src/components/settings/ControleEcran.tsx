@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Input } from "@/components/ui/input"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Trash2, Plus, RotateCcw } from "lucide-react"
@@ -98,16 +99,13 @@ export function ControleEcran() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Appuyer sur l'écran à ta place</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Appuyer sur l'écran à ta place">
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
           Pour que « lance la deuxième vidéo », « descends » ou « appuie sur envoyer » marchent
           pendant que tu es dans une autre application. Jarvis ne lit l'écran qu'au moment où tu
           lui demandes quelque chose.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        </p>
         {chargement ? (
           <p className="text-xs text-muted-foreground">Je regarde où ça en est…</p>
         ) : etat?.actif ? (
@@ -219,6 +217,6 @@ export function ControleEcran() {
           </p>
         </div>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

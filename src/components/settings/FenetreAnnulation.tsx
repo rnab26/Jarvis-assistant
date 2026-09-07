@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -45,16 +46,13 @@ export function FenetreAnnulation() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Le temps de l'arrêter</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Le temps de l'arrêter">
+      <CardContent className="space-y-2">
+        <p className="text-sm text-muted-foreground">
           Avant d'ouvrir une application, d'appeler quelqu'un ou de préparer un message, Jarvis
           annonce ce qu'il fait et laisse quelques secondes pour l'annuler. Il ne demande rien :
           passé ce délai, il y va.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
+        </p>
         <Label htmlFor="delai-annulation">Délai avant d'agir</Label>
         <Select value={String(ms)} onValueChange={changer}>
           <SelectTrigger id="delai-annulation">
@@ -74,6 +72,6 @@ export function FenetreAnnulation() {
             : "Le 5 septembre, quatre commandes mal entendues ont ouvert des applications au hasard : c'est ce que ce délai permet d'arrêter."}
         </p>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

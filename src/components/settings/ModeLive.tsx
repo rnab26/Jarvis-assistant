@@ -2,7 +2,8 @@ import { useState } from "react"
 import { Trash2, Plus, RotateCcw } from "lucide-react"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -131,17 +132,14 @@ export function ModeLive() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Mode conversation Live (essai)</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Mode conversation Live (essai)">
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
           Deux façons de parler à Jarvis, et on mesure laquelle tient. Sans ce mode, le téléphone
           transcrit ta phrase puis l'envoie. Avec, l'audio part en continu chez Google, qui gère
           lui-même la fin de tour, l'interruption et la transcription — plus fluide en principe,
           encore en essai en pratique.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        </p>
         <Interrupteur
           titre="Mode conversation Live"
           description={
@@ -255,6 +253,6 @@ export function ModeLive() {
 
         {erreur && <p className="text-xs text-destructive">{erreur}</p>}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

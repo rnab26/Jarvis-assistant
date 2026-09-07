@@ -11,7 +11,6 @@ import { CockpitPage } from "@/pages/CockpitPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { DocumentsPage } from "@/pages/DocumentsPage"
 import { LoginPage } from "@/pages/LoginPage"
-import { MemoirePage } from "@/pages/MemoirePage"
 import { SettingsPage } from "@/pages/SettingsPage"
 import { THEME_KEY } from "@/lib/theme"
 import { DELAI_MAX_MS, quoiRendre, type OuOnEst } from "@/lib/demarrageOverlay"
@@ -83,7 +82,10 @@ function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/cockpit" element={<CockpitPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
-        <Route path="/memoire" element={<MemoirePage />} />
+        {/* L'onglet Mémoire, séparé jusqu'au 7 sept. 2026, est replié dans
+            Paramètres (section « Mémoire ») à la demande de Raphaël. Ce
+            renvoi garde valide tout lien déjà ouvert vers l'ancienne page. */}
+        <Route path="/memoire" element={<Navigate to="/settings" replace />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import {
   CLE_LECTURE_NOTIFICATIONS,
   lectureVoulue,
@@ -83,16 +84,13 @@ export function LectureNotifications() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Lire tes notifications</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Lire tes notifications">
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
           Pour que Jarvis puisse te dire ce qu'il y a dans un mail ou un message affiché à
           l'écran, si tu le lui demandes. Il ne lit rien tout seul, et rien du contenu n'est
           jamais enregistré.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        </p>
         <Interrupteur
           titre="Jarvis peut lire mes notifications si je le demande"
           actif={voulue}
@@ -154,6 +152,6 @@ export function LectureNotifications() {
           </div>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

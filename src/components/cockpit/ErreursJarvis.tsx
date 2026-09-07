@@ -13,7 +13,7 @@ import { LoadError } from "@/components/LoadError"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CardContent } from "@/components/ui/card"
-import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Textarea } from "@/components/ui/textarea"
 import { ErreurFormDialog } from "@/components/cockpit/ErreurFormDialog"
 import {

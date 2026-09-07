@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core"
-import { Search, Trash2 } from "lucide-react"
+import { LogOut, Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
@@ -25,8 +25,12 @@ import { Reinitialiser } from "@/components/settings/Reinitialiser"
 import { Section, sectionCorrespond } from "@/components/settings/Section"
 import { Theme } from "@/components/settings/Theme"
 import { Interrupteur } from "@/components/settings/Interrupteur"
+import { SanteMemoire } from "@/components/memoire/SanteMemoire"
+import { SouvenirsListe } from "@/components/memoire/SouvenirsListe"
+import { ConversationsRecentes } from "@/components/memoire/ConversationsRecentes"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { JarvisCore, CORE_IMAGE_CHANGEE, type CoreEtat } from "@/components/JarvisCore"
 import { detourerCore, ecrireCoreImage, lireCoreImage } from "@/lib/coreImage"
@@ -38,7 +42,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useAuth } from "@/hooks/useAuth"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import { useEchanges } from "@/hooks/useEchanges"
+import { useSanteMemoire } from "@/hooks/useSanteMemoire"
+import { useSouvenirs } from "@/hooks/useSouvenirs"
 import type { UpdateStatus } from "@/hooks/useUpdateCheck"
 import { useSpeechSynthesis, type SpeechSynthesisVoice } from "@/hooks/useSpeechSynthesis"
 import {
@@ -116,9 +124,9 @@ const SECTIONS = {
   memoire: {
     cle: "memoire",
     titre: "Mémoire",
-    resume: "Combien de temps il garde tes conversations",
+    resume: "Ce qu'il retient, tes conversations, combien de temps",
     motsCles:
-      "mémoire conversation mot-à-mot historique échanges garder conserver effacer purge durée 7 30 90 jours sans limite souvenirs oubli",
+      "mémoire conversation mot-à-mot historique échanges garder conserver effacer purge durée 7 30 90 jours sans limite souvenirs oubli corriger périmé personne dossier engagement préférence fait ne retient plus rien panne",
   },
   cockpit: {
     cle: "cockpit",
@@ -136,8 +144,9 @@ const SECTIONS = {
   comptes: {
     cle: "comptes",
     titre: "Comptes et connexions",
-    resume: "Google",
-    motsCles: "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation",
+    resume: "Ton compte, déconnexion, Google",
+    motsCles:
+      "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation déconnexion déconnecter se déconnecter sortir quitter email adresse",
   },
 } as const
 
@@ -212,17 +221,14 @@ function RappelsGeolocalises() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Rappels de lieu : géolocalisation réelle</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Rappels de lieu : géolocalisation réelle">
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
           En plus du déclenchement par la conversation (toujours actif), Jarvis peut te prévenir
           automatiquement en arrivant près d'un lieu enregistré — même sans lui parler. Utilise
           l'API Geofencing d'Android (pas de suivi GPS continu, la plus économe en batterie pour
           ça), mais consomme quand même plus que sans. Désactivé par défaut.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+        </p>
         <Interrupteur
           titre="Me prévenir en arrivant sur place"
           description="Utilise la position du téléphone, en plus du déclenchement par la conversation."
@@ -249,7 +255,30 @@ function RappelsGeolocalises() {
         )}
         {erreur && <p className="text-sm text-destructive">{erreur}</p>}
       </CardContent>
-    </Card>
+    </CarteRepliable>
+  )
+}
+
+/**
+ * Son compte Jarvis : l'e-mail de connexion, et la déconnexion — remontée
+ * depuis l'en-tête de l'app le 7 sept. 2026 (demande de Raphaël : « intègre
+ * la déconnexion du compte » dans Paramètres plutôt qu'un bouton permanent en
+ * haut de l'écran). Ouverte par défaut : c'est une action qu'on cherche vite,
+ * pas un réglage qu'on pose une fois.
+ */
+function MonCompte() {
+  const { session, signOut } = useAuth()
+
+  return (
+    <CarteRepliable titre="Ton compte" ouverteParDefaut>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">{session?.user.email}</p>
+        <Button variant="outline" size="sm" className="w-fit" onClick={signOut}>
+          <LogOut className="size-4" />
+          Déconnexion
+        </Button>
+      </CardContent>
+    </CarteRepliable>
   )
 }
 
@@ -268,15 +297,12 @@ function CompteGoogle() {
   const peutGmail = account?.scopes.includes("gmail") ?? false
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Compte Google</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Compte Google">
+      <CardContent className="flex flex-col items-start gap-3">
+        <p className="text-sm text-muted-foreground">
           Donne à Jarvis l'accès à ton agenda et à tes mails, pour qu'il puisse consulter tes
           rendez-vous, en créer, et lire ou envoyer un message quand tu le lui demandes.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col items-start gap-3">
+        </p>
         {loading ? (
           <p className="text-sm text-muted-foreground">Vérification…</p>
         ) : connected ? (
@@ -338,7 +364,7 @@ function CompteGoogle() {
         )}
         {error && <p className="text-sm text-destructive">{error}</p>}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }
 
@@ -432,15 +458,12 @@ function CoeurDeJarvis() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Le cœur de Jarvis</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Le cœur de Jarvis">
+      <CardContent className="flex flex-col items-center gap-4">
+        <p className="text-center text-sm text-muted-foreground">
           Le réacteur affiché sous le micro. Il bat en permanence, s'emballe quand Jarvis
           écoute, envoie des ondes quand il parle et tourne pendant qu'il réfléchit.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col items-center gap-4">
+        </p>
         <JarvisCore etat={apercu} taille={128} />
 
         <div className="flex flex-wrap justify-center gap-1.5">
@@ -475,11 +498,12 @@ function CoeurDeJarvis() {
 
         {erreur && <p className="text-sm text-destructive">{erreur}</p>}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }
 
 export function SettingsPage() {
+  const { session } = useAuth()
   // Les dates des conversations gardées : la carte « Mémoire » en a besoin
   // pour annoncer combien une purge effacerait, avant qu'il confirme.
   const datesEchanges = useDatesEchanges()
@@ -487,6 +511,11 @@ export function SettingsPage() {
   // combien il me reste de crédit et à combien de temps de discussion ça
   // équivaut ».
   const consommationState = useConsommation()
+  // La section « Mémoire », repliée depuis l'ancien onglet dédié : le témoin
+  // (panne silencieuse), ce que Jarvis retient, et le mot-à-mot récent.
+  const santeMemoire = useSanteMemoire(session?.user.id)
+  const souvenirsState = useSouvenirs(session?.user.id)
+  const echangesState = useEchanges(session?.user.id)
   const {
     wakeWordState,
     dialogueState,
@@ -620,7 +649,7 @@ export function SettingsPage() {
         ouverteParDefaut
         badge={<BadgeMaj status={updateState.status} />}
       >
-        <MettreAJour update={updateState} majWeb={majWebState} />
+        <MettreAJour update={updateState} majWeb={majWebState} ouverteParDefaut />
 
         <Nouveautes items={recentChanges} />
 
@@ -634,18 +663,15 @@ export function SettingsPage() {
       </Section>
 
       <Section {...SECTIONS.voix} filtre={recherche}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Voix de Jarvis</CardTitle>
-            <CardDescription>
+        <CarteRepliable titre="Voix de Jarvis">
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
               Choisis parmi les voix déjà installées sur l'appareil (gratuit, hors-ligne). Il n'y a
               pas de bouton pour importer un échantillon : ces voix ne peuvent pas être clonées à
               partir d'un enregistrement, c'est une limite du téléphone, pas un réglage qui
               manquerait ici. Une voix construite sur mesure passerait par un service payant, à
               chaque phrase — une décision à part, pas encore prise.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+            </p>
             <Interrupteur
               titre="Jarvis répond à voix haute"
               description={
@@ -730,18 +756,15 @@ export function SettingsPage() {
               </p>
             )}
           </CardContent>
-        </Card>
+        </CarteRepliable>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Rythme de la discussion</CardTitle>
-            <CardDescription>
+        <CarteRepliable titre="Rythme de la discussion">
+          <CardContent className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
               Jarvis n'attend plus qu'Android décide que tu as fini de parler : c'est ce réglage qui
               en décide. Raccourcis la pause s'il te semble lent à répondre, allonge-la s'il te
               coupe la parole.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
+            </p>
             <ReglageVoix
               id="rythme-pause"
               label="Pause tolérée quand tu parles"
@@ -773,20 +796,17 @@ export function SettingsPage() {
               Réglages d'origine
             </Button>
           </CardContent>
-        </Card>
+        </CarteRepliable>
 
         <ModeLive />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Mot-clé de réveil "Jarvis"</CardTitle>
-            <CardDescription>
+        <CarteRepliable titre='Mot-clé de réveil "Jarvis"'>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
               Une fois activé, dis "Jarvis" pour démarrer une commande sans toucher le bouton
               micro — tant que l'app est ouverte à l'écran (pas en arrière-plan, écran éteint).
               Consomme plus de batterie/données que l'usage normal.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </p>
             <Interrupteur
               titre="Écouter le mot-clé « Jarvis »"
               description="Le micro reste à l'écoute tant que l'app est ouverte à l'écran."
@@ -794,18 +814,15 @@ export function SettingsPage() {
               onChange={wakeWordState.setEnabled}
             />
           </CardContent>
-        </Card>
+        </CarteRepliable>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Ce qu'il entend de travers</CardTitle>
-            <CardDescription>
+        <CarteRepliable titre="Ce qu'il entend de travers">
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
               La dictée écorche certains mots, surtout les noms propres. Reprends Jarvis à voix
               haute — "ce n'est pas Avirail, c'est Avihail" — et il corrigera tout seul les fois
               suivantes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </p>
             {pronunciationsState.pronunciations.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Aucune correction pour l'instant.
@@ -839,19 +856,16 @@ export function SettingsPage() {
               </ul>
             )}
           </CardContent>
-        </Card>
+        </CarteRepliable>
       </Section>
 
       <Section {...SECTIONS.taches} filtre={recherche}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Widget d'écran d'accueil</CardTitle>
-            <CardDescription>
+        <CarteRepliable titre="Widget d'écran d'accueil">
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
               Ce que le widget Android affiche : nombre de tâches, urgentes, et les prochaines à
               faire. Le widget se met à jour dès que tu changes un réglage ici.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+            </p>
             <div className="flex items-center gap-3">
               <span className="text-sm text-muted-foreground">Tâches affichées</span>
               <Select
@@ -900,19 +914,16 @@ export function SettingsPage() {
               onChange={(actif) => widgetState.setConfig({ urgentOnly: actif })}
             />
           </CardContent>
-        </Card>
+        </CarteRepliable>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Rappels liés à un lieu</CardTitle>
-            <CardDescription>
+        <CarteRepliable titre="Rappels liés à un lieu">
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
               Dis à Jarvis "retiens que quand je parle de [lieu], rappelle-moi [ceci]" — la
               prochaine fois que tu mentionnes ce lieu en lui parlant, il te le rappellera dans sa
               réponse. Déclenché par la conversation par défaut ; active la géolocalisation
               ci-dessous pour un déclenchement automatique en plus.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </p>
             {placeRemindersState.placeReminders.length === 0 ? (
               <p className="text-sm text-muted-foreground">Aucun rappel de lieu pour l'instant.</p>
             ) : (
@@ -944,7 +955,7 @@ export function SettingsPage() {
               </ul>
             )}
           </CardContent>
-        </Card>
+        </CarteRepliable>
 
         <RappelsGeolocalises />
       </Section>
@@ -971,7 +982,15 @@ export function SettingsPage() {
       </Section>
 
       <Section {...SECTIONS.memoire} filtre={recherche}>
+        {/* Repliée depuis l'onglet Mémoire, séparé jusqu'au 7 sept. 2026 —
+            demande de Raphaël : « intègre la mémoire de Jarvis » dans
+            Paramètres. Le témoin reste hors carte, toujours visible dès que
+            la section est ouverte : une mémoire en panne ne doit pas se
+            cacher derrière un clic de plus. */}
+        <SanteMemoire api={santeMemoire} />
+        <SouvenirsListe api={souvenirsState} />
         <Memoire api={datesEchanges} />
+        <ConversationsRecentes api={echangesState} />
       </Section>
 
       <Section {...SECTIONS.cockpit} filtre={recherche}>
@@ -987,6 +1006,7 @@ export function SettingsPage() {
       </Section>
 
       <Section {...SECTIONS.comptes} filtre={recherche}>
+        <MonCompte />
         <CompteGoogle />
       </Section>
 

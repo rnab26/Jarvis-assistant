@@ -11,7 +11,8 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import {
   AUTORISATIONS,
   Autorisations as PontAutorisations,
@@ -308,18 +309,19 @@ export function CarteAutorisations() {
   }, [a])
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <CarteRepliable
+      titre={
+        <span className="flex items-center gap-2">
           <ShieldCheck className="size-4" aria-hidden />
           Ce que Jarvis a le droit de faire
-        </CardTitle>
-        <CardDescription>
+        </span>
+      }
+    >
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
           Les autorisations du téléphone, dites par ce qu'elles permettent. À accorder ou à
           retirer quand tu veux.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
         <ListeAutorisations
           etats={a.etats}
           chargement={a.chargement}
@@ -331,6 +333,6 @@ export function CarteAutorisations() {
           onReessayer={a.relire}
         />
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

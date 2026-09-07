@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Interrupteur } from "@/components/settings/Interrupteur"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { useAuth } from "@/hooks/useAuth"
 import { usePassesAutonomes } from "@/hooks/usePassesAutonomes"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
@@ -69,16 +70,13 @@ function Carte({ api }: { api: PassesApi }) {
   const visibles = tout ? passes : passes.slice(0, 3)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Sessions autonomes</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Sessions autonomes">
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
           Une session s'ouvre toute seule chaque heure et prend un chantier marqué « libre ». Elle
           se retire aussitôt si une autre session travaille déjà, s'il n'y a rien à prendre, ou si
           tu éteins ici.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+        </p>
         <Interrupteur
           titre="Travailler sans moi"
           description="Éteint, plus aucune session ne démarrera d'elle-même."
@@ -144,6 +142,6 @@ function Carte({ api }: { api: PassesApi }) {
           dépense).
         </p>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { useAuth } from "@/hooks/useAuth"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import {
@@ -91,16 +92,13 @@ export function Memoire({ api }: { api: DatesEchangesApi }) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Combien de temps Jarvis garde tes conversations</CardTitle>
-        <CardDescription>
-          Le mot-à-mot de ce que vous vous dites, qu'il relit pour répondre à « on avait parlé de
-          quoi pour la villa Dan ? ». Ce que Jarvis RETIENT de toi — les souvenirs de l'onglet
-          Mémoire — n'est jamais effacé par ce réglage.
-        </CardDescription>
-      </CardHeader>
+    <CarteRepliable titre="Combien de temps Jarvis garde tes conversations">
       <CardContent className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">
+          Le mot-à-mot de ce que vous vous dites, qu'il relit pour répondre à « on avait parlé de
+          quoi pour la villa Dan ? ». Ce que Jarvis RETIENT de toi — les souvenirs, juste au-dessus
+          — n'est jamais effacé par ce réglage.
+        </p>
         <div className="flex flex-wrap gap-1.5">
           {RETENTIONS.map((r) => {
             const actif = choix === r.valeur
@@ -176,11 +174,11 @@ export function Memoire({ api }: { api: DatesEchangesApi }) {
         ) : (
           <p className="text-xs text-muted-foreground">
             {dates.length} conversation{dates.length > 1 ? "s" : ""} gardée
-            {dates.length > 1 ? "s" : ""} aujourd'hui. Tu peux les lire et en effacer depuis
-            l'onglet Mémoire.
+            {dates.length > 1 ? "s" : ""} aujourd'hui. Tu peux les lire et en effacer juste
+            au-dessous, dans « Tes conversations récentes ».
           </p>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

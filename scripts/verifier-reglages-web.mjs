@@ -62,6 +62,17 @@ const verifier = (nom, ok, detail = "") => {
 }
 const pause = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// Depuis le 7 sept. 2026, chaque fonctionnalité de Paramètres est sa propre
+// `CarteRepliable` (repliée par défaut) — plus un `<Card>` toujours ouvert
+// sous la barre de section. Il faut donc l'ouvrir avant de lire son contenu,
+// comme le ferait Raphaël. Le bouton de bascule est le premier bouton DANS
+// une vraie Card ([data-slot="card"]) — ça distingue la carte de la simple
+// barre de la Section qui l'entoure dans ce banc, qui n'est pas une Card.
+async function deplier(locator) {
+  const bouton = locator.locator('[data-slot="card"] button').first()
+  if (await bouton.count()) await bouton.click()
+}
+
 let navigateur
 try {
   await attendreServeur()
@@ -90,6 +101,7 @@ try {
   const parApk = page.locator("#maj-apk")
 
   // ── Permission : on demande avant de promettre quoi que ce soit ──
+  await deplier(refuse)
   verifier(
     "sans permission, l'écran propose de l'accorder",
     await refuse.getByRole("button", { name: "Autoriser les notifications" }).isVisible(),
@@ -101,6 +113,7 @@ try {
   )
 
   // ── Coupées côté système : ne pas laisser dans une impasse ──
+  await deplier(coupees)
   verifier(
     "des notifications coupées par Android sont signalées",
     await coupees.getByText(/coupées dans les réglages du téléphone/).isVisible(),
@@ -112,6 +125,7 @@ try {
   )
 
   // ── Ce qu'Android peut retarder, il faut le dire ──
+  await deplier(alarmes)
   verifier(
     "l'autorisation « alarmes et rappels » manquante est signalée",
     await alarmes.getByText(/Alarmes et rappels/).isVisible(),
@@ -119,6 +133,7 @@ try {
   )
 
   // ── Les cinq notifications qu'il a acceptées, et elles seules ──
+  await deplier(ok)
   for (const ligne of [
     "L'heure d'une tâche arrive",
     "Le point du matin",
@@ -180,6 +195,7 @@ try {
   const autonomesSilence = page.locator("#autonomes-silence")
   const autonomesPanne = page.locator("#autonomes-panne")
 
+  await deplier(autonomes)
   verifier(
     "l'interrupteur des sessions autonomes est là, et allumé par défaut",
     (await autonomes.getByLabel("Travailler sans moi").isVisible()) &&
@@ -206,15 +222,18 @@ try {
   await autonomes.getByLabel("Travailler sans moi").click()
   await pause(200)
 
+  await deplier(autonomesVide)
   verifier(
     "aucune passe encore enregistrée : l'écran vide est traité",
     await autonomesVide.getByText(/En attente de la première passe/).isVisible(),
   )
+  await deplier(autonomesSilence)
   verifier(
     "deux jours de silence ne se lisent PAS comme « rien à faire »",
     await autonomesSilence.getByText(/Plus rien ne passe/).isVisible(),
     "c'est exactement le cas où le déclencheur est mort sans que personne le voie",
   )
+  await deplier(autonomesPanne)
   verifier(
     "une lecture en échec ne se lit pas comme une absence de passe",
     await autonomesPanne.getByText(/Impossible de lire les passes/).isVisible(),
@@ -230,6 +249,7 @@ try {
   const consoVide = page.locator("#conso-vide")
   const consoPanne = page.locator("#conso-panne")
 
+  await deplier(conso)
   verifier(
     "la carte dit ses phrases du jour et ses jetons",
     (await conso.getByText("40 phrases").isVisible()) &&
@@ -262,6 +282,7 @@ try {
     "sinon la vraie alerte, le jour venu, ne se distinguerait plus du décor",
   )
 
+  await deplier(consoSecours)
   verifier(
     "quand ses phrases passent par un secours, la carte le dit",
     (await consoSecours.getByText("sur un secours").isVisible()) &&
@@ -269,12 +290,14 @@ try {
     "le rang vient du serveur : l'app ne peut pas lire le secret GEMINI_MODELE",
   )
 
+  await deplier(consoVide)
   verifier(
     "une journée sans phrase le dit, sans faire croire à une panne",
     (await consoVide.getByText("Aucune phrase aujourd'hui.").isVisible()) &&
       (await consoVide.getByText(/ne veut pas dire que Jarvis n'a jamais servi/).isVisible()),
   )
 
+  await deplier(consoPanne)
   verifier(
     "une lecture en échec ne se lit PAS comme « rien consommé »",
     await consoPanne.getByText(/Ce n'est pas « rien consommé »/).isVisible(),
@@ -289,6 +312,7 @@ try {
   const memoireVide = page.locator("#memoire-vide")
   const memoirePanne = page.locator("#memoire-panne")
 
+  await deplier(memoire)
   verifier(
     "la durée de conservation est réglable, sans limite comprise",
     (await memoire.getByRole("button", { name: "Garder Sans limite" }).isVisible()) &&
@@ -328,6 +352,7 @@ try {
       .getAttribute("aria-pressed")) === "true",
   )
 
+  await deplier(memoireVide)
   await memoireVide.getByRole("button", { name: "Garder 7 jours" }).click()
   await pause(250)
   verifier(
@@ -338,6 +363,7 @@ try {
   await page.getByRole("button", { name: "Annuler" }).first().click()
   await pause(250)
 
+  await deplier(memoirePanne)
   await memoirePanne.getByRole("button", { name: "Garder 7 jours" }).click()
   await pause(250)
   verifier(
@@ -425,6 +451,7 @@ try {
   await pause(200)
 
   // ── La mise à jour : rapide quand c'est possible, franche quand ça ne l'est pas ──
+  await deplier(rapide)
   verifier(
     "quand la mise à jour rapide est possible, c'est elle qu'on propose",
     await rapide.getByRole("button", { name: "Mettre à jour maintenant" }).isVisible(),
@@ -440,9 +467,10 @@ try {
     await rapide.getByText("Appliquer les mises à jour rapides toute seule").isVisible(),
   )
 
+  await deplier(parApk)
   verifier(
     "quand elle ne l'est pas, on propose l'APK",
-    await parApk.getByRole("button", { name: "Mettre à jour" }).isVisible(),
+    await parApk.getByRole("button", { name: "Mettre à jour", exact: true }).isVisible(),
   )
   verifier(
     "et on dit pourquoi",
@@ -476,6 +504,7 @@ try {
 
   // ── Le mode Live, réglable depuis Paramètres ──
   const live = page.locator("#live")
+  await deplier(live)
   verifier(
     "le mode Live se règle depuis Paramètres",
     await live.getByLabel("Mode conversation Live").isVisible(),
@@ -546,6 +575,7 @@ try {
 
   // ── Le thème : la palette sombre existait, rien ne pouvait l'allumer ──
   const theme = page.locator("#theme")
+  await deplier(theme)
   verifier(
     "les trois choix de thème sont proposés",
     (await theme.getByRole("button", { name: "Clair" }).isVisible()) &&
@@ -574,7 +604,10 @@ try {
   // ── Remettre les réglages par défaut ──
   await page.evaluate(() => localStorage.setItem("jarvis_voice_rate", "1.75"))
   const reinit = page.locator("#reinit")
-  await reinit.getByRole("button", { name: "Remettre les réglages par défaut" }).click()
+  await deplier(reinit)
+  // .last() : le titre de la carte (bouton de bascule) reprend le même texte
+  // que le bouton d'action qu'elle contient — c'est ce dernier qu'on veut.
+  await reinit.getByRole("button", { name: "Remettre les réglages par défaut" }).last().click()
   await pause(200)
   verifier(
     "la remise à zéro demande confirmation",
@@ -599,6 +632,7 @@ try {
 
   // ── La page de confidentialité, atteignable depuis l'app ──
   const confid = page.locator("#confidentialite")
+  await deplier(confid)
   const lien = confid.getByRole("link", { name: /Lire la page de confidentialité/ })
   verifier("la page de confidentialité est atteignable depuis Paramètres", await lien.isVisible())
   verifier(
@@ -614,6 +648,7 @@ try {
   // est l'APK installée, sinon Raphaël cherche dans les réglages du téléphone
   // un réglage qui ne peut pas y être.
   const assistVieux = page.locator("#assistant-ancien")
+  await deplier(assistVieux)
   await assistVieux.getByText(/ne sait pas encore se déclarer/).waitFor({ timeout: 5000 })
   verifier(
     "APK trop ancienne : la carte dit que c'est la version installée qui bloque",
@@ -630,6 +665,7 @@ try {
   // de Samsung, qui ne regarde que le VoiceInteractionService. La carte doit
   // dire d'installer l'APK, pas « Jarvis peut être choisi ».
   const assistSansService = page.locator("#assistant-sans-service")
+  await deplier(assistSansService)
   verifier(
     "activité déclarée mais pas le service : la carte dit encore d'installer l'APK",
     await assistSansService.getByText(/ne sait pas encore se déclarer/).isVisible(),
@@ -642,6 +678,7 @@ try {
   )
 
   const assistCandidat = page.locator("#assistant-candidat")
+  await deplier(assistCandidat)
   verifier(
     "APK à jour mais assistant non choisi : la carte le dit",
     await assistCandidat.getByText(/ce n'est pas lui pour l'instant/).isVisible(),
@@ -657,6 +694,7 @@ try {
   )
 
   const assistActif = page.locator("#assistant-actif")
+  await deplier(assistActif)
   verifier(
     "quand Jarvis est l'assistant, la carte le confirme",
     await assistActif.getByText("Jarvis est l'assistant du téléphone.").isVisible(),

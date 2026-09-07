@@ -3,7 +3,8 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { CORE_IMAGE_CHANGEE } from "@/components/JarvisCore"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { CLES_REGLAGES, ecrireReglage, REGLAGES_RESTAURES } from "@/lib/reglages"
 
 /**
@@ -49,14 +50,11 @@ export function Reinitialiser() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Remettre les réglages par défaut</CardTitle>
-        <CardDescription>
-          Repart de la configuration d'origine si quelque chose a été réglé de travers.
-        </CardDescription>
-      </CardHeader>
+    <CarteRepliable titre="Remettre les réglages par défaut">
       <CardContent className="flex flex-col items-start gap-3">
+        <p className="text-sm text-muted-foreground">
+          Repart de la configuration d'origine si quelque chose a été réglé de travers.
+        </p>
         {confirmer ? (
           <div className="flex flex-col gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
             <div>
@@ -95,6 +93,6 @@ export function Reinitialiser() {
           </Button>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

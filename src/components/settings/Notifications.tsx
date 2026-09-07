@@ -3,7 +3,8 @@ import { useState } from "react"
 import { toast } from "sonner"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -153,15 +154,12 @@ export function Notifications({ api, taches = [] }: { api: NotificationsApi; tac
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Quand Jarvis te dérange</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Quand Jarvis te dérange">
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
           Ce qu'il a le droit de faire sonner sur ce téléphone, et à quelle heure. Chaque ligne peut
           être coupée séparément, sans toucher aux autres.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+        </p>
         {!etat.disponible ? (
           <p className="text-sm text-muted-foreground">
             Les notifications n'existent que dans l'app Android installée : un site web ne peut pas
@@ -410,7 +408,7 @@ export function Notifications({ api, taches = [] }: { api: NotificationsApi; tac
           notifications pour la même chose, c'est une de trop.
         </p>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }
 

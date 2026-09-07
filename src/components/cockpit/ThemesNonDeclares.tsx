@@ -2,7 +2,7 @@ import { FolderPlus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CardContent } from "@/components/ui/card"
-import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { themesNonDeclares } from "@/lib/themesNonDeclares"
 import type { DevItem, DevSection } from "@/types/database"
 

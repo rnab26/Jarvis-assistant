@@ -3,20 +3,25 @@ import { useState, type ReactNode } from "react"
 import { Card, CardHeader, CardTitle } from "@/components/ui/card"
 
 /**
- * Une carte du cockpit qui s'ouvre et se replie, avec son résumé sur la barre
- * de titre.
+ * Une carte qui s'ouvre et se replie, avec son badge sur la barre de titre —
+ * UN SEUL encadrement par fonctionnalité : le clic sur le titre déplie les
+ * détails DANS la même carte, jamais dans une seconde.
  *
- * POURQUOI ELLE EXISTE, mesuré plutôt que supposé. Sur un écran de téléphone
- * (390 × 844), le cockpit empilait au-dessus du tableau des chantiers : la
+ * Née dans le cockpit, mesurée plutôt que supposée : sur un écran de
+ * téléphone (390 × 844), il empilait au-dessus du tableau des chantiers la
  * fenêtre d'envoi (514 points), « Qui travaille » (132), le journal de bord
- * (424) et le registre des erreurs (56). Le premier chantier commençait donc à
- * 1 632 points du haut — deux écrans pleins à faire défiler avant de voir le
- * résumé par section, celui-là même qui avait été demandé pour ne plus avoir à
- * faire défiler.
+ * (424) et le registre des erreurs (56) — deux écrans pleins avant le premier
+ * chantier. Repliées, ces cartes gardent ce qui compte (titre, badge) et
+ * rendent l'écran au reste.
  *
- * Repliées, ces cartes gardent ce qui compte — leur titre et le compteur qui
- * dit s'il se passe quelque chose — et rendent l'écran au tableau. Rien n'est
- * caché : ce qui appelle une action porte son badge sur la barre de titre.
+ * Partagée avec Paramètres depuis le 7 sept. 2026 : chaque fonctionnalité de
+ * l'onglet y était déjà sa propre `Card` (titre + description + réglages)
+ * TOUJOURS DÉPLIÉE sous la barre repliable de sa section — deux cadres
+ * empilés dès qu'on ouvrait une section, exactement ce que Raphaël a signalé
+ * (« tu clique sur un cadre et ça ouvre un deuxième cadre »). Cette carte
+ * remplace maintenant CE second cadre : la section reste une simple barre de
+ * regroupement, et chaque fonctionnalité à l'intérieur est une seule
+ * `CarteRepliable`, fermée par défaut.
  */
 interface CarteRepliableProps {
   titre: ReactNode

@@ -1,5 +1,6 @@
 import { ExternalLink } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 
 /**
  * Le lien vers la page de confidentialité.
@@ -22,15 +23,12 @@ const URL_CONFIDENTIALITE = "https://rnab26.github.io/Jarvis-assistant/confident
 
 export function Confidentialite() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Confidentialité</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Confidentialité">
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
           Où vivent tes données, ce que Google reçoit quand ton compte est branché, ce que Jarvis
           retient et pendant combien de temps.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+        </p>
         <a
           href={URL_CONFIDENTIALITE}
           target="_blank"
@@ -41,6 +39,6 @@ export function Confidentialite() {
           <ExternalLink className="size-3.5" />
         </a>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

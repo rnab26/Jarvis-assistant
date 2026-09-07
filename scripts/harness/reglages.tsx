@@ -510,7 +510,7 @@ function BancDesReglages() {
           ouverteParDefaut
           badge={<span className="shrink-0 text-xs text-muted-foreground">À jour</span>}
         >
-          <MettreAJour update={updateFactice("up-to-date")} majWeb={majFactice(true)} />
+          <MettreAJour update={updateFactice("up-to-date")} majWeb={majFactice(true)} ouverteParDefaut />
         </Section>
         {[
           ["Autorisations du téléphone", "Ce que Jarvis a le droit de faire"],

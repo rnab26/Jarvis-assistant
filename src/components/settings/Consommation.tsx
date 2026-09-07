@@ -2,7 +2,8 @@ import { Gauge, RefreshCw, TriangleAlert } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { resumerConsommation, type LigneConsommation } from "@/lib/consommationModele"
 import { errorMessage } from "@/lib/errorMessage"
 import { debutFenetre } from "@/lib/ouJenSuis"
@@ -96,18 +97,14 @@ export function Consommation({ api }: { api: ConsommationApi }) {
   const resume = lignes === null ? null : resumerConsommation(lignes)
 
   return (
-    <Card>
-      <CardHeader className="grid-cols-[1fr_auto] items-start gap-2">
-        <span className="min-w-0">
-          <CardTitle>
-            <Gauge className="mr-1.5 inline size-4 align-[-2px] text-muted-foreground" />
-            Ce que Jarvis a consommé aujourd'hui
-          </CardTitle>
-          <CardDescription>
-            Depuis minuit. L'offre Gemini est gratuite : il n'y a pas de solde en argent, seulement
-            des plafonds par minute et par jour — et ils ne se lisent qu'une fois touchés.
-          </CardDescription>
-        </span>
+    <CarteRepliable
+      titre={
+        <>
+          <Gauge className="mr-1.5 inline size-4 align-[-2px] text-muted-foreground" />
+          Ce que Jarvis a consommé aujourd'hui
+        </>
+      }
+      badge={
         <Button
           variant="outline"
           size="sm"
@@ -118,9 +115,13 @@ export function Consommation({ api }: { api: ConsommationApi }) {
           <RefreshCw className={`size-3.5 ${enCours ? "animate-spin" : ""}`} />
           {enCours ? "Lecture…" : "Relire"}
         </Button>
-      </CardHeader>
-
+      }
+    >
       <CardContent className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">
+          Depuis minuit. L'offre Gemini est gratuite : il n'y a pas de solde en argent, seulement
+          des plafonds par minute et par jour — et ils ne se lisent qu'une fois touchés.
+        </p>
         {erreur ? (
           <p className="text-sm text-destructive">
             La consommation n'a pas pu être lue ({erreur}). Ce n'est pas « rien consommé » : on ne
@@ -184,6 +185,6 @@ export function Consommation({ api }: { api: ConsommationApi }) {
           </>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

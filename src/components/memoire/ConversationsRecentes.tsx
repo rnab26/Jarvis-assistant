@@ -3,7 +3,8 @@ import { useMemo, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Input } from "@/components/ui/input"
 import type { EchangesApi } from "@/hooks/useEchanges"
 
@@ -49,26 +50,26 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
   const visibles = filtres.slice(0, limite)
 
   return (
-    <Card>
-      <CardHeader className="gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <CardTitle className="text-base">Vos conversations (sept derniers jours)</CardTitle>
-          <span className="flex-1" />
-          {echanges.length > 0 && (
-            <ConfirmerAction
-              trigger={
-                <Button variant="ghost" size="sm">
-                  <Trash2 className="size-4" />
-                  Tout effacer
-                </Button>
-              }
-              titre="Effacer tout l'historique ?"
-              description={`Les ${echanges.length} échanges gardés seront supprimés. Ce que Jarvis a retenu de toi (les souvenirs, plus haut) n'est pas touché.`}
-              libelleConfirmation="Tout effacer"
-              onConfirmer={toutOublier}
-            />
-          )}
-        </div>
+    <CarteRepliable
+      titre="Vos conversations (sept derniers jours)"
+      badge={
+        echanges.length > 0 && (
+          <ConfirmerAction
+            trigger={
+              <Button variant="ghost" size="sm">
+                <Trash2 className="size-4" />
+                Tout effacer
+              </Button>
+            }
+            titre="Effacer tout l'historique ?"
+            description={`Les ${echanges.length} échanges gardés seront supprimés. Ce que Jarvis a retenu de toi (les souvenirs, plus haut) n'est pas touché.`}
+            libelleConfirmation="Tout effacer"
+            onConfirmer={toutOublier}
+          />
+        )
+      }
+    >
+      <CardContent className="flex flex-col gap-2">
         <p className="text-sm text-muted-foreground">
           Jarvis s'appuie là-dessus quand tu lui demandes de quoi vous aviez parlé. Ça s'efface tout
           seul au bout de sept jours ; tu peux aussi en retirer ce que tu veux tout de suite.
@@ -88,9 +89,6 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
             />
           </div>
         )}
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-2">
         {loading ? (
           <p className="py-6 text-center text-muted-foreground">Chargement...</p>
         ) : error ? (
@@ -152,7 +150,6 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
           </>
         )}
       </CardContent>
-
-    </Card>
+    </CarteRepliable>
   )
 }

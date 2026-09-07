@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Input } from "@/components/ui/input"
 import { Star } from "lucide-react"
 import { ActionsTelephone, type ApplicationInstallee } from "@/lib/actionsTelephone"
@@ -67,15 +68,12 @@ export function ConnecteursIA() {
   const etat = etatConnecteurs(apps === "chargement" ? [] : apps)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tes applications d'IA</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Tes applications d'IA">
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
           Celle que tu choisis ici répond quand tu dis « cherche… » sans nommer personne. Tu peux
           toujours en viser une autre à la voix, en la nommant.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+        </p>
         {apps === "chargement" ? (
           <p className="text-xs text-muted-foreground">Je regarde ce que tu as sur ton téléphone…</p>
         ) : etat.etat === "hors_app" ? (
@@ -186,6 +184,6 @@ export function ConnecteursIA() {
           Jarvis — il la range avec ta question.
         </p>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

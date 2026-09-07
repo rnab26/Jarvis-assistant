@@ -297,7 +297,7 @@ const ACTION_SCHEMA = {
     },
     category_id: {
       type: ["string", "null"],
-      description: "add_task : id de catégorie existant correspondant le mieux, ou null si aucune/pas de correspondance claire. configure_widget : id de catégorie pour filtrer le widget, ou null pour toutes les catégories — n'inclure que si l'utilisateur a précisé une catégorie.",
+      description: "add_task : dès que l'utilisateur nomme une catégorie existante (« dans les Prélèvements », « dans la section Leads »...), mets ICI l'id correspondant de la liste fournie — jamais dans le titre ni les notes, qui ne doivent plus porter cette mention. null seulement si aucune catégorie n'est nommée ou qu'aucune ne correspond clairement. configure_widget : id de catégorie pour filtrer le widget, ou null pour toutes les catégories — n'inclure que si l'utilisateur a précisé une catégorie.",
     },
     max_tasks: {
       type: "number",
@@ -526,6 +526,7 @@ Pour update_task/delete_task, résous task_id depuis la liste de tâches fournie
 Pour update_task/update_dev_item, tout ce qui change va dans "changes", jamais dans les champs de premier niveau : "passe ce chantier en priorité haute" donne changes={"priority":"high"}, "marque-le en cours" donne changes={"status":"in_progress"}. Ne renvoie jamais une action de modification avec un "changes" vide.
 Pour add_task/add_dev_item : si l'utilisateur dicte une phrase longue avec des détails (contexte, raison, précisions), ne mets pas toute la phrase dans "title" — synthétise un titre court (quelques mots) et reformule le reste dans "notes". Si la phrase est déjà courte et ne contient rien de plus que le titre, laisse "notes" à null.
 Pour add_task : si l'utilisateur précise une heure ("à 14h", "ce midi", "à 9h30 demain"), déduis-la dans "due_time" (HH:MM) en plus de "due_date" — jamais d'heure sans date. Sans heure précisée, laisse "due_time" à null.
+Pour add_task : si l'utilisateur nomme une catégorie existante de la liste fournie ("dans les Prélèvements", "dans la section Leads"...), résous "category_id" vers son id — et RETIRE cette mention du "title" et des "notes", qui ne doivent garder que le contenu de la tâche elle-même. Une tâche rangée par erreur dans le titre au lieu de "category_id" reste invisible du filtre par catégorie : c'est une tâche qui semble ne pas avoir été créée.
 Pour save_document : synthétise un nom de fichier court dans "filename", et reformule proprement tout ce que l'utilisateur a dicté comme contenu dans "content".
 Pour configure_widget : ne renvoie que les champs (max_tasks, urgent_only, category_id) que l'utilisateur a explicitement mentionnés — laisse les autres absents plutôt que de les redéfinir à une valeur par défaut.
 Pour add_dev_item : classe le chantier dans un thème. Reprends un thème existant à l'identique dès qu'il convient — c'est ce qui permet de traiter un sujet entier d'un coup au lieu de le rafistoler chantier par chantier. N'en crée un nouveau que si aucun ne colle.

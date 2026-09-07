@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Interrupteur } from "@/components/settings/Interrupteur"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { useVeilleMoteur } from "@/hooks/useVeilleMoteur"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import {
@@ -84,17 +85,14 @@ function Carte({ api }: { api: VeilleApi }) {
   const visibles = tout ? passes : passes.slice(0, 3)
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Le moteur de langue</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Le moteur de langue">
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
           Chaque jour, Jarvis essaie pour de vrai les modèles qui viennent de sortir, et adopte le
           meilleur — mais seulement après l'avoir vu réussir deux jours différents, et il revient
           tout seul en arrière si le nouveau se comporte mal. Rien de ce que tu as réglé ne vit
           dans le modèle : changer de modèle ne te fait rien perdre.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+        </p>
         <Interrupteur
           titre="Suivre les nouveaux modèles"
           description="Éteint, Jarvis garde le modèle actuel quoi qu'il arrive."
@@ -155,6 +153,6 @@ function Carte({ api }: { api: VeilleApi }) {
           moteur payant sans que tu l'aies posé toi-même.
         </p>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

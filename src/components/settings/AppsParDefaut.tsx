@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import {
   CLES_APP,
   CLE_APP_WHATSAPP,
@@ -74,15 +75,12 @@ export function AppsParDefaut() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Tes applications par défaut</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Tes applications par défaut">
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
           Ce que Jarvis utilise sans te redemander. Il te pose la question une seule
           fois, à l'oral ; ici tu vois ce qu'il a retenu et tu peux le changer.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+        </p>
         {/* LES TROIS LIGNES SE CHOISISSENT MAINTENANT ICI, et la liste vient
             du TÉLÉPHONE. Son retour du 6 sept. 2026 : « il a une certaine
             logique de me demander pour un itinéraire quelle application
@@ -184,7 +182,7 @@ export function AppsParDefaut() {
           )}
         </div>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }
 

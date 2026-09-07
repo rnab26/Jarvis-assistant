@@ -132,6 +132,12 @@ try {
   await etat("sante-active").click()
   await pause(200)
 
+  // La carte est repliée par défaut depuis le 7 sept. 2026 (patron
+  // CarteRepliable, partagé avec Paramètres) : il faut l'ouvrir avant de
+  // pouvoir lire son contenu, comme le ferait Raphaël.
+  await page.getByRole("button", { name: /Vos conversations/ }).click()
+  await pause(200)
+
   // ── Ce qu'on voit d'emblée ──
   verifier(
     "la carte dit à quoi sert ce qui est gardé, et combien de temps",

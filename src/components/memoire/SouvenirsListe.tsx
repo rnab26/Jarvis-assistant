@@ -2,18 +2,16 @@ import { Check, Pencil, Trash2, Undo2 } from "lucide-react"
 import { useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
-import { ConversationsRecentes } from "@/components/memoire/ConversationsRecentes"
-import { SanteMemoire } from "@/components/memoire/SanteMemoire"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
-import { useAuth } from "@/hooks/useAuth"
-import { useEchanges } from "@/hooks/useEchanges"
-import { useSanteMemoire } from "@/hooks/useSanteMemoire"
-import { useSouvenirs } from "@/hooks/useSouvenirs"
+import type { useSouvenirs } from "@/hooks/useSouvenirs"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { Souvenir, SouvenirCategorie } from "@/types/database"
+
+type SouvenirsApi = ReturnType<typeof useSouvenirs>
 
 const CATEGORIE_LABEL: Record<SouvenirCategorie, string> = {
   personne: "Personne",
@@ -118,56 +116,56 @@ function LigneSouvenir({
   )
 }
 
-/** Le contrôle de Raphaël sur ce que Jarvis retient : il mémorise en silence,
- * cette page lui permet de relire, corriger et faire oublier. */
-export function MemoirePage() {
-  const { session } = useAuth()
-  const { souvenirs, loading, error, refresh, corriger, oublier, perimer } = useSouvenirs(
-    session?.user.id,
-  )
-  const echanges = useEchanges(session?.user.id)
-  const sante = useSanteMemoire(session?.user.id)
-
+/**
+ * Ce que Jarvis a retenu, groupé par catégorie — extrait de l'ancienne page
+ * dédiée « Mémoire » (7 sept. 2026, repliée dans Paramètres à la demande de
+ * Raphaël : « intègre la mémoire de jarvis » dans les Paramètres plutôt qu'un
+ * onglet séparé).
+ */
+export function SouvenirsListe({ api }: { api: SouvenirsApi }) {
+  const { souvenirs, loading, error, refresh, corriger, oublier, perimer } = api
   const vivants = souvenirs.filter((s) => !s.perime_at)
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* En tête, parce qu'une mémoire morte rend tout le reste de la page
-          trompeur : la liste aurait l'air normale, simplement figée. */}
-      <SanteMemoire api={sante} />
-
-      <p className="text-sm text-muted-foreground">
-        Jarvis retient au fil de vos échanges, sans rien te demander. Voilà tout ce qu'il a gardé —
-        corrige ce qui est faux, fais-lui oublier ce qui ne sert plus. Le mot-à-mot des
-        conversations, lui, disparaît au bout de sept jours.
-      </p>
-
-      {loading ? (
-        <p className="py-8 text-center text-muted-foreground">Chargement...</p>
-      ) : error ? (
-        <LoadError message={error} onRetry={refresh} />
-      ) : souvenirs.length === 0 ? (
-        <p className="py-8 text-center text-muted-foreground">
-          Jarvis n'a encore rien retenu. Parle-lui, il commencera.
+    <CarteRepliable
+      titre="Ce que Jarvis retient"
+      badge={
+        souvenirs.length > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {vivants.length} actif{vivants.length > 1 ? "s" : ""}
+          </span>
+        )
+      }
+    >
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          Jarvis retient au fil de vos échanges, sans rien te demander. Voilà tout ce qu'il a
+          gardé — corrige ce qui est faux, fais-lui oublier ce qui ne sert plus.
         </p>
-      ) : (
-        <>
-          <p className="text-xs text-muted-foreground">
-            {vivants.length} souvenir{vivants.length > 1 ? "s" : ""} actif
-            {vivants.length > 1 ? "s" : ""}
-            {souvenirs.length > vivants.length && `, ${souvenirs.length - vivants.length} périmé(s)`}
+
+        {loading ? (
+          <p className="py-6 text-center text-muted-foreground">Chargement...</p>
+        ) : error ? (
+          <LoadError message={error} onRetry={refresh} />
+        ) : souvenirs.length === 0 ? (
+          <p className="py-6 text-center text-muted-foreground">
+            Jarvis n'a encore rien retenu. Parle-lui, il commencera.
           </p>
-          {ORDRE.map((categorie) => {
-            const groupe = souvenirs.filter((s) => s.categorie === categorie)
-            if (groupe.length === 0) return null
-            return (
-              <Card key={categorie}>
-                <CardHeader>
-                  <CardTitle className="text-base">
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              {vivants.length} souvenir{vivants.length > 1 ? "s" : ""} actif
+              {vivants.length > 1 ? "s" : ""}
+              {souvenirs.length > vivants.length && `, ${souvenirs.length - vivants.length} périmé(s)`}
+            </p>
+            {ORDRE.map((categorie) => {
+              const groupe = souvenirs.filter((s) => s.categorie === categorie)
+              if (groupe.length === 0) return null
+              return (
+                <div key={categorie} className="flex flex-col gap-2 rounded-lg border p-3">
+                  <p className="text-sm font-medium">
                     {CATEGORIE_LABEL[categorie]} ({groupe.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2">
+                  </p>
                   {groupe.map((souvenir) => (
                     <LigneSouvenir
                       key={souvenir.id}
@@ -177,16 +175,12 @@ export function MemoirePage() {
                       onPerimer={perimer}
                     />
                   ))}
-                </CardContent>
-              </Card>
-            )
-          })}
-        </>
-      )}
-
-      {/* Les faits retenus ci-dessus, et le mot-à-mot ci-dessous : Jarvis se
-          sert des deux, Raphaël doit pouvoir contrôler les deux. */}
-      <ConversationsRecentes api={echanges} />
-    </div>
+                </div>
+              )
+            })}
+          </>
+        )}
+      </CardContent>
+    </CarteRepliable>
   )
 }

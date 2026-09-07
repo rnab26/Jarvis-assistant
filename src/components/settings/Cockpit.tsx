@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { ecrireFenetreBilan, lireFenetreBilan } from "@/lib/cockpitPrefs"
 import { FENETRES, type FenetreBilan } from "@/lib/ouJenSuis"
@@ -24,15 +25,12 @@ export function Cockpit() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Ce qui compte comme « livré »</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="Ce qui compte comme « livré »">
+      <CardContent className="flex flex-col gap-2">
+        <p className="text-sm text-muted-foreground">
           En tête du cockpit, « Où j'en suis » donne par section ce qui bouge, ce qui a été livré,
           ce qui t'attend et ce qui dort. Ce réglage ne change que la colonne « livré ».
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+        </p>
         <div className="flex gap-1.5">
           {FENETRES.map(({ valeur, libelle }) => (
             <button
@@ -54,6 +52,6 @@ export function Cockpit() {
           {FENETRES.find((f) => f.valeur === fenetre)?.aide}
         </p>
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

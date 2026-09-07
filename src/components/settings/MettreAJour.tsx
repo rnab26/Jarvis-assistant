@@ -5,7 +5,8 @@ import { toast } from "sonner"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import type { MajWebApi } from "@/hooks/useMajWeb"
 import type { PublishedBuild, UpdateStatus, Verdict } from "@/hooks/useUpdateCheck"
 import { ApkDownloader, type ProgressionTelechargement } from "@/lib/apkDownloader"
@@ -27,6 +28,10 @@ export interface MettreAJourProps {
     recheck: () => Promise<Verdict>
   }
   majWeb: MajWebApi
+  /** Paramètres l'ouvre d'emblée : c'est le bouton qu'il touche le plus, et
+   * sa demande du 5 sept. 2026 (« rehausser ») visait déjà à l'épargner d'un
+   * geste de plus pour l'atteindre. */
+  ouverteParDefaut?: boolean
 }
 
 /** Ce que l'app est en train de faire pendant une mise à jour rapide. Une
@@ -119,7 +124,7 @@ function BarreProgression({ progression }: { progression: ProgressionTelechargem
   )
 }
 
-export function MettreAJour({ update, majWeb }: MettreAJourProps) {
+export function MettreAJour({ update, majWeb, ouverteParDefaut = false }: MettreAJourProps) {
   const { status, published, verifieA, recheck } = update
   const { etat, verdict, etape, progression: progressionWeb, erreur: erreurWeb, auto, setAuto, appliquer, revenir } =
     majWeb
@@ -229,23 +234,20 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
   const enCours = etape !== null
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Mettre à jour l'application</CardTitle>
+    <CarteRepliable titre="Mettre à jour l'application" ouverteParDefaut={ouverteParDefaut}>
+      <CardContent className="flex flex-col items-start gap-3">
         {/* L'explication ne s'affiche QUE quand elle sert à décider, c'est-à-dire
             quand une version attend. Le reste du temps, elle prenait six lignes
             pour ne rien apprendre — et depuis que cette carte est en tête de
             Paramètres, ces six lignes repoussaient tout le reste vers le bas.
             Demande de Raphaël, 5 sept. : « rehausser, mais en compactant ». */}
         {status === "update-available" && (
-          <CardDescription>
+          <p className="text-sm text-muted-foreground">
             {isNative
               ? "La plupart des mises à jour s'appliquent en quelques secondes, sans réinstaller. Seules celles qui touchent le cœur de l'application demandent une nouvelle APK."
               : "Le site est republié à chaque changement : cette page est déjà à jour. Le bouton télécharge l'APK Android."}
-          </CardDescription>
+          </p>
         )}
-      </CardHeader>
-      <CardContent className="flex flex-col items-start gap-3">
         {/* Trois numéros de version tenaient un pavé bordé en permanence. Ils
             ne servent qu'à comprendre un DÉSACCORD entre ce qui tourne et ce
             qui est publié : dépliés quand une version attend, repliés sinon —
@@ -432,6 +434,6 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
           </div>
         )}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }

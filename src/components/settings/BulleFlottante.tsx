@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/CarteRepliable"
 import {
   Bulle,
   CLE_BULLE,
@@ -75,15 +76,12 @@ export function BulleFlottante() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>La bulle Jarvis, par-dessus tout</CardTitle>
-        <CardDescription>
+    <CarteRepliable titre="La bulle Jarvis, par-dessus tout">
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
           Une pastille posée sur l'écran, atteignable depuis n'importe quelle application. Elle
           n'écoute rien tant que tu ne l'as pas touchée.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
+        </p>
         <Interrupteur
           titre="Afficher la bulle"
           actif={voulue && situation === "affichee"}
@@ -101,6 +99,6 @@ export function BulleFlottante() {
 
         {erreur && <p className="text-xs text-destructive">{erreur}</p>}
       </CardContent>
-    </Card>
+    </CarteRepliable>
   )
 }
