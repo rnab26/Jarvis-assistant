@@ -9,6 +9,7 @@ import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
 import { useGoogleAccount } from "@/hooks/useGoogleAccount"
 import { useJarvisErreurs } from "@/hooks/useJarvisErreurs"
 import { useMajWeb } from "@/hooks/useMajWeb"
+import { useNotes } from "@/hooks/useNotes"
 import { useNotifications } from "@/hooks/useNotifications"
 import { usePlaceGeofences } from "@/hooks/usePlaceGeofences"
 import { usePlaceReminders } from "@/hooks/usePlaceReminders"
@@ -26,6 +27,7 @@ type DevItemsState = ReturnType<typeof useDevItems>
 type DevSectionsState = ReturnType<typeof useDevSections>
 type ErreursState = ReturnType<typeof useJarvisErreurs>
 type DocumentsState = ReturnType<typeof useDocuments>
+type NotesState = ReturnType<typeof useNotes>
 type ContactsState = ReturnType<typeof useContacts>
 type PlaceRemindersState = ReturnType<typeof usePlaceReminders>
 type PronunciationsState = ReturnType<typeof usePronunciations>
@@ -45,6 +47,7 @@ interface JarvisDataValue {
   devSectionsState: DevSectionsState
   erreursState: ErreursState
   documentsState: DocumentsState
+  notesState: NotesState
   contactsState: ContactsState
   placeRemindersState: PlaceRemindersState
   pronunciationsState: PronunciationsState
@@ -80,6 +83,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const devSectionsState = useDevSections(userId, devItemsState.refresh)
   const erreursState = useJarvisErreurs(userId)
   const documentsState = useDocuments(userId)
+  const notesState = useNotes(userId)
   const contactsState = useContacts(userId)
   const placeRemindersState = usePlaceReminders(userId)
   const pronunciationsState = usePronunciations(userId)
@@ -132,6 +136,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         devSectionsState,
         erreursState,
         documentsState,
+        notesState,
         contactsState,
         placeRemindersState,
         pronunciationsState,

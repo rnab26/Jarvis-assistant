@@ -154,7 +154,13 @@ export function useTasks(userId: string | undefined) {
   const canalCategories = useRealtimeRefresh("categories", userId, refresh)
   const { statut, enCours, actualiser } = useActualisation(refresh, [canalTaches, canalCategories])
 
-  async function addTask(input: TaskInput) {
+  // Rend l'id de la tâche créée — la commande vocale en a besoin pour
+  // compléter la même tâche juste après (date dictée dans la foulée,
+  // catégorie suggérée puis validée : voir voiceActions.ts). `undefined`
+  // dit honnêtement qu'on n'a rien à compléter : soit rien n'a été écrit
+  // (pas de session), soit l'écriture est partie dans la file d'attente
+  // hors ligne et l'id ne désigne encore rien en base.
+  async function addTask(input: TaskInput): Promise<{ id: string } | undefined> {
     if (!userId) return
     // L'IDENTIFIANT EST FABRIQUÉ ICI, pas par Postgres, et c'est tout le
     // mécanisme : un renvoi porte le même id, donc il ne peut pas créer un
@@ -167,6 +173,7 @@ export function useTasks(userId: string | undefined) {
       )
       if (error) throw error
       await refresh()
+      return { id }
     } catch (e) {
       // ON NE DIT PAS « impossible d'ajouter la tâche » : elle n'est pas
       // perdue, elle est notée. Le toast d'échec de withErrorToast dirait le

@@ -285,6 +285,11 @@ jobs:
       - name: Une dictée atterrit au bon endroit, et se corrige d'un mot
         run: node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts
 
+      # « Pour quand ? » complète la même tâche sans jamais dater la mauvaise ;
+      # la catégorie suggérée attend sa validation, jamais posée en silence.
+      - name: Une tâche sans date se complète, une catégorie suggérée se valide
+        run: node --experimental-strip-types scripts/verifier-tache-date-categorie.ts
+
       # Les applications proposées doivent être celles du TÉLÉPHONE. Une
       # liste écrite dans le code est fausse le jour où il installe autre
       # chose — et « en aucun cas il y a Waze » est exactement ça.

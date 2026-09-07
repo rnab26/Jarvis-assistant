@@ -827,6 +827,78 @@ que « mets-le en chantier ». La prendre pour une correction déplacerait la
 ligne précédente AU LIEU de créer celle-ci — on perdrait sa demande et on
 abîmerait la précédente, d'un coup.
 
+## Une tâche sans date se rappelle d'elle-même ; sans catégorie, il valide
+
+Chantier `eeca8cca`, élargi par Raphaël le 7 sept. 2026 à 13h40 : « mise a
+part la date jarvis doit apprendre a me connaître […] il doit aussi savoir
+définir dans quel contexte quel catégorie de tâche il faut l'ajouter si je ne
+lui dit pas il doit me le suggérer a voix haute et je lui valide ».
+
+**Deux règles différentes, et il ne faut pas les confondre.** La DATE
+manquante suit la règle du 5 sept. (« on annonce, on ne demande pas ») :
+Jarvis dit « sans date, dis-moi pour quand » et n'attend rien. La CATÉGORIE
+supposée, elle, EST une vraie question — sa demande explicite pour ce cas
+précis, l'inverse de la règle générale — et rien n'est écrit avant qu'il
+valide.
+
+- `src/lib/tacheDateEtCategorie.ts` (pur) reconnaît une réponse qui arrive
+  dans la foulée (« vendredi », « demain matin », « oui », « plutôt dans
+  Perso »), et surtout ce qu'il ne faut PAS prendre pour une réponse : une
+  phrase longue qui ne fait que CONTENIR une date ou le nom d'une catégorie
+  en passant (« demain je pars en voyage, ajoute une tâche pour réserver
+  l'hôtel ») est une NOUVELLE demande, pas une réponse — la prendre pour
+  telle daterait ou rangerait la MAUVAISE tâche.
+- `src/lib/suggestionCategorie.ts` (pur) — même algorithme que
+  `suggestionTheme.ts` (recouvrement de vocabulaire, silence quand rien ne se
+  détache), adapté aux tâches et catégories plutôt qu'aux chantiers et
+  sections.
+- `commandeLocale.ts` reconnaît la réponse SUR L'APPAREIL, contre l'état tenu
+  par `voiceActions.ts` (`derniereTacheEnAttente`, même mécanisme que
+  `derniereCreation` pour « non, mets-le en chantier ») — fenêtre de 5
+  minutes, comme la correction de destination.
+- **Le serveur ne devine plus une catégorie en silence.** Avant, la consigne
+  de `voice-command` lui disait de poser `category_id` « le mieux
+  correspondant » sans le dire — l'inverse exact de sa demande. Une seule
+  source de vérité désormais : le serveur ne pose `category_id` que si
+  l'utilisateur l'a dit explicitement, sinon c'est le téléphone qui suggère
+  et attend sa validation.
+- `useTasks().addTask` rend maintenant l'id de la tâche créée (`{ id }`,
+  jamais un objet reconstitué de valeurs qu'on n'a pas vraiment lues) : sans
+  lui, impossible de compléter la MÊME tâche plutôt que d'en créer une
+  seconde.
+
+`scripts/verifier-tache-date-categorie.ts`, essayé à l'envers (désactiver le
+garde-fou contre une phrase longue fait effectivement rougir le contrôle
+avant d'être remis en place).
+
+## Un onglet dédié aux notes personnelles
+
+Chantier `5ad49cc0`, 6 sept. 2026. Sa dictée : « creer un onglet dedie aux
+notes personnelles pour une meilleure organisation, distinct des taches, des
+documents et de la memoire ». Du texte libre, sans échéance et sans que
+Jarvis en fasse quoi que ce soit tout seul — le seul des quatre endroits où
+atterrit du texte à ne rien déclencher.
+
+Table `notes` (migration 0036), même cloisonnement RLS que `tasks`, même
+mécanisme temps réel que `tasks`/`categories`/`dev_items` (REPLICA IDENTITY
+FULL + publication) — sans ça une note créée depuis le web resterait
+invisible dans l'app ouverte. `src/hooks/useNotes.ts`, `NotesPage.tsx`
+(onglet « Notes », entre Docs et Mémoire), `NoteFormDialog.tsx` (créer et
+modifier, même dialogue). Le jeu complet attendu d'une liste : créer, voir,
+modifier, supprimer (`ConfirmerAction`, comme partout dans l'app), chercher
+(titre et contenu), et les états vide / chargement / erreur / « rien trouvé ».
+Vérifié dans un vrai navigateur, écran de téléphone :
+`scripts/verifier-notes-web.mjs`.
+
+**L'action vocale n'est PAS livrée ici, et ce n'est pas un oubli** : elle
+touche `src/lib/commandeLocale.ts` et `supabase/functions/voice-command/`,
+propriété de la session « Le téléphone » — laissée en `dev_log` pour elle.
+`_shared/environnement.ts` (les deux consignes) connaît déjà l'onglet, pour
+que Jarvis n'envoie pas Raphaël vers un écran qu'il ignore. Au passage, la
+même mise à jour a corrigé une description devenue fausse depuis le 7 sept. :
+elle comptait encore Paramètres comme un onglet alors qu'il vit désormais
+dans un bouton en haut à droite.
+
 ## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
 
 Raphaël, 6 sept. 2026 : « il a une certaine logique de me demander pour un
@@ -2401,6 +2473,7 @@ node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton �
 node --experimental-strip-types scripts/verifier-musique.ts       # « je lance » n'est dit que si ça joue vraiment, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
+node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
@@ -2425,6 +2498,7 @@ ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce 
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
+node scripts/verifier-notes-web.mjs                      # l'onglet Notes : créer/modifier/supprimer avec confirmation/chercher, vrai navigateur
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
@@ -2856,6 +2930,52 @@ de preuve à un chantier qui ne marchait pas. Et **un contrôle doit être essay
 supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle lit
 maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
 Playwright du 4 sept.
+
+## Ne plus avoir à cliquer « Installer sans analyser » à chaque mise à jour
+
+Chantier `0847b38f`, 7 sept. 2026. Ses mots, le 6 sept. : « j'en ai marre
+d'avoir à cliquer sur installer sans analyser à chaque mise à jour. »
+Aujourd'hui l'installation passait par un intent `ACTION_VIEW` : Android la
+traite comme une installation manuelle venue d'une source inconnue, d'où
+Play Protect ET l'écran de confirmation, à chaque fois.
+
+**Le chemin qui l'évite** : `PackageInstaller` en mode SESSION, avec
+`setRequireUserAction(SessionParams.USER_ACTION_NOT_REQUIRED)` (API 31+, lu
+dans la doc Android, pas supposé). Cette option ne supprime la fenêtre QUE
+si l'app est déjà son propre « installer of record » pour ce paquet ET
+possède `REQUEST_INSTALL_PACKAGES` (déjà en place). **La toute première
+installation par cette voie redemandera donc encore confirmation** — c'est
+elle qui fait de Jarvis son propre installer, une fois pour toutes.
+
+- `ApkDownloaderPlugin.lancerInstallation` tente `installerSansFenetre`
+  d'abord (SDK 31+ uniquement), et se rabat sur l'ancien intent
+  `ACTION_VIEW` sur toute exception ou en dessous de l'API 31 : jamais de
+  bouton mort si PackageInstaller refuse pour une raison quelconque.
+- `ApkInstallReceiver` (déclaré non exporté dans le manifeste) reçoit le
+  résultat du `commit()`. **`STATUS_PENDING_USER_ACTION` doit être traité
+  dans TOUS les cas**, y compris avec `USER_ACTION_NOT_REQUIRED` posé : sans
+  ce relais, la confirmation de la toute première installation ne
+  s'afficherait jamais, et la mise à jour resterait bloquée en silence.
+- **Le `PendingIntent` du commit doit être `FLAG_MUTABLE`** : depuis
+  Android 12, un `PendingIntent` immuable empêche le système d'y ajouter
+  `EXTRA_STATUS` avant de le diffuser, et le commit échoue en silence —
+  comportement documenté par Android, pas une hypothèse.
+- Condition vérifiée avant d'écrire une ligne de code, comme demandé par la
+  note du chantier : le keystore de debug est **fixe et committé**
+  (`android/keystore/debug.keystore`), pas régénéré à chaque run de CI —
+  sinon la signature changerait à chaque build et rien de tout ça ne
+  marcherait, ni l'installation silencieuse ni même une mise à jour
+  ordinaire.
+
+`scripts/verifier-telechargement-apk.ts` (déjà dans la CI) tient les
+contrôles, essayés à l'envers (retirer `FLAG_MUTABLE` fait rougir le contrôle
+correspondant, remis en place immédiatement après).
+
+**Non vérifiable ici** (pas de SDK Android) : le comportement réel du
+`commit()` sur un appareil. La CI prouve que ça compile, pas que ça
+s'installe sans fenêtre — à confirmer par Raphaël après une installation
+manuelle de cette version (qui redemandera encore confirmation UNE fois),
+puis la suivante devrait passer sans rien demander.
 
 ## Télécharger l'APK : DownloadManager ne peut pas être le seul chemin
 

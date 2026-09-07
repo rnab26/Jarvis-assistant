@@ -72,3 +72,9 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://banc-d-essai.invalid
           VITE_SUPABASE_ANON_KEY: banc-d-essai
+
+      - name: L'onglet Notes, sur un écran de téléphone
+        run: node scripts/verifier-notes-web.mjs
+        env:
+          VITE_SUPABASE_URL: https://banc-d-essai.invalid
+          VITE_SUPABASE_ANON_KEY: banc-d-essai
