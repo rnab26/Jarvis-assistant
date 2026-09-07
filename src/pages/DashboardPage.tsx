@@ -49,7 +49,11 @@ export function DashboardPage() {
       priority: "normal",
       theme: null,
     })
-    await toggleStatus(task)
+    // Une dictée encore en attente de réseau n'existe pas en base : un
+    // update par id ne toucherait aucune ligne, et la tâche repartirait
+    // pour un second chantier au prochain appui (revue Copilot, PR #5).
+    if (task.enAttente) oublierEnAttente(task.id)
+    else await toggleStatus(task)
   }
 
   const filteredTasks =

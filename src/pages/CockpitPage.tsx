@@ -81,6 +81,19 @@ export function CockpitPage() {
   ]
 
   /**
+   * Marque une tâche faite — MÊME quand elle n'est encore qu'une dictée en
+   * attente de réseau (`enAttente`). Repéré par une revue Copilot sur la
+   * PR #5 : `toggleStatus` fait un `update ... where id = ...` en base, et
+   * l'id d'une tâche en attente n'y existe pas encore — la ligne restait
+   * visible et repartait pour un second chantier au prochain appui.
+   * `oublierEnAttente` annule la création en attente à la place.
+   */
+  async function marquerTacheFaite(task: Task) {
+    if (task.enAttente) tasksState.oublierEnAttente(task.id)
+    else await tasksState.toggleStatus(task)
+  }
+
+  /**
    * Une « tâche » qui est en fait une demande à Claude passe dans le cockpit.
    *
    * On crée le chantier ET on marque la tâche faite — on ne la SUPPRIME
@@ -100,7 +113,7 @@ export function CockpitPage() {
       priority: "normal",
       theme: null,
     })
-    await tasksState.toggleStatus(task)
+    await marquerTacheFaite(task)
   }
 
   /** Depuis « Où j'en suis » : le tableau ne garde que cette section, et on
@@ -174,7 +187,7 @@ export function CockpitPage() {
         tasks={tasksState.tasks}
         devItems={devItems}
         onEnFaireUnChantier={enFaireUnChantier}
-        onMarquerFaite={tasksState.toggleStatus}
+        onMarquerFaite={marquerTacheFaite}
       />
 
       <ErreursJarvis
