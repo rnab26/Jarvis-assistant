@@ -302,6 +302,80 @@ try {
   await page.keyboard.press("Escape")
   await pause(300)
 
+  // ── L'ÉCRAN DÉFILE JUSQU'EN BAS, barre de gestes comprise ──
+  // Son signalement du 7 sept. 2026 : « dans les tâches de façon générale,
+  // l'écran ne défile pas jusqu'en bas, ça bouffe un petit peu sur le reste du
+  // texte ». La cause n'est ni une liste bridée en hauteur ni un bouton
+  // flottant — il n'y en a aucun — mais le BORD-À-BORD d'Android : à partir
+  // d'Android 15, et l'app vise targetSdk 36, la WebView dessine sous la barre
+  // de gestes, et c'est au CSS de laisser la place.
+  //
+  // UN CHROMIUM DE BUREAU N'A PAS DE BARRE DE GESTES : `env(safe-area-inset-*)`
+  // y vaut 0, et sans la ligne ci-dessous ce contrôle serait vert quoi qu'il
+  // arrive. On pose donc la variable à la main, à la hauteur d'une vraie barre
+  // de gestes Android (48 points), exactement comme Capacitor la pose sur
+  // l'appareil (SystemBars.injectSafeAreaCSS).
+  {
+    const BARRE = 48
+    await page.evaluate((h) => {
+      document.documentElement.style.setProperty("--marge-sure-bas", `${h}px`)
+    }, BARRE)
+    await pause(200)
+
+    const bas = await page.evaluate(() => getComputedStyle(document.body).paddingBottom)
+    verifier(
+      "la page réserve la hauteur de la barre de gestes en bas",
+      bas === `${BARRE}px`,
+      `padding-bottom du body = ${bas} (attendu ${BARRE}px)`,
+    )
+
+    // Et le contrôle qui compte : après avoir défilé À FOND, le dernier
+    // élément de la page est-il ENTIÈREMENT au-dessus de la barre ?
+    const mesure = await page.evaluate(() => {
+      const scrollable = document.documentElement.scrollHeight > window.innerHeight
+      window.scrollTo(0, document.documentElement.scrollHeight)
+      return { scrollable, hauteur: window.innerHeight }
+    })
+    await pause(300)
+    verifier(
+      "le banc est bien plus haut que l'écran (sinon rien n'est vérifié)",
+      mesure.scrollable,
+      "sans défilement possible, le contrôle suivant serait vert pour rien",
+    )
+
+    // Le plus BAS de ce qui porte du texte, et pas « le dernier enfant du
+    // body » : le dernier enfant est un conteneur de notifications vide, sans
+    // boîte, et le contrôle rendait « élément introuvable » — vert par
+    // accident un jour où il aurait dû être rouge.
+    const plusBas = await page.evaluate(() => {
+      let bas = -1
+      let quoi = ""
+      for (const el of document.body.querySelectorAll("*")) {
+        if (el.children.length > 0) continue // seulement les feuilles
+        const t = (el.textContent ?? "").trim()
+        if (!t) continue
+        const r = el.getBoundingClientRect()
+        if (r.width === 0 || r.height === 0) continue
+        if (r.bottom > bas) {
+          bas = r.bottom
+          quoi = t.slice(0, 60)
+        }
+      }
+      return { bas, quoi }
+    })
+    verifier(
+      "le texte le plus bas reste entièrement au-dessus de la barre de gestes",
+      plusBas.bas > 0 && plusBas.bas <= mesure.hauteur - BARRE + 1,
+      `« ${plusBas.quoi} » descend à ${Math.round(plusBas.bas)} points, la barre commence à ${mesure.hauteur - BARRE}`,
+    )
+
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty("--marge-sure-bas")
+      window.scrollTo(0, 0)
+    })
+    await pause(200)
+  }
+
   await page.getByRole("button", { name: "Supprimer" }).first().click()
   await pause(300)
   await page.getByRole("button", { name: "Supprimer", exact: true }).last().click()

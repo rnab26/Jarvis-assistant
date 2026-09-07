@@ -1,4 +1,5 @@
 import {
+  BatteryCharging,
   Bell,
   Check,
   Download,
@@ -32,6 +33,7 @@ const ICONES: Record<CleAutorisation, LucideIcon> = {
   position: MapPin,
   position_fond: MapPin,
   installer_maj: Download,
+  batterie: BatteryCharging,
 }
 
 /**

@@ -30,10 +30,15 @@ function sansAccents(texte: string): string {
 /**
  * Ce que Jarvis peut ressortir d'une conversation passée.
  *
- * Depuis le chantier caa54df2, il retrouve le mot-à-mot des sept derniers
- * jours par le sens : « on avait parlé de quoi pour la villa Dan ? ». Raphaël
- * doit donc pouvoir voir ce qui est gardé et en effacer ce qu'il veut —
- * sinon la seule façon de le savoir serait de le demander à Jarvis.
+ * Depuis le chantier caa54df2, il retrouve le mot-à-mot par le sens : « on
+ * avait parlé de quoi pour la villa Dan ? ». Raphaël doit donc pouvoir voir
+ * ce qui est gardé et en effacer ce qu'il veut — sinon la seule façon de le
+ * savoir serait de le demander à Jarvis.
+ *
+ * Une ligne peut porter un RÉSUMÉ plutôt que le mot-à-mot d'origine
+ * (chantier 470d9c4d, `echange.resume`) : passé 21 jours, une conversation
+ * est compactée plutôt que supprimée, pour que « sans limite » (le réglage
+ * par défaut, voir la carte Mémoire de Paramètres) reste tenable.
  */
 export function ConversationsRecentes({ api }: { api: EchangesApi }) {
   const { echanges, loading, error, refresh, oublier, toutOublier } = api
@@ -52,7 +57,7 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
     <Card>
       <CardHeader className="gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle className="text-base">Vos conversations (sept derniers jours)</CardTitle>
+          <CardTitle className="text-base">Vos conversations</CardTitle>
           <span className="flex-1" />
           {echanges.length > 0 && (
             <ConfirmerAction
@@ -70,8 +75,10 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
           )}
         </div>
         <p className="text-sm text-muted-foreground">
-          Jarvis s'appuie là-dessus quand tu lui demandes de quoi vous aviez parlé. Ça s'efface tout
-          seul au bout de sept jours ; tu peux aussi en retirer ce que tu veux tout de suite.
+          Jarvis s'appuie là-dessus quand tu lui demandes de quoi vous aviez parlé. Combien de temps
+          c'est gardé se règle dans Paramètres › Mémoire (sans limite par défaut) ; les plus
+          anciennes sont condensées en résumé plutôt qu'effacées. Tu peux retirer ce que tu veux
+          tout de suite.
         </p>
         {echanges.length > 0 && (
           <div className="relative">
@@ -121,7 +128,14 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
                   )}
                   <div className="flex flex-col gap-1 rounded-lg border p-3">
                     <div className="flex items-start gap-2">
-                      <p className="flex-1 text-sm">{echange.transcript}</p>
+                      <div className="flex-1">
+                        {echange.resume && (
+                          <span className="mb-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground uppercase">
+                            Résumé
+                          </span>
+                        )}
+                        <p className="text-sm">{echange.transcript}</p>
+                      </div>
                       <span className="pt-0.5 text-xs whitespace-nowrap text-muted-foreground">
                         {heure(echange.created_at)}
                       </span>

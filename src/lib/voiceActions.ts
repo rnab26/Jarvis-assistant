@@ -1,4 +1,5 @@
 import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
+import { garderReponseEcran } from "@/lib/garderReponseEcran"
 import { cleTheme } from "@/lib/themeChantier"
 import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
 import {
@@ -36,6 +37,11 @@ export type VoiceAction =
    * gratuite et instantanée — et elle doit l'être : c'est une reprise dite
    * dans la foulée, pas une nouvelle demande. */
   | { action: "move_last_entry"; vers: Destination }
+  /** « garde ça », « retiens sa réponse » : reprendre à l'écran la réponse
+   * d'une IA relayée, sans le menu Partager d'Android. Reconnue LOCALEMENT
+   * (commandeLocale.ts), pour la même raison que `move_last_entry` : lire
+   * l'écran est une décision qui vit sur l'appareil (chantier 7d7967b2). */
+  | { action: "garder_reponse_ecran" }
   | { action: "list_tasks"; filter_category_id?: string; filter_status?: TaskStatus }
   | {
       action: "add_task"
@@ -408,6 +414,9 @@ export async function executeVoiceAction(
       derniereCreation = { vers: action.vers, titre, quand: Date.now() }
       return phraseDeplacement(titre, action.vers)
     }
+
+    case "garder_reponse_ecran":
+      return await garderReponseEcran(saveTextDocument)
 
     case "update_task": {
       const task = tasks.find((t) => t.id === action.task_id)

@@ -38,7 +38,7 @@ export function LoginForm() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center p-4">
+    <div className="flex ecran-plein items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Jarvis</CardTitle>

@@ -28,6 +28,7 @@ export type CleAutorisation =
   | "position"
   | "position_fond"
   | "installer_maj"
+  | "batterie"
 
 /** L'état d'une autorisation, tel que le plugin Android le rapporte. */
 export interface EtatAutorisation {
@@ -144,6 +145,17 @@ export const AUTORISATIONS: AutorisationDeclaree[] = [
     usage: "Poser la nouvelle version sans passer par le navigateur.",
     sansElle: "Chaque mise à jour demande de repasser par le téléchargement à la main.",
     technique: "Installer des applications (REQUEST_INSTALL_PACKAGES)",
+    type: "speciale",
+    essentielle: false,
+  },
+  {
+    cle: "batterie",
+    titre: "Ne pas l'endormir en arrière-plan",
+    usage:
+      "Empêche Android d'arrêter le service qui lui permet d'appuyer sur l'écran à ta place (WhatsApp, YouTube...) après un moment sans l'utiliser.",
+    sansElle:
+      "Le clic sur « Envoyer » ou sur une vidéo peut se mettre à échouer en silence après quelques heures, même si tout est bien autorisé.",
+    technique: "Ignorer les optimisations de batterie (REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)",
     type: "speciale",
     essentielle: false,
   },

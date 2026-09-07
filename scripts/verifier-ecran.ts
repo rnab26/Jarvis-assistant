@@ -27,6 +27,7 @@ import {
   phraseEcran,
   rangDemande,
   resumeEcran,
+  texteVisible,
   type ElementEcran,
   type LectureEcran,
 } from "../src/lib/ecranTelephone.ts"
@@ -37,6 +38,7 @@ import {
   lireReglagesListeNoire,
   listeEffective,
 } from "../src/lib/listeNoire.ts"
+import { erreurDepuisEcoute } from "../src/lib/erreurs.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -326,12 +328,91 @@ verifier(
   "sans lui, getWindows() ne rend que la fenêtre active — la nôtre",
 )
 
+// ---------------------------------------------------------------------------
+// « Garde ça » (chantier 7d7967b2) : texteVisible() doit rendre les
+// PARAGRAPHES, pas seulement ce qui se clique — l'inverse de designer().
+// ---------------------------------------------------------------------------
+
+const reponsePerplexity = ecran("ai.perplexity.app.android", [
+  el("Des restaurants de viande réputés à Netanya", false, true),
+  el("Des restaurants de viande réputés à Netanya", false, true), // conteneur + enfant
+  el(
+    "À Netanya, trois adresses reviennent souvent pour la viande : le Meat Bar sur la promenade, Habasta dans le centre, et Carnivore près de la marina.",
+    false,
+    true,
+  ),
+  el("Partager", true, false),
+])
+
+verifier(
+  "texteVisible() garde le texte NON cliquable, pas seulement les boutons",
+  texteVisible(reponsePerplexity).includes("Meat Bar"),
+)
+verifier(
+  "texteVisible() écarte les doublons consécutifs (conteneur + enfant)",
+  texteVisible(reponsePerplexity).split("\n").filter((l) => l === "Des restaurants de viande réputés à Netanya")
+    .length === 1,
+)
+verifier(
+  "texteVisible() garde aussi ce qui EST cliquable (« Partager »)",
+  texteVisible(reponsePerplexity).includes("Partager"),
+)
+verifier(
+  "un écran sans rien affiché rend une chaîne vide",
+  texteVisible(ecran("com.exemple", [])) === "",
+)
+
 const controle = readFileSync("src/lib/controleEcran.ts", "utf8")
 const corpsAgir = controle.slice(controle.indexOf("export async function agirSurEcran"))
 verifier(
   "la liste noire est consultée AVANT toute action, y compris défiler",
   corpsAgir.indexOf("entreeInterdisant") < corpsAgir.indexOf('commande === "retour"'),
   "sur l'écran d'une banque, Jarvis ne fait rien du tout",
+)
+
+// ----------------------------------------- le service endormi, dans le registre
+// Chantier 21cf48d2, 7 sept. 2026 : le clic sur "Envoyer" avait déjà marché
+// trois fois (journal_ecoute), puis "service_inactif" est apparu sans qu'aucun
+// signalement n'existe — cette panne n'était tout simplement pas dans
+// `ratees`. Elle doit maintenant remonter, et se regrouper en UNE ligne quel
+// que soit l'écran où elle survient : ce n'est pas un raté par application,
+// c'est Android qui endort le même service partout.
+const surWhatsApp = erreurDepuisEcoute("ecran_action", {
+  commande: "clic",
+  cible: "Envoyer",
+  resultat: "service_inactif",
+  application: "WhatsApp",
+})
+const surYoutube = erreurDepuisEcoute("ecran_action", {
+  commande: "clic",
+  cible: "la deuxième vidéo",
+  resultat: "service_inactif",
+  application: "YouTube",
+})
+verifier(
+  "le service endormi est signalé, pas avalé en silence",
+  surWhatsApp !== null && surWhatsApp.categorie === "systeme",
+  "sans ça, la panne du 7 sept. ne serait jamais apparue dans le registre",
+)
+verifier(
+  "et il se regroupe en UNE ligne, quelle que soit l'application",
+  surWhatsApp?.titre === surYoutube?.titre,
+  `${surWhatsApp?.titre} / ${surYoutube?.titre}`,
+)
+verifier(
+  "les autres échecs d'écran restent classés par application, eux",
+  erreurDepuisEcoute("ecran_action", {
+    commande: "clic",
+    cible: "x",
+    resultat: "introuvable",
+    application: "WhatsApp",
+  })?.titre !== erreurDepuisEcoute("ecran_action", {
+    commande: "clic",
+    cible: "x",
+    resultat: "introuvable",
+    application: "YouTube",
+  })?.titre,
+  "un bouton introuvable est spécifique à l'écran, contrairement au service endormi",
 )
 
 console.log("")
