@@ -110,6 +110,15 @@ jobs:
       - name: Jarvis se tait pendant une mise à jour, et rien de plus
         run: node --experimental-strip-types scripts/verifier-maj-ecoute.ts
 
+      # Mesuré dans journal_ecoute : 70 rafales de la veille classique en
+      # ~9 minutes PENDANT une conversation Live, parce que l'app a deux
+      # fenêtres (ProtectedShell, AssistantOverlayPage) donc deux tas JS —
+      # le statut React de l'une ne dit rien à l'autre. Un drapeau natif
+      # partagé comble le trou ; la moitié des contrôles garde qu'un appui
+      # volontaire sur le cœur, lui, n'est jamais bloqué par l'autre fenêtre.
+      - name: La veille se tait quand Live tourne dans l'autre fenêtre
+        run: node --experimental-strip-types scripts/verifier-live-croise.ts
+
       - name: La clôture de la conversation à la voix
         run: node --experimental-strip-types scripts/verifier-fin-conversation.ts
 

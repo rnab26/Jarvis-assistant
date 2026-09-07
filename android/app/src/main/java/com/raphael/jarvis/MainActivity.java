@@ -38,6 +38,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(AccessibilitePlugin.class);
         registerPlugin(NotificationsPlugin.class);
         registerPlugin(AnnonceNativePlugin.class);
+        registerPlugin(EtatLivePlugin.class);
         super.onCreate(savedInstanceState);
         handleShareIntent(getIntent());
         handleWidgetIntent(getIntent());

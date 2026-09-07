@@ -36,6 +36,7 @@ import {
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
+import { liveActifQuelquePart } from "@/lib/live/etatLiveNatif"
 import { consigneQuestionApp, suiteDeLaQuestion, type QuestionEnAttente } from "@/lib/questionAppLive"
 import { retourOuAveu } from "@/lib/retourVide"
 import { majEnCours, sAbonnerMaj } from "@/lib/majEnCours"
@@ -864,6 +865,10 @@ export function MicButton({
             // Relu à CHAQUE tour, pas capturé au montage : une mise à jour
             // commence après le démarrage de la boucle, pas avant.
             majEnCours: majEnCoursRef.current,
+            // Relu à CHAQUE tour aussi, et depuis le natif : une conversation
+            // Live ouverte dans L'AUTRE fenêtre (ProtectedShell ou
+            // AssistantOverlayPage) ne se voit dans aucun état React d'ici.
+            liveAilleurs: await liveActifQuelquePart(),
           }) || enRefroidissement(Date.now(), refroidissementRef.current)
         ) {
           await new Promise((r) => setTimeout(r, 400))

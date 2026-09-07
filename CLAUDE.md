@@ -2449,6 +2449,7 @@ node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarv
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
+node --experimental-strip-types scripts/verifier-live-croise.ts  # la veille se tait quand Live tourne dans l'AUTRE fenêtre (ProtectedShell/AssistantOverlayPage), sans réseau
 node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
@@ -3117,6 +3118,57 @@ puis à défaut la liste des applications par défaut, et les derniers pas reste
 écrits sous le bouton. Corollaire pour le chantier f5621562 : **l'appui long ne
 peut pas avoir d'interrupteur dans l'app**, c'est un rôle exclusif d'Android
 qu'une application ne peut ni s'attribuer ni se retirer.
+
+### Troisième piège de la fenêtre d'assistance : deux tas JS, une seule veille voulue
+
+Chantier `2a5b7802`, 7 sept. 2026. Ses mots : « Lorsque le mode conversation
+live est activé, il y a des activations et désactivation de micro
+intempestive ca doit etre régler car ces bruits sont tres dérangeant ».
+
+**MESURÉ dans `journal_ecoute`, pas supposé.** Sur une conversation Live de
+544957 ms, 70 cycles complets de la veille classique (mot-clé « Jarvis »,
+service Android) se sont déclenchés PENDANT — un toutes les ~7-8 secondes, du
+début à la fin. Le commentaire de `MicButton` affirmait pourtant « pendant la
+conversation, l'état n'est jamais au repos, donc la veille attend » — vrai
+dans une seule fenêtre (`statusRef` y reste `listening`/`speaking` tout du
+long, vérifié en lisant `sessionLive.ts`), mais l'app en a DEUX : la coquille
+normale (`ProtectedShell`) et la fenêtre d'assistance (`AssistantOverlayPage`,
+ouverte par l'appui long — devenu son chemin PRINCIPAL vers Jarvis). Cette
+dernière est une VRAIE seconde `BridgeActivity` avec son propre WebView, donc
+son propre tas JS : le `status` React qui bloque la veille d'une fenêtre
+n'existe tout simplement pas dans l'autre. Une Live ouverte dans l'une n'avait
+aucun moyen de le dire à l'autre.
+
+**`EtatLivePlugin.java`** — un champ statique `volatile boolean actif`, posé
+par n'importe laquelle des deux fenêtres et lu par l'autre. Ça marche parce
+que les deux `Activity` vivent dans le MÊME processus (aucun
+`android:process` déclaré, vérifié dans le manifeste) : pas besoin de
+SharedPreferences ni de sondage réseau, un champ statique suffit — même
+principe que `MainActivity.auPremierPlan` pour `AnnonceApresNotification`.
+**Enregistré dans LES DEUX `Activity`** (`MainActivity` ET
+`AssistOverlayActivity`) : l'oublier dans l'une rendrait le correctif inutile
+pour exactement la fenêtre où le bruit se produit — c'est le premier cas que
+`scripts/verifier-live-croise.ts` garde, essayé à l'envers.
+
+**Le drapeau couvre TOUTE la conversation maintenue, pas une connexion.**
+Posé dans `maintenirSessionLive` (avant que la boucle de reconnexion
+démarre) et baissé dans un `finally` qui entoure cette boucle — jamais dans
+`demarrerSessionLive`, qui ne voit qu'UNE connexion : le poser là referait
+retomber le drapeau à faux pendant chaque reconnexion transparente de Google
+(la limite des 15 minutes), exactement le trou qu'on rebouche.
+
+**La boucle de veille lit le drapeau à chaque tour** (`liveAilleurs: await
+liveActifQuelquePart()`, dans `peutEcouterEnVeille` — même famille que
+`majEnCours`), **`handleClick` ne le lit jamais** : un appui volontaire sur
+le cœur reste obéi même si l'autre fenêtre a une Live ouverte, sinon on
+remplacerait un bruit gênant par un Jarvis sourd dans une fenêtre qu'il
+utilise activement — pire. La moitié de `verifier-live-croise.ts` garde ce
+silence-là, pas seulement la détection.
+
+**Non vérifiable ici** (aucun SDK/appareil Android) : que le bruit a
+réellement cessé chez lui. La mesure future se lit pareil —
+`journal_ecoute`, des rafales de veille qui ne se produisent plus pendant une
+fenêtre `live_debut`→`live_fin`.
 
 ## Le web se met à jour tout seul, l'app Android jamais
 

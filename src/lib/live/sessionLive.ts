@@ -6,6 +6,7 @@ import { LecteurAudio, capturerMicro, type CaptureMicro } from "@/lib/live/audio
 import { demandeFinDeConversation } from "@/lib/live/finConversation"
 import { retourOuAveu } from "@/lib/retourVide"
 import { lireClotureLive } from "@/lib/livePrefs"
+import { definirLiveActifNatif } from "@/lib/live/etatLiveNatif"
 
 /**
  * Une conversation Live avec Gemini : l'audio part en continu, Google décide
@@ -303,29 +304,43 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
   let arretDemande = false
   let reconnexions = 0
 
+  // Le drapeau natif couvre TOUTE la durée de la conversation maintenue, y
+  // compris les reconnexions transparentes de Google : sans ce wrapper, un
+  // simple rechargement de session ferait retomber le drapeau à faux pour
+  // quelques centaines de ms à chaque fois. Voir etatLiveNatif.ts —
+  // c'est ce qui manquait pour que la boucle de veille de l'AUTRE fenêtre
+  // (ProtectedShell/AssistantOverlayPage) sache qu'une conversation Live
+  // tourne ici et se taise, au lieu de continuer à réclamer le micro toutes
+  // les ~7-8 s pendant qu'on parle ailleurs.
+  definirLiveActifNatif(true)
+
   const boucle = async () => {
-    while (!arretDemande) {
-      const debut = Date.now()
-      courante = await demarrerSessionLive({
-        ...ev,
-        premierMessage: reconnexions === 0 ? ev.premierMessage : undefined,
-        onEtat: (etat, detail, parRaphael) => {
-          // La fermeture par Google est absorbée ici : le cœur reste sur
-          // « conversation en cours » pendant qu'on rouvre. Pas celle de
-          // Raphaël (appui ou « terminé ») : elle est définitive.
-          if (etat === "fermee" && !parRaphael && !arretDemande && !detail && Date.now() - debut >= DUREE_MIN_POUR_RECONNECTER_MS && reconnexions < RECONNEXIONS_MAX) {
-            ev.onEtat("connexion")
-            return
-          }
-          ev.onEtat(etat, detail, parRaphael)
-        },
-      })
-      const fin = await courante.finie
-      if (arretDemande || fin.parRaphael) return
-      const duree = Date.now() - debut
-      if (fin.raison || duree < DUREE_MIN_POUR_RECONNECTER_MS || reconnexions >= RECONNEXIONS_MAX) return
-      reconnexions++
-      noterEcoute("live_reconnexion", { numero: reconnexions, apres_ms: duree })
+    try {
+      while (!arretDemande) {
+        const debut = Date.now()
+        courante = await demarrerSessionLive({
+          ...ev,
+          premierMessage: reconnexions === 0 ? ev.premierMessage : undefined,
+          onEtat: (etat, detail, parRaphael) => {
+            // La fermeture par Google est absorbée ici : le cœur reste sur
+            // « conversation en cours » pendant qu'on rouvre. Pas celle de
+            // Raphaël (appui ou « terminé ») : elle est définitive.
+            if (etat === "fermee" && !parRaphael && !arretDemande && !detail && Date.now() - debut >= DUREE_MIN_POUR_RECONNECTER_MS && reconnexions < RECONNEXIONS_MAX) {
+              ev.onEtat("connexion")
+              return
+            }
+            ev.onEtat(etat, detail, parRaphael)
+          },
+        })
+        const fin = await courante.finie
+        if (arretDemande || fin.parRaphael) return
+        const duree = Date.now() - debut
+        if (fin.raison || duree < DUREE_MIN_POUR_RECONNECTER_MS || reconnexions >= RECONNEXIONS_MAX) return
+        reconnexions++
+        noterEcoute("live_reconnexion", { numero: reconnexions, apres_ms: duree })
+      }
+    } finally {
+      definirLiveActifNatif(false)
     }
   }
   void boucle()
