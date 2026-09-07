@@ -58,6 +58,13 @@ jobs:
       - name: L'état d'un chantier, tel qu'il le lit sur la ligne
         run: node --experimental-strip-types scripts/verifier-etat-chantier.ts
 
+      # Sa plainte du 7 sept. : « Les taches ne s'affichent pas en live et il
+      # n'y a aucun moyen d'actualiser ». Ce qui casse en silence ici : un
+      # bandeau d'alerte qui s'allumerait à chaque ouverture de l'app — il ne
+      # serait plus lu du tout le jour où le direct tombe pour de bon.
+      - name: Ce qu'on dit d'une liste qui devrait se mettre à jour toute seule
+        run: node --experimental-strip-types scripts/verifier-etat-direct.ts
+
       # Sa demande du 7 sept. : le crayon de l'écran Tâches. Ce qui casse en
       # silence ici : un ordre qui se réarrange tout seul (il retrouverait son
       # écran mélangé sans avoir rien touché), et un renommage accepté qui rend
