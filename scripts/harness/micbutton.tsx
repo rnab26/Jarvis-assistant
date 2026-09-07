@@ -44,7 +44,7 @@ function BancDuCoeur() {
 
   return (
     <MicButton
-      tasksApi={{ tasks, categories: [], addTask: rien, updateTask: rien, deleteTask: rien }}
+      tasksApi={{ tasks, categories: [], addTask: async () => undefined, updateTask: rien, deleteTask: rien }}
       devItemsApi={{ devItems: [], addDevItem: rien, updateDevItem: rien, deleteDevItem: rien, archiveDevItem: rien }}
       devSectionsApi={{ sections: [], addSection: async () => {}, renameSection: async () => 0 }}
       documentsApi={{ documents: [], saveTextDocument: rien }}

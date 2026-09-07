@@ -44,6 +44,7 @@ import type { DevItem } from "@/types/database"
 import {
   type DevSectionsVoiceApi,
   executeVoiceAction,
+  memoireTacheEnAttente,
   type ContactsApi,
   type DevItemsApi,
   type DocumentsApi,
@@ -304,6 +305,8 @@ export function MicButton({
         notes: i.notes,
       })),
       contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
+      categories: tasksApi.categories,
+      tacheEnAttente: memoireTacheEnAttente(),
     })
     if (local) {
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: local.length })

@@ -1,6 +1,13 @@
 import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
 import { cleTheme } from "@/lib/themeChantier"
 import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
+import { suggererCategorie } from "@/lib/suggestionCategorie"
+import {
+  clauseSansDate,
+  clauseSuggestionCategorie,
+  completionExpiree,
+  type TacheEnAttente,
+} from "@/lib/tacheDateEtCategorie"
 import {
   correctionApplicable,
   phraseDeplacement,
@@ -36,6 +43,18 @@ export type VoiceAction =
    * gratuite et instantanée — et elle doit l'être : c'est une reprise dite
    * dans la foulée, pas une nouvelle demande. */
   | { action: "move_last_entry"; vers: Destination }
+  /** Complète la tâche créée sans date et/ou avec une catégorie supposée —
+   * reconnue LOCALEMENT (commandeLocale.ts), résolue contre la dernière
+   * tâche en attente (voir tacheDateEtCategorie.ts). */
+  | {
+      action: "complete_last_task"
+      due_date?: string
+      due_time?: string | null
+      category_verdict?:
+        | { verdict: "accepter" }
+        | { verdict: "refuser" }
+        | { verdict: "corriger"; category_id: string; category_name: string }
+    }
   | { action: "list_tasks"; filter_category_id?: string; filter_status?: TaskStatus }
   | {
       action: "add_task"
@@ -117,7 +136,7 @@ export type VoiceAction =
 export interface TasksApi {
   tasks: Task[]
   categories: Category[]
-  addTask: (input: TaskInput) => Promise<void>
+  addTask: (input: TaskInput) => Promise<{ id: string } | undefined>
   updateTask: (id: string, input: Partial<TaskInput>) => Promise<void>
   deleteTask: (id: string) => Promise<void>
 }
@@ -310,6 +329,29 @@ export function oublierDerniereCreation() {
   derniereCreation = null
 }
 
+/**
+ * La tâche qui vient d'être créée sans date et/ou avec une catégorie
+ * supposée, tant qu'une réponse peut encore la compléter (chantier
+ * eeca8cca). Même raison que `derniereCreation` : en mémoire du module, pas
+ * en base — une réponse relue après un redémarrage n'aurait plus de sens.
+ */
+let derniereTacheEnAttente: TacheEnAttente | null = null
+
+/** Exportée pour que MicButton la joigne au contexte de commandeLocale.ts. */
+export function memoireTacheEnAttente(): TacheEnAttente | null {
+  return derniereTacheEnAttente
+}
+export function oublierTacheEnAttente() {
+  derniereTacheEnAttente = null
+}
+
+/** « vendredi 12 septembre » — lu à voix haute, pas de format ISO. */
+function formatDateCourte(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
+}
+
 export async function executeVoiceAction(
   action: VoiceAction,
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
@@ -356,7 +398,7 @@ export async function executeVoiceAction(
         return phraseSupposition(suppose.titre, suppose.indice)
       }
 
-      await addTask({
+      const resultat = await addTask({
         title: action.title,
         notes: action.notes ?? null,
         due_date: action.due_date ?? null,
@@ -367,7 +409,77 @@ export async function executeVoiceAction(
       derniereCreation = { vers: "tache", titre: action.title, quand: Date.now() }
       const catName = categoryName(categories, action.category_id)
       const heure = action.due_date && action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
-      return `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
+      let reply = `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
+
+      // Sans date, ou sans catégorie évidente : on le DIT, sans bloquer la
+      // commande (chantier eeca8cca). `resultat` est absent quand rien n'a
+      // pu être écrit (pas de session, ou partie dans la file d'attente hors
+      // ligne) — il n'y a alors rien à compléter plus tard.
+      const sansDate = !action.due_date
+      const suggestion =
+        !action.category_id && resultat?.id
+          ? suggererCategorie(action.title, action.notes, tasks, categories)
+          : null
+      if (resultat?.id && (sansDate || suggestion)) {
+        derniereTacheEnAttente = {
+          taskId: resultat.id,
+          titre: action.title,
+          sansDate,
+          suggestion: suggestion
+            ? { categoryId: suggestion.categoryId, categoryName: suggestion.categoryName }
+            : null,
+          quand: Date.now(),
+        }
+      } else {
+        derniereTacheEnAttente = null
+      }
+      if (sansDate) reply += clauseSansDate()
+      if (suggestion) reply += clauseSuggestionCategorie(suggestion.categoryName)
+      return reply
+    }
+
+    /**
+     * Complète la tâche créée juste avant, sans qu'il ait eu à la redire
+     * (chantier eeca8cca) — reconnue localement contre `derniereTacheEnAttente`.
+     */
+    case "complete_last_task": {
+      const attente = derniereTacheEnAttente
+      if (!attente || completionExpiree(attente, Date.now())) {
+        return "Je ne sais plus quelle tâche compléter. Redis-moi ce qu'il faut changer, et sur laquelle."
+      }
+
+      if (action.due_date) {
+        await updateTask(attente.taskId, {
+          due_date: action.due_date,
+          due_time: action.due_time ?? null,
+        })
+        // La catégorie, si elle attendait encore, reste en attente : ce
+        // n'est pas parce qu'il vient de donner la date qu'il a répondu à
+        // l'autre question.
+        derniereTacheEnAttente = attente.suggestion ? { ...attente, sansDate: false } : null
+        const heure = action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
+        return `D'accord, je te rappelle "${attente.titre}" ${formatDateCourte(action.due_date)}${heure}.`
+      }
+
+      if (action.category_verdict) {
+        const verdict = action.category_verdict
+        if (verdict.verdict === "refuser") {
+          derniereTacheEnAttente = attente.sansDate ? { ...attente, suggestion: null } : null
+          return `D'accord, "${attente.titre}" reste sans catégorie.`
+        }
+        const categoryId =
+          verdict.verdict === "accepter" ? attente.suggestion?.categoryId : verdict.category_id
+        const categoryLabel =
+          verdict.verdict === "accepter" ? attente.suggestion?.categoryName : verdict.category_name
+        if (!categoryId) {
+          return "Je ne me souviens plus de la catégorie proposée. Redis-moi laquelle."
+        }
+        await updateTask(attente.taskId, { category_id: categoryId })
+        derniereTacheEnAttente = attente.sansDate ? { ...attente, suggestion: null } : null
+        return `C'est noté, "${attente.titre}" est dans ${categoryLabel}.`
+      }
+
+      return "Je n'ai pas compris ce qu'il faut compléter."
     }
 
     /**

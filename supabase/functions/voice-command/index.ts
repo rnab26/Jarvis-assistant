@@ -297,7 +297,7 @@ const ACTION_SCHEMA = {
     },
     category_id: {
       type: ["string", "null"],
-      description: "add_task : id de catégorie existant correspondant le mieux, ou null si aucune/pas de correspondance claire. configure_widget : id de catégorie pour filtrer le widget, ou null pour toutes les catégories — n'inclure que si l'utilisateur a précisé une catégorie.",
+      description: "add_task : id de catégorie UNIQUEMENT si l'utilisateur l'a dite explicitement ('dans mes tâches perso', 'catégorie maison') — null sinon, MÊME quand une catégorie existante te paraît correspondre : c'est le téléphone qui la suggère à voix haute et attend sa validation (chantier eeca8cca), pas toi en silence. configure_widget : id de catégorie pour filtrer le widget, ou null pour toutes les catégories — n'inclure que si l'utilisateur a précisé une catégorie.",
     },
     max_tasks: {
       type: "number",

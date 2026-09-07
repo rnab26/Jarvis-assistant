@@ -4,7 +4,9 @@
 import { lireHeure, lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
 import { cibleTropCourante } from "./chercherContact.ts"
 import { correctionDeDestination } from "./ouVaCetteDictee.ts"
+import { completionExpiree, reponseCategorie, reponseDate, type TacheEnAttente } from "./tacheDateEtCategorie.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
+import type { Category } from "@/types/database"
 
 /**
  * Comprendre une commande sans appeler de modèle de langage.
@@ -48,6 +50,12 @@ export interface ContexteLocal {
   taches: TacheConnue[]
   chantiers: ChantierConnu[]
   contacts?: ContactConnu[]
+  /** Pour reconnaître une réponse à une catégorie suggérée. */
+  categories?: Category[]
+  /** La tâche qui vient d'être créée sans date et/ou avec une catégorie
+   * supposée, si la réponse peut encore la compléter (voir
+   * tacheDateEtCategorie.ts). Absent ou expirée = aucune réponse à chercher. */
+  tacheEnAttente?: TacheEnAttente | null
   /** Injecté pour que les tests ne dépendent pas du jour où ils tournent. */
   maintenant?: Date
 }
@@ -263,6 +271,31 @@ export function interpreterLocalement(
   const texte = nettoyer(phrase)
   if (!texte) return null
   const maintenant = ctx.maintenant ?? new Date()
+
+  /* ---------- Compléter la tâche qui vient d'être créée ----------
+     Chantier eeca8cca, 7 sept. 2026. Une tâche dictée sans date, ou sans
+     catégorie évidente, ne bloque jamais la commande — mais si la réponse
+     arrive dans la foulée (« demain matin », « oui », « plutôt dans Perso »),
+     elle complète la MÊME tâche au lieu d'en créer une seconde ou de partir
+     au serveur pour rien. EN PREMIER, avant même « non, mets-le en
+     chantier » : rien d'autre ne doit intercepter une réponse aussi courte. */
+  if (ctx.tacheEnAttente && !completionExpiree(ctx.tacheEnAttente, maintenant.getTime())) {
+    const attente = ctx.tacheEnAttente
+    if (attente.sansDate) {
+      const r = reponseDate(phrase, maintenant)
+      if (r) return [{ action: "complete_last_task", due_date: r.date, due_time: r.heure }]
+    }
+    if (attente.suggestion) {
+      const r = reponseCategorie(phrase, ctx.categories ?? [])
+      if (r) {
+        const category_verdict =
+          r.verdict === "corriger"
+            ? { verdict: "corriger" as const, category_id: r.category.id, category_name: r.category.name }
+            : { verdict: r.verdict }
+        return [{ action: "complete_last_task", category_verdict }]
+      }
+    }
+  }
 
   /* ---------- « Non, mets-le en chantier » ----------
      En PREMIER, et localement. C'est une reprise dite dans la foulée d'une
