@@ -16,6 +16,10 @@
  *    perte par une autre.
  * 4. Une policy RLS mal posée ne lève AUCUNE erreur : elle rend simplement des
  *    lignes qu'elle ne devrait pas.
+ * 5. Un DELETE laisse une trace dans `dev_items_supprimes` (migration 0036),
+ *    et se restaure par `restaurer_chantier_supprime()` — chantier 019144d8 :
+ *    un chantier avait disparu de dev_items sans une seule ligne nulle part,
+ *    parce que `tracer_changement_dev_item()` ne se déclenche que sur UPDATE.
  *
  * Deux utilisateurs de test éphémères sont créés puis supprimés. Rien ne
  * touche aux données de Raphaël.
@@ -204,14 +208,82 @@ try {
     "une ligne qu'on pourrait fabriquer ne prouverait rien",
   )
 
-  // La suppression du chantier emporte son historique : pas de trace orpheline
-  // qui garderait le texte d'un chantier qu'il a voulu effacer.
+  // La suppression du chantier emporte son historique de MODIFICATIONS : pas
+  // de trace orpheline qui garderait le détail des changements d'un chantier
+  // qu'il a voulu effacer.
+  const noteAvantSuppression = "Note encore présente juste avant le DELETE."
+  await commeUtilisateur(a.jeton, `dev_items?id=eq.${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ notes: noteAvantSuppression }),
+  })
   await commeUtilisateur(a.jeton, `dev_items?id=eq.${itemId}`, { method: "DELETE" })
   verifier(
-    "supprimer le chantier emporte son historique",
+    "supprimer le chantier emporte son historique de modifications",
     (await historique(a.jeton, itemId)).length === 0,
-    "un chantier supprimé laisserait son texte derrière lui",
+    "un chantier supprimé laisserait le détail de ses changements derrière lui",
   )
+
+  // Chantier 019144d8 : un DELETE, lui, ne doit plus jamais passer inaperçu.
+  // tracer_changement_dev_item() (migration 0027) ne se déclenche que sur
+  // UPDATE — un chantier a disparu sans trace le 6/7 sept. 2026 à cause de ça.
+  const supprimes = async (jeton, id) => {
+    const r = await commeUtilisateur(
+      jeton,
+      `dev_items_supprimes?item_id=eq.${id}&select=*`,
+    )
+    return r.ok ? await r.json() : []
+  }
+  const traces = await supprimes(a.jeton, itemId)
+  verifier(
+    "le DELETE laisse une trace dans dev_items_supprimes",
+    traces.length === 1,
+    JSON.stringify(traces),
+  )
+  verifier(
+    "et cette trace garde le contenu réel du chantier, pas un résumé",
+    traces[0]?.title === "Essai d'historique" && traces[0]?.notes === noteAvantSuppression,
+    JSON.stringify(traces[0]),
+  )
+  verifier(
+    "la trace de suppression n'est pas visible par un autre utilisateur",
+    (await supprimes(b.jeton, itemId)).length === 0,
+    "une RLS mal posée sur dev_items_supprimes rendrait des lignes en trop",
+  )
+  const fauxTrace = await commeUtilisateur(b.jeton, "dev_items_supprimes", {
+    method: "POST",
+    body: JSON.stringify({ item_id: itemId, user_id: b.id, title: "faux" }),
+  })
+  verifier(
+    "et personne n'écrit à la main dans dev_items_supprimes",
+    !fauxTrace.ok,
+    "seul le trigger doit pouvoir y écrire",
+  )
+
+  // La restauration doit rendre EXACTEMENT ce qui a été perdu.
+  const restauration = await commeUtilisateur(a.jeton, "rpc/restaurer_chantier_supprime", {
+    method: "POST",
+    body: JSON.stringify({ p_id: traces[0].id }),
+  })
+  const nouvelId = await restauration.json()
+  verifier("restaurer un chantier supprimé répond", restauration.ok, `${restauration.status}`)
+
+  const [chantierRestaure] = await (
+    await commeUtilisateur(a.jeton, `dev_items?id=eq.${nouvelId}&select=title,notes,status`)
+  ).json()
+  verifier(
+    "le chantier restauré porte le même titre et la même note",
+    chantierRestaure?.title === "Essai d'historique" &&
+      chantierRestaure?.notes === noteAvantSuppression,
+    JSON.stringify(chantierRestaure),
+  )
+  verifier(
+    "la trace disparaît une fois restaurée, pour ne pas la restaurer deux fois",
+    (await supprimes(a.jeton, itemId)).length === 0,
+    "sinon un second appel recréerait le chantier une deuxième fois",
+  )
+
+  itemId = nouvelId
+  await commeUtilisateur(a.jeton, `dev_items?id=eq.${itemId}`, { method: "DELETE" })
   itemId = null
 } finally {
   if (itemId) await admin(`/rest/v1/dev_items?id=eq.${itemId}`, { method: "DELETE" })

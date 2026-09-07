@@ -392,6 +392,42 @@ Deux contrôles : `verifier-historique-chantier.ts` (hors ligne, la lecture) et
 n'importe quel chemin, le silence sur les réservations, la restauration tracée,
 le cloisonnement RLS, et la suppression qui emporte l'historique).
 
+### Une SUPPRESSION de dev_items, elle, ne laissait aucune trace (migration 0036)
+
+Trouvé le 7 sept. 2026 (chantier `019144d8`) en enquêtant sur la disparition
+sans explication du chantier `348ca1d3` : un vrai `DELETE`, pas un archivage,
+entre le 6 sept. ~17h et le 7 sept. 04h12 UTC — zéro ligne dans `dev_log`,
+zéro ligne dans `dev_items_historique`. Son contenu n'a été récupéré que
+parce qu'une copie traînait par ailleurs dans une conversation ; sans elle,
+il aurait été perdu pour de bon.
+
+**La cause, vérifiée et pas supposée** :
+`select * from information_schema.triggers where event_object_table =
+'dev_items'` ne montrait qu'UPDATE. `tracer_changement_dev_item()` (migration
+0027) ne s'était jamais déclenchée sur DELETE.
+
+**Bloquer le DELETE aurait été plus simple, et c'était faux** : la
+suppression est une vraie fonctionnalité du cockpit (bouton « Choisir » >
+Supprimer, confirmée à l'écran) — `dev_items_delete_own` existe depuis la
+migration 0003. La bonne réponse est de TRACER, pas d'interdire.
+
+**Pourquoi une table séparée (`dev_items_supprimes`), pas
+`dev_items_historique`** : `item_id` y référence `dev_items(id) on delete
+cascade`. Une ligne de trace insérée avant le DELETE y serait emportée par ce
+même DELETE — exactement le trou qu'on rebouchait. `dev_items_supprimes` n'a
+aucun lien de cascade vers `dev_items` : elle survit à la suppression qu'elle
+décrit. Un trigger `BEFORE DELETE` y copie la ligne complète (titre, notes,
+statut, priorité, thème, dates), et `restaurer_chantier_supprime(p_id)`
+recrée le chantier à l'identique — même logique que `restaurer_note_chantier`
+de la migration 0027 : la restauration efface la trace pour ne pas pouvoir
+recréer le même chantier deux fois.
+
+Vérifié pour de vrai, avec un chantier créé et supprimé exprès (jamais un
+vrai chantier de quelqu'un d'autre) : `ANON_KEY=... node
+scripts/verifier-historique-reel.mjs` couvre maintenant aussi la trace posée
+par le DELETE, son cloisonnement RLS, et la restauration qui rend le même
+titre et la même note.
+
 ### Un chantier porte sa conversation
 
 Les messages du journal rattachés à un chantier (`dev_log.item_id`) existaient
