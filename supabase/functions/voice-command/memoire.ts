@@ -65,6 +65,37 @@ const RATTRAPAGE_PAR_PHRASE = 10
 const MAX_CANDIDATS_DOUBLON = 8
 
 /**
+ * Compacter les vieilles conversations au lieu de les effacer (chantier
+ * 470d9c4d). Le défaut de rétention est SANS LIMITE (migration 0023) : rien
+ * n'est jamais supprimé. Passé cet âge, un échange est RÉSUMÉ à la place —
+ * ça garde « sans limite » tenable sans perdre ce qui compte, et
+ * `chercher_echanges()` continue à le retrouver par le sens grâce à
+ * l'empreinte du résumé.
+ *
+ * 21 jours : assez pour que « on avait parlé de quoi la semaine dernière ? »
+ * retrouve encore le mot-à-mot exact, assez tôt pour que la table ne grossisse
+ * pas indéfiniment chez quelqu'un qui dicte plusieurs fois par jour.
+ */
+const COMPACTAGE_APRES_JOURS = 21
+/**
+ * Un seul appel au modèle pour tout le lot, jamais un par échange : la
+ * mémoire a ses propres seaux de quota (rôle « memoire »), et le secours est
+ * plafonné à 20 requêtes par jour (voir _shared/gemini.ts).
+ */
+const LOT_COMPACTAGE = 15
+/**
+ * Au plus une tentative toutes les six heures, par instance — même motif que
+ * `reveillerLaVeille` dans `_shared/modele.ts`. Grossier par nécessité : pas
+ * de pg_cron ni pg_net sur ce projet (choix de sécurité qui n'est pas le
+ * nôtre), donc une passe paresseuse après une phrase plutôt qu'une tâche
+ * planifiée. Une passe qui ne compacte rien s'enregistre quand même
+ * (`compactages_memoire`) : sans ça, « rien à compacter » et « ça ne tourne
+ * plus » se ressembleraient parfaitement.
+ */
+const COMPACTAGE_AU_PLUS_TOUS_LES_MS = 6 * 60 * 60 * 1000
+let dernierCompactage = 0
+
+/**
  * Les deux seuils du dédoublonnage, réglables sans redéployer par les secrets
  * SOUVENIRS_SEUIL_PROXIMITE et SOUVENIRS_SEUIL_LEXICAL — c'est le seul chemin
  * de réglage ici : la mémoire tourne côté serveur, hors de portée de l'écran
@@ -113,6 +144,7 @@ interface EchangePasse {
   transcript: string
   reponse: string | null
   created_at: string
+  resume: boolean
 }
 
 function extrait(texte: string): string {
@@ -209,12 +241,15 @@ export async function rappelerSouvenirs(
     }
 
     if (!echanges.error && echanges.data?.length) {
-      const lignes = (echanges.data as EchangePasse[]).map(
-        (e) =>
-          `- ${quand(e.created_at)}, il a dit : « ${extrait(e.transcript)} »` +
-          (e.reponse ? `\n  tu avais répondu : « ${extrait(e.reponse)} »` : ""),
+      // Un échange COMPACTÉ (chantier 470d9c4d) ne porte plus le mot-à-mot :
+      // « il a dit » mentirait sur une phrase que le résumé a reformulée.
+      const lignes = (echanges.data as EchangePasse[]).map((e) =>
+        e.resume
+          ? `- ${quand(e.created_at)}, en résumé : « ${extrait(e.transcript)} »`
+          : `- ${quand(e.created_at)}, il a dit : « ${extrait(e.transcript)} »` +
+            (e.reponse ? `\n  tu avais répondu : « ${extrait(e.reponse)} »` : ""),
       )
-      bloc += `\nCe que vous vous êtes dit récemment sur ce sujet (mot-à-mot, sept derniers jours seulement) :\n${lignes.join("\n")}\nS'il te demande de quoi vous aviez parlé, appuie-toi là-dessus et cite ce qui a été dit, avec la date. Si sa question porte sur quelque chose d'absent de ces extraits, dis simplement que tu ne le retrouves pas — n'invente aucune conversation.`
+      bloc += `\nCe que vous vous êtes dit récemment sur ce sujet (mot-à-mot pour les échanges récents, résumé pour les plus anciens) :\n${lignes.join("\n")}\nS'il te demande de quoi vous aviez parlé, appuie-toi là-dessus et cite ce qui a été dit, avec la date. Si sa question porte sur quelque chose d'absent de ces extraits, dis simplement que tu ne le retrouves pas — n'invente aucune conversation.`
     }
 
     return bloc
@@ -335,6 +370,10 @@ export async function memoriser(
     // reçoivent leur empreinte à chaque phrase, plutôt qu'un script à lancer
     // à la main. Gratuit (modèle local) et borné.
     await rattraperEmpreintes(supabase)
+    // Compacter les vieilles conversations plutôt que les effacer (chantier
+    // 470d9c4d). Gardé par son propre throttle : la plupart des phrases n'y
+    // font rien du tout.
+    await compacterVieuxEchanges(supabase, userId, essai)
 
     const { args } = await appelerModele({
       role: "memoire",
@@ -558,5 +597,177 @@ async function rattraperEmpreintes(supabase: SupabaseClient): Promise<void> {
     }
   } catch {
     // Le rattrapage est un confort : il ne doit jamais gêner la mémorisation.
+  }
+}
+
+const OUTIL_COMPACTAGE = {
+  name: "resumer_echanges",
+  description:
+    "Condense chaque vieille conversation donnée en un résumé très court, qui garde les faits utiles et jette le bavardage.",
+  input_schema: {
+    type: "object" as const,
+    properties: {
+      resumes: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: {
+              type: "string",
+              description: "L'identifiant de l'échange, recopié EXACTEMENT tel qu'il est donné.",
+            },
+            resume: {
+              type: "string",
+              description:
+                "Une phrase courte et autonome, qui garde ce qui compte (qui, quoi, combien, quand, quelle décision). Compréhensible seule, des mois plus tard.",
+            },
+          },
+          required: ["id", "resume"],
+        },
+      },
+    },
+    required: ["resumes"],
+  },
+}
+
+const CONSIGNE_COMPACTAGE = `Tu compresses de vieilles conversations entre Raphaël et son assistant Jarvis, pour qu'elles restent retrouvables par leur sens sans garder tout le mot-à-mot.
+
+Pour CHAQUE échange numéroté ci-dessous, écris un résumé d'une phrase courte qui garde ce qui compte : les noms propres, les chiffres, les dates, les décisions prises. Jette les salutations, les hésitations, ce qui n'apporte rien.
+
+Un résumé doit rester compréhensible seul, sans le reste de la conversation. Ne fusionne jamais deux échanges ensemble : exactement un résumé par échange donné, avec son identifiant recopié tel quel.
+
+Réponds pour TOUS les échanges donnés, même les plus anodins — « salutation sans contenu » est un résumé valide. N'invente rien au-delà de ce qui est écrit.`
+
+/**
+ * Compacte un lot de vieilles conversations : le mot-à-mot devient un résumé
+ * condensé, réécrit sur la même ligne — rien n'est supprimé (chantier
+ * 470d9c4d). Un seul appel au modèle pour tout le lot.
+ *
+ * Silencieux comme le reste de la mémoire, et gardé par son propre throttle :
+ * la plupart des appels ne font rien (passe trop récente, ou rien à
+ * compacter), et c'est le comportement normal, pas une panne.
+ */
+async function compacterVieuxEchanges(
+  supabase: SupabaseClient,
+  userId: string,
+  essai: boolean,
+): Promise<void> {
+  // Le throttle protège le quota RÉEL d'une passe automatique déclenchée à
+  // chaque phrase — il ne s'applique pas à un essai : `appelerModele` route
+  // déjà un essai vers la clé du second projet (jamais celle de Raphaël), et
+  // RLS isole `echanges_a_compacter` sur l'utilisateur de test, qui ne peut
+  // trouver que SES propres vieux échanges. Sans ce contournement, nos
+  // vérifications ne pourraient jamais prouver le compactage pour de vrai.
+  if (!essai) {
+    if (Date.now() - dernierCompactage < COMPACTAGE_AU_PLUS_TOUS_LES_MS) return
+    dernierCompactage = Date.now()
+  }
+
+  try {
+    const { data, error } = await supabase.rpc("echanges_a_compacter", {
+      p_age_jours: COMPACTAGE_APRES_JOURS,
+      p_limite: LOT_COMPACTAGE,
+    })
+    if (error) {
+      await signalerPanne(
+        supabase,
+        "Le compactage n'a pas pu relire les vieilles conversations",
+        error,
+        null,
+        userId,
+      )
+      return
+    }
+
+    const lot = (data ?? []) as { id: string; transcript: string; reponse: string | null }[]
+    if (!lot.length) {
+      await supabase.rpc("enregistrer_compactage", {
+        p_verdict: "rien_a_faire",
+        p_nb: 0,
+        p_detail: null,
+        p_essai: essai,
+      })
+      return
+    }
+
+    const texte = lot
+      .map(
+        (e, i) =>
+          `[${i}] (id ${e.id}) Raphaël a dit : « ${extrait(e.transcript)} »` +
+          (e.reponse ? `\nJarvis avait répondu : « ${extrait(e.reponse)} »` : ""),
+      )
+      .join("\n\n")
+
+    const { args, echec } = await appelerModele({
+      role: "memoire",
+      systeme: CONSIGNE_COMPACTAGE,
+      texte,
+      outil: OUTIL_COMPACTAGE,
+      maxTokens: 2048,
+      essai,
+      journal: { supabase, userId },
+    })
+
+    const resumes = Array.isArray(args?.resumes)
+      ? (args!.resumes as { id?: unknown; resume?: unknown }[])
+      : null
+    if (echec || !resumes) {
+      await signalerPanne(
+        supabase,
+        "Le compactage des conversations a échoué",
+        echec ?? "Le modèle n'a renvoyé aucun résumé.",
+        null,
+        userId,
+      )
+      await supabase.rpc("enregistrer_compactage", {
+        p_verdict: "echec",
+        p_nb: 0,
+        p_detail: echec ? JSON.stringify(echec) : "réponse vide",
+        p_essai: essai,
+      })
+      return
+    }
+
+    let compactes = 0
+    for (const r of resumes) {
+      const id = typeof r.id === "string" ? r.id : null
+      const resume = typeof r.resume === "string" ? r.resume.trim() : ""
+      // Le modèle a mal recopié un id, ou renvoyé un résumé vide : on
+      // n'écrase rien à l'aveugle plutôt que de risquer la mauvaise ligne.
+      if (!id || !resume || !lot.some((e) => e.id === id)) continue
+
+      const vecteur = await empreinte(resume)
+      const { data: ecrits, error: erreurEcriture } = await supabase
+        .from("echanges")
+        .update({
+          transcript: resume,
+          reponse: null,
+          resume: true,
+          // Sans empreinte, `rattraperEmpreintes` la calculera plus tard sur
+          // ce nouveau texte — même filet que pour un échange jamais compacté.
+          embedding: vecteur ? JSON.stringify(vecteur) : null,
+        })
+        .eq("id", id)
+        .select("id")
+      if (!erreurEcriture && ecrits?.length) compactes++
+    }
+
+    await supabase.rpc("enregistrer_compactage", {
+      p_verdict: compactes ? "compacte" : "echec",
+      p_nb: compactes,
+      p_detail: `${compactes} sur ${lot.length} échanges reçus`,
+      p_essai: essai,
+    })
+    if (!compactes) {
+      await signalerPanne(
+        supabase,
+        "Le compactage n'a réécrit aucune conversation",
+        `${lot.length} échanges envoyés au modèle, 0 acceptés en écriture`,
+        null,
+        userId,
+      )
+    }
+  } catch (err) {
+    await signalerPanne(supabase, "Le compactage des conversations a échoué", err, null, userId)
   }
 }

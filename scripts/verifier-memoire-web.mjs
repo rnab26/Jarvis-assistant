@@ -147,6 +147,11 @@ try {
       (await page.getByText(/Sur du grès cérame/).isVisible()),
   )
   verifier(
+    "une conversation compactée porte l'étiquette « Résumé »",
+    await page.getByText("Résumé", { exact: true }).isVisible(),
+    "chantier 470d9c4d : au-delà de 21 jours, transcript devient un résumé — Raphaël doit pouvoir le distinguer du mot-à-mot",
+  )
+  verifier(
     "la page ne déverse pas les 28 échanges d'un coup",
     await page.getByRole("button", { name: /Voir les \d+ suivants/ }).isVisible(),
     "sur un téléphone, une liste sans fin est une liste qu'on ne parcourt pas",
