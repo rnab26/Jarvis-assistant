@@ -91,6 +91,13 @@ export function reglagesListeNoire(): ReglagesListeNoire {
   }
 }
 
+/** Exportée pour `garderReponseEcran.ts` (chantier 7d7967b2) : « garde ça »
+ * a besoin du texte affiché, pas d'une commande d'écran. Même lecture, même
+ * traitement de l'indisponibilité — pas un second chemin. */
+export async function lireEcran(): Promise<LectureEcran | { echec: "service_inactif" | "pas_de_vue" }> {
+  return lire()
+}
+
 async function lire(): Promise<LectureEcran | { echec: "service_inactif" | "pas_de_vue" }> {
   const r = await Accessibilite.lireEcran()
   if (!r.disponible) {

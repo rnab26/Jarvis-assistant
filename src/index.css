@@ -117,30 +117,65 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ---------------------------------------------------------------------------
+   Les marges sûres : ce qu'il faut laisser aux barres du système.
+
+   Capacitor pose LUI-MÊME `--safe-area-inset-*` sur <html>, en style en ligne
+   (SystemBars.injectSafeAreaCSS) : sur le téléphone ce sont ces valeurs-là qui
+   gagnent, et elles sont justes même quand le clavier est ouvert. `env()` est
+   le repli, et c'est lui qui sert sur le web ordinaire et sur iPhone.
+
+   Passer par une variable À NOUS plutôt que d'écrire `env()` partout n'est pas
+   cosmétique : c'est ce qui rend la chose VÉRIFIABLE. Un Chromium de bureau
+   n'a ni encoche ni barre de gestes, `env()` y vaut 0, et aucun banc d'essai
+   ne pourrait donc reproduire le défaut. `scripts/verifier-taches-web.mjs`
+   pose `--marge-sure-bas` à la hauteur d'une vraie barre de gestes et vérifie
+   que la dernière tâche reste entièrement visible.
+--------------------------------------------------------------------------- */
+:root {
+  --marge-sure-haut: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --marge-sure-bas: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --marge-sure-gauche: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --marge-sure-droite: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+}
+
+/* Un écran qui remplit la fenêtre SANS déborder sous les barres. `min-h-svh`
+   tout court, avec un rembourrage sur le body, rendrait chaque page plus haute
+   que l'écran : une page courte se mettrait à défiler de quelques dizaines de
+   points pour rien. */
+.ecran-plein {
+  min-height: calc(100svh - var(--marge-sure-haut) - var(--marge-sure-bas));
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
     }
   body {
     @apply bg-background text-foreground;
-    /* L'encoche et les coins arrondis d'un iPhone en paysage mordent sur les
-       bords latéraux — sans ça, du texte peut se retrouver sous l'encoche.
-       Sans effet ailleurs : env() vaut 0 quand il n'y a rien à éviter
-       (chantier a40fccaa, "soigne-le pour iPhone").
+    /* LES QUATRE CÔTÉS, et le bas est celui qui manquait — c'est le défaut
+       qu'il a signalé le 7 sept. 2026 : « dans les tâches de façon générale,
+       l'écran ne défile pas jusqu'en bas, ça bouffe un petit peu sur le reste
+       du texte ».
 
-       Le bas manquait, et c'est ce qui coupait le dernier texte des listes
-       sur Android (chantier 4f77dcd8, 7 sept. 2026) : depuis Android 15 (on
-       cible le SDK 36), le mode "bord à bord" est imposé à toute application,
-       et la barre de navigation système dessine PAR-DESSUS le bas de la
-       WebView au lieu de lui laisser sa place. Capacitor (>= 8.3.2, le
-       plugin natif SystemBars) pose --safe-area-inset-* sur <html> pour
-       compenser — plus fiable que env() seul, dont certaines versions de la
-       WebView Android rendent une valeur fausse. var() retombe sur env()
-       (donc sur Safari iOS, qui n'a pas ce plugin, et sur le web) puis sur 0
-       si aucun des deux n'existe. */
-    padding-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
-    padding-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
-    padding-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+       Ce n'est pas une liste qui s'arrête trop haut ni un bouton flottant :
+       il n'y en a aucun dans l'app. C'est le BORD-À-BORD imposé par Android.
+       L'app vise targetSdk 36 (android/variables.gradle), et depuis Android 15
+       la WebView dessine SOUS la barre d'état et sous la barre de gestes, sans
+       possibilité de s'y soustraire. Capacitor 8 le confirme et le laisse à la
+       charge du CSS : lu dans SystemBars.java, quand la page déclare
+       viewport-fit=cover (le nôtre) et que la WebView sait gérer les
+       safe-area, il ne rembourre PLUS la vue native — il passe les insets à
+       la page. Le dernier élément de chaque écran passait donc sous la barre
+       de gestes.
+
+       Sans effet ailleurs : les insets valent 0 quand il n'y a rien à éviter
+       (chantier a40fccaa, "soigne-le pour iPhone"), et 0 aussi sur une vieille
+       WebView, où Capacitor rembourre lui-même la vue native. */
+    padding-top: var(--marge-sure-haut);
+    padding-bottom: var(--marge-sure-bas);
+    padding-left: var(--marge-sure-gauche);
+    padding-right: var(--marge-sure-droite);
     }
   html {
     @apply font-sans;

@@ -211,6 +211,8 @@ export interface Echange {
   transcript: string
   reponse: string | null
   created_at: string
+  /** Vrai quand `transcript` est un résumé compact (compactage, chantier 470d9c4d), pas le mot-à-mot d'origine. */
+  resume: boolean
 }
 
 export interface Souvenir {
@@ -297,6 +299,9 @@ export interface JarvisErreur {
   statut: ErreurStatut
   /** Ce qu'il aurait fallu faire : la note qui sert à l'entraînement. */
   correction: string | null
+  /** Candidat détecté automatiquement (chantier 89c3ceca) — jamais appliqué
+   *  tout seul, une proposition à adopter ou écarter depuis le cockpit. */
+  correction_suggeree: string | null
   /** Le chantier ouvert depuis cette erreur, s'il existe. */
   dev_item_id: string | null
   empreinte: string

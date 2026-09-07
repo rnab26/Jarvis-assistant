@@ -6,6 +6,8 @@ import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskItem } from "@/components/tasks/TaskItem"
 import { ChantiersEgares } from "@/components/cockpit/ChantiersEgares"
 import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
+import { BarreActualiser } from "@/components/BarreActualiser"
+import type { StatutDirect } from "@/lib/etatDirect"
 import type { ElementEnAttente } from "@/lib/fileEnAttente"
 import { Button } from "@/components/ui/button"
 import { PREFS_NOTIFS_DEFAUT } from "@/lib/notifications/prefs"
@@ -152,6 +154,14 @@ const TACHES_EN_ATTENTE: Task[] = [
 function BancDesTaches() {
   const [taches, setTaches] = useState<Task[]>(TACHES)
   const [chantiersCrees, setChantiersCrees] = useState<string[]>([])
+  // La barre « Actualiser », dans ses trois états. Chantier ce69489b : « Les
+  // taches ne s'affichent pas en live et il n'y a aucun moyen d'actualiser ».
+  const [statut, setStatut] = useState<StatutDirect>("en_ligne")
+  const [enCours, setEnCours] = useState(false)
+  const [appuis, setAppuis] = useState(0)
+  // Figé au montage : recalculé à chaque rendu, l'âge glisserait sous
+  // « il y a 11 min » avant que le contrôle ne le lise.
+  const [charge] = useState(() => Date.now() - 12.5 * 60_000)
 
   return (
     <div className="flex flex-col gap-2 p-3">
@@ -162,6 +172,20 @@ function BancDesTaches() {
         onSubmit={rien}
         trigger={<Button size="sm">Nouvelle tâche</Button>}
       />
+      <div id="barre-direct">
+        <BarreActualiser
+          statut={statut}
+          derniereMaj={charge}
+          enCours={enCours}
+          onActualiser={() => setAppuis((n) => n + 1)}
+        />
+      </div>
+      <p id="appuis-actualiser">Actualisations demandées : {appuis}</p>
+      <div className="flex gap-1">
+        <Button size="sm" variant="outline" onClick={() => setStatut("coupe")}>banc: couper</Button>
+        <Button size="sm" variant="outline" onClick={() => setStatut("en_ligne")}>banc: rétablir</Button>
+        <Button size="sm" variant="outline" onClick={() => setEnCours((v) => !v)}>banc: en cours</Button>
+      </div>
       <p id="chantiers-crees">Chantiers créés : {chantiersCrees.join(" | ") || "aucun"}</p>
       {/* La carte qui RASSEMBLE les tâches égarées, en tête de l'onglet. Ses
           mots du 6 sept. : « je ne vois pas de quelles 7 lignes existantes tu
@@ -231,13 +255,6 @@ function BancDesTaches() {
           />
         ))}
       </div>
-
-      {/* Sentinelle de fin de page (chantier 4f77dcd8) : c'est exactement ce
-          texte-là que la barre de navigation Android mangeait, en bord à
-          bord, quand le bas de <body> n'avait pas sa marge de sécurité. */}
-      <p id="fin-de-liste" className="text-xs text-muted-foreground">
-        Fin de la liste.
-      </p>
     </div>
   )
 }

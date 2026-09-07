@@ -5,6 +5,7 @@ import { lireHeure, lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
 import { cibleTropCourante } from "./chercherContact.ts"
 import { correctionDeDestination } from "./ouVaCetteDictee.ts"
 import { completionExpiree, reponseCategorie, reponseDate, type TacheEnAttente } from "./tacheDateEtCategorie.ts"
+import { urlDansLaPhrase } from "./documentLien.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 import type { Category } from "@/types/database"
 
@@ -308,6 +309,30 @@ export function interpreterLocalement(
      moitié qui compte. */
   const correction = correctionDeDestination(texte)
   if (correction) return [{ action: "move_last_entry", vers: correction }]
+
+  /* ---------- « Garde ça » : reprendre la réponse d'une IA affichée ----------
+     Chantier 7d7967b2. Reconnue LOCALEMENT : lire l'écran est une décision
+     qui vit sur l'appareil (service d'accessibilité), le modèle ne voit pas
+     l'écran et n'a rien à faire dans cette boucle. Ensemble fermé exprès,
+     comme pour la confirmation d'un envoi : un faux négatif renvoie juste la
+     phrase au serveur, un faux positif lirait l'écran pour rien. */
+  if (/^(garde|retiens|note)(\s*-?\s*(ca|sa reponse|cette reponse|la reponse))\b/.test(texte)) {
+    return [{ action: "garder_reponse_ecran" }]
+  }
+
+  /* ---------- Un lien dicté : récupérer le document au bout ----------
+     Chantier 13c39a9b. Une adresse http(s) dans la phrase ne veut jamais
+     dire autre chose que « va chercher ce qu'il y a là-bas » — aucune
+     ambiguïté à trancher, donc reconnue localement plutôt que d'aller
+     consommer le quota du modèle pour ça. Vocabulaire d'introduction fermé,
+     comme pour « garde ça » : un faux négatif renvoie juste la phrase au
+     serveur, qui ne saura pas non plus quoi faire d'une URL brute. Cherchée
+     sur la phrase BRUTE, pas sur `texte` : `nettoyer()` met tout en
+     minuscules, et une adresse est parfois sensible à la casse. */
+  if (/^(recupere|va chercher|prends|telecharge|ouvre|regarde|lis)\b/.test(texte)) {
+    const url = urlDansLaPhrase(phrase)
+    if (url) return [{ action: "read_link", url }]
+  }
 
   /* ---------- La voix ---------- */
   if (/^(coupe|arrete|stoppe)( ta| la)? voix\b/.test(texte) ||

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client"
 // un écran de téléphone ne voudrait rien dire.
 import "@/index.css"
 import { Toaster } from "@/components/ui/sonner"
+import { BarreActualiser } from "@/components/BarreActualiser"
 import { CockpitBoard } from "@/components/cockpit/CockpitBoard"
 import { DepuisTonDernierPassage } from "@/components/cockpit/DepuisTonDernierPassage"
 import { lireRepereLocal, ecrireRepereLocal } from "@/lib/cockpitVu"
@@ -71,7 +72,12 @@ function section(nom: string, position: number): DevSection {
   }
 }
 
-function erreur(titre: string, categorie: ErreurCategorie, occurrences = 1): JarvisErreur {
+function erreur(
+  titre: string,
+  categorie: ErreurCategorie,
+  occurrences = 1,
+  correctionSuggeree: string | null = null,
+): JarvisErreur {
   n++
   return {
     id: `e${n}`,
@@ -83,6 +89,7 @@ function erreur(titre: string, categorie: ErreurCategorie, occurrences = 1): Jar
     source: "app",
     statut: "nouveau",
     correction: null,
+    correction_suggeree: correctionSuggeree,
     dev_item_id: null,
     empreinte: `${categorie}:${titre}`,
     occurrences,
@@ -235,6 +242,15 @@ const COMPTE_RENDU: DevLogEntry = {
 const ERREURS = [
   erreur("Il a créé une tâche au lieu d'un chantier", "comprehension", 3),
   erreur("Le serveur vocal a refusé de répondre", "serveur"),
+  // Une proposition en attente (chantier 89c3ceca) : le banc doit montrer le
+  // badge « proposition » et la boîte Adopter/Écarter, pas juste le cas où
+  // rien n'attend Raphaël.
+  erreur(
+    "Une action a échoué : open_app (Apple Music)",
+    "action",
+    2,
+    "Tu n'as pas lancé la bonne chanson, c'était Dolce Camara de Booba qu'il fallait chercher.",
+  ),
 ]
 
 /**
@@ -475,6 +491,17 @@ function BancDuCockpit() {
     ajouterErreur: rien,
     modifierErreur: rien,
     changerStatut: rien,
+    // Les deux gestes du chantier 89c3ceca : le banc doit vraiment muter
+    // l'état, sinon `verifier-cockpit-web.mjs` ne peut pas prouver qu'un
+    // appui sur « Adopter » fait disparaître la proposition.
+    adopterSuggestion: async (id: string, suggestion: string) => {
+      setErreurs((e) =>
+        e.map((x) => (x.id === id ? { ...x, correction: suggestion, correction_suggeree: null } : x)),
+      )
+    },
+    ecarterSuggestion: async (id: string) => {
+      setErreurs((e) => e.map((x) => (x.id === id ? { ...x, correction_suggeree: null } : x)))
+    },
     supprimerErreur: async (id: string) => {
       setErreurs((e) => e.filter((x) => x.id !== id))
     },
@@ -584,6 +611,10 @@ function BancDuCockpit() {
         sections={sections}
         onCreerChantier={async () => undefined}
       />
+      {/* Mirroir de `CockpitPage` : la barre vit JUSTE au-dessus du tableau,
+          sous le résumé dont la hauteur est mesurée. Si le banc ne la montait
+          pas, il mesurerait une page qui n'existe pas. */}
+      <BarreActualiser seulementSiProbleme statut="en_ligne" derniereMaj={null} enCours={false} onActualiser={() => {}} />
       <CockpitBoard
         devItems={devItems}
         sectionsState={sectionsState}

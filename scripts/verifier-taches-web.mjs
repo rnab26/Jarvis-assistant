@@ -302,6 +302,150 @@ try {
   await page.keyboard.press("Escape")
   await pause(300)
 
+  // ── « AUCUN MOYEN D'ACTUALISER » ──
+  // Sa plainte du 7 sept. 2026, chantier ce69489b : « Les taches ne
+  // s'affichent pas en live et il n'y a aucun moyen d'actualiser ». La
+  // seconde moitié était vraie sans réserve : `refresh` n'était atteignable
+  // que depuis l'écran d'erreur, donc jamais quand le chargement avait RÉUSSI
+  // et que c'est le direct qui était tombé.
+  //
+  // LA MOITIÉ DE CES CONTRÔLES VÉRIFIE LE SILENCE. Un bandeau orange qui
+  // s'allume à chaque ouverture n'est plus lu du tout le jour où il compte.
+  {
+    // `data-etat` est porté par le composant lui-même, pas par le conteneur
+    // du banc : viser le conteneur rendait `null`, c'est-à-dire rouge pour une
+    // mauvaise raison.
+    const barre = page.locator("#barre-direct [data-etat]")
+    verifier(
+      "quand le direct marche, la barre ne crie pas",
+      (await barre.getAttribute("data-etat")) === "discret" &&
+        (await barre.innerText()).includes("À jour"),
+      await barre.innerText(),
+    )
+    verifier(
+      "mais le bouton Actualiser est là quand même",
+      await barre.getByRole("button", { name: "Actualiser la liste" }).isVisible(),
+      "« aucun moyen d'actualiser » était la moitié de sa plainte",
+    )
+
+    await barre.getByRole("button", { name: "Actualiser la liste" }).click()
+    await pause(200)
+    verifier(
+      "et il fait quelque chose",
+      (await page.locator("#appuis-actualiser").innerText()).includes("1"),
+      await page.locator("#appuis-actualiser").innerText(),
+    )
+
+    // Le direct tombe : c'est LE cas qui était parfaitement muet.
+    await page.getByRole("button", { name: "banc: couper" }).click()
+    await pause(200)
+    const texteCoupe = await barre.innerText()
+    verifier(
+      "une coupure du direct se voit",
+      (await barre.getAttribute("data-etat")) === "alerte" &&
+        /coupées/i.test(texteCoupe),
+      texteCoupe,
+    )
+    verifier(
+      "et elle dit depuis quand la liste peut mentir",
+      /il y a 12 min/.test(texteCoupe),
+      `${texteCoupe} — sans l'âge, il ne sait pas si c'est grave`,
+    )
+
+    // Pendant un rechargement, on le DIT : un bouton qui ne répond pas se lit
+    // comme un bouton mort, et il appuie six fois.
+    await page.getByRole("button", { name: "banc: en cours" }).click()
+    await pause(200)
+    verifier(
+      "pendant l'actualisation, le bouton se verrouille et le dit",
+      (await barre.innerText()).includes("Actualisation…") &&
+        (await barre.getByRole("button", { name: "Actualiser la liste" }).isDisabled()),
+      await barre.innerText(),
+    )
+    await page.getByRole("button", { name: "banc: en cours" }).click()
+    await page.getByRole("button", { name: "banc: rétablir" }).click()
+    await pause(200)
+    verifier(
+      "et le retour du direct fait taire l'alerte",
+      (await barre.getAttribute("data-etat")) === "discret",
+      await barre.innerText(),
+    )
+  }
+
+  // ── L'ÉCRAN DÉFILE JUSQU'EN BAS, barre de gestes comprise ──
+  // Son signalement du 7 sept. 2026 : « dans les tâches de façon générale,
+  // l'écran ne défile pas jusqu'en bas, ça bouffe un petit peu sur le reste du
+  // texte ». La cause n'est ni une liste bridée en hauteur ni un bouton
+  // flottant — il n'y en a aucun — mais le BORD-À-BORD d'Android : à partir
+  // d'Android 15, et l'app vise targetSdk 36, la WebView dessine sous la barre
+  // de gestes, et c'est au CSS de laisser la place.
+  //
+  // UN CHROMIUM DE BUREAU N'A PAS DE BARRE DE GESTES : `env(safe-area-inset-*)`
+  // y vaut 0, et sans la ligne ci-dessous ce contrôle serait vert quoi qu'il
+  // arrive. On pose donc la variable à la main, à la hauteur d'une vraie barre
+  // de gestes Android (48 points), exactement comme Capacitor la pose sur
+  // l'appareil (SystemBars.injectSafeAreaCSS).
+  {
+    const BARRE = 48
+    await page.evaluate((h) => {
+      document.documentElement.style.setProperty("--marge-sure-bas", `${h}px`)
+    }, BARRE)
+    await pause(200)
+
+    const bas = await page.evaluate(() => getComputedStyle(document.body).paddingBottom)
+    verifier(
+      "la page réserve la hauteur de la barre de gestes en bas",
+      bas === `${BARRE}px`,
+      `padding-bottom du body = ${bas} (attendu ${BARRE}px)`,
+    )
+
+    // Et le contrôle qui compte : après avoir défilé À FOND, le dernier
+    // élément de la page est-il ENTIÈREMENT au-dessus de la barre ?
+    const mesure = await page.evaluate(() => {
+      const scrollable = document.documentElement.scrollHeight > window.innerHeight
+      window.scrollTo(0, document.documentElement.scrollHeight)
+      return { scrollable, hauteur: window.innerHeight }
+    })
+    await pause(300)
+    verifier(
+      "le banc est bien plus haut que l'écran (sinon rien n'est vérifié)",
+      mesure.scrollable,
+      "sans défilement possible, le contrôle suivant serait vert pour rien",
+    )
+
+    // Le plus BAS de ce qui porte du texte, et pas « le dernier enfant du
+    // body » : le dernier enfant est un conteneur de notifications vide, sans
+    // boîte, et le contrôle rendait « élément introuvable » — vert par
+    // accident un jour où il aurait dû être rouge.
+    const plusBas = await page.evaluate(() => {
+      let bas = -1
+      let quoi = ""
+      for (const el of document.body.querySelectorAll("*")) {
+        if (el.children.length > 0) continue // seulement les feuilles
+        const t = (el.textContent ?? "").trim()
+        if (!t) continue
+        const r = el.getBoundingClientRect()
+        if (r.width === 0 || r.height === 0) continue
+        if (r.bottom > bas) {
+          bas = r.bottom
+          quoi = t.slice(0, 60)
+        }
+      }
+      return { bas, quoi }
+    })
+    verifier(
+      "le texte le plus bas reste entièrement au-dessus de la barre de gestes",
+      plusBas.bas > 0 && plusBas.bas <= mesure.hauteur - BARRE + 1,
+      `« ${plusBas.quoi} » descend à ${Math.round(plusBas.bas)} points, la barre commence à ${mesure.hauteur - BARRE}`,
+    )
+
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty("--marge-sure-bas")
+      window.scrollTo(0, 0)
+    })
+    await pause(200)
+  }
+
   await page.getByRole("button", { name: "Supprimer" }).first().click()
   await pause(300)
   await page.getByRole("button", { name: "Supprimer", exact: true }).last().click()
@@ -311,61 +455,6 @@ try {
     (await page.getByText("Appeler le plombier").count()) === 0,
     "la tâche est toujours là après confirmation",
   )
-
-  // ── La liste défile jusqu'en bas, même sous la barre de navigation Android ──
-  // Chantier 4f77dcd8, signalé le 7 sept. : « l'écran ne défile pas jusqu'en
-  // bas, ça bouffe un petit peu sur le reste du texte ». Depuis Android 15
-  // (on cible le SDK 36), le mode bord à bord est imposé à toute application :
-  // sans marge de sécurité, la barre de navigation système dessine PAR-DESSUS
-  // le bas de la page. Capacitor (>= 8.3.2) pose --safe-area-inset-bottom sur
-  // <html> pour la donner ; on simule ici son injection, comme le ferait le
-  // plugin natif sur un vrai téléphone.
-  {
-    const INSET_PX = 48 // barre de navigation à 3 boutons, taille courante
-
-    // Témoin négatif d'abord : SANS injection, le comportement doit rester
-    // celui d'aujourd'hui (aucune marge) — sinon ce contrôle se déclencherait
-    // même sur le web, où Capacitor n'existe pas.
-    const paddingSansInset = await page.evaluate(
-      () => getComputedStyle(document.body).paddingBottom,
-    )
-    verifier(
-      "sans le plugin natif (web), aucune marge n'est ajoutée en bas",
-      paddingSansInset === "0px",
-      `padding-bottom mesuré : ${paddingSansInset}`,
-    )
-
-    await page.evaluate((px) => {
-      document.documentElement.style.setProperty("--safe-area-inset-bottom", `${px}px`)
-    }, INSET_PX)
-    await pause(50)
-
-    const paddingAvecInset = await page.evaluate(
-      () => getComputedStyle(document.body).paddingBottom,
-    )
-    verifier(
-      "l'injection Capacitor se traduit en vraie marge de bas de page",
-      paddingAvecInset === `${INSET_PX}px`,
-      `padding-bottom mesuré : ${paddingAvecInset}`,
-    )
-
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-    await pause(100)
-    const fin = page.locator("#fin-de-liste")
-    const boite = await fin.boundingBox()
-    const hauteurEcran = page.viewportSize()?.height ?? 844
-    verifier(
-      "le tout dernier texte de la liste reste entièrement au-dessus de la barre de navigation",
-      boite !== null && boite.y + boite.height <= hauteurEcran - INSET_PX + 1,
-      `bas du texte à ${boite ? Math.round(boite.y + boite.height) : "?"}px, ` +
-        `zone protégée à partir de ${hauteurEcran - INSET_PX}px (écran de ${hauteurEcran}px)`,
-    )
-
-    // On retire l'injection pour ne pas fausser les contrôles suivants.
-    await page.evaluate(() => {
-      document.documentElement.style.removeProperty("--safe-area-inset-bottom")
-    })
-  }
 } finally {
   if (navigateur) await navigateur.close()
   vite.kill()

@@ -35,6 +35,14 @@ interface Options {
   /** Ce qui se passait : la phrase dictée, l'écran, l'action tentée. */
   contexte?: string | null
   source?: SourceErreur
+  /**
+   * Ce que Raphaël vient de dire, comme candidat de correction (chantier
+   * 89c3ceca, `retours.ts#correctionDite`). N'atteint JAMAIS le modèle tel
+   * quel : `jarvis_erreurs.correction_suggeree` est une proposition, relue et
+   * adoptée d'un tap depuis le cockpit avant de devenir une vraie
+   * `correction`. Voir `_shared/corrections.ts`, qui ne lit que `correction`.
+   */
+  correctionSuggeree?: string | null
 }
 
 /** Deux signalements identiques à moins d'une minute : un seul part. */
@@ -55,7 +63,7 @@ function empreinteLocale(categorie: string, titre: string): string {
 export function signalerErreur(
   categorie: ErreurCategorie,
   titre: string,
-  { detail = null, contexte = null, source = "app" }: Options = {},
+  { detail = null, contexte = null, source = "app", correctionSuggeree = null }: Options = {},
 ): void {
   const propre = titre.replace(/\s+/g, " ").trim()
   if (!propre) return
@@ -89,6 +97,7 @@ export function signalerErreur(
           p_detail: detail?.slice(0, 2000) ?? null,
           p_contexte: contexte?.slice(0, 1000) ?? null,
           p_source: source,
+          p_correction_suggeree: correctionSuggeree?.slice(0, 300) ?? null,
         }),
         DELAI_MAX_MS,
       )
@@ -163,6 +172,18 @@ export function erreurDepuisEcoute(
   // compteur, pas dix lignes que personne ne lira.
   if (evenement === "ecran_action") {
     const resultat = texte("resultat")
+    // Pas un raté par application : le service peut retomber quel que soit
+    // l'écran où on essaie. Une ligne unique, pas une par application
+    // touchée — sinon la même panne (Android qui endort le service) se
+    // relit comme dix pannes distinctes.
+    if (resultat === "service_inactif") {
+      return {
+        categorie: "systeme",
+        titre: "Le service qui permet à Jarvis d'appuyer sur l'écran s'est endormi",
+        detail: "Android a coupé le service d'accessibilité malgré l'autorisation accordée.",
+        source: "app",
+      }
+    }
     const ratees = new Set(["introuvable", "ambigu", "rang_trop_grand", "refus", "ecran_change"])
     if (!resultat || !ratees.has(resultat)) return null
     const ou = texte("application") ?? texte("paquet") ?? "une application"

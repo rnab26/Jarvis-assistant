@@ -488,6 +488,48 @@ Deux règles :
   serait plus court et faux — PostgreSQL construit d'abord la ligne à insérer
   et la refuserait faute de titre.
 
+### « Ça ne s'actualise pas » : on rend la panne VISIBLE, on ne la devine pas
+
+Chantier `ce69489b`, ses mots : « Les taches ne s'affichent pas en live et il
+n'y a aucun moyen d'actualiser ». Deux reproches, et le second était vrai sans
+réserve : `refresh` n'était atteignable que depuis l'écran d'erreur — donc
+jamais quand le chargement avait RÉUSSI et que c'est le direct qui était tombé.
+
+**Deux fausses pistes écartées avant de corriger, à ne pas reprendre :**
+
+- Le temps réel marche côté serveur. `verifier-donnees.mjs` le prouve à chaque
+  passage, sur `tasks` comme sur `dev_items`. Ce n'est ni RLS ni la publication.
+- Le jeton qui expire n'est pas la cause. `useRealtimeRefresh` ne pose le jeton
+  qu'une fois, ce qui donne toutes les raisons de le soupçonner — mais lu dans
+  supabase-js 2.114 (`_handleTokenChanged`), un `TOKEN_REFRESHED` rappelle
+  `realtime.setAuth` tout seul.
+
+**Le vrai défaut : `subscribe()` était appelé SANS rappel.** Un
+`CHANNEL_ERROR`, un `TIMED_OUT`, une socket qu'Android ferme en veille
+passaient sans un mot. La bibliothèque retente d'elle-même (son `rejoinTimer`,
+lu dans `RealtimeChannel.js`) : **on ne double donc pas sa boucle de
+reconnexion**, on dit seulement où elle en est. Le hook rend
+`{ statut, rebrancher }`, et un rejoint recharge la liste — pendant qu'il était
+coupé, tout ce qui a changé ailleurs est passé à côté ; retrouver le direct
+avec une liste périmée serait le pire des deux.
+
+`src/lib/etatDirect.ts` est **pur** (`verifier-etat-direct.ts`) et **la moitié
+de ses contrôles vérifie le silence** : « connexion » ne dit rien d'alarmant
+(c'est l'état normal des deux premières secondes de chaque ouverture), et l'âge
+de la liste ne s'affiche QUE quand le direct est coupé — tant qu'il marche, la
+liste est juste par construction et « à jour il y a 3 min » serait du bruit
+permanent. Le réseau l'emporte sur la coupure : dans l'ascenseur les deux sont
+vrais, mais « les mises à jour ne passent plus » l'enverrait chercher une panne
+dans l'app.
+
+**Et la barre coûte 44 points, mesurés.** Sur l'onglet Tâches elle est
+permanente : c'est là qu'il a réclamé le bouton, et un bouton qui n'apparaît
+qu'en cas de panne DÉTECTÉE ne sert à rien le jour où la panne ne l'est pas.
+Dans le cockpit elle est en `seulementSiProbleme` — essayée en permanence, elle
+a fait passer le tableau des chantiers de 482 à 526 points et
+`verifier-cockpit-web.mjs` a rougi. La règle du projet tient : si tu ajoutes
+quelque chose au cockpit, prends sa place quelque part.
+
 ### La section suggérée à la saisie (`src/lib/suggestionTheme.ts`)
 
 Calcul **local**, jamais un appel au modèle : ranger un chantier n'a pas à
@@ -861,6 +903,127 @@ les contacts.
 
 Côté consigne : « cherche X » part vers la favorite, « cherche X sur Y » vers
 l'application citée, et **« sur internet » n'est pas un nom d'application**.
+
+## La lecture de liens et de PDF (chantier 13c39a9b)
+
+La recherche (ci-dessus) était livrée depuis le 6 sept. ; il manquait la
+seconde moitié du chantier : donner un lien à Jarvis — à la voix, ou par le
+partage Android — et qu'il en rapporte le document.
+
+**Rien de nouveau côté téléchargement : tout existait déjà, orphelin.**
+`google-gmail/lien.ts` (SSRF, https seul, 8 Mo, PDF/image uniquement),
+l'action serveur `document_lien`, et même le client `recupererDocumentLien`
+dans `googleGmail.ts` étaient écrits depuis le 3 sept. (chantier `4dabe586`)
+— mais **personne ne les appelait**. Ne réécris jamais ce mécanisme, il est
+déjà vérifié par `verifier-gmail.mjs`.
+
+**Trouvé en passant, et volontairement PAS corrigé ici** (thème différent,
+chantier `4dabe586`) : `list_emails`, `read_email`, `prepare_email_reply`,
+`send_email`, `find_receipts` sont dans l'énumération que le modèle connaît
+et dans la consigne, mais **aucune de ces actions n'existe dans
+`voiceActions.ts`**, et `googleGmail.ts` n'est importé nulle part ailleurs
+que par ce chantier. Si le modèle les appelle, le client ne sait pas les
+exécuter. Noté dans `dev_log` et dans la note de `4dabe586` — à la session
+qui reprend ce chantier de vérifier ce que ça donne réellement.
+
+**`document_lien` a été décorrélée de Gmail** (`google-gmail/index.ts`) :
+elle répondait avant `compte_google_absent` si le compte Google n'était pas
+branché, alors qu'elle ne touche jamais Gmail. Elle est traitée maintenant
+avant la recherche du jeton Google — un lien donné à la voix marche même
+sans compte connecté.
+
+Deux chemins, tous les deux réels et vérifiés :
+- **La voix** : un verbe d'introduction (« récupère », « va chercher »,
+  « prends », « télécharge »…) suivi d'une adresse http(s) — reconnu
+  LOCALEMENT (`commandeLocale.ts`, action `read_link`), comme `ask_ai` :
+  une adresse dans la phrase ne veut jamais dire autre chose, pas la peine
+  de consommer le quota du modèle pour ça.
+- **Le partage Android** : `useShareReceiver.ts` distingue maintenant un
+  texte partagé qui **N'EST QUE** un lien (`texteEstUnLien()`,
+  `documentLien.ts`) d'un texte qui en contient un au milieu d'autre chose —
+  sinon un message qu'il voulait garder tel quel serait remplacé par le
+  document du lien. Ce n'est PAS le même chemin que le rapprochement d'une
+  réponse d'IA (`allerRetourIA.ts`) : celui-ci se vérifie en premier (une
+  question en attente prime), celui-là ne s'applique que si aucune réponse
+  d'IA n'a été rapprochée.
+
+`src/lib/documentLien.ts` (pur) décide tout ce qui peut se tromper en
+silence : extraire l'adresse sans avaler la ponctuation de fin de phrase,
+distinguer « lien seul » de « lien au milieu d'un message », et nommer le
+fichier enregistré par le SITE d'origine plutôt qu'un horodatage nu — sinon
+dix documents s'appelleraient tous « Document ». `lireDocumentLien.ts`
+(non pur) relie lecture et enregistrement, et rend `{ ok, message }` : la
+voix dit `message` dans tous les cas (succès ou échec), un toast le colore
+en vert ou en rouge selon `ok`.
+
+**Nouveau côté stockage** : `useDocuments.ts` gagne `saveBinaryDocument()`,
+le pendant de `saveTextDocument()` pour un contenu binaire (PDF/image) déjà
+encodé en base64 par le serveur — `saveTextDocument` écrirait un fichier
+texte illisible pour un vrai PDF.
+
+## « Garde ça » : reprendre la réponse d'une IA sans le geste de partage
+
+Livré le 7 sept. 2026 (chantier `7d7967b2`, NIVEAU 3 de `0262afdf`). Avant, la
+seule façon de ramener une réponse Perplexity/ChatGPT dans Jarvis était
+l'appui long puis « Partager » (`useShareReceiver.ts`, toujours en place et
+inchangé). Depuis le service d'accessibilité livré le 6 sept. (`3f3ad20b`),
+Jarvis lit déjà l'écran de l'application du dessous — plus besoin de
+`onHandleAssist`/`AssistStructure`, qui aurait exigé d'être l'assistant par
+défaut.
+
+`src/lib/ecranTelephone.ts` gagne `texteVisible()` : **l'inverse de
+`resumeEcran()`**, qui ne garde que ce qui est cliquable (pour désigner un
+bouton). Ici on veut tout le texte visible, paragraphes compris, dans l'ordre
+de lecture, en écartant les doublons consécutifs (le même texte porté par un
+conteneur ET son enfant — fréquent dans les arbres Android).
+
+`src/lib/garderReponseEcran.ts` (non pur : appelle le plugin d'accessibilité)
+relie lecture d'écran et rapprochement : il lit l'écran, passe le texte à
+`rapprocher()` de `allerRetourIA.ts` — **le même module, les mêmes
+garde-fous** que pour le partage (fenêtre de 30 min, texte trop court, « c'est
+ma propre question repartagée ») — et enregistre par le même chemin que
+`useShareReceiver.ts` (`saveTextDocument`). Pas un second mécanisme de
+rapprochement ni un second chemin d'enregistrement.
+
+**Reconnue LOCALEMENT** (`commandeLocale.ts`, action `garder_reponse_ecran`),
+comme `move_last_entry` : lire l'écran est une décision qui vit sur
+l'appareil, le modèle ne voit pas l'écran et n'a rien à faire dans cette
+boucle. « garde ça », « retiens ça/sa réponse/cette réponse/la réponse »,
+« note ça » — vocabulaire fermé exprès, comme pour la confirmation d'un envoi
+(`confirmationEnvoi.ts`) : un faux négatif renvoie la phrase au serveur (qui
+ne saura pas non plus, mais ne casse rien), un faux positif lirait l'écran
+pour rien.
+
+Si le service d'accessibilité n'est pas activé, la commande **le dit et
+renvoie vers Paramètres** (`phraseEcran({ fait: "echec", cause:
+"service_inactif" })`, déjà écrite) — jamais un échec silencieux.
+
+## Les applications d'IA : l'IA reprend la main, ou Jarvis lit sa réponse
+
+Chantier `acad6f74`, réponse de Raphaël le 5 sept. 2026 aux trois sens
+possibles d'« intégrer les IA » (relayer / rapporter / répartir) :
+
+1. **RELAYER** — « je pense que de façon générale c'est plus logique que
+   L'IA reprenne la main » → comportement par défaut : Jarvis passe le relais
+   et se tait. Et c'est un RÉGLAGE, pas une valeur en dur : `src/lib/relaisIA.ts`
+   (pur) porte la clé `jarvis_ia_relais_lecture` et sa lecture
+   (`lectureVoulue`, `false` tant qu'il n'a rien choisi). Le contrôle vit dans
+   la même carte que la favorite — Paramètres › Ce que Jarvis utilise › « Tes
+   applications d'IA » › « Jarvis lit la réponse » (`ConnecteursIA.tsx`).
+   Activé, la réponse captée (par « garde ça » ci-dessus OU par le partage
+   Android) est en plus lue à voix haute — depuis `garderReponseEcran.ts` en
+   la mettant dans la phrase que Jarvis dit ensuite (jamais un second appel à
+   la synthèse en parallèle, qui se couperait la parole), et depuis
+   `useShareReceiver.ts` par un appel direct à `parler()` puisque ce chemin
+   n'est pas un tour de voix.
+2. **RAPPORTER** — « pas encore nécessaire » → écarté, ne pas y consacrer de
+   temps.
+3. **RÉPARTIR** — nommer l'IA à l'oral l'emporte TOUJOURS sur la favorite
+   (« demande à Perplexity… » y va, quoi qu'il y ait dans les réglages), et
+   Raphaël a explicitement écarté un catalogue de catégories par sujet.
+   **Déjà en place avant ce chantier** (`app_name` absent seulement quand il
+   ne nomme personne, côté local ET côté serveur) — rien à refaire ici,
+   vérifié par `verifier-apps-ia.ts` et `verifier-commande-vocale.mjs`.
 
 ## Appuyer sur l'écran à sa place : une capacité GÉNÉRALE, pas un bouton WhatsApp
 
@@ -2220,10 +2383,12 @@ ANON_KEY=... node scripts/verifier-donnees.mjs           # temps réel + réglag
 node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole, sans réseau
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
+node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
 node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
+node --experimental-strip-types scripts/verifier-etat-direct.ts  # « les tâches ne s'affichent pas en live » : ce qu'on dit, et surtout ce qu'on ne dit pas, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau

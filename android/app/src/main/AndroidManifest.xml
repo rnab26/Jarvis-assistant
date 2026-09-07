@@ -240,6 +240,13 @@
          ApkDownloaderPlugin, sans passer par un navigateur. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Demander à ne pas être mis en veille par Android : le service
+         d'accessibilité (appuyer sur l'écran à sa place) tournait bien
+         après l'avoir autorisé, puis s'arrêtait en silence quelques heures
+         plus tard sans qu'aucun réglage n'ait changé, confirmé par
+         journal_ecoute (chantier 21cf48d2, 7 sept. 2026). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- Poser une alarme ou un minuteur sans ouvrir l'app d'horloge. Seule
          permission demandée par les actions dans les autres applications :
          composer un numéro (ACTION_DIAL) et pré-remplir un message

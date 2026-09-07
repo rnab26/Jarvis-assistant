@@ -608,7 +608,7 @@ try {
   await pause(250)
 
   // ── Le registre des erreurs ──
-  verifier("le registre annonce ce qui est ouvert", await visible("2 ouvertes"))
+  verifier("le registre annonce ce qui est ouvert", await visible("3 ouvertes"))
   await page.getByRole("button", { name: /Erreurs de Jarvis/ }).first().click()
   await pause(200)
   verifier(
@@ -617,6 +617,32 @@ try {
   )
   verifier("les erreurs sont comptées par type", await visible("Compréhension"))
   verifier("une erreur répétée montre son compteur", await visible("×3"))
+
+  // ── Une correction proposée automatiquement : jamais appliquée sans un tap ──
+  verifier(
+    "la ligne concernée porte le badge « proposition », repliée",
+    await visible("proposition"),
+  )
+  await page.getByText("Une action a échoué : open_app (Apple Music)").first().click()
+  await pause(200)
+  verifier(
+    "dépliée, elle montre le texte exact que Raphaël a dit",
+    await visible("Dolce Camara de Booba"),
+  )
+  verifier(
+    "et dit clairement que rien n'est appliqué tout seul",
+    await visible("Rien n'est appliqué tant que"),
+  )
+  await page.getByRole("button", { name: "Adopter" }).click()
+  await pause(200)
+  verifier(
+    "« Adopter » fait passer la proposition dans la vraie note de correction",
+    await page.getByLabel("Note de correction").inputValue().then((v) => v.includes("Dolce Camara de Booba")),
+  )
+  verifier(
+    "et la boîte de proposition disparaît — il n'y a plus rien à décider dessus",
+    !(await page.getByText("Rien n'est appliqué tant que").isVisible()),
+  )
 
   // ── Choisir plusieurs chantiers et les traiter ensemble ──
   await page.getByRole("button", { name: "Choisir" }).first().click()

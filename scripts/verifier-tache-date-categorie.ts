@@ -301,7 +301,7 @@ const consigneServeur = readFileSync("supabase/functions/voice-command/index.ts"
 verifier(
   "le serveur ne pose plus une catégorie devinée sans la dire",
   !consigneServeur.includes("correspondant le mieux, ou null si aucune/pas de correspondance claire") &&
-    /UNIQUEMENT si l'utilisateur l'a dite explicitement/.test(consigneServeur),
+    /UNIQUEMENT si l'utilisateur l'a (?:dite|nommée) explicitement/.test(consigneServeur),
   "sinon deux mécanismes devineraient une catégorie chacun de leur côté, et divergeraient un jour",
 )
 

@@ -1,4 +1,6 @@
 import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
+import { garderReponseEcran } from "@/lib/garderReponseEcran"
+import { lireDocumentLien } from "@/lib/lireDocumentLien"
 import { cleTheme } from "@/lib/themeChantier"
 import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
 import { suggererCategorie } from "@/lib/suggestionCategorie"
@@ -55,6 +57,17 @@ export type VoiceAction =
         | { verdict: "refuser" }
         | { verdict: "corriger"; category_id: string; category_name: string }
     }
+  /** « garde ça », « retiens sa réponse » : reprendre à l'écran la réponse
+   * d'une IA relayée, sans le menu Partager d'Android. Reconnue LOCALEMENT
+   * (commandeLocale.ts), pour la même raison que `move_last_entry` : lire
+   * l'écran est une décision qui vit sur l'appareil (chantier 7d7967b2). */
+  | { action: "garder_reponse_ecran" }
+  /** « récupère ce document : https://… » : suivre un lien dicté (ou reçu par
+   * le partage Android, voir useShareReceiver.ts) et enregistrer le PDF ou
+   * l'image qu'il pointe. Reconnue LOCALEMENT (commandeLocale.ts) : une
+   * adresse http(s) dans la phrase est sans ambiguïté, pas la peine d'un
+   * aller-retour au modèle (chantier 13c39a9b). */
+  | { action: "read_link"; url: string }
   | { action: "list_tasks"; filter_category_id?: string; filter_status?: TaskStatus }
   | {
       action: "add_task"
@@ -154,6 +167,10 @@ export interface DevItemsApi {
 export interface DocumentsApi {
   documents: DocumentFile[]
   saveTextDocument: (filename: string, content: string) => Promise<void>
+  /** Le pendant binaire, pour un PDF ou une image récupéré au bout d'un lien
+   * (chantier 13c39a9b) — `saveTextDocument` écrirait un fichier texte
+   * illisible pour un vrai PDF. */
+  saveBinaryDocument: (filename: string, base64: string, contentType: string | null) => Promise<void>
 }
 
 export interface ContactsApi {
@@ -357,7 +374,7 @@ export async function executeVoiceAction(
   { tasks, categories, addTask, updateTask, deleteTask }: TasksApi,
   { devItems, addDevItem, updateDevItem, deleteDevItem, archiveDevItem }: DevItemsApi,
   { sections, addSection, renameSection }: DevSectionsVoiceApi,
-  { documents, saveTextDocument }: DocumentsApi,
+  { documents, saveTextDocument, saveBinaryDocument }: DocumentsApi,
   { contacts, addContact, updateContact, deleteContact }: ContactsApi,
   { placeReminders, addPlaceReminder, deletePlaceReminder, geocodePlace }: PlaceRemindersApi,
   { pronunciations, addPronunciation, deletePronunciation }: PronunciationsApi,
@@ -520,6 +537,12 @@ export async function executeVoiceAction(
       derniereCreation = { vers: action.vers, titre, quand: Date.now() }
       return phraseDeplacement(titre, action.vers)
     }
+
+    case "garder_reponse_ecran":
+      return await garderReponseEcran(saveTextDocument)
+
+    case "read_link":
+      return (await lireDocumentLien(action.url, saveBinaryDocument)).message
 
     case "update_task": {
       const task = tasks.find((t) => t.id === action.task_id)

@@ -423,5 +423,40 @@ doitDonner("appelle Yoni", { action: "call_contact", contact_id: "ct-yoni" })
 doitDonner("appelle ma femme", { action: "call_contact", contact_name: "Ma femme" })
 doitDonner("appelle Mel", { action: "call_contact", contact_name: "Mel" })
 
+console.log("\n— « Garde ça » : reprendre la réponse d'une IA à l'écran (chantier 7d7967b2) —")
+
+doitDonner("garde ça", { action: "garder_reponse_ecran" })
+doitDonner("Jarvis, retiens sa réponse", { action: "garder_reponse_ecran" })
+doitDonner("note ça", { action: "garder_reponse_ecran" })
+doitDonner("garde cette réponse", { action: "garder_reponse_ecran" })
+doitDonner("retiens la réponse", { action: "garder_reponse_ecran" })
+
+// Le piège déjà payé pour « note » : « note un rendez-vous » et « note que
+// Dylan est le client de Melissa » ne doivent pas basculer là-dessus.
+doitDonner("note un rendez-vous avec Yoni mardi à 14h", { action: "add_calendar_event" })
+doitLaisserPasser(
+  "note que Dylan est le client de Melissa",
+  "une information sur une personne, pas une reprise d'écran",
+)
+
+console.log("\n— Un lien dicté : récupérer le document au bout (chantier 13c39a9b) —")
+
+doitDonner("récupère ce document : https://exemple.com/facture.pdf", {
+  action: "read_link",
+  url: "https://exemple.com/facture.pdf",
+})
+doitDonner("Jarvis, va chercher https://exemple.com/recu.pdf", {
+  action: "read_link",
+  url: "https://exemple.com/recu.pdf",
+})
+doitLaisserPasser(
+  "récupère mes tâches d'aujourd'hui",
+  "un verbe déclencheur sans la moindre adresse ne doit rien deviner",
+)
+doitDonner(
+  "ouvre WhatsApp",
+  { action: "open_app", app_name: "Whatsapp" },
+)
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)
