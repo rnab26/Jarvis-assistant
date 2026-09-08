@@ -7,6 +7,9 @@ import { TaskItem } from "@/components/tasks/TaskItem"
 import { ChantiersEgares } from "@/components/cockpit/ChantiersEgares"
 import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
 import { BarreActualiser } from "@/components/BarreActualiser"
+import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
+import { compterAFaire } from "@/lib/ordreCategories"
+import type { Category } from "@/types/database"
 import type { StatutDirect } from "@/lib/etatDirect"
 import type { ElementEnAttente } from "@/lib/fileEnAttente"
 import { Button } from "@/components/ui/button"
@@ -151,6 +154,14 @@ const TACHES_EN_ATTENTE: Task[] = [
   },
 ]
 
+/** Ses catégories réelles, ramenées à trois cas qui comptent : une qui a des
+ * tâches, une VIDE (« Notes » chez lui), et cinq tâches sans catégorie. */
+const CATEGORIES_BANC: Category[] = [
+  { id: "c-perso", user_id: "banc", name: "Perso", created_at: "2026-09-01T00:00:00Z", position: 0 },
+  { id: "c-leads", user_id: "banc", name: "Leads", created_at: "2026-09-01T00:00:00Z", position: 1 },
+  { id: "c-notes", user_id: "banc", name: "Notes", created_at: "2026-09-01T00:00:00Z", position: 2 },
+]
+
 function BancDesTaches() {
   const [taches, setTaches] = useState<Task[]>(TACHES)
   const [chantiersCrees, setChantiersCrees] = useState<string[]>([])
@@ -162,6 +173,7 @@ function BancDesTaches() {
   // Figé au montage : recalculé à chaque rendu, l'âge glisserait sous
   // « il y a 11 min » avant que le contrôle ne le lise.
   const [charge] = useState(() => Date.now() - 12.5 * 60_000)
+  const [filtre, setFiltre] = useState<string>(ALL_CATEGORIES)
 
   return (
     <div className="flex flex-col gap-2 p-3">
@@ -172,6 +184,28 @@ function BancDesTaches() {
         onSubmit={rien}
         trigger={<Button size="sm">Nouvelle tâche</Button>}
       />
+      {/* Le filtre AVEC ses compteurs. Deux tâches dans Perso dont une faite,
+          une dans Leads, rien dans Notes, et deux sans catégorie : « Toutes »
+          doit dire 4. */}
+      <div id="filtre-categories">
+        <CategoryFilter
+          categories={CATEGORIES_BANC}
+          value={filtre}
+          onChange={setFiltre}
+          compte={compterAFaire(
+            [
+              { category_id: "c-perso", status: "todo" },
+              { category_id: "c-perso", status: "done" },
+              { category_id: "c-leads", status: "todo" },
+              { category_id: null, status: "todo" },
+              { category_id: null, status: "todo" },
+            ],
+            CATEGORIES_BANC,
+          )}
+        />
+      </div>
+      <p id="filtre-choisi">Filtre : {filtre}</p>
+
       <div id="barre-direct">
         <BarreActualiser
           statut={statut}
