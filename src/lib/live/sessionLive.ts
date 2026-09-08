@@ -118,6 +118,41 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   const formulesCloture = clotureLive.formules ?? undefined
   const clotureVocaleDemandee = (texte: string) => clotureLive.actif && demandeFinDeConversation(texte, formulesCloture)
 
+  // LA DERNIÈRE COUPE, et elle doit fermer la question (chantier ba140853).
+  //
+  // Mesuré le 8 sept. 2026 sur ses deux ouvertures de 13h16 et 13h18, la
+  // première fois que le découpage du serveur est remonté :
+  //
+  //     ms_jeton 3561 | ms_serveur 589 | auth 281 | lectures  97 | google 211
+  //     ms_jeton 1684 | ms_serveur 572 | auth 251 | lectures 121 | google 200
+  //
+  // Le temps DANS la fonction est le même à 17 ms près. L'écart de 1877 ms est
+  // entièrement dehors. Ce n'est donc ni Google, ni nos lectures, ni le
+  // démarrage à froid de l'isolat — tout ça est déjà écarté, ne le recherchez
+  // pas.
+  //
+  // Reste deux choses entre l'app et la fonction, et il faut les séparer :
+  // `auth.getSession()`, que supabase-js appelle avant CHAQUE appel d'Edge
+  // Function (lu dans `fetchWithAuth`, version 2.114) et qui renouvelle le
+  // jeton quand il approche de l'expiration ; et le réseau lui-même, où une
+  // poignée de main TCP+TLS neuve coûte une à deux secondes sur un réseau
+  // mobile alors qu'une connexion réutilisée ne coûte rien.
+  //
+  // ON L'APPELLE DONC NOUS-MÊMES, ET ON LE CHRONOMÈTRE. Ce n'est pas un appel
+  // de plus : supabase-js le refera juste après, mais sur une session déjà
+  // fraîche, donc pour rien. `ms_jeton - ms_session - ms_serveur` est alors le
+  // réseau pur.
+  //
+  // CE QUE CHAQUE ISSUE VOUDRA DIRE, pour que la prochaine session n'ait pas à
+  // le redécouvrir : si `ms_session` saute avec `ms_jeton`, c'est le
+  // renouvellement du jeton, et il se pré-chauffe. Si `ms_session` reste petit
+  // dans les deux cas, c'est la poignée de main réseau — et la piste du jeton
+  // est morte, ce qui se voyait déjà à la fréquence (un jeton dure une heure,
+  // la lenteur arrive une fois sur deux).
+  const avantSession = Date.now()
+  await supabase.auth.getSession().catch(() => null)
+  const msSession = Date.now() - avantSession
+
   // 1. Un jeton éphémère, jamais la clé.
   const { data, error } = await withTimeout(
     supabase.functions.invoke<{
@@ -326,6 +361,8 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       // avec ms_jeton est le réseau du téléphone plus le démarrage à froid de
       // l'isolat, qu'on ne peut pas chronométrer de l'intérieur.
       ms_serveur: data.temps?.serveur ?? null,
+      // Voir le bloc au-dessus de l'appel : la dernière coupe de ms_jeton.
+      ms_session: msSession,
       ms_auth: data.temps?.auth ?? null,
       ms_lectures: data.temps?.lectures ?? null,
       ms_google: data.temps?.google ?? null,
