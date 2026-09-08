@@ -70,6 +70,13 @@ export interface PrefsNotifications {
    * pas, jamais ce qu'il a demandé.
    */
   silenceLeveParUsage: boolean
+  /**
+   * Le rappel d'une tâche qui désigne quelqu'un porte un bouton « Appeler »
+   * (chantier 4363aecf). Coupé, la notification reste exactement ce qu'elle
+   * est aujourd'hui — le bouton ne fait qu'ÉCONOMISER trois gestes, il ne
+   * change rien à ce qui sonne.
+   */
+  actionRappel: boolean
 }
 
 export const PREFS_NOTIFS_DEFAUT: PrefsNotifications = {
@@ -95,6 +102,10 @@ export const PREFS_NOTIFS_DEFAUT: PrefsNotifications = {
   // Activé : c'est la règle qu'il a énoncée. L'interrupteur existe pour le
   // cas inverse — lire au lit à côté de quelqu'un qui dort.
   silenceLeveParUsage: true,
+  // Activé : le bouton n'apparaît que lorsqu'un nom est vraiment reconnu, il
+  // ne fait que préparer l'appel (c'est lui qui appuie), et il ne modifie ni
+  // l'heure ni le son du rappel. Rien à perdre, trois gestes de gagnés.
+  actionRappel: true,
 }
 
 /** Les avances proposées dans Paramètres. Une liste fermée : un champ libre
@@ -143,6 +154,7 @@ export function normaliserPrefs(brut: unknown): PrefsNotifications {
     silenceFin: heureValide(o.silenceFin, PREFS_NOTIFS_DEFAUT.silenceFin),
     direAVoixHaute: booleen(o.direAVoixHaute, PREFS_NOTIFS_DEFAUT.direAVoixHaute),
     silenceLeveParUsage: booleen(o.silenceLeveParUsage, PREFS_NOTIFS_DEFAUT.silenceLeveParUsage),
+    actionRappel: booleen(o.actionRappel, PREFS_NOTIFS_DEFAUT.actionRappel),
   }
 }
 

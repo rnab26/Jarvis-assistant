@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { LocalNotifications } from "@capacitor/local-notifications"
 import { PushNotifications } from "@capacitor/push-notifications"
+import { toast } from "sonner"
+import { executerActionTelephone } from "@/lib/actionsTelephoneVocales"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { phraseAnnonce, raisonDuSilence } from "@/lib/notifications/annonceVocale"
@@ -210,9 +212,35 @@ export function useNotifications(
     const poignees = [
       LocalNotifications.addListener(
         "localNotificationActionPerformed",
-        ({ notification }) => {
-          const route = (notification.extra as { route?: string } | undefined)?.route
-          if (route) navigate(route)
+        ({ notification, actionId }) => {
+          const extra = notification.extra as { route?: string; appeler?: string | null } | undefined
+
+          // LE BOUTON « APPELER » (chantier 4363aecf). `actionId` vaut « tap »
+          // quand il a appuyé sur la notification elle-même, et l'identifiant
+          // de l'action quand il a appuyé sur le bouton : les confondre
+          // composerait un numéro alors qu'il voulait seulement ouvrir la
+          // tâche.
+          //
+          // ON PASSE LE NOM, JAMAIS UN NUMÉRO. C'est le téléphone qui cherche
+          // dans son répertoire (`chercherContact` via `call_contact`), et qui
+          // refuse quand deux personnes se valent — la règle écrite après
+          // l'appel réellement parti au répondeur le 5 sept. 2026. Et il
+          // PRÉPARE l'appel : c'est Raphaël qui appuie pour le lancer.
+          if (actionId === "appeler" && extra?.appeler) {
+            void executerActionTelephone({ action: "call_contact", contact_name: extra.appeler }, [])
+              .then((message: string) => {
+                // Le retour de l'outil TEL QUEL, jamais une phrase à nous :
+                // il dit « je ne trouve personne à ce nom » ou « il y a deux
+                // Jonathan » quand c'est le cas, et le taire laisserait
+                // croire que l'appel est parti.
+                if (message) toast.info(message)
+              })
+              .catch(() => {})
+            void rafraichir()
+            return
+          }
+
+          if (extra?.route) navigate(extra.route)
           direRef.current(notification, "appui")
           void rafraichir()
         },

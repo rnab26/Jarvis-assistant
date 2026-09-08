@@ -254,6 +254,18 @@ export function Notifications({ api, taches = [] }: { api: NotificationsApi; tac
                     valeur={prefs.heureSansHeure}
                     onChange={(v) => setPrefs({ heureSansHeure: v })}
                   />
+                  {/* DANS le rappel d'échéance, pas à côté : ce bouton ne
+                      change ni l'heure ni le son, il ne fait qu'économiser
+                      trois gestes sur le rappel qui vient de sonner.
+                      L'échéance coupée, il n'y a plus de rappel du tout —
+                      un réglage visible pour quelque chose qui ne peut plus
+                      arriver serait un contrôle mort. */}
+                  <Interrupteur
+                    titre="Proposer d'appeler"
+                    description="« Rappeler Jonathan » affiche un bouton Appeler sur la notification. Le numéro est composé, c'est toi qui lances l'appel."
+                    actif={prefs.actionRappel}
+                    onChange={(actif) => setPrefs({ actionRappel: actif })}
+                  />
                 </div>
               )}
             </Interrupteur>
