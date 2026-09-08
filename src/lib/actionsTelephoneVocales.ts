@@ -273,7 +273,7 @@ async function quelWhatsApp(): Promise<
  * « J'ouvre une application » ne dit rien ; « J'ouvre מכבי » se corrige en
  * une seconde — c'est exactement ce qui est arrivé le 5 sept.
  */
-function cibleAnnoncee(action: ActionTelephone, contacts: Contact[]): string | null {
+export function cibleAnnoncee(action: ActionTelephone, contacts: Contact[]): string | null {
   switch (action.action) {
     case "open_app":
       return action.app_name || (action.music_query ? appPreferee("musique") : null)
@@ -304,6 +304,12 @@ function cibleAnnoncee(action: ActionTelephone, contacts: Contact[]): string | n
 export async function executerActionTelephone(
   action: ActionTelephone,
   contacts: Contact[],
+  options?: {
+    /** La relecture vocale AVANT l'envoi (chantier ed32cbcc, confirmationEnvoiVocale.ts)
+     * EST DÉJÀ une confirmation active — l'annonce + décompte passif ci-dessous
+     * redirait la même chose une seconde fois. Seul ce chemin-là passe `true`. */
+    sauterFenetre?: boolean
+  },
 ): Promise<string> {
   if (!Capacitor.isNativePlatform()) return SUR_LE_TELEPHONE_SEULEMENT
 
@@ -313,7 +319,7 @@ export async function executerActionTelephone(
   // quatre commandes mal entendues le 5 sept. ont ouvert des applications au
   // hasard, et il n'avait aucun moyen de les arrêter.
   const attente = delaiAnnulation()
-  if (attente > 0 && passeParLaFenetre(action.action)) {
+  if (!options?.sauterFenetre && attente > 0 && passeParLaFenetre(action.action)) {
     const annonce = annonceAction(action.action, cibleAnnoncee(action, contacts))
     // Dite tout de suite, SANS attendre la fin de la phrase pour lancer le
     // décompte — sinon le délai d'annulation double (le temps de la dire,

@@ -174,10 +174,16 @@ for (const { fichier, fonction, fin } of RAPPELS) {
   )
 
   // LE contrôle qui compte pour la suite : chaque chemin qui exécute des
-  // actions doit tracer. Il y en a deux aujourd'hui (le micro classique et
-  // l'outil du mode Live) ; un troisième ajouté sans trace reperdrait des
-  // phrases sans que rien ne le signale.
-  const appels = [...mic.matchAll(/(?<!function )executerActions\(/g)].length
+  // actions doit tracer. Il y en avait deux (le micro classique et l'outil du
+  // mode Live), plus un troisième depuis le chantier ed32cbcc (7 sept.) : la
+  // relecture vocale avant l'envoi WhatsApp, qui prépare puis clique sur
+  // Envoyer directement (executerActionTelephone + agirSurEcran) sans passer
+  // par executerActions — elle a donc son propre appel à tracerSiLocale, et
+  // c'est CE couple-là qu'on compte en plus. Un quatrième chemin ajouté sans
+  // trace reperdrait des phrases sans que rien ne le signale.
+  const appels =
+    [...mic.matchAll(/(?<!function )executerActions\(/g)].length +
+    [...mic.matchAll(/agirSurEcran\(/g)].length
   const traces = [...mic.matchAll(/(?<!function )tracerSiLocale\(/g)].length
   verifier(
     "tout chemin qui exécute une commande garde sa trace",

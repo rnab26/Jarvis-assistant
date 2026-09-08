@@ -277,6 +277,30 @@ jobs:
       - name: La fenêtre d'annulation des actions du téléphone
         run: node --experimental-strip-types scripts/verifier-fenetre-annulation.ts
 
+      # « vas-y » après un message préparé devient un clic, jamais un second
+      # brouillon — et surtout ne se déclenche pas à tort sur une nouvelle
+      # demande. Ce contrôle existait mais n'était jamais lancé en CI.
+      - name: « Vas-y » après un message préparé devient un clic
+        run: node --experimental-strip-types scripts/verifier-confirmation-envoi.ts
+
+      # La relecture vocale avant l'envoi WhatsApp (chantier ed32cbcc) :
+      # décochée par défaut, et surtout un « non » suivi d'une vraie
+      # correction ne doit pas être avalé par la négation.
+      - name: La relecture vocale avant l'envoi WhatsApp
+        run: node --experimental-strip-types scripts/verifier-envoi-auto.ts
+
+      # « envoie »/« c'est bon » après un brouillon de réponse à un mail
+      # devient send_email — même défaut que WhatsApp, jamais à tort sur une
+      # nouvelle demande qui commence par les mêmes mots.
+      - name: « Envoie » après un brouillon de mail devient send_email
+        run: node --experimental-strip-types scripts/verifier-confirmation-envoi-mail.ts
+
+      # Gmail à la voix : reconnaître « le dernier » et lire proprement un
+      # expéditeur (chantier 4dabe586 — list_emails/read_email/find_receipts
+      # existaient côté serveur mais n'avaient jamais été branchés côté app).
+      - name: "Gmail à la voix : « le dernier », et un expéditeur lisible"
+        run: node --experimental-strip-types scripts/verifier-gmail-voix.ts
+
       # La bulle : un interrupteur ne doit jamais dire « Activé » au-dessus
       # d'un écran vide, et un service de premier plan sans type refuse de
       # démarrer depuis Android 14, sans le moindre message.
