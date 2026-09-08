@@ -10,7 +10,15 @@
  * retrouverait son écran mélangé sans avoir rien touché), et un renommage
  * accepté qui rend une catégorie introuvable.
  */
-import { categoriesOrdonnees, deplacer, verifierRenommage, MESSAGE_REFUS } from "../src/lib/ordreCategories.ts"
+import {
+  categoriesOrdonnees,
+  compterAFaire,
+  deplacer,
+  totalAFaire,
+  verifierRenommage,
+  MESSAGE_REFUS,
+  SANS_CATEGORIE,
+} from "../src/lib/ordreCategories.ts"
 import type { Category } from "../src/types/database.ts"
 
 let echecs = 0
@@ -129,6 +137,50 @@ console.log("\n— Renommer : ce qu'on REFUSE —")
     "chaque refus a une phrase qui dit pourquoi",
     MESSAGE_REFUS.vide.length > 20 && MESSAGE_REFUS.existe.length > 20,
   )
+}
+
+console.log("\n— Le compteur par catégorie —")
+
+// Sa demande : « un compteur à côté des catégories de tâches afin d'avoir une
+// idée du nombre de tâche par catégorie ». Les cas ci-dessous sont calqués sur
+// ses VRAIES données du 8 sept. 2026 : 33 tâches, 5 faites, 9 catégories dont
+// une vide (« Notes »), et 5 tâches sans catégorie.
+{
+  const cats: Category[] = [
+    { id: "perso", user_id: "u", name: "Perso", created_at: "", position: 0 },
+    { id: "leads", user_id: "u", name: "Leads", created_at: "", position: 1 },
+    { id: "notes", user_id: "u", name: "Notes", created_at: "", position: 2 },
+  ]
+  const t = (categorie: string | null, status = "todo") => ({ category_id: categorie, status })
+  const compte = compterAFaire(
+    [t("perso"), t("perso"), t("perso", "done"), t("leads"), t(null), t(null), t(null, "done")],
+    cats,
+  )
+
+  verifier("il compte ce qui reste à FAIRE, pas ce qui est fait", compte.get("perso") === 2,
+    `Perso = ${compte.get("perso")} : un total qui compte aussi les faites ne fait que grossir et finit par ne rien vouloir dire`)
+  verifier("une catégorie vide affiche zéro, elle ne disparaît pas",
+    compte.get("notes") === 0,
+    "sans chiffre, ça se lit « on ne sait pas » là où la réponse est « zéro » — et c'est justement ce qui lui dit qu'elle ne sert à rien")
+  verifier("les tâches sans catégorie sont comptées à part",
+    compte.get(SANS_CATEGORIE) === 2, `${compte.get(SANS_CATEGORIE)} au lieu de 2`)
+
+  // Le contrôle qui compte le plus : « Toutes » doit dire la somme de ce
+  // qu'affichent les autres boutons. Sinon le compte ne tombe jamais juste
+  // sous ses yeux, et le compteur devient une source de doute.
+  const somme = [...cats.map((c) => compte.get(c.id) ?? 0), compte.get(SANS_CATEGORIE) ?? 0]
+    .reduce((a, b) => a + b, 0)
+  verifier("« Toutes » est exactement la somme des autres", totalAFaire(compte) === somme,
+    `${totalAFaire(compte)} contre ${somme}`)
+
+  // Une catégorie supprimée pendant qu'une tâche y était rangée : la tâche
+  // existe encore, l'écran l'affiche en « Sans catégorie ». Le compteur doit
+  // dire la même chose, sinon la somme cesse de tomber juste.
+  const orphelines = compterAFaire([t("disparue"), t(null)], cats)
+  verifier("une tâche dont la catégorie n'existe plus compte comme sans catégorie",
+    orphelines.get(SANS_CATEGORIE) === 2 && !orphelines.has("disparue"),
+    `sans catégorie = ${orphelines.get(SANS_CATEGORIE)}, entrée fantôme = ${orphelines.has("disparue")}`)
+  verifier("et elle reste dans le total", totalAFaire(orphelines) === 2)
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

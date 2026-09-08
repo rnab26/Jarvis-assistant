@@ -87,3 +87,55 @@ export const MESSAGE_REFUS: Record<RefusRenommage, string> = {
   vide: "Il faut un nom : une catégorie sans nom disparaîtrait de l'écran sans être supprimée.",
   existe: "Tu as déjà une catégorie qui porte ce nom — tu ne saurais plus dans laquelle tu ranges.",
 }
+
+// ── Combien de tâches dans chaque catégorie ───────────────────────────────
+
+/** La clé du groupe « Sans catégorie », la même que dans TaskList. */
+export const SANS_CATEGORIE = "none"
+
+/**
+ * Le nombre de tâches À FAIRE par catégorie, y compris celles qui n'en ont
+ * aucune.
+ *
+ * Sa demande : « Ajouter un compteur a côté des catégories de taches afin
+ * d'avoir une idée du nombre de tache par catégorie. »
+ *
+ * ON COMPTE CE QUI RESTE À FAIRE, PAS TOUT, et c'est mesuré sur ses vraies
+ * tâches (8 sept. 2026 : 33 tâches, dont 5 faites, réparties sur 9 catégories
+ * plus 5 sans catégorie). La question qu'il se pose devant cet écran est
+ * « combien il m'en reste là-dedans » ; un total qui compte aussi les faites
+ * ne fait que grossir avec le temps et finit par ne plus rien vouloir dire.
+ * Une catégorie soldée affiche donc 0 — ce qui est exactement la bonne
+ * réponse, pas une absence d'information.
+ *
+ * ON REND AUSSI LES CATÉGORIES VIDES. « Notes » n'a aucune tâche chez lui :
+ * la laisser sans chiffre ferait lire « on ne sait pas » là où la réponse est
+ * « zéro », et c'est justement ce qui lui dirait qu'elle ne sert à rien.
+ */
+export function compterAFaire(
+  taches: readonly { category_id: string | null; status: string }[],
+  categories: readonly Category[],
+): Map<string, number> {
+  const compte = new Map<string, number>()
+  for (const c of categories) compte.set(c.id, 0)
+  compte.set(SANS_CATEGORIE, 0)
+  for (const t of taches) {
+    if (t.status === "done") continue
+    // Une tâche rangée dans une catégorie supprimée entre-temps ne doit pas
+    // fabriquer une entrée fantôme : elle compte comme sans catégorie, ce
+    // qu'elle est devenue à l'écran.
+    const dite = t.category_id ?? SANS_CATEGORIE
+    const cle = compte.has(dite) ? dite : SANS_CATEGORIE
+    compte.set(cle, (compte.get(cle) ?? 0) + 1)
+  }
+  return compte
+}
+
+/** Le total à faire, toutes catégories confondues. Calculé ici plutôt que
+ * dans l'écran : « Toutes » doit dire la somme de ce qu'affichent les autres
+ * boutons, sinon le compte ne tombe jamais juste sous ses yeux. */
+export function totalAFaire(compte: Map<string, number>): number {
+  let total = 0
+  for (const n of compte.values()) total += n
+  return total
+}
