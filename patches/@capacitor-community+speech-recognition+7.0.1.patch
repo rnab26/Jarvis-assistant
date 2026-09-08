@@ -1,5 +1,5 @@
 diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
-index a99ea69..cb266a6 100644
+index a99ea69..cbc5567 100644
 --- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 +++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 @@ -2,10 +2,17 @@ package com.getcapacitor.community.speechrecognition;
@@ -140,7 +140,7 @@ index a99ea69..cb266a6 100644
                  SpeechRecognitionListener listener = new SpeechRecognitionListener();
                  speechRecognizer.setRecognitionListener(listener);
                  Logger.info(getLogTag(), "Instantiated SpeechRecognizer in load()");
-@@ -81,6 +192,10 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -81,13 +192,30 @@ public class SpeechRecognition extends Plugin implements Constants {
          String prompt = call.getString("prompt", null);
          boolean partialResults = call.getBoolean("partialResults", false);
          boolean popup = call.getBoolean("popup", false);
@@ -151,7 +151,28 @@ index a99ea69..cb266a6 100644
          beginListening(language, maxResults, prompt, partialResults, popup, call);
      }
  
-@@ -118,6 +233,62 @@ public class SpeechRecognition extends Plugin implements Constants {
+     @PluginMethod
+     public void stop(final PluginCall call) {
+         try {
+-            stopListening();
++            // AVANT : `call` n'etait jamais resolu ni rejete ici -- ni ce
++            // patch ni le plugin d'origine ne le faisaient. Cote app,
++            // `borner(NativeSpeechRecognition.stop(), 800)` (useSpeechRecognition.ts)
++            // attendait donc TOUJOURS l'integralite des 800 ms, a chaque
++            // rafale de veille et a chaque fin de commande -- que l'arret
++            // reel (quelques millisecondes, un appel synchrone sur le fil
++            // UI) soit deja termine ou non. Trouve le 8 sept. 2026 en
++            // cherchant pourquoi le son restait bas longtemps apres qu'il ait
++            // fini de parler (chantier 93f6ee23) : ce n'etait pas la cause de
++            // CE bug-la, mais la meme lecture a mis a jour un defaut distinct
++            // qui gonflait la latence de chaque cycle de veille de 800 ms
++            // pour rien. `stopListening(call)` resout maintenant DES QUE
++            // l'arret reel est fait.
++            stopListening(call);
+         } catch (Exception ex) {
+             call.reject(ex.getLocalizedMessage());
+         }
+@@ -118,6 +246,62 @@ public class SpeechRecognition extends Plugin implements Constants {
          call.resolve(new JSObject().put("listening", SpeechRecognition.this.listening));
      }
  
@@ -214,7 +235,7 @@ index a99ea69..cb266a6 100644
      @ActivityCallback
      private void listeningResult(PluginCall call, ActivityResult result) {
          if (call == null) {
-@@ -151,6 +322,103 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -151,6 +335,103 @@ public class SpeechRecognition extends Plugin implements Constants {
          this.listening = value;
      }
  
@@ -318,7 +339,7 @@ index a99ea69..cb266a6 100644
      private void beginListening(
          String language,
          int maxResults,
-@@ -188,11 +456,22 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -188,11 +469,22 @@ public class SpeechRecognition extends Plugin implements Constants {
                              speechRecognizer = null;
                          }
  
@@ -342,15 +363,31 @@ index a99ea69..cb266a6 100644
                          speechRecognizer.startListening(intent);
                          SpeechRecognition.this.listening(true);
                          if (partialResults) {
-@@ -217,6 +496,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -208,6 +500,12 @@ public class SpeechRecognition extends Plugin implements Constants {
+     }
+ 
+     private void stopListening() {
++        stopListening(null);
++    }
++
++    /** `call` optionnel : resolu juste apres l'arret reel, pas avant --
++     * voir le commentaire de stop(PluginCall) ci-dessus. */
++    private void stopListening(PluginCall call) {
+         bridge
+             .getWebView()
+             .post(() -> {
+@@ -217,7 +515,10 @@ public class SpeechRecognition extends Plugin implements Constants {
                          speechRecognizer.stopListening();
                          SpeechRecognition.this.listening(false);
                      }
 +                    SpeechRecognition.this.retablirSon();
++                    if (call != null) call.resolve();
                  } catch (Exception ex) {
++                    if (call != null) call.reject(ex.getLocalizedMessage());
                      throw ex;
                  } finally {
-@@ -245,6 +525,13 @@ public class SpeechRecognition extends Plugin implements Constants {
+                     SpeechRecognition.this.lock.unlock();
+@@ -245,6 +546,13 @@ public class SpeechRecognition extends Plugin implements Constants {
          public void onBeginningOfSpeech() {
              try {
                  SpeechRecognition.this.lock.lock();
@@ -364,7 +401,7 @@ index a99ea69..cb266a6 100644
                  // Notify listeners that recording has started
                  JSObject ret = new JSObject();
                  ret.put("status", "started");
-@@ -268,6 +555,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -268,6 +576,7 @@ public class SpeechRecognition extends Plugin implements Constants {
                      try {
                          SpeechRecognition.this.lock.lock();
                          SpeechRecognition.this.listening(false);
@@ -372,7 +409,7 @@ index a99ea69..cb266a6 100644
  
                          JSObject ret = new JSObject();
                          ret.put("status", "stopped");
-@@ -281,8 +569,24 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -281,8 +590,24 @@ public class SpeechRecognition extends Plugin implements Constants {
          @Override
          public void onError(int error) {
              SpeechRecognition.this.stopListening();

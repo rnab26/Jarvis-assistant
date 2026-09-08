@@ -39,6 +39,7 @@ import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
 import { liveActifQuelquePart } from "@/lib/live/etatLiveNatif"
+import { prechaufferConnexionLive } from "@/lib/live/prechauffage"
 import { consigneQuestionApp, suiteDeLaQuestion, type QuestionEnAttente } from "@/lib/questionAppLive"
 import { retourOuAveu } from "@/lib/retourVide"
 import { majEnCours, sAbonnerMaj } from "@/lib/majEnCours"
@@ -210,6 +211,12 @@ export function MicButton({
     }
     if (dejaActifRef.current) onIdle?.()
   }, [status, onIdle])
+  // Chantier ba140853 : la connexion à live-jeton est déjà chaude au moment
+  // où il ouvre le Live, pour la première fois de la session — voir
+  // prechauffage.ts pour la mesure qui justifie ça.
+  useEffect(() => {
+    prechaufferConnexionLive()
+  }, [])
   const [lastUserText, setLastUserText] = useState<string | null>(null)
   const [lastReply, setLastReply] = useState<string | null>(null)
   // Un tap pendant que Jarvis parle (barge-in) relance l'écoute lui-même ;
@@ -685,6 +692,9 @@ export function MicButton({
         else if (etat === "parle") setStatus("speaking")
         else {
           liveRef.current = null
+          // Une réouverture rapprochée (il rouvre juste après avoir raccroché)
+          // profite d'une connexion déjà chaude plutôt que d'en rouvrir une.
+          prechaufferConnexionLive()
           // « Terminé » (voix ou appui) : il vient de dire qu'il n'a plus
           // besoin de Jarvis maintenant, le mot-clé se tait un moment avant
           // de recommencer à réclamer le micro (chantier voix/écoute,
