@@ -322,3 +322,24 @@ export interface JarvisErreurInput {
   correction?: string | null
   statut?: ErreurStatut
 }
+
+/** Une étape d'une séquence enregistrée en mode entraînement (chantier
+ *  86df4f4a) : ce que `controleEcran.ts` exécute déjà pour une commande
+ *  d'écran normale, gardé pour être rejoué à l'identique. */
+export interface EtapeSequence {
+  commande: "clic" | "defiler_bas" | "defiler_haut" | "retour" | "accueil" | "lire"
+  cible: string | null
+}
+
+export interface SequenceEntrainementRow {
+  id: string
+  user_id: string
+  nom: string
+  etapes: EtapeSequence[]
+  created_at: string
+  updated_at: string
+  dernier_essai_at: string | null
+  dernier_resultat: "reussi" | "echec" | null
+  reussites: number
+  echecs: number
+}

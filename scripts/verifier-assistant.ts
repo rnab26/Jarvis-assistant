@@ -168,6 +168,52 @@ verifier(
   "sans ça, Android peut le retenir comme moteur du téléphone et plus rien n'écoute",
 )
 
+// ── ET IL NE DOIT JAMAIS ÊTRE CHOISI PAR NOUS NON PLUS ──────────────────
+//
+// `selectableAsDefault="false"` ne parle qu'à Android. Notre propre plugin,
+// lui, énumère `queryIntentServices(RecognitionService)` à deux endroits : pour
+// choisir automatiquement un moteur, et pour proposer la liste dans Paramètres.
+// Mesuré le 8 sept. 2026 dans son journal d'écoute, `com.raphael.jarvis` est
+// bel et bien dans cette liste — la déclaration XML ne l'en retire pas.
+const patchEcoute = readFileSync(
+  "patches/@capacitor-community+speech-recognition+7.0.1.patch",
+  "utf8",
+)
+verifier(
+  "notre propre moteur est écarté des deux énumérations du plugin",
+  (patchEcoute.match(/getPackageName\(\)\.equals\(info\.serviceInfo\.packageName\)\) continue;/g) ?? []).length >= 2,
+  "un seul des deux ne suffit pas : l'un choisit tout seul, l'autre le propose dans Paramètres",
+)
+
+// ── LE MOTEUR DE GOOGLE NE SE RÉSUME PAS À L'APPLICATION GOOGLE ──────────
+//
+// Chantier ba140853, mesuré le 8 sept. 2026 sur son téléphone. Le plugin ne
+// cherchait que « com.google.android.googlequicksearchbox » ; elle n'est PAS
+// installée chez lui. `queryIntentServices` rend
+// « com.google.android.as,com.google.android.tts,com.anthropic.claude,
+// com.raphael.jarvis ». On retombait donc sur le service par défaut — celui
+// qui bipe et qui coupe — et son journal le prouve : sur 48 heures, autant de
+// rafales mortes en 20-60 ms avec ERROR_SERVER_DISCONNECTED que de rafales
+// normales (50 contre 51 sur une heure, 43 contre 34 sur une autre). Une
+// ouverture de micro sur deux ne servait à rien, et chacune fait sa tonalité.
+// LE CONTRÔLE VISE LA LISTE, PAS LE MOT. Première version : il cherchait
+// « com.google.android.as » n'importe où dans le patch — et le paquet est
+// aussi CITÉ dans le commentaire qui explique la mesure. Essayé à l'envers en
+// retirant le paquet de la liste, il restait vert : il voyait le commentaire.
+// Même piège que le sélecteur Playwright et que `Filesystem.mkdir` : un
+// contrôle doit viser ce qui AGIT.
+const listeGoogle = patchEcoute.match(/PAQUETS_GOOGLE = \{([\s\S]*?)\};/)?.[1] ?? ""
+verifier(
+  "Android System Intelligence est DANS la liste des moteurs Google",
+  /com\.google\.android\.as/.test(listeGoogle),
+  `sans lui, un téléphone sans l'application Google retombe sur le service par défaut — liste lue : ${listeGoogle.replace(/\s+/g, " ").trim() || "introuvable"}`,
+)
+verifier(
+  "et la synthèse vocale de Google n'est PAS prise pour de la reconnaissance",
+  listeGoogle !== "" && !/com\.google\.android\.tts/.test(listeGoogle),
+  "com.google.android.tts fait parler, pas écouter — son nom ressemble, c'est tout",
+)
+
 // ── Une seule fenêtre monte un micro à la fois ───────────────────────────
 //
 // LE BUG DU 6 SEPT., 8 h 24 : estOverlay() est asynchrone, et pendant qu'elle

@@ -74,13 +74,18 @@ public class JarvisNotificationListenerService extends NotificationListenerServi
         super.onListenerDisconnected();
     }
 
-    // AUCUN TRAITEMENT ICI, ET C'EST LA RÈGLE : ce service ne surveille rien
-    // en arrière-plan. Une notification qui arrive ne déclenche NI trace, NI
-    // lecture, NI stockage. Les deux méthodes existent parce qu'Android les
-    // exige (contrat de NotificationListenerService), pas parce qu'elles
-    // servent à quelque chose ici.
+    // LA RÈGLE NE CHANGE PAS POUR LES AUTRES APPLICATIONS : ce service ne
+    // surveille rien en arrière-plan pour WhatsApp, une banque ou n'importe
+    // quel tiers — ni trace, ni lecture, ni stockage. La seule exception,
+    // ajoutée par le chantier 23ee3735, est NOS PROPRES notifications : Jarvis
+    // annonçant l'une de ses tâches n'a rien d'une surveillance, et c'est le
+    // SEUL cas traité ci-dessous.
     @Override
-    public void onNotificationPosted(StatusBarNotification sbn) {}
+    public void onNotificationPosted(StatusBarNotification sbn) {
+        if (sbn != null && getPackageName().equals(sbn.getPackageName())) {
+            AnnonceApresNotification.considerer(this, sbn);
+        }
+    }
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {}

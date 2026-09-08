@@ -249,6 +249,10 @@ public class AutorisationsPlugin extends Plugin {
     public void ouvrirEcran(PluginCall call) {
         String cle = call.getString("cle", "");
         Intent intent;
+        // Un second ecran a essayer AVANT la fiche de l'application, quand
+        // celle-ci ne contient pas le reglage vise (c'est le cas de la
+        // batterie). Nul pour les autres.
+        Intent secours = null;
         switch (cle) {
             case "notifications":
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -267,29 +271,44 @@ public class AutorisationsPlugin extends Plugin {
                 }
                 break;
             case "batterie":
-                // Contrairement aux autres acces speciaux, celui-ci ouvre
-                // directement la fenetre "Autoriser / Refuser" d'Android --
-                // un seul geste, pas une navigation dans ses reglages.
+                // Celui-ci ouvre directement la fenetre "Autoriser / Refuser"
+                // d'Android -- un seul geste. QUAND elle s'ouvre : cette
+                // action est protegee par la permission
+                // REQUEST_IGNORE_BATTERY_OPTIMIZATIONS (declaree au
+                // manifeste), et plusieurs surcouches la retirent ou la
+                // refusent. Le repli n'est alors PAS la fiche de
+                // l'application, qui ne contient pas ce reglage : c'est la
+                // liste systeme des optimisations de batterie, ou il n'a plus
+                // qu'a trouver Jarvis.
                 intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     Uri.parse("package:" + getContext().getPackageName()));
+                secours = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
                 break;
             default:
                 intent = ficheApplication();
                 break;
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (intent.resolveActivity(getContext().getPackageManager()) == null) {
-            // L'écran visé n'existe pas sur cette surcouche : la fiche de
-            // l'app contient la même chose, au milieu d'autres réglages.
-            intent = ficheApplication();
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (intent.resolveActivity(getContext().getPackageManager()) == null) {
-                call.reject("Aucun écran de réglages n'a pu être ouvert.");
-                return;
-            }
+        // NI PRE-CONTROLE, NI resolveActivity : voir EcransReglages. C'est ce
+        // pre-controle qui rendait ce bouton muet chez Raphael (8 sept. 2026),
+        // parce qu'il est soumis au filtrage de visibilite des paquets depuis
+        // Android 11 et qu'il peut rendre null pour un ecran qui existe.
+        // UN NOM, PAS UN RANG. Le rang ne veut pas dire la meme chose selon
+        // la cle -- pour "batterie" le premier intent est la fenetre directe,
+        // pour les autres c'est deja la fiche de l'application. L'ecran est
+        // donc nomme, et c'est ce nom que l'app traduit en marche a suivre :
+        // les gestes qui restent a faire ne sont pas les memes.
+        String[] noms = secours != null
+            ? new String[] { "fenetre", "liste", "fiche" }
+            : new String[] { "fiche", "fiche", "fiche" };
+        int ouvert = EcransReglages.ouvrirLePremierQuiRepond(
+            getContext(), intent, secours, ficheApplication());
+        if (ouvert < 0) {
+            call.reject("Aucun écran de réglages n'a pu être ouvert.");
+            return;
         }
-        getContext().startActivity(intent);
-        call.resolve();
+        JSObject resultat = new JSObject();
+        resultat.put("ecran", noms[ouvert]);
+        call.resolve(resultat);
     }
 
     private Intent ficheApplication() {

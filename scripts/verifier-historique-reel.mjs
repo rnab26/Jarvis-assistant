@@ -285,6 +285,39 @@ try {
   itemId = nouvelId
   await commeUtilisateur(a.jeton, `dev_items?id=eq.${itemId}`, { method: "DELETE" })
   itemId = null
+
+  // ── SUPPRIMER UN UTILISATEUR QUI POSSÈDE UN CHANTIER ────────────────────
+  //
+  // Chantier fa60e2da. Ce cas-là échouait en 500 : PostgreSQL supprime
+  // d'abord la ligne d'auth.users, PUIS cascade vers dev_items, dont le
+  // trigger BEFORE DELETE insérait une trace référençant un utilisateur qui
+  // n'existait déjà plus. « Key (user_id)=(…) is not present in table users ».
+  //
+  // ET C'ÉTAIT SILENCIEUX : la plupart des scripts de vérification suppriment
+  // leur utilisateur de test sans lire le code de retour. Ils restaient verts
+  // en laissant un compte orphelin — huit s'étaient accumulés, dont deux avec
+  // 3 et 7 chantiers d'essai que le hook de démarrage injectait ensuite dans
+  // le contexte de chaque session.
+  //
+  // On LIT donc le code de retour, ici et une bonne fois.
+  {
+    const jetable = await creerUtilisateur()
+    await admin("/rest/v1/dev_items", {
+      method: "POST",
+      body: JSON.stringify({ user_id: jetable.id, title: "ZZ suppression utilisateur", status: "todo", priority: "normal" }),
+    })
+    const r = await admin(`/auth/v1/admin/users/${jetable.id}`, { method: "DELETE" })
+    verifier(
+      "supprimer un utilisateur qui possède un chantier ne casse plus",
+      r.status === 200,
+      `HTTP ${r.status} ${(await r.text()).slice(0, 200)} — un script de vérification qui ignore ce code laisse un compte de test orphelin, en silence`,
+    )
+    // Filet : si le DELETE a encore échoué, on ne laisse pas le compte derrière.
+    if (r.status !== 200) {
+      await admin(`/rest/v1/dev_items?user_id=eq.${jetable.id}`, { method: "DELETE" })
+      await admin(`/auth/v1/admin/users/${jetable.id}`, { method: "DELETE" })
+    }
+  }
 } finally {
   if (itemId) await admin(`/rest/v1/dev_items?id=eq.${itemId}`, { method: "DELETE" })
   await admin(`/auth/v1/admin/users/${a.id}`, { method: "DELETE" })

@@ -130,6 +130,19 @@
                 android:value="pastille flottante d assistance, affichee a la demande de l utilisateur" />
         </service>
 
+        <!-- Parler a voix haute meme app fermee (chantier 23ee3735). Meme
+             raison que la bulle : sans service de premier plan, Android tue
+             le processus en arriere-plan et la synthese vocale s arrete avec
+             lui, en silence. -->
+        <service
+            android:name=".AnnonceService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="synthese vocale des rappels de l utilisateur, activee a sa demande" />
+        </service>
+
         <!-- Le service qui permet a Jarvis d'appuyer sur l'ecran a la place de
              Raphael (chantiers 3f3ad20b et ed32cbcc). Sa demande du 6 sept.
              2026 : « il faut aussi que ca puisse faire une activation de

@@ -132,7 +132,7 @@ export function ControleEcran() {
             <Button
               size="sm"
               variant="outline"
-              onClick={async () => setEssai(await agirSurEcran("lire"))}
+              onClick={async () => setEssai((await agirSurEcran("lire")).message)}
             >
               Voir ce que Jarvis lit sur cet écran
             </Button>

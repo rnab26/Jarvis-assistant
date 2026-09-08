@@ -2449,6 +2449,7 @@ node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarv
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
+node --experimental-strip-types scripts/verifier-live-croise.ts  # la veille se tait quand Live tourne dans l'AUTRE fenêtre (ProtectedShell/AssistantOverlayPage), sans réseau
 node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
@@ -3117,6 +3118,128 @@ puis à défaut la liste des applications par défaut, et les derniers pas reste
 écrits sous le bouton. Corollaire pour le chantier f5621562 : **l'appui long ne
 peut pas avoir d'interrupteur dans l'app**, c'est un rôle exclusif d'Android
 qu'une application ne peut ni s'attribuer ni se retirer.
+
+### Le moteur de Google ne se résume PAS à l'application Google (8 sept. 2026)
+
+Chantier `ba140853`. Ses deux symptômes redits le 7 sept. : « le temps de
+connexion à la discussion live est très long » et « le micro s'active, se
+désactive à plusieurs reprises ». Le second est maintenant EXPLIQUÉ, mesuré sur
+son journal réel.
+
+**La mesure, et elle est sans appel.** Sur 48 heures de `journal_ecoute`, il y
+a autant de rafales mortes en 20-60 ms avec le code Android 11
+(`ERROR_SERVER_DISCONNECTED`) que de rafales normales : 50 contre 51 sur une
+heure, 43 contre 34 sur une autre, heure après heure. **Une ouverture de micro
+sur deux ne sert à rien** — et chacune fait sa tonalité sur Samsung. C'est
+littéralement ce qu'il décrit.
+
+**La cause : `trouverServiceGoogle()` ne cherchait que
+`com.google.android.googlequicksearchbox`**, l'application Google. Elle n'est
+PAS installée chez lui. `queryIntentServices` rend, mot pour mot :
+`com.google.android.as,com.google.android.tts,com.anthropic.claude,com.raphael.jarvis`.
+Le plugin retombait donc sur `"defaut"` — le service par défaut d'Android, dont
+tout le reste du projet dit depuis le début qu'il bipe et qu'il coupe. Et le
+journal le confirme : `service_reconnaissance` dit `nom: "defaut"` à chaque
+ouverture.
+
+`com.google.android.as` est **Android System Intelligence**, la reconnaissance
+EMBARQUÉE de Google — celle des Android récents. Elle est préférée à
+l'application Google quand les deux sont là : pas d'aller-retour réseau, donc
+pas la classe de panne qu'on mesure ici. `com.google.android.tts` est de la
+SYNTHÈSE, pas de la reconnaissance : son nom ressemble, et c'est tout.
+
+**Et `com.raphael.jarvis` est dans cette liste** — c'est notre propre
+`JarvisRecognitionService`, qui ne reconnaît rien et n'existe que pour
+qu'Android accepte Jarvis comme assistant. `selectableAsDefault="false"` ne
+parle qu'à Android : il ne l'enlève pas de `queryIntentServices`. Nos DEUX
+énumérations l'écartent donc explicitement — celle qui choisit toute seule, et
+celle qui propose la liste dans Paramètres. Le choisir rendrait Jarvis sourd,
+sans le moindre message.
+
+Trois contrôles dans `verifier-assistant.ts`, **essayés à l'envers**. Le
+premier était faux : il cherchait « com.google.android.as » n'importe où dans
+le patch, et le paquet est aussi CITÉ dans le commentaire qui explique la
+mesure — retiré de la liste, le contrôle restait vert. Il lit maintenant le
+CONTENU de `PAQUETS_GOOGLE`. Même piège que le sélecteur Playwright et que
+`Filesystem.mkdir`.
+
+**Non vérifié sur l'appareil** (pas de SDK Android ici) : que le service
+d'Android System Intelligence répond bien chez lui. La preuve sera dans son
+journal — le rapport code 11 / code 7 doit s'effondrer. Et il faut une VRAIE
+APK : c'est un patch natif, la mise à jour rapide ne le porte pas.
+
+### Le temps d'ouverture d'une Live : ce que ce N'EST PAS
+
+Même chantier, même jour. `ms_jeton` (notre Edge Function, vue du téléphone)
+est **bimodal** sur ses 25 dernières ouvertures : environ 1200-1900 ms, ou
+3500-4300 ms, presque rien entre les deux. Une marche pareille a une cause.
+
+`live-jeton` rend maintenant le découpage de son PROPRE temps (`temps: {auth,
+lectures, google, serveur}`), et l'app le range dans `journal_ecoute` à côté
+des trois autres nombres. Sondée depuis ici, la fonction déployée donne :
+**Google 124-353 ms, l'authentification 129-471, les trois lectures 118-877,
+le tout dans la fonction 433-1230 ms** — total vu du client 754-1842 ms. Et
+après sept minutes d'inactivité, 1054 ms : **le démarrage à froid de l'isolat
+ne coûte pas non plus deux secondes.**
+
+Donc la marche de ~2,3 s n'est ni Google, ni nos lectures, ni le réveil de la
+fonction. Elle est de SON côté du fil. Le candidat lu dans le code de
+supabase-js 2.114 : `functionsFetch` fait `await auth.getSession()` avant
+CHAQUE appel d'Edge Function, et `getSession()` renouvelle le jeton quand il
+approche de l'expiration — un aller-retour réseau de plus, sur un réseau
+mobile. Non prouvé : `ms_jeton - ms_serveur` le dira dès ses prochaines
+ouvertures. **Ne recodez rien avant d'avoir lu ces nombres-là.**
+
+### Troisième piège de la fenêtre d'assistance : deux tas JS, une seule veille voulue
+
+Chantier `2a5b7802`, 7 sept. 2026. Ses mots : « Lorsque le mode conversation
+live est activé, il y a des activations et désactivation de micro
+intempestive ca doit etre régler car ces bruits sont tres dérangeant ».
+
+**MESURÉ dans `journal_ecoute`, pas supposé.** Sur une conversation Live de
+544957 ms, 70 cycles complets de la veille classique (mot-clé « Jarvis »,
+service Android) se sont déclenchés PENDANT — un toutes les ~7-8 secondes, du
+début à la fin. Le commentaire de `MicButton` affirmait pourtant « pendant la
+conversation, l'état n'est jamais au repos, donc la veille attend » — vrai
+dans une seule fenêtre (`statusRef` y reste `listening`/`speaking` tout du
+long, vérifié en lisant `sessionLive.ts`), mais l'app en a DEUX : la coquille
+normale (`ProtectedShell`) et la fenêtre d'assistance (`AssistantOverlayPage`,
+ouverte par l'appui long — devenu son chemin PRINCIPAL vers Jarvis). Cette
+dernière est une VRAIE seconde `BridgeActivity` avec son propre WebView, donc
+son propre tas JS : le `status` React qui bloque la veille d'une fenêtre
+n'existe tout simplement pas dans l'autre. Une Live ouverte dans l'une n'avait
+aucun moyen de le dire à l'autre.
+
+**`EtatLivePlugin.java`** — un champ statique `volatile boolean actif`, posé
+par n'importe laquelle des deux fenêtres et lu par l'autre. Ça marche parce
+que les deux `Activity` vivent dans le MÊME processus (aucun
+`android:process` déclaré, vérifié dans le manifeste) : pas besoin de
+SharedPreferences ni de sondage réseau, un champ statique suffit — même
+principe que `MainActivity.auPremierPlan` pour `AnnonceApresNotification`.
+**Enregistré dans LES DEUX `Activity`** (`MainActivity` ET
+`AssistOverlayActivity`) : l'oublier dans l'une rendrait le correctif inutile
+pour exactement la fenêtre où le bruit se produit — c'est le premier cas que
+`scripts/verifier-live-croise.ts` garde, essayé à l'envers.
+
+**Le drapeau couvre TOUTE la conversation maintenue, pas une connexion.**
+Posé dans `maintenirSessionLive` (avant que la boucle de reconnexion
+démarre) et baissé dans un `finally` qui entoure cette boucle — jamais dans
+`demarrerSessionLive`, qui ne voit qu'UNE connexion : le poser là referait
+retomber le drapeau à faux pendant chaque reconnexion transparente de Google
+(la limite des 15 minutes), exactement le trou qu'on rebouche.
+
+**La boucle de veille lit le drapeau à chaque tour** (`liveAilleurs: await
+liveActifQuelquePart()`, dans `peutEcouterEnVeille` — même famille que
+`majEnCours`), **`handleClick` ne le lit jamais** : un appui volontaire sur
+le cœur reste obéi même si l'autre fenêtre a une Live ouverte, sinon on
+remplacerait un bruit gênant par un Jarvis sourd dans une fenêtre qu'il
+utilise activement — pire. La moitié de `verifier-live-croise.ts` garde ce
+silence-là, pas seulement la détection.
+
+**Non vérifiable ici** (aucun SDK/appareil Android) : que le bruit a
+réellement cessé chez lui. La mesure future se lit pareil —
+`journal_ecoute`, des rafales de veille qui ne se produisent plus pendant une
+fenêtre `live_debut`→`live_fin`.
 
 ## Le web se met à jour tout seul, l'app Android jamais
 

@@ -36,6 +36,7 @@ import {
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
+import { liveActifQuelquePart } from "@/lib/live/etatLiveNatif"
 import { consigneQuestionApp, suiteDeLaQuestion, type QuestionEnAttente } from "@/lib/questionAppLive"
 import { retourOuAveu } from "@/lib/retourVide"
 import { majEnCours, sAbonnerMaj } from "@/lib/majEnCours"
@@ -49,6 +50,7 @@ import {
   type ContactsApi,
   type DevItemsApi,
   type DocumentsApi,
+  type EntrainementApi,
   type PlaceRemindersApi,
   type PronunciationsApi,
   type TasksApi,
@@ -96,7 +98,12 @@ interface MicButtonProps {
   pronunciationsApi: PronunciationsApi
   voiceSettingApi: VoiceSettingApi
   widgetApi: WidgetApi
+  entrainementApi: EntrainementApi
   wakeWordEnabled: boolean
+  /** Pour que « active le mot-clé » / « désactive la géolocalisation »
+   * touchent le VRAI hook (React + persistance), voir ReglagesVoixApi. */
+  setWakeWordEnabled: (v: boolean) => void
+  setGeofenceEnabled: (v: boolean) => void
   voiceIndex: number | null
   /** Durée pendant laquelle le micro reste ouvert après une réponse de
    * Jarvis, pour enchaîner sans retoucher le bouton. 0 = désactivé. */
@@ -175,7 +182,10 @@ export function MicButton({
   pronunciationsApi,
   voiceSettingApi,
   widgetApi,
+  entrainementApi,
   wakeWordEnabled,
+  setWakeWordEnabled,
+  setGeofenceEnabled,
   voiceIndex,
   suiteMs,
   onIdle,
@@ -307,6 +317,7 @@ export function MicButton({
         notes: i.notes,
       })),
       contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
+      sequences: entrainementApi.sequences,
       categories: tasksApi.categories,
       tacheEnAttente: memoireTacheEnAttente(),
     })
@@ -483,6 +494,7 @@ export function MicButton({
       const delai = delaiAvantAction(derniereAction, action.action)
       if (delai > 0) await new Promise((resolve) => setTimeout(resolve, delai))
       derniereAction = action.action
+      const cible = cibleDeLAction(action as unknown as Record<string, unknown>)
       try {
         reponses.push(
           await executeVoiceAction(
@@ -497,9 +509,20 @@ export function MicButton({
             voiceSettingApi,
             widgetApi,
             agendaApi,
+            { setWakeWordEnabled, setGeofenceEnabled },
+            entrainementApi,
           ),
         )
+        // Le capteur générique (chantier d50d5f34) : CHAQUE action exécutée par
+        // Jarvis, réussie ou non, plutôt qu'instrumenter un par un chacun de la
+        // trentaine de cas de `executeVoiceAction`. `screen_action` et quelques
+        // autres ont déjà leur propre trace plus détaillée (ecran_action,
+        // musique_resultat…) dans `controleEcran.ts`/`actionsTelephoneVocales.ts`
+        // — celle-ci est le filet qui couvre TOUT le reste (add_task,
+        // add_dev_item, set_setting, open_app…), jamais capté nulle part avant.
+        noterEcoute("action_executee", { action: action.action, cible, reussi: true })
       } catch (e) {
+        noterEcoute("action_executee", { action: action.action, cible, reussi: false })
         // L'agenda est le seul domaine qui dépend d'un service extérieur :
         // compte Google pas encore branché, accès retiré, Google qui refuse.
         // Ces messages-là sont écrits pour être dits — les avaler ferait
@@ -507,12 +530,7 @@ export function MicButton({
         // Une action qui lève, c'est un échec sans le moindre doute : on le
         // range avant de laisser l'erreur remonter, sinon elle ne laisse
         // qu'un message rouge de cinq secondes à l'écran.
-        const echec = echecDeLAction(
-          action.action,
-          cibleDeLAction(action as unknown as Record<string, unknown>),
-          originalTranscript,
-          e,
-        )
+        const echec = echecDeLAction(action.action, cible, originalTranscript, e)
         signalerErreur(echec.categorie, echec.titre, {
           detail: echec.detail,
           contexte: echec.contexte,
@@ -864,6 +882,10 @@ export function MicButton({
             // Relu à CHAQUE tour, pas capturé au montage : une mise à jour
             // commence après le démarrage de la boucle, pas avant.
             majEnCours: majEnCoursRef.current,
+            // Relu à CHAQUE tour aussi, et depuis le natif : une conversation
+            // Live ouverte dans L'AUTRE fenêtre (ProtectedShell ou
+            // AssistantOverlayPage) ne se voit dans aucun état React d'ici.
+            liveAilleurs: await liveActifQuelquePart(),
           }) || enRefroidissement(Date.now(), refroidissementRef.current)
         ) {
           await new Promise((r) => setTimeout(r, 400))

@@ -6,6 +6,7 @@ import { LecteurAudio, capturerMicro, type CaptureMicro } from "@/lib/live/audio
 import { demandeFinDeConversation } from "@/lib/live/finConversation"
 import { retourOuAveu } from "@/lib/retourVide"
 import { lireClotureLive } from "@/lib/livePrefs"
+import { definirLiveActifNatif } from "@/lib/live/etatLiveNatif"
 
 /**
  * Une conversation Live avec Gemini : l'audio part en continu, Google décide
@@ -76,6 +77,29 @@ const NOM_OUTIL = "commande_jarvis"
 const JETON_MAX_MS = 15000
 
 /**
+ * Au-delà, on cesse d'attendre le micro et on ferme la conversation en le
+ * disant.
+ *
+ * MESURÉ, PAS SUPPOSÉ (chantier ba140853, 8 sept. 2026). Sur ses 60 dernières
+ * ouvertures Live, `ms_micro` est petit — 333 ms au minimum, un seul cas
+ * au-dessus de deux secondes. Ce cas-là a duré **106 833 ms**, une minute
+ * quarante-sept. Pendant tout ce temps la session était OUVERTE côté Google
+ * et Jarvis n'entendait rien : l'écran disait « connexion », rien ne bougeait,
+ * et rien n'expliquait pourquoi.
+ *
+ * `capturerMicro` était le seul appel de cette ouverture à n'être borné par
+ * rien — le jeton l'est (JETON_MAX_MS), et partout ailleurs dans le projet les
+ * appels au natif passent par `borner()`. getUserMedia peut attendre
+ * indéfiniment : une fenêtre de permission restée ouverte, un micro tenu par
+ * une autre application.
+ *
+ * Quinze secondes est large exprès : la fenêtre de permission d'Android
+ * attend légitimement une réponse, et la couper trop tôt ferait échouer une
+ * première ouverture parfaitement normale.
+ */
+const MICRO_MAX_MS = 15000
+
+/**
  * Ouvre une session. Rend de quoi l'arrêter ; les événements arrivent au fil
  * de l'eau. Toute panne se traduit par onEtat("fermee", raison).
  */
@@ -94,9 +118,50 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   const formulesCloture = clotureLive.formules ?? undefined
   const clotureVocaleDemandee = (texte: string) => clotureLive.actif && demandeFinDeConversation(texte, formulesCloture)
 
+  // LA DERNIÈRE COUPE, et elle doit fermer la question (chantier ba140853).
+  //
+  // Mesuré le 8 sept. 2026 sur ses deux ouvertures de 13h16 et 13h18, la
+  // première fois que le découpage du serveur est remonté :
+  //
+  //     ms_jeton 3561 | ms_serveur 589 | auth 281 | lectures  97 | google 211
+  //     ms_jeton 1684 | ms_serveur 572 | auth 251 | lectures 121 | google 200
+  //
+  // Le temps DANS la fonction est le même à 17 ms près. L'écart de 1877 ms est
+  // entièrement dehors. Ce n'est donc ni Google, ni nos lectures, ni le
+  // démarrage à froid de l'isolat — tout ça est déjà écarté, ne le recherchez
+  // pas.
+  //
+  // Reste deux choses entre l'app et la fonction, et il faut les séparer :
+  // `auth.getSession()`, que supabase-js appelle avant CHAQUE appel d'Edge
+  // Function (lu dans `fetchWithAuth`, version 2.114) et qui renouvelle le
+  // jeton quand il approche de l'expiration ; et le réseau lui-même, où une
+  // poignée de main TCP+TLS neuve coûte une à deux secondes sur un réseau
+  // mobile alors qu'une connexion réutilisée ne coûte rien.
+  //
+  // ON L'APPELLE DONC NOUS-MÊMES, ET ON LE CHRONOMÈTRE. Ce n'est pas un appel
+  // de plus : supabase-js le refera juste après, mais sur une session déjà
+  // fraîche, donc pour rien. `ms_jeton - ms_session - ms_serveur` est alors le
+  // réseau pur.
+  //
+  // CE QUE CHAQUE ISSUE VOUDRA DIRE, pour que la prochaine session n'ait pas à
+  // le redécouvrir : si `ms_session` saute avec `ms_jeton`, c'est le
+  // renouvellement du jeton, et il se pré-chauffe. Si `ms_session` reste petit
+  // dans les deux cas, c'est la poignée de main réseau — et la piste du jeton
+  // est morte, ce qui se voyait déjà à la fréquence (un jeton dure une heure,
+  // la lenteur arrive une fois sur deux).
+  const avantSession = Date.now()
+  await supabase.auth.getSession().catch(() => null)
+  const msSession = Date.now() - avantSession
+
   // 1. Un jeton éphémère, jamais la clé.
   const { data, error } = await withTimeout(
-    supabase.functions.invoke<{ jeton: string; modele: string }>("live-jeton", { body: { contexte: ev.contexte } }),
+    supabase.functions.invoke<{
+      jeton: string
+      modele: string
+      /** Le découpage du temps passé DANS la fonction (chantier ba140853).
+       * Absent d'une version déployée plus ancienne : ne rien supposer. */
+      temps?: { auth: number; lectures: number; google: number; serveur: number }
+    }>("live-jeton", { body: { contexte: ev.contexte } }),
     JETON_MAX_MS,
   )
   if (error || !data?.jeton) {
@@ -225,6 +290,12 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     if (m.goAway) fermer("Google a demandé de fermer la session.")
   }
 
+  // Quelle étape a échoué, pour que `live_echec` ne dise plus « connexion »
+  // quand c'est le micro. Tout ce chantier consiste à savoir OÙ le temps
+  // passe : un journal qui range deux pannes différentes sous le même nom
+  // fait perdre exactement ce qu'on essaie de gagner.
+  let etape = "connexion"
+
   try {
     // 2. La session, ouverte par l'app elle-même avec le jeton.
     const ai = new GoogleGenAI({ apiKey: data.jeton, httpOptions: { apiVersion: "v1alpha" } })
@@ -242,8 +313,23 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     const connectee = Date.now()
 
     // 3. Le micro, en continu. Google décide du reste.
-    capture = await capturerMicro((paquet) => {
-      if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
+    //
+    // BORNÉ : voir MICRO_MAX_MS. Une conversation ouverte où le micro n'est
+    // jamais venu est le pire des états — elle a l'air de marcher. Sa règle
+    // du 6 sept. vaut ici comme ailleurs : on ne laisse pas croire qu'on
+    // écoute quand on n'écoute pas.
+    etape = "micro"
+    capture = await withTimeout(
+      capturerMicro((paquet) => {
+        if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
+      }),
+      MICRO_MAX_MS,
+    ).catch(() => {
+      // ET PAS LE MESSAGE DE `withTimeout`, qui parle du SERVEUR : « Le
+      // serveur ne répond pas, vérifie ta connexion » enverrait chercher une
+      // panne de réseau alors que c'est le micro qui n'est jamais venu. Un
+      // diagnostic faux coûte plus cher qu'une absence de diagnostic.
+      throw new Error("Le micro n'a pas répondu. Une autre application le tient peut-être.")
     })
     // `contexte` : la taille de ce que Jarvis sait à l'ouverture. Zéro ou
     // presque = une conversation aveugle (bug du 4 sept.), à voir d'ici.
@@ -267,6 +353,19 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       modele: data.modele,
       delai_ms: Date.now() - debut,
       ms_jeton: jetonObtenuAt - debut,
+      // LE DÉCOUPAGE DE `ms_jeton`, rendu par la fonction elle-même. Sur ses
+      // 25 dernières ouvertures (6-7 sept.), ms_jeton est BIMODAL : ~1200 à
+      // 1900 ms, ou ~3500 à 4300 ms, presque rien entre les deux. Une marche
+      // pareille a une cause, et il fallait savoir laquelle des cinq étapes
+      // la porte. `ms_serveur` est le temps dans la fonction ; la différence
+      // avec ms_jeton est le réseau du téléphone plus le démarrage à froid de
+      // l'isolat, qu'on ne peut pas chronométrer de l'intérieur.
+      ms_serveur: data.temps?.serveur ?? null,
+      // Voir le bloc au-dessus de l'appel : la dernière coupe de ms_jeton.
+      ms_session: msSession,
+      ms_auth: data.temps?.auth ?? null,
+      ms_lectures: data.temps?.lectures ?? null,
+      ms_google: data.temps?.google ?? null,
       ms_connexion: connectee - jetonObtenuAt,
       ms_micro: Date.now() - connectee,
       premier: ev.premierMessage ? 1 : 0,
@@ -279,7 +378,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     }
   } catch (e) {
     const raison = e instanceof Error ? e.message : String(e)
-    noterEcoute("live_echec", { etape: "connexion", detail: raison.slice(0, 120) })
+    noterEcoute("live_echec", { etape, detail: raison.slice(0, 120) })
     fermer(`Impossible d'ouvrir la conversation : ${raison}`)
   }
 
@@ -303,29 +402,43 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
   let arretDemande = false
   let reconnexions = 0
 
+  // Le drapeau natif couvre TOUTE la durée de la conversation maintenue, y
+  // compris les reconnexions transparentes de Google : sans ce wrapper, un
+  // simple rechargement de session ferait retomber le drapeau à faux pour
+  // quelques centaines de ms à chaque fois. Voir etatLiveNatif.ts —
+  // c'est ce qui manquait pour que la boucle de veille de l'AUTRE fenêtre
+  // (ProtectedShell/AssistantOverlayPage) sache qu'une conversation Live
+  // tourne ici et se taise, au lieu de continuer à réclamer le micro toutes
+  // les ~7-8 s pendant qu'on parle ailleurs.
+  definirLiveActifNatif(true)
+
   const boucle = async () => {
-    while (!arretDemande) {
-      const debut = Date.now()
-      courante = await demarrerSessionLive({
-        ...ev,
-        premierMessage: reconnexions === 0 ? ev.premierMessage : undefined,
-        onEtat: (etat, detail, parRaphael) => {
-          // La fermeture par Google est absorbée ici : le cœur reste sur
-          // « conversation en cours » pendant qu'on rouvre. Pas celle de
-          // Raphaël (appui ou « terminé ») : elle est définitive.
-          if (etat === "fermee" && !parRaphael && !arretDemande && !detail && Date.now() - debut >= DUREE_MIN_POUR_RECONNECTER_MS && reconnexions < RECONNEXIONS_MAX) {
-            ev.onEtat("connexion")
-            return
-          }
-          ev.onEtat(etat, detail, parRaphael)
-        },
-      })
-      const fin = await courante.finie
-      if (arretDemande || fin.parRaphael) return
-      const duree = Date.now() - debut
-      if (fin.raison || duree < DUREE_MIN_POUR_RECONNECTER_MS || reconnexions >= RECONNEXIONS_MAX) return
-      reconnexions++
-      noterEcoute("live_reconnexion", { numero: reconnexions, apres_ms: duree })
+    try {
+      while (!arretDemande) {
+        const debut = Date.now()
+        courante = await demarrerSessionLive({
+          ...ev,
+          premierMessage: reconnexions === 0 ? ev.premierMessage : undefined,
+          onEtat: (etat, detail, parRaphael) => {
+            // La fermeture par Google est absorbée ici : le cœur reste sur
+            // « conversation en cours » pendant qu'on rouvre. Pas celle de
+            // Raphaël (appui ou « terminé ») : elle est définitive.
+            if (etat === "fermee" && !parRaphael && !arretDemande && !detail && Date.now() - debut >= DUREE_MIN_POUR_RECONNECTER_MS && reconnexions < RECONNEXIONS_MAX) {
+              ev.onEtat("connexion")
+              return
+            }
+            ev.onEtat(etat, detail, parRaphael)
+          },
+        })
+        const fin = await courante.finie
+        if (arretDemande || fin.parRaphael) return
+        const duree = Date.now() - debut
+        if (fin.raison || duree < DUREE_MIN_POUR_RECONNECTER_MS || reconnexions >= RECONNEXIONS_MAX) return
+        reconnexions++
+        noterEcoute("live_reconnexion", { numero: reconnexions, apres_ms: duree })
+      }
+    } finally {
+      definirLiveActifNatif(false)
     }
   }
   void boucle()

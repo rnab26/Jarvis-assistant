@@ -110,6 +110,16 @@ async function lire(): Promise<LectureEcran | { echec: "service_inactif" | "pas_
   }
 }
 
+export interface ResultatEcran {
+  /** La phrase que Jarvis dira — jamais un verbe au passé sur ce qui n'a pas
+   * été constaté, voir _shared/honnetete.ts. */
+  message: string
+  /** Vrai seulement quand l'action demandée a vraiment eu lieu. Ajouté pour
+   * le mode entraînement (chantier 86df4f4a), qui doit savoir s'ARRÊTER de
+   * rejouer une séquence sans deviner l'échec dans le texte de `message`. */
+  ok: boolean
+}
+
 /**
  * Exécute une commande d'écran et rend la phrase que Jarvis dira.
  *
@@ -120,14 +130,14 @@ async function lire(): Promise<LectureEcran | { echec: "service_inactif" | "pas_
 export async function agirSurEcran(
   commande: CommandeEcran,
   cible?: string,
-): Promise<string> {
+): Promise<ResultatEcran> {
   const lecture = await lire()
   if ("echec" in lecture) {
     noterEcoute("ecran_action", { commande, cible: cible ?? null, resultat: lecture.echec })
     if (lecture.echec === "service_inactif") {
-      return phraseEcran({ fait: "echec", cause: "service_inactif" })
+      return { message: phraseEcran({ fait: "echec", cause: "service_inactif" }), ok: false }
     }
-    return "Je n'arrive pas à voir l'écran en ce moment, donc je n'ai rien touché."
+    return { message: "Je n'arrive pas à voir l'écran en ce moment, donc je n'ai rien touché.", ok: false }
   }
 
   // La liste noire d'abord, avant toute autre décision : sur l'écran d'une
@@ -140,23 +150,26 @@ export async function agirSurEcran(
       resultat: "app_interdite",
       paquet: lecture.paquet,
     })
-    return phraseEcran({
-      fait: "echec",
-      cause: "app_interdite",
-      application: lecture.application ?? interdit.libelle,
-    })
+    return {
+      message: phraseEcran({
+        fait: "echec",
+        cause: "app_interdite",
+        application: lecture.application ?? interdit.libelle,
+      }),
+      ok: false,
+    }
   }
 
   if (commande === "lire") {
     noterEcoute("ecran_action", { commande, resultat: "lu", paquet: lecture.paquet })
-    return phraseEcran({ fait: "lu", lecture })
+    return { message: phraseEcran({ fait: "lu", lecture }), ok: true }
   }
 
   if (commande === "retour" || commande === "accueil") {
     const r = commande === "retour" ? await Accessibilite.retour() : await Accessibilite.accueil()
     noterEcoute("ecran_action", { commande, resultat: r.ok ? "fait" : "refus" })
-    if (!r.ok) return phraseEcran({ fait: "echec", cause: "refus" })
-    return phraseEcran(commande === "retour" ? { fait: "retour" } : { fait: "accueil" })
+    if (!r.ok) return { message: phraseEcran({ fait: "echec", cause: "refus" }), ok: false }
+    return { message: phraseEcran(commande === "retour" ? { fait: "retour" } : { fait: "accueil" }), ok: true }
   }
 
   if (commande === "defiler_bas" || commande === "defiler_haut") {
@@ -167,8 +180,8 @@ export async function agirSurEcran(
       resultat: r.ok ? "fait" : "rien_a_defiler",
       paquet: lecture.paquet,
     })
-    if (!r.ok) return phraseEcran({ fait: "echec", cause: "rien_a_defiler" })
-    return phraseEcran({ fait: "defile", direction: bas ? "bas" : "haut" })
+    if (!r.ok) return { message: phraseEcran({ fait: "echec", cause: "rien_a_defiler" }), ok: false }
+    return { message: phraseEcran({ fait: "defile", direction: bas ? "bas" : "haut" }), ok: true }
   }
 
   // Un clic sans rien à désigner ne veut rien dire : on ne prend pas « le
@@ -176,7 +189,10 @@ export async function agirSurEcran(
   // qu'on s'interdit.
   if (!cible || !cible.trim()) {
     noterEcoute("ecran_action", { commande, resultat: "sans_cible", paquet: lecture.paquet })
-    return `Sur quoi veux-tu que j'appuie ? Je vois ${phraseEcran({ fait: "lu", lecture }).replace(/^Sur cet écran je vois : /, "").replace(/\.$/, "")}.`
+    return {
+      message: `Sur quoi veux-tu que j'appuie ? Je vois ${phraseEcran({ fait: "lu", lecture }).replace(/^Sur cet écran je vois : /, "").replace(/\.$/, "")}.`,
+      ok: false,
+    }
   }
 
   const choix = designer(cible, lecture)
@@ -188,7 +204,7 @@ export async function agirSurEcran(
       paquet: lecture.paquet,
       application: lecture.application ?? null,
     })
-    return phraseEcran({ fait: "echec", cause: choix, lecture })
+    return { message: phraseEcran({ fait: "echec", cause: choix, lecture }), ok: false }
   }
 
   const r = await Accessibilite.cliquer({
@@ -204,12 +220,14 @@ export async function agirSurEcran(
     application: lecture.application ?? null,
   })
 
-  if (r.resultat === "fait") return phraseEcran({ fait: "clic", libelle: choix.element.libelle })
+  if (r.resultat === "fait") {
+    return { message: phraseEcran({ fait: "clic", libelle: choix.element.libelle }), ok: true }
+  }
   if (r.resultat === "service_inactif") {
-    return phraseEcran({ fait: "echec", cause: "service_inactif" })
+    return { message: phraseEcran({ fait: "echec", cause: "service_inactif" }), ok: false }
   }
   if (r.resultat === "ecran_change" || r.resultat === "pas_de_vue") {
-    return phraseEcran({ fait: "echec", cause: "ecran_change" })
+    return { message: phraseEcran({ fait: "echec", cause: "ecran_change" }), ok: false }
   }
-  return phraseEcran({ fait: "echec", cause: "refus" })
+  return { message: phraseEcran({ fait: "echec", cause: "refus" }), ok: false }
 }

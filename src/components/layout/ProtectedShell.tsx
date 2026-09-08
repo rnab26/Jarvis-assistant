@@ -15,6 +15,7 @@ function ShellContent() {
     contactsState,
     placeRemindersState,
     pronunciationsState,
+    entrainementState,
     geofenceState,
     wakeWordState,
     dialogueState,
@@ -41,6 +42,13 @@ function ShellContent() {
         voiceSettingApi={{ muted: voiceState.muted, setMuted: voiceState.setMuted }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
+        setWakeWordEnabled={wakeWordState.setEnabled}
+        setGeofenceEnabled={geofenceState.setEnabled}
+        entrainementApi={{
+          sequences: entrainementState.sequences,
+          addSequence: entrainementState.addSequence,
+          rejouer: entrainementState.rejouer,
+        }}
         voiceIndex={voiceState.voiceIndex}
         suiteMs={dialogueState.suiteMs}
       />

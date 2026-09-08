@@ -102,6 +102,7 @@ function EcranAutorisations({ onFermer }: { onFermer: () => void }) {
             enCours={a.enCours}
             onDemander={a.demander}
             onOuvrirReglages={a.ouvrirReglages}
+            suite={a.suite}
             onReessayer={a.relire}
           />
         </div>

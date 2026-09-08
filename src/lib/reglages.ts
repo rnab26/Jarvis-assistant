@@ -186,6 +186,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/Notifications.tsx",
   },
   {
+    cle: "jarvis_annonce_app_fermee",
+    ou: "Paramètres › Notifications › Parler même app fermée",
+    fichier: "src/components/settings/Notifications.tsx",
+  },
+  {
     cle: "jarvis_memoire_retention",
     ou: "Paramètres › Mémoire › Combien de temps Jarvis garde tes conversations",
     fichier: "src/components/settings/Memoire.tsx",

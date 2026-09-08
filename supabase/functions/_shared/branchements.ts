@@ -48,6 +48,66 @@ const LISIBLES: { cle: string; dit: (v: string) => string }[] = [
   },
 ]
 
+/**
+ * Les réglages qu'il peut CHANGER lui-même (action `set_setting`, chantier
+ * f7137b0c) — même liste que `src/lib/reglagesVoix.ts`, ici pour la moitié
+ * LECTURE : dire leur valeur ACTUELLE, avec le vrai défaut appliqué quand la
+ * clé n'a jamais été touchée. Les deux listes doivent rester d'accord :
+ * `scripts/verifier-reglages-voix.ts` les compare.
+ *
+ * `defaut` est la valeur EFFECTIVE quand la clé est absente de `reglages` —
+ * reprise de chaque module qui possède réellement le réglage
+ * (`useWakeWordSetting.ts`, `theme.ts`, `majPrefs.ts`…), jamais devinée : un
+ * défaut faux ferait dire à Jarvis le contraire de ce qui tourne vraiment.
+ */
+export const REGLAGES_MODIFIABLES: { cle: string; dit: (v: string) => string; defaut: string }[] = [
+  {
+    cle: "jarvis_wake_word_enabled",
+    dit: (v) => `mot-clé de réveil : ${v === "1" ? "activé" : "désactivé"}`,
+    defaut: "0",
+  },
+  {
+    cle: "jarvis_geofence_enabled",
+    dit: (v) => `rappels de lieu par géolocalisation réelle : ${v === "1" ? "activés" : "désactivés"}`,
+    defaut: "0",
+  },
+  {
+    cle: "jarvis_theme",
+    dit: (v) => `thème : ${v === "light" ? "clair" : v === "dark" ? "sombre" : "comme le téléphone"}`,
+    defaut: "system",
+  },
+  {
+    cle: "jarvis_memoire_retention",
+    dit: (v) => `conservation des conversations : ${v === "illimite" ? "sans limite" : `${v} jours`}`,
+    defaut: "illimite",
+  },
+  {
+    cle: "jarvis_delai_annulation",
+    dit: (v) => `délai pour annuler une action : ${v === "0" ? "immédiat" : `${Number(v) / 1000} secondes`}`,
+    defaut: "3000",
+  },
+  {
+    cle: "jarvis_maj_auto",
+    dit: (v) => `mises à jour rapides automatiques : ${v === "0" ? "désactivées" : "activées"}`,
+    defaut: "1",
+  },
+  {
+    cle: "jarvis_moteur_auto",
+    dit: (v) => `veille automatique du moteur de langue : ${v === "false" ? "gelée" : "activée"}`,
+    defaut: "true",
+  },
+  {
+    cle: "jarvis_sessions_autonomes",
+    dit: (v) => `sessions autonomes de développement : ${v === "false" ? "désactivées" : "activées"}`,
+    defaut: "true",
+  },
+  {
+    cle: "jarvis_ia_relais_lecture",
+    dit: (v) => `lecture à voix haute d'une IA relayée : ${v === "1" ? "activée" : "désactivée"}`,
+    defaut: "0",
+  },
+]
+
 /** Ce que dit une portée Google, en français. */
 function portee(scopes: string): string[] {
   const dits: string[] = []
@@ -89,6 +149,16 @@ export function consigneBranchements(etat: EtatBranchements): string {
   if (etat.reglages.jarvis_mode_live === "1") {
     lignes.push("- Le mode conversation Live est activé.")
   }
+
+  // Chantier f7137b0c : ce qu'il peut CHANGER lui-même (action set_setting),
+  // avec la valeur RÉELLE — défaut appliqué quand la clé n'a jamais été
+  // touchée, jamais « absent » tout court, sinon Jarvis dirait ne pas savoir
+  // alors que le comportement effectif est connu.
+  const reglagesVoix = REGLAGES_MODIFIABLES.map(({ cle, dit, defaut }) => {
+    const v = etat.reglages[cle]
+    return dit(typeof v === "string" && v.trim() !== "" ? v.trim() : defaut)
+  })
+  lignes.push(`- Réglages qu'il peut te faire changer TOI-MÊME (action set_setting) : ${reglagesVoix.join(" ; ")}.`)
 
   return `À QUOI TU ES BRANCHÉ, chez lui, en ce moment — réponds avec ça quand il demande ce à quoi tu as accès :
 ${lignes.join("\n")}

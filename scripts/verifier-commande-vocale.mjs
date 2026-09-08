@@ -655,6 +655,61 @@ cas.push(
       return [true]
     },
   },
+  // Chantier f7137b0c : Jarvis peut CHANGER neuf de ses réglages lui-même
+  // (action set_setting, voir src/lib/reglagesVoix.ts). Ces trois contrôles
+  // prouvent que la consigne arrive jusqu'au modèle, pas seulement qu'elle
+  // est bien écrite dans le fichier.
+  {
+    nom: "il sait activer le mot-clé de réveil lui-même",
+    phrase: "Active le mot-clé de réveil Jarvis.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_setting")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.setting_cle !== "jarvis_wake_word_enabled") return [false, `setting_cle = ${a.setting_cle}`]
+      if (a.setting_valeur !== "actif") return [false, `setting_valeur = ${a.setting_valeur}`]
+      return [true]
+    },
+  },
+  {
+    nom: "il sait changer le thème lui-même",
+    phrase: "Mets le thème en sombre.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_setting")
+      if (!a) return [false, `actions : ${(r.actions ?? []).map((x) => x.action).join(", ") || "aucune"}`]
+      if (a.setting_cle !== "jarvis_theme") return [false, `setting_cle = ${a.setting_cle}`]
+      if (a.setting_valeur !== "sombre") return [false, `setting_valeur = ${a.setting_valeur}`]
+      return [true]
+    },
+  },
+  {
+    nom: "il sait dire ce qu'il peut régler lui-même, sans se dire sans accès",
+    phrase: "Qu'est-ce que tu peux régler toi-même dans tes réglages ?",
+    controle: (r) => {
+      const actions = r.actions ?? []
+      const message = actions.map((x) => x.message ?? "").join(" ")
+      if (SANS_ACCES.test(message)) return [false, `il se dit sans accès à l'interface : "${message}"`]
+      const aListe = actions.some((x) => x.action === "list_settings")
+      // Le modèle peut soit appeler list_settings, soit répondre directement
+      // (chat) en citant plusieurs réglages connus : les deux sont corrects,
+      // seul un « je ne peux rien régler » serait faux.
+      const citeDesReglages = /mot-cl[eé]|th[eè]me|g[eé]olocalisation|m[eé]moire|mise[s]? [aà] jour|moteur de langue|session[s]? autonome/i.test(message)
+      if (!aListe && !citeDesReglages) {
+        return [false, `ni list_settings ni réglage cité : ${JSON.stringify(actions).slice(0, 300)}`]
+      }
+      return [true]
+    },
+  },
+  {
+    nom: "« qu'est-ce que ta veste préférée ? » ne se confond pas avec un réglage connu",
+    phrase: "Est-ce que tu peux régler le volume de la musique du salon ?",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "set_setting")
+      // Aucun des neuf réglages connus ne parle de volume de musique : le
+      // modèle ne doit PAS inventer un setting_cle qui n'existe pas.
+      if (a) return [false, `a inventé un set_setting : ${JSON.stringify(a)}`]
+      return [true]
+    },
+  },
   {
     nom: "« lance la deuxième vidéo » est une action d'écran, pas une recherche",
     phrase: "Attends, vas-y, lance la deuxième vidéo.",

@@ -73,6 +73,17 @@ const CANAUX: Record<CanalNotif, { id: string; nom: string; description: string;
   },
 }
 
+/** L'inverse de CANAUX : depuis le channelId Android d'une notification reçue
+ * ou tapée, retrouver le canal court (celui que connaît apprentissage.ts).
+ * Sert à tracer et à apprendre sans dupliquer la correspondance ailleurs. */
+export function canalDepuisChannelId(channelId: string | undefined | null): CanalNotif | null {
+  if (!channelId) return null
+  for (const [canal, def] of Object.entries(CANAUX)) {
+    if (def.id === channelId) return canal as CanalNotif
+  }
+  return null
+}
+
 let canauxPrets = false
 
 /** Android refuse d'afficher une notification dont le canal n'existe pas —

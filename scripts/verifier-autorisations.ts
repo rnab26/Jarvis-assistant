@@ -26,6 +26,7 @@ import {
   actionDeLaLigne,
   autorisationParCle,
   clesADemander,
+  gestesQuiRestent,
   libelleEtat,
   resumeAutorisations,
   type CleAutorisation,
@@ -201,6 +202,88 @@ verifier(
     "registerPlugin(AutorisationsPlugin.class)",
   ),
   "sans enregistrement, chaque appel échoue et l'écran se croit hors de l'app",
+)
+
+// ── UN BOUTON « OUVRIR LES RÉGLAGES » NE DOIT JAMAIS ÊTRE MUET ──────────
+//
+// Raphaël, 8 sept. 2026, capture à l'appui : le bouton de la ligne « Ne pas
+// l'endormir en arrière-plan », entouré au feutre rouge, et un mot — « pas
+// fonctionnelle ».
+//
+// LA CAUSE, ET ELLE ÉTAIT DANS LES TROIS PLUGINS À LA FOIS : un pré-contrôle
+// `intent.resolveActivity(pm) == null` devant chaque `startActivity`.
+// `resolveActivity` est soumis au filtrage de visibilité des paquets depuis
+// Android 11 — l'app vise targetSdk 36, et le manifeste ne déclare AUCUNE
+// action de réglages dans `<queries>`. Il peut donc rendre null pour un écran
+// qui existe, et on renonçait sans essayer. Le repli, la fiche de
+// l'application, repassait par le même pré-contrôle : bouton parfaitement
+// muet.
+//
+// La règle d'Android depuis l'API 30 est d'essayer et d'attraper. Ce contrôle
+// interdit le retour du pré-contrôle, dans les trois fichiers.
+const PLUGINS_QUI_OUVRENT = [
+  "AutorisationsPlugin.java",
+  "BullePlugin.java",
+  "ReglagesSystemePlugin.java",
+]
+for (const nom of PLUGINS_QUI_OUVRENT) {
+  const source = readFileSync(`android/app/src/main/java/com/raphael/jarvis/${nom}`, "utf8")
+  // On vise l'APPEL, pas le mot : `resolveActivity` est cité dans les
+  // commentaires qui expliquent justement pourquoi on ne s'en sert plus.
+  // Chercher le mot resterait vert le jour où quelqu'un remet le pré-contrôle
+  // — c'est le piège déjà payé par le sélecteur Playwright et par
+  // `Filesystem.mkdir`.
+  const appels = source.match(/\.resolveActivity\s*\(/g) ?? []
+  verifier(
+    `${nom} n'interroge plus Android avant d'ouvrir un écran`,
+    appels.length === 0,
+    `${appels.length} appel(s) à resolveActivity — filtré depuis Android 11, il rend null pour un écran qui existe`,
+  )
+  verifier(
+    `${nom} passe par EcransReglages`,
+    source.includes("EcransReglages.ouvrirLePremierQuiRepond("),
+    "sinon le try/catch qui remplace le pré-contrôle n'existe pas",
+  )
+}
+
+// La batterie a besoin d'un repli QUI CONTIENT LE RÉGLAGE. La fiche de
+// l'application ne l'a pas sur toutes les surcouches : entre la fenêtre
+// directe et elle, il faut la liste système des optimisations.
+{
+  const source = readFileSync(
+    "android/app/src/main/java/com/raphael/jarvis/AutorisationsPlugin.java",
+    "utf8",
+  )
+  verifier(
+    "la batterie a un repli vers la liste système, pas seulement la fiche de l'app",
+    source.includes("ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS"),
+    "l'action directe est protégée par une permission et plusieurs surcouches la refusent ; sans ce repli il n'atterrit nulle part d'utile",
+  )
+}
+
+// ── ET IL SAIT CE QU'IL LUI RESTE À TOUCHER ─────────────────────────────
+//
+// Sa demande d'origine (5 sept.) était de ne plus chercher lui-même dans les
+// réglages d'Android. Quand on ne peut pas l'emmener jusqu'au bout — et pour
+// la batterie, souvent, on ne peut pas — on lui dit au moins où il atterrit.
+verifier(
+  "la fenêtre directe ne dit rien de plus : elle se suffit",
+  gestesQuiRestent("batterie", "fenetre") === null,
+  "un texte de trop après un geste qui a marché se lit comme du bruit",
+)
+verifier(
+  "la liste système dit quoi y chercher",
+  /Non optimisé/.test(gestesQuiRestent("batterie", "liste") ?? ""),
+  "une liste de toutes les applications ouverte sans un mot, c'est exactement ce qu'il ne veut plus",
+)
+verifier(
+  "la fiche de l'app dit quelle rubrique ouvrir",
+  /Batterie/.test(gestesQuiRestent("batterie", "fiche") ?? ""),
+)
+verifier(
+  "une APK trop ancienne, qui ne dit pas où elle a ouvert, ne fait rien inventer",
+  gestesQuiRestent("batterie", undefined) === null,
+  "une marche à suivre qui ne correspond à rien de ce qu'il a sous les yeux est pire que le silence",
 )
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

@@ -38,9 +38,8 @@ public class ReglagesSystemePlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
             intent.putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            if (intent.resolveActivity(getContext().getPackageManager()) != null) {
-                getContext().startActivity(intent);
+            // Pas de pre-controle resolveActivity : voir EcransReglages.
+            if (EcransReglages.ouvrirLePremierQuiRepond(getContext(), intent) >= 0) {
                 call.resolve();
                 return;
             }
@@ -139,20 +138,17 @@ public class ReglagesSystemePlugin extends Plugin {
         ouvrirFicheApplication(call);
     }
 
-    /** Ouvre un écran de réglages s'il existe. Vrai s'il s'est ouvert. */
+    /**
+     * Ouvre un écran de réglages s'il existe. Vrai s'il s'est ouvert.
+     *
+     * Le try/catch était déjà là, et il était juste — mais le pré-contrôle
+     * `resolveActivity` placé DEVANT le neutralisait : filtré par la
+     * visibilité des paquets depuis Android 11, il rend null pour un écran
+     * qui existe, et on renonçait avant même d'essayer. Voir EcransReglages.
+     */
     private boolean essayer(String action, PluginCall call, String ecran) {
         Intent intent = new Intent(action);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (intent.resolveActivity(getContext().getPackageManager()) == null) return false;
-        try {
-            getContext().startActivity(intent);
-        } catch (Exception refus) {
-            // resolveActivity dit qu'un écran répond, pas qu'on a le droit de
-            // l'ouvrir : plusieurs écrans de réglages sont protégés par une
-            // permission de signature. On passe au suivant plutôt que de
-            // laisser l'app tomber.
-            return false;
-        }
+        if (EcransReglages.ouvrirLePremierQuiRepond(getContext(), intent) < 0) return false;
         JSObject resultat = new JSObject();
         resultat.put("ecran", ecran);
         call.resolve(resultat);
@@ -166,12 +162,12 @@ public class ReglagesSystemePlugin extends Plugin {
     public void ouvrirFicheApplication(PluginCall call) {
         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
         intent.setData(Uri.parse("package:" + getContext().getPackageName()));
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (intent.resolveActivity(getContext().getPackageManager()) == null) {
+        // Dernier recours de tous les autres : s'il fallait un pré-contrôle
+        // pour l'ouvrir, le recours n'en serait pas un. Voir EcransReglages.
+        if (EcransReglages.ouvrirLePremierQuiRepond(getContext(), intent) < 0) {
             call.reject("Aucun écran de réglages n'a pu être ouvert.");
             return;
         }
-        getContext().startActivity(intent);
         JSObject resultat = new JSObject();
         resultat.put("ecran", "fiche");
         call.resolve(resultat);

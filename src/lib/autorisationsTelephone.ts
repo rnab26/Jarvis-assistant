@@ -245,10 +245,54 @@ export function resumeAutorisations(etats: EtatAutorisation[]): {
   return { accordees, total: AUTORISATIONS.length, manquantesEssentielles }
 }
 
+/**
+ * SUR QUOI Android vient de l'emmener. Les trois écrans existent parce que
+ * l'action directe n'est pas disponible partout : elle est protégée par une
+ * permission, et plusieurs surcouches constructeur la retirent.
+ *
+ * - `fenetre` : la fenêtre « Autoriser / Refuser », un seul geste ;
+ * - `liste`   : la liste système de toutes les applications, il faut y
+ *               trouver Jarvis ;
+ * - `fiche`   : la fiche de Jarvis, il faut y trouver la bonne rubrique.
+ */
+export type EcranOuvert = "fenetre" | "liste" | "fiche"
+
+/**
+ * Ce qu'il reste à faire, une fois l'écran ouvert.
+ *
+ * POURQUOI CE N'EST PAS COSMÉTIQUE. Sa demande d'origine (5 sept. 2026) était
+ * de ne plus avoir à chercher lui-même dans les réglages d'Android. Quand on
+ * ne peut pas l'emmener jusqu'au bout — et pour la batterie, souvent, on ne
+ * peut pas — la moindre des choses est de lui dire où il vient d'atterrir et
+ * ce qu'il reste à toucher. Un écran système ouvert sans un mot, c'est
+ * exactement ce qu'il ne veut plus.
+ *
+ * Rend `null` quand il n'y a rien d'utile à ajouter : la fenêtre directe se
+ * suffit à elle-même, et un texte de trop se lit comme du bruit.
+ */
+export function gestesQuiRestent(cle: CleAutorisation, ecran: EcranOuvert | undefined): string | null {
+  if (ecran === "fenetre") return null
+  const nom = autorisationParCle(cle)?.titre ?? "Jarvis"
+  if (ecran === "liste") {
+    return cle === "batterie"
+      ? "Android n'a pas ouvert la fenêtre directe. Dans la liste, choisis « Toutes les applications », trouve Jarvis, puis « Non optimisé »."
+      : `Android n'a pas ouvert la fenêtre directe. Trouve Jarvis dans la liste, puis active « ${nom} ».`
+  }
+  if (ecran === "fiche") {
+    return cle === "batterie"
+      ? "Ni la fenêtre ni la liste ne se sont ouvertes : tu es sur la fiche de Jarvis. Cherche « Batterie », puis « Sans restriction »."
+      : "Tu es sur la fiche de Jarvis : le réglage s'y trouve, au milieu des autres."
+  }
+  // L'APK installée est antérieure à ce chantier : elle ouvre bien un écran,
+  // mais ne dit pas lequel. On se tait plutôt que d'inventer une marche à
+  // suivre qui ne correspondrait peut-être à rien de ce qu'il a sous les yeux.
+  return null
+}
+
 interface AutorisationsPlugin {
   etat(): Promise<{ autorisations: EtatAutorisation[] }>
   demander(options: { cles: CleAutorisation[] }): Promise<{ autorisations: EtatAutorisation[] }>
-  ouvrirEcran(options: { cle: CleAutorisation }): Promise<void>
+  ouvrirEcran(options: { cle: CleAutorisation }): Promise<{ ecran?: EcranOuvert }>
 }
 
 /**
