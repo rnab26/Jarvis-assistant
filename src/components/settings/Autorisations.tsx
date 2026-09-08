@@ -18,6 +18,7 @@ import {
   Autorisations as PontAutorisations,
   actionDeLaLigne,
   clesADemander,
+  gestesQuiRestent,
   libelleEtat,
   resumeAutorisations,
   type AutorisationDeclaree,
@@ -60,6 +61,10 @@ export interface ListeAutorisationsProps {
   disponible: boolean
   onDemander: (cles: CleAutorisation[]) => void
   onOuvrirReglages: (cle: CleAutorisation) => void
+  /** Ce qu'il reste à toucher, par autorisation, une fois l'écran ouvert.
+   * Vide tant qu'il n'a pas appuyé, et vide aussi quand la fenêtre directe
+   * suffit à elle seule. */
+  suite?: Partial<Record<CleAutorisation, string>>
   onReessayer?: () => void
   /** Ce qui est en train d'être demandé, pour désactiver le bon bouton. */
   enCours: CleAutorisation | "toutes" | null
@@ -71,6 +76,7 @@ function Ligne({
   etats,
   onDemander,
   onOuvrirReglages,
+  suite,
   enCours,
 }: {
   declaree: AutorisationDeclaree
@@ -78,6 +84,9 @@ function Ligne({
   etats: EtatAutorisation[]
   onDemander: (cles: CleAutorisation[]) => void
   onOuvrirReglages: (cle: CleAutorisation) => void
+  /** Ce qu'il reste à toucher, une fois l'écran ouvert. Vide tant qu'il n'a
+   * pas appuyé, et vide aussi quand la fenêtre directe suffit. */
+  suite?: string
   enCours: CleAutorisation | "toutes" | null
 }) {
   const action = actionDeLaLigne(declaree, etat, etats)
@@ -141,6 +150,13 @@ function Ligne({
                 ? "Android ne dit pas si elle est accordée : à vérifier dans ses réglages."
                 : "Refusée une fois, Android ne la redemande plus. Le seul chemin est ses réglages."}
           </p>
+          {/* CE QU'IL RESTE À TOUCHER, et seulement quand il y a quelque chose
+              à dire : la fenêtre directe se suffit à elle-même, et un texte de
+              trop se lit comme du bruit. Il n'apparaît qu'APRÈS l'appui —
+              avant, on ne sait pas sur quel écran Android va l'emmener. */}
+          {suite && (
+            <p className="mt-1 text-xs font-medium text-amber-600 dark:text-amber-500">{suite}</p>
+          )}
         </div>
       )}
       {action === "attend_parent" && (
@@ -160,6 +176,7 @@ export function ListeAutorisations({
   disponible,
   onDemander,
   onOuvrirReglages,
+  suite,
   onReessayer,
   enCours,
 }: ListeAutorisationsProps) {
@@ -222,6 +239,7 @@ export function ListeAutorisations({
           etats={etats}
           onDemander={onDemander}
           onOuvrirReglages={onOuvrirReglages}
+          suite={suite?.[declaree.cle]}
           enCours={enCours}
         />
       ))}
@@ -282,15 +300,21 @@ export function useAutorisations() {
     }
   }, [])
 
+  // CE QU'IL RESTE À TOUCHER, par autorisation. Sa demande d'origine était de
+  // ne plus chercher lui-même dans les réglages d'Android : quand on ne peut
+  // pas l'emmener jusqu'au bout, on lui dit au moins où il vient d'atterrir.
+  const [suite, setSuite] = useState<Partial<Record<CleAutorisation, string>>>({})
+
   const ouvrirReglages = useCallback(async (cle: CleAutorisation) => {
     try {
-      await PontAutorisations.ouvrirEcran({ cle })
+      const r = await PontAutorisations.ouvrirEcran({ cle })
+      setSuite((s) => ({ ...s, [cle]: gestesQuiRestent(cle, r?.ecran) ?? undefined }))
     } catch {
       setErreur("Les réglages d'Android ne se sont pas ouverts.")
     }
   }, [])
 
-  return { etats, chargement, erreur, disponible, enCours, relire, demander, ouvrirReglages }
+  return { etats, chargement, erreur, disponible, enCours, relire, demander, ouvrirReglages, suite }
 }
 
 /** La carte de Paramètres. Le premier lancement montre la même liste. */
@@ -330,6 +354,7 @@ export function CarteAutorisations() {
           enCours={a.enCours}
           onDemander={a.demander}
           onOuvrirReglages={a.ouvrirReglages}
+          suite={a.suite}
           onReessayer={a.relire}
         />
       </CardContent>

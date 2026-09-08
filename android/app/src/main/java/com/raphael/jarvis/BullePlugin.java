@@ -43,14 +43,22 @@ public class BullePlugin extends Plugin {
             call.resolve();
             return;
         }
-        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+        // NI PRE-CONTROLE, NI resolveActivity : voir EcransReglages. Le
+        // meme pre-controle rendait muet le bouton de la carte
+        // "Autorisations du telephone" chez Raphael (8 sept. 2026) -- il est
+        // filtre par la visibilite des paquets depuis Android 11 et peut
+        // rendre null pour un ecran qui existe. Ici, le repli est la fiche de
+        // l'application : "Afficher par-dessus les autres applications" y
+        // figure sur la plupart des surcouches.
+        Intent direct = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
             Uri.parse("package:" + getContext().getPackageName()));
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        if (intent.resolveActivity(getContext().getPackageManager()) == null) {
+        Intent liste = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION);
+        Intent fiche = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:" + getContext().getPackageName()));
+        if (EcransReglages.ouvrirLePremierQuiRepond(getContext(), direct, liste, fiche) < 0) {
             call.reject("Aucun écran de réglages n'a pu être ouvert.");
             return;
         }
-        getContext().startActivity(intent);
         call.resolve();
     }
 
