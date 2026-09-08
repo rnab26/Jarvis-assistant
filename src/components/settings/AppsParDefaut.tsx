@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Interrupteur } from "@/components/settings/Interrupteur"
 import {
   CLES_APP,
   CLE_APP_WHATSAPP,
@@ -9,6 +10,8 @@ import {
   canalMessagesPrefere,
   paquetWhatsAppPrefere,
 } from "@/lib/actionsTelephoneVocales"
+import { CLE_ENVOI_AUTO, envoiAutoVoulu } from "@/lib/confirmationEnvoiVocale"
+import { etatAccessibilite, type EtatAccessibilite } from "@/lib/controleEcran"
 import { REGLAGES_RESTAURES, ecrireReglage } from "@/lib/reglages"
 import { ActionsTelephone, type ApplicationInstallee } from "@/lib/actionsTelephone"
 
@@ -40,6 +43,8 @@ export function AppsParDefaut() {
   const [appels, setAppels] = useState<string | null>(null)
   const [whatsapp, setWhatsapp] = useState<string | null>(null)
   const [canal, setCanal] = useState<"whatsapp" | "sms" | null>(null)
+  const [envoiAuto, setEnvoiAuto] = useState(() => envoiAutoVoulu(localStorage.getItem(CLE_ENVOI_AUTO)))
+  const [accessibilite, setAccessibilite] = useState<EtatAccessibilite | null>(null)
 
   function relire() {
     setMusique(appPreferee("musique"))
@@ -47,6 +52,7 @@ export function AppsParDefaut() {
     setAppels(appPreferee("appels"))
     setWhatsapp(paquetWhatsAppPrefere())
     setCanal(canalMessagesPrefere())
+    setEnvoiAuto(envoiAutoVoulu(localStorage.getItem(CLE_ENVOI_AUTO)))
   }
 
   useEffect(() => {
@@ -56,6 +62,29 @@ export function AppsParDefaut() {
     window.addEventListener(REGLAGES_RESTAURES, relire)
     return () => window.removeEventListener(REGLAGES_RESTAURES, relire)
   }, [])
+
+  // L'état RÉEL du service d'accessibilité, comme ControleEcran.tsx : sans
+  // lui, ce réglage pourrait dire « Activé » alors qu'Android a coupé
+  // l'accès, et rien ne le dirait avant le premier message resté en plan.
+  useEffect(() => {
+    let annule = false
+    etatAccessibilite().then((e) => {
+      if (!annule) setAccessibilite(e)
+    })
+    const auRetour = () => {
+      if (document.visibilityState === "visible") etatAccessibilite().then((e) => !annule && setAccessibilite(e))
+    }
+    document.addEventListener("visibilitychange", auRetour)
+    return () => {
+      annule = true
+      document.removeEventListener("visibilitychange", auRetour)
+    }
+  }, [])
+
+  function basculerEnvoiAuto(actif: boolean) {
+    setEnvoiAuto(actif)
+    ecrireReglage(CLE_ENVOI_AUTO, actif ? "1" : "0")
+  }
 
   // Stables : passées en prop à un effet, une fonction recréée à chaque
   // rendu relancerait la lecture des applications en boucle.
@@ -183,6 +212,35 @@ export function AppsParDefaut() {
             </p>
           )}
         </div>
+
+        {/* Réglage du chantier ed32cbcc, sa décision du 5 sept. 2026 au soir :
+            « une fois qu'il y a le message, que je le relise, et que si je dis
+            oui c'est bon envoie, ça l'envoie ». Décoché par défaut — sans lui,
+            Jarvis prépare le message comme avant et attend un « envoie » une
+            fois WhatsApp ouvert. Ne s'affiche que pour WhatsApp : le clic
+            automatique sur Envoyer n'est vérifié que là. */}
+        {canal !== "sms" && (
+          <Interrupteur
+            titre="Envoyer les messages sans que j'appuie"
+            description="Jarvis relit le destinataire et le texte à voix haute avant d'ouvrir WhatsApp. Si tu dis « oui », il ouvre WhatsApp et appuie lui-même sur Envoyer."
+            actif={envoiAuto}
+            onChange={basculerEnvoiAuto}
+          >
+            {envoiAuto && (
+              <p
+                className={
+                  accessibilite?.actif
+                    ? "text-xs text-emerald-600 dark:text-emerald-400"
+                    : "text-xs text-amber-600 dark:text-amber-400"
+                }
+              >
+                {accessibilite?.actif
+                  ? "Le service d'accessibilité est actif : Jarvis peut appuyer sur Envoyer."
+                  : "Ce réglage a besoin du service « Appuyer sur l'écran à ta place », pas encore activé. Tant qu'il ne l'est pas, Jarvis relit le message mais ne peut rien cliquer."}
+              </p>
+            )}
+          </Interrupteur>
+        )}
       </CardContent>
     </Card>
   )

@@ -10,6 +10,8 @@ import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { messageErreurServeurVocal } from "@/lib/erreurServeurVocal"
 import { supabase } from "@/lib/supabase"
 import { AgendaError, agendaApi } from "@/lib/googleCalendar"
+import { GmailError, gmailApi, type Brouillon } from "@/lib/googleGmail"
+import { estConfirmationEnvoiMail } from "@/lib/confirmationEnvoiMail"
 import {
   apresRafale,
   delaiAvantRafaleSuivante,
@@ -31,10 +33,19 @@ import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appPreferee,
   canalMessagesPrefere,
+  cibleAnnoncee,
   executerActionTelephone,
   questionAppPreferee,
   type CategorieAppTelephone,
 } from "@/lib/actionsTelephoneVocales"
+import {
+  envoiAutoActif,
+  estReponseNon,
+  estReponseOui,
+  phraseRelecture,
+  DELAI_OUVERTURE_MS,
+} from "@/lib/confirmationEnvoiVocale"
+import { agirSurEcran } from "@/lib/controleEcran"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
@@ -54,6 +65,7 @@ import {
   type DevItemsApi,
   type DocumentsApi,
   type EntrainementApi,
+  type GmailApi,
   type PlaceRemindersApi,
   type PronunciationsApi,
   type TasksApi,
@@ -260,6 +272,11 @@ export function MicButton({
   // échec que Jarvis croit être une réussite (chantier 25a58902).
   const dernierTourRef = useRef<TourJarvis | null>(null)
 
+  // Le brouillon de réponse Gmail préparé (prepare_email_reply), en attente
+  // d'un « envoie » — même raison d'être que dernierTourRef : un mail part
+  // vers l'extérieur en son nom, rien ne s'envoie sans qu'il l'ait validé.
+  const brouillonMailRef = useRef<Brouillon | null>(null)
+
   /** Ce que la phrase courante dit du tour précédent — le plus souvent rien. */
   function constaterEchec(phrase: string, source: "voix" | "live") {
     const echec = echecSignalePar(phrase, dernierTourRef.current, Date.now())
@@ -301,6 +318,16 @@ export function MicButton({
       const confirmation: VoiceAction[] = [
         { action: "screen_action", screen_command: "clic", screen_target: "Envoyer" },
       ]
+      noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: confirmation.length })
+      derniereLocaleRef.current = transcript
+      return confirmation
+    }
+
+    // Même défaut, pour un mail préparé (prepare_email_reply) : le serveur ne
+    // voit jamais qu'un brouillon vient d'être relu, donc « envoie » tout seul
+    // doit être reconnu ICI (confirmationEnvoiMail.ts).
+    if (estConfirmationEnvoiMail(dernierTourRef.current, transcript, Date.now())) {
+      const confirmation: VoiceAction[] = [{ action: "send_email" }]
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: confirmation.length })
       derniereLocaleRef.current = transcript
       return confirmation
@@ -472,6 +499,85 @@ export function MicButton({
       return await runTurn(originalTranscript, originalTranscript, round + 1)
     }
 
+    // La relecture vocale avant l'envoi WhatsApp (chantier ed32cbcc), décidée
+    // par Raphaël le 5 sept. au soir — décochée par défaut dans Paramètres.
+    // Réglée, Jarvis dit le destinataire ET le texte AVANT d'ouvrir WhatsApp,
+    // et n'appuie sur Envoyer que sur un « oui » entendu. Sans elle : rien ne
+    // change, le message se prépare comme avant et attend un « envoie » une
+    // fois WhatsApp déjà ouvert (confirmationEnvoi.ts).
+    if (
+      Capacitor.isNativePlatform() &&
+      premiere.action === "send_message" &&
+      actions.length === 1 &&
+      round < 3 &&
+      (premiere.message_channel ?? canalMessagesPrefere() ?? "whatsapp") === "whatsapp" &&
+      envoiAutoActif()
+    ) {
+      const messageAction = premiere
+      const cible = cibleAnnoncee(messageAction, contactsApi.contacts)
+      const relecture = phraseRelecture(cible, messageAction.message_text)
+      setLastReply(relecture)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(relecture, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+
+      setStatus("listening")
+      const reponse = await listen("command", { onTexte: setLastUserText })
+      setLastUserText(reponse)
+
+      if (estReponseNon(reponse)) {
+        const dit = "D'accord, je n'envoie rien."
+        setLastReply(dit)
+        setStatus("speaking")
+        bargeInRef.current = false
+        await speak(dit, voiceIndex ?? undefined)
+        if (bargeInRef.current) return false
+        if (suiteMs > 0) return true
+        setStatus("idle")
+        return false
+      }
+
+      if (!estReponseOui(reponse)) {
+        // Ni oui ni non : une correction du texte, pas une réponse fermée.
+        // On la repasse par le pipeline habituel plutôt que de deviner ici
+        // ce qu'il veut changer — c'est le même principe que la boucle de
+        // clarification ci-dessus.
+        const combined = `Message proposé${cible ? ` à ${cible}` : ""} sur WhatsApp : "${messageAction.message_text}". Réponse de Raphaël à la relecture : "${reponse}". Rédige le message WhatsApp en conséquence.`
+        return await runTurn(combined, originalTranscript, round + 1)
+      }
+
+      // « oui » : on prépare vraiment, PUIS on appuie nous-mêmes sur Envoyer.
+      // Pas de fenêtre d'annulation passive ici (sauterFenetre) : la relecture
+      // qu'on vient de faire EST la confirmation, la redire une seconde fois
+      // par-dessus n'apporterait rien.
+      let clic: string
+      try {
+        await executerActionTelephone(messageAction, contactsApi.contacts, { sauterFenetre: true })
+        await new Promise((r) => setTimeout(r, DELAI_OUVERTURE_MS))
+        clic = (await agirSurEcran("clic", "Envoyer")).message
+      } catch (e) {
+        const echec = echecDeLAction("send_message", cible, transcript, e)
+        signalerErreur(echec.categorie, echec.titre, {
+          detail: echec.detail,
+          contexte: echec.contexte,
+          source: "voix",
+        })
+        clic = "Je n'ai pas réussi à l'envoyer."
+      }
+      tracerSiLocale(transcript, clic)
+      retenirLeTour(transcript, [messageAction], clic)
+
+      setLastReply(clic)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(clic, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+      if (suiteMs > 0) return true
+      setStatus("idle")
+      return false
+    }
+
     const reply = await executerActions(actions, originalTranscript)
     tracerSiLocale(transcript, reply)
     retenirLeTour(transcript, actions, reply)
@@ -500,6 +606,20 @@ export function MicButton({
     // en laissant croire que le reste a été fait.
     const reponses: string[] = []
     let derniereAction: string | null = null
+    // Objet frais à chaque phrase : brouillonEnAttente doit lire l'état
+    // COURANT de la ref, pas celui du premier rendu qui a monté MicButton.
+    const gmailVoiceApi: GmailApi = {
+      ...gmailApi,
+      // Une réponse dictée n'attache jamais de fichier : pieces_jointes: []
+      // rend l'appel compatible avec le type plus large de googleGmail.ts,
+      // qui accepte des pièces jointes en plus d'un simple brouillon.
+      envoyerMessage: (brouillon, confirme) =>
+        gmailApi.envoyerMessage({ ...brouillon, pieces_jointes: [] }, confirme),
+      brouillonEnAttente: brouillonMailRef.current,
+      retenirBrouillon: (b) => {
+        brouillonMailRef.current = b
+      },
+    }
     for (const action of actions) {
       // Une action qui ouvre une autre application (YouTube, Waze, WhatsApp…)
       // ne se voit pas à l'écran instantanément : lire ou cliquer trop tôt
@@ -524,6 +644,7 @@ export function MicButton({
             agendaApi,
             { setWakeWordEnabled, setGeofenceEnabled },
             entrainementApi,
+            gmailVoiceApi,
           ),
         )
         // Le capteur générique (chantier d50d5f34) : CHAQUE action exécutée par
@@ -536,10 +657,11 @@ export function MicButton({
         noterEcoute("action_executee", { action: action.action, cible, reussi: true })
       } catch (e) {
         noterEcoute("action_executee", { action: action.action, cible, reussi: false })
-        // L'agenda est le seul domaine qui dépend d'un service extérieur :
-        // compte Google pas encore branché, accès retiré, Google qui refuse.
-        // Ces messages-là sont écrits pour être dits — les avaler ferait
-        // croire que Jarvis n'a pas entendu la demande.
+        // L'agenda et Gmail sont les seuls domaines qui dépendent d'un
+        // service extérieur : compte Google pas encore branché, accès
+        // retiré, Google qui refuse. Ces messages-là sont écrits pour être
+        // dits — les avaler ferait croire que Jarvis n'a pas entendu la
+        // demande.
         // Une action qui lève, c'est un échec sans le moindre doute : on le
         // range avant de laisser l'erreur remonter, sinon elle ne laisse
         // qu'un message rouge de cinq secondes à l'écran.
@@ -549,7 +671,7 @@ export function MicButton({
           contexte: echec.contexte,
           source: "voix",
         })
-        if (e instanceof AgendaError) reponses.push(e.message)
+        if (e instanceof AgendaError || e instanceof GmailError) reponses.push(e.message)
         else throw e
       }
     }

@@ -2,6 +2,8 @@ import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTele
 import { garderReponseEcran } from "@/lib/garderReponseEcran"
 import { lireDocumentLien } from "@/lib/lireDocumentLien"
 import { phraseHorsLigne } from "@/lib/fileEnAttente"
+import type { Brouillon, MessageComplet, MessageResume, Recu } from "@/lib/googleGmail"
+import { estDernierMessage, nomExpediteur } from "@/lib/gmailVoix"
 import { cleTheme } from "@/lib/themeChantier"
 import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
 import { ecrireReglage } from "@/lib/reglages"
@@ -156,6 +158,18 @@ export type VoiceAction =
       event_lieu?: string
     }
   | { action: "delete_calendar_event"; event_id?: string; event_cible?: string }
+  // Gmail : lire, chercher, préparer une réponse SANS l'envoyer, et n'envoyer
+  // qu'au tour suivant, validé à la voix (googleGmail.ts, google-gmail/).
+  | { action: "list_emails"; mail_recherche?: string; mail_limite?: number }
+  | { action: "read_email"; mail_cible: string }
+  | { action: "prepare_email_reply"; mail_cible: string; mail_texte: string }
+  | { action: "send_email" }
+  | {
+      action: "find_receipts"
+      mail_recherche?: string
+      mail_jours?: number
+      mail_limite?: number
+    }
   | { action: "set_voice"; voice_enabled: boolean }
   /** Changer un réglage lui-même (chantier f7137b0c). `setting_cle` et
    * `setting_valeur` viennent de `src/lib/reglagesVoix.ts`, la seule liste
@@ -249,6 +263,35 @@ export interface AgendaApi {
     lieu?: string | null
   }) => Promise<EvenementAgenda | null>
   supprimerEvenement: (eventId: string) => Promise<void>
+}
+
+export interface GmailApi {
+  listerMessages: (options?: { recherche?: string; limite?: number }) => Promise<MessageResume[]>
+  chercherRecus: (options?: {
+    depuis_jours?: number
+    limite?: number
+    recherche?: string
+  }) => Promise<Recu[]>
+  lireMessage: (messageId: string, options?: { marquer_lu?: boolean }) => Promise<MessageComplet | null>
+  preparerReponse: (options: { texte: string; message_id?: string }) => Promise<Brouillon | null>
+  // Une réponse dictée n'attache jamais de fichier : le vrai envoyerMessage de
+  // googleGmail.ts accepte des pièces jointes EN PLUS, l'appelant fournit un
+  // tableau vide pour rester compatible sans avoir à porter ce cas ici.
+  envoyerMessage: (
+    brouillon: Brouillon,
+    confirme: boolean,
+  ) => Promise<{ id: string; fil_id: string | null } | null>
+  /**
+   * Le dernier brouillon préparé, en attente d'un « envoie ».
+   *
+   * `resolveTranscript` envoie une phrase SEULE au serveur, sans le tour
+   * précédent : le modèle ne peut donc jamais savoir qu'un mail vient
+   * d'être préparé. La confirmation nue est reconnue AVANT d'arriver ici
+   * (confirmationEnvoiMail.ts, comme confirmationEnvoi.ts pour WhatsApp),
+   * avec cet état que seul l'appareil tient.
+   */
+  brouillonEnAttente: Brouillon | null
+  retenirBrouillon: (brouillon: Brouillon | null) => void
 }
 
 export interface VoiceSettingApi {
@@ -383,6 +426,38 @@ async function retrouverEvenement(
   return { evenement: candidats[0] }
 }
 
+/**
+ * Retrouve le message dont parle l'utilisateur, comme retrouverEvenement pour
+ * l'agenda. `mail_cible` est du langage courant ("le mail de Yoni", "le
+ * dernier", "la facture d'électricité") : la recherche Gmail nue (sans
+ * qualificatif in:/is:) porte déjà sur l'expéditeur, l'objet et le corps, donc
+ * un terme libre suffit la plupart du temps.
+ */
+async function retrouverMessage(
+  gmail: GmailApi,
+  cible: string,
+): Promise<{ message?: MessageResume; reponse?: string }> {
+  const dernier = estDernierMessage(cible)
+  // Chaîne vide et non `undefined` : le serveur ne retombe sur "in:inbox
+  // is:unread" que si `recherche` est absente, et "le dernier" doit pouvoir
+  // désigner un message déjà lu ou hors de la boîte de réception.
+  const messages = await gmail.listerMessages({
+    recherche: dernier ? "" : cible.trim(),
+    limite: dernier ? 1 : 5,
+  })
+  if (messages.length === 0) {
+    return { reponse: `Je ne trouve pas de message correspondant à « ${cible} ».` }
+  }
+  if (!dernier && messages.length > 1) {
+    const liste = messages
+      .slice(0, 4)
+      .map((m) => `${nomExpediteur(m.de)} — ${m.objet ?? "(sans objet)"}`)
+      .join(", ")
+    return { reponse: `J'en trouve plusieurs : ${liste}. Lequel ?` }
+  }
+  return { message: messages[0] }
+}
+
 /** Exécute une VoiceAction résolue par la Edge Function et renvoie la phrase à énoncer. */
 /**
  * Ce dont les actions de section ont besoin. Volontairement réduit à trois
@@ -452,6 +527,7 @@ export async function executeVoiceAction(
   agenda: AgendaApi,
   { setWakeWordEnabled, setGeofenceEnabled }: ReglagesVoixApi,
   entrainementApi: EntrainementApi,
+  gmail: GmailApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -924,6 +1000,74 @@ export async function executeVoiceAction(
       }
       await agenda.supprimerEvenement(eventId)
       return `${titre} est supprimé de ton agenda.`
+    }
+
+    case "list_emails": {
+      const messages = await gmail.listerMessages({
+        recherche: action.mail_recherche,
+        limite: action.mail_limite ?? 10,
+      })
+      if (messages.length === 0) return "Aucun message trouvé."
+      const liste = messages
+        .slice(0, 6)
+        .map((m) => `${nomExpediteur(m.de)} — ${m.objet ?? "(sans objet)"}`)
+        .join(", ")
+      return `Tu as ${messages.length} message${messages.length > 1 ? "s" : ""} : ${liste}.`
+    }
+
+    case "read_email": {
+      const resolu = await retrouverMessage(gmail, action.mail_cible)
+      if (!resolu.message) return resolu.reponse!
+      const complet = await gmail.lireMessage(resolu.message.id)
+      if (!complet) return "Je n'ai pas réussi à ouvrir ce message."
+      const entete = `${complet.objet ? `${complet.objet}, ` : ""}de ${nomExpediteur(complet.de)}`
+      return `${entete} : ${complet.corps.trim() || "il est vide."}`
+    }
+
+    case "prepare_email_reply": {
+      // PRÉPARE sans envoyer, comme send_message pour WhatsApp : un mail
+      // part vers l'extérieur en son nom, rien ne s'envoie sans qu'il l'ait
+      // entendu et validé (send_email, au tour suivant).
+      const resolu = await retrouverMessage(gmail, action.mail_cible)
+      if (!resolu.message) return resolu.reponse!
+      const brouillon = await gmail.preparerReponse({
+        texte: action.mail_texte,
+        message_id: resolu.message.id,
+      })
+      if (!brouillon) return "Je n'ai pas réussi à préparer la réponse."
+      gmail.retenirBrouillon(brouillon)
+      return `Voilà ce que je m'apprête à répondre à ${nomExpediteur(resolu.message.de)} : « ${brouillon.corps} ». Dis-moi si je l'envoie.`
+    }
+
+    case "send_email": {
+      // Le garde-fou principal est côté serveur (confirme: true exigé avant
+      // même de lire le jeton Google) : ici, pas de brouillon en mémoire veut
+      // dire qu'on n'a rien à confirmer, jamais qu'on suppose lequel.
+      const brouillon = gmail.brouillonEnAttente
+      if (!brouillon) {
+        return "Je n'ai pas de mail préparé à envoyer. Dicte-moi d'abord la réponse."
+      }
+      const envoye = await gmail.envoyerMessage(brouillon, true)
+      gmail.retenirBrouillon(null)
+      if (!envoye) return "L'envoi n'a pas abouti."
+      return `E-mail envoyé à ${brouillon.destinataires}.`
+    }
+
+    case "find_receipts": {
+      const recus = await gmail.chercherRecus({
+        recherche: action.mail_recherche,
+        depuis_jours: action.mail_jours,
+        limite: action.mail_limite,
+      })
+      if (recus.length === 0) return "Je n'ai trouvé aucun reçu correspondant."
+      const liste = recus
+        .slice(0, 6)
+        .map((r) => `${nomExpediteur(r.de)}${r.date ? ` (${r.date})` : ""}`)
+        .join(", ")
+      // Ce que je ne sais PAS encore faire, dit en toutes lettres plutôt que
+      // tu par silence : les transmettre reste du ressort du contrôle du
+      // téléphone (partage Android), pas encore construit.
+      return `J'ai trouvé ${recus.length} reçu${recus.length > 1 ? "s" : ""} : ${liste}. Je ne peux pas encore te les transmettre moi-même, ça viendra avec le contrôle du téléphone.`
     }
 
     case "set_voice": {
