@@ -1,6 +1,7 @@
 import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
 import { garderReponseEcran } from "@/lib/garderReponseEcran"
 import { lireDocumentLien } from "@/lib/lireDocumentLien"
+import { phraseHorsLigne } from "@/lib/fileEnAttente"
 import { cleTheme } from "@/lib/themeChantier"
 import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
 import { ecrireReglage } from "@/lib/reglages"
@@ -176,7 +177,10 @@ export type VoiceAction =
 export interface TasksApi {
   tasks: Task[]
   categories: Category[]
-  addTask: (input: TaskInput) => Promise<{ id: string } | undefined>
+  /** `enAttente` : notée dans la file hors ligne, PAS enregistrée. Voir
+   * useTasks.addTask — c'est cette distinction qui empêche Jarvis d'annoncer
+   * « ajoutée » à voix haute pour une tâche qui n'est pas en base. */
+  addTask: (input: TaskInput) => Promise<{ id: string; enAttente: boolean } | undefined>
   updateTask: (id: string, input: Partial<TaskInput>) => Promise<void>
   deleteTask: (id: string) => Promise<void>
 }
@@ -491,6 +495,27 @@ export async function executeVoiceAction(
         status: "todo",
       })
       derniereCreation = { vers: "tache", titre: action.title, quand: Date.now() }
+
+      // NOTÉE, PAS ENREGISTRÉE — et on le DIT (chantier 9476c7a0).
+      //
+      // Avant, une dictée partie dans la file d'attente hors ligne recevait
+      // quand même « Tâche "…" ajoutée. » : un passé accompli, à voix haute,
+      // pour quelque chose qui n'est pas en base. C'est précisément ce que
+      // `_shared/honnetete.ts` interdit depuis le 6 sept., et le cas qui
+      // motive toute la file d'attente est « il dicte en conduisant, dans un
+      // tunnel » — donc le moment où il ne regarde PAS l'écran. La carte et
+      // le toast disaient déjà la vérité ; seule la VOIX mentait.
+      //
+      // Rendre la phrase ici plutôt que d'ajouter un `parler()` ailleurs :
+      // c'est MicButton qui lit la réponse en mode classique, et le modèle
+      // qui la répète en mode Live (la consigne d'honnêteté lui dit de
+      // reprendre le retour de l'outil TEL QUEL). Une seule correction, les
+      // deux moteurs, et aucun risque de dire la phrase deux fois.
+      if (resultat?.enAttente) {
+        derniereTacheEnAttente = null
+        return phraseHorsLigne(action.title)
+      }
+
       const catName = categoryName(categories, action.category_id)
       const heure = action.due_date && action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
       let reply = `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
