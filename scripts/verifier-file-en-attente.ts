@@ -11,6 +11,7 @@
  * contrôle de l'écran : ne rien dire quand il n'y a rien en attente, ne pas
  * renvoyer un élément bloqué tout seul, ne jamais annoncer au passé.
  */
+import { readFileSync } from "node:fs"
 import {
   aRenvoyer,
   attenteAvantRenvoi,
@@ -267,6 +268,52 @@ const T = 1_000_000
 {
   const file = mettreEnFile([], elt("a", T))
   verifier("un envoi réussi sort de la file", retirerDeLaFile(file, "a").length === 0)
+}
+
+// ── CE QUI EST DIT À VOIX HAUTE QUAND LA DICTÉE PART EN FILE ────────────
+//
+// Chantier 9476c7a0. La carte et le toast disaient déjà la vérité ; la VOIX,
+// elle, annonçait « Tâche "…" ajoutée. » — un passé accompli, pour une tâche
+// qui n'est pas en base. Et le cas qui motive toute cette file d'attente est
+// « il dicte en conduisant, dans un tunnel » : le moment où il ne regarde
+// justement PAS l'écran.
+{
+  const dite = phraseHorsLigne("appeler le plombier")
+  verifier(
+    "la phrase hors ligne n'annonce jamais un enregistrement au passé",
+    !/\b(ajout[ée]|enregistr[ée]|sauvegard[ée]|not[ée]e? en base)\b/i.test(dite) ||
+      /pas encore|dès que/i.test(dite),
+    dite,
+  )
+  verifier(
+    "elle dit ce qui va se passer, et à quelle condition",
+    /dès que tu as du réseau/.test(dite),
+    dite,
+  )
+  verifier("et elle redit CE QU'IL a dicté", dite.includes("appeler le plombier"))
+}
+
+{
+  // ET QUE LA COMMANDE VOCALE S'EN SERVE VRAIMENT. Le contrôle vise l'APPEL,
+  // dans la branche add_task, pas la présence du mot quelque part dans le
+  // fichier : `phraseHorsLigne` est aussi cité dans les commentaires qui
+  // expliquent le correctif. Même piège que le sélecteur Playwright et que
+  // `Filesystem.mkdir`.
+  const source = readFileSync("src/lib/voiceActions.ts", "utf8")
+  const branche = source.slice(
+    source.indexOf('case "add_task"'),
+    source.indexOf('case "complete_last_task"'),
+  )
+  verifier(
+    "une tâche partie en file rend la phrase hors ligne, pas « ajoutée »",
+    /if \(resultat\?\.enAttente\)[\s\S]{0,200}return phraseHorsLigne\(/.test(branche),
+    "sans ça, Jarvis dit au passé accompli qu'il a ajouté une tâche qui n'est pas en base",
+  )
+  verifier(
+    "et elle n'est pas mise en attente de complétion : il n'y a rien à compléter",
+    /if \(resultat\?\.enAttente\)[\s\S]{0,120}derniereTacheEnAttente = null/.test(branche),
+    "compléter une tâche qui n'existe pas en base échouerait à coup sûr",
+  )
 }
 
 console.log(`\n${vert} vert, ${rouge} rouge`)
