@@ -12,6 +12,7 @@ import { DashboardPage } from "@/pages/DashboardPage"
 import { DocumentsPage } from "@/pages/DocumentsPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { MemoirePage } from "@/pages/MemoirePage"
+import { NotesPage } from "@/pages/NotesPage"
 import { SettingsPage } from "@/pages/SettingsPage"
 import { THEME_KEY } from "@/lib/theme"
 import { DELAI_MAX_MS, quoiRendre, type OuOnEst } from "@/lib/demarrageOverlay"
@@ -83,6 +84,7 @@ function AppRoutes() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/cockpit" element={<CockpitPage />} />
         <Route path="/documents" element={<DocumentsPage />} />
+        <Route path="/notes" element={<NotesPage />} />
         <Route path="/memoire" element={<MemoirePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

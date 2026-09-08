@@ -5,6 +5,26 @@ import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    /**
+     * Vrai pendant que cette activité est au premier plan — lu par
+     * AnnonceApresNotification (chantier 23ee3735) pour ne jamais dire une
+     * notification en double : l'app ouverte parle déjà par son propre
+     * chemin (localNotificationReceived, useNotifications.ts).
+     */
+    static volatile boolean auPremierPlan = false;
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        auPremierPlan = true;
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        auPremierPlan = false;
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(JarvisWidgetPlugin.class);
@@ -17,6 +37,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BullePlugin.class);
         registerPlugin(AccessibilitePlugin.class);
         registerPlugin(NotificationsPlugin.class);
+        registerPlugin(AnnonceNativePlugin.class);
+        registerPlugin(EtatLivePlugin.class);
         super.onCreate(savedInstanceState);
         handleShareIntent(getIntent());
         handleWidgetIntent(getIntent());
@@ -45,6 +67,7 @@ public class MainActivity extends BridgeActivity {
         if (intent == null) return;
         if (intent.getBooleanExtra("demarrer_ecoute", false)) {
             JarvisWidgetPlugin.demarrerEcoute = true;
+            JarvisWidgetPlugin.demarreeA = System.currentTimeMillis();
         }
     }
 }

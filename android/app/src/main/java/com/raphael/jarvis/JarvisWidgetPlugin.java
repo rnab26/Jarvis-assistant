@@ -29,6 +29,19 @@ public class JarvisWidgetPlugin extends Plugin {
 
     static boolean demarrerEcoute = false;
 
+    /**
+     * L'instant (System.currentTimeMillis()) où demarrerEcoute a été posé.
+     *
+     * Chantier 7b8e68a7, 7 sept. 2026 : Raphaël a testé l'appui long, la
+     * fenêtre s'ouvre mais « ça bug, ressort » — journal_ecoute montre un
+     * commande_fin sans le moindre mot entendu (0-1 partiel en 12 s, quatre
+     * relances). Impossible de savoir SANS MESURER si le micro n'a
+     * simplement rien capté (il a parlé pendant que la fenêtre démarrait)
+     * ou autre chose : ce champ donne à la prochaine session le délai réel
+     * entre l'ouverture et le premier démarrage d'écoute, au lieu de deviner.
+     */
+    static long demarreeA = 0;
+
     @PluginMethod
     public void refresh(PluginCall call) {
         rafraichirTout();
@@ -87,7 +100,9 @@ public class JarvisWidgetPlugin extends Plugin {
     public void getPendingListen(PluginCall call) {
         JSObject result = new JSObject();
         result.put("demarrer", demarrerEcoute);
+        result.put("demarreeA", demarreeA);
         demarrerEcoute = false;
+        demarreeA = 0;
         call.resolve(result);
     }
 }

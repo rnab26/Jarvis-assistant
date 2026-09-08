@@ -2,9 +2,8 @@
 // `node --experimental-strip-types` pour sa vérification, qui ne connaît pas
 // l'alias « @/ » de Vite. Les imports de TYPES sont effacés à la compilation
 // et peuvent, eux, garder l'alias.
-import { enAttenteDeRaphael } from "./journalDestinataire.ts"
-import { marqueurDe } from "./marqueurChantier.ts"
-import { etatChantier } from "./etatChantier.ts"
+import { AUTEUR_RAPHAEL, enAttenteDeRaphael } from "./journalDestinataire.ts"
+import { attendSaDecision, enSuspens, etatChantier } from "./etatChantier.ts"
 import { SANS_SECTION, sectionDe } from "./sections.ts"
 import { cleTheme } from "./themeChantier.ts"
 import type { DevItem, DevLogEntry, DevSection } from "@/types/database"
@@ -28,8 +27,11 @@ import type { DevItem, DevLogEntry, DevSection } from "@/types/database"
  * D'où quatre nombres par section, et rien d'autre :
  *   — ce qui BOUGE : une session est dessus en ce moment ;
  *   — ce qui a été LIVRÉ dans la fenêtre choisie ;
- *   — ce qui l'ATTEND, LUI : marqueur `[À CADRER]` / `[A FAIRE PAR RAPHAEL]`,
- *     ou une question de session restée sans réponse ;
+ *   — ce qui l'ATTEND, LUI : marqueur `[À CADRER]` / `[A FAIRE PAR RAPHAEL]`
+ *     tant qu'il n'a pas eu le dernier mot sur ce chantier, ou une question de
+ *     session restée sans réponse (voir `attendSaDecision` : chantier
+ *     c612ccdc, répondre doit faire redescendre le compte, pas le garder pour
+ *     toujours) ;
  *   — ce qui DORT : ouvert, personne dessus, rien qui le bloque.
  *
  * Une cinquième colonne rendrait le tableau illisible et on serait revenu au
@@ -128,17 +130,29 @@ export interface Bilan {
   vide: boolean
 }
 
-/** Un marqueur qui dit « ce chantier attend une décision de Raphaël ». */
-function attendSaDecision(item: DevItem): boolean {
-  const m = marqueurDe(item)
-  return m === "a_cadrer" || m === "pour_raphael"
-}
-
-/** Un marqueur qui dit « ce chantier n'est pas à prendre » — il ne dort pas
- * pour autant : personne ne l'attend, il est simplement en suspens. */
-function enSuspens(item: DevItem): boolean {
-  const m = marqueurDe(item)
-  return m === "bloque" || m === "reporte" || m === "doublon"
+/**
+ * Le dernier mot sur un chantier est-il celui de Raphaël ? Chantier c612ccdc,
+ * ses mots : « à partir du moment où j'ai répondu, ça doit se mettre à jour
+ * et sortir des chantiers pour moi. Sauf si ça revient par la suite, si ce
+ * chantier n'est pas terminé côté Claude Code. »
+ *
+ * Le marqueur `[À CADRER]` / `[A FAIRE PAR RAPHAEL]` (voir `attendSaDecision`,
+ * importée d'`etatChantier.ts` — une seule lecture, deux affichages) est un
+ * texte statique en tête des notes : une session l'écrit en posant la
+ * question, mais rien ne l'efface quand il répond — répondre à une question
+ * formelle (`repondreAQuestion`) referme bien CETTE question, mais le
+ * chantier restait quand même compté ici par le seul marqueur, indéfiniment,
+ * jusqu'à ce qu'une session édite la note à la main.
+ *
+ * D'où ce test sur `dernierMessageParItem` : si le DERNIER mot sur ce
+ * chantier est le sien (peu importe le kind — une réponse formelle, ou
+ * simplement un message qu'il a écrit depuis la carte), la décision est
+ * prise pour l'instant. Si une session reprend la parole après lui sans
+ * avoir retiré le marqueur — preuve que ce n'est pas encore réglé côté code
+ * —, le chantier « revient » de lui-même, exactement comme il l'a demandé.
+ */
+function dernierMotEstLeSien(item: DevItem, dernierMessageParItem: Map<string, DevLogEntry>): boolean {
+  return dernierMessageParItem.get(item.id)?.author === AUTEUR_RAPHAEL
 }
 
 export function ouJenSuis(
@@ -170,6 +184,16 @@ export function ouJenSuis(
     } else {
       questionsGenerales.push(m)
     }
+  }
+
+  // Le dernier mot sur chaque chantier, TOUS messages confondus (kind et
+  // réponse comprises) : c'est lui qui décide si un marqueur « à cadrer »
+  // tient encore — voir `attendSaDecision`.
+  const dernierMessageParItem = new Map<string, DevLogEntry>()
+  for (const m of messages) {
+    if (!m.item_id || !connus.has(m.item_id)) continue
+    const dejaLa = dernierMessageParItem.get(m.item_id)
+    if (!dejaLa || m.created_at > dejaLa.created_at) dernierMessageParItem.set(m.item_id, m)
   }
 
   const parCle = new Map<string, EtatSection>()
@@ -212,7 +236,8 @@ export function ouJenSuis(
     // partagée avec la pastille affichée sur chaque ligne du cockpit. Deux
     // lectures séparées finiraient par se contredire : la ligne dirait
     // « dort » pendant que ce résumé-ci compte le chantier dans « bouge ».
-    const lu = etatChantier(item, maintenant, questionsParItem.has(item.id))
+    const parleEnDernier = dernierMotEstLeSien(item, dernierMessageParItem)
+    const lu = etatChantier(item, maintenant, questionsParItem.has(item.id), parleEnDernier)
     const pris: ChantierPris | null = lu.session
       ? { item, session: lu.session, expireA: item.claim_expires_at! }
       : null
@@ -232,7 +257,7 @@ export function ouJenSuis(
     }
 
     const question = questionsParItem.get(item.id) ?? null
-    if (attendSaDecision(item)) {
+    if (attendSaDecision(item, parleEnDernier)) {
       etat.attend.push({ item, raison: "decision", question })
     } else if (question) {
       etat.attend.push({ item, raison: "question", question })

@@ -384,7 +384,7 @@ try {
     !(await page.getByLabel("Ce qu'il faut faire").isVisible()),
     "elle coûtait 222 points en haut de l'écran, qu'on lise ou qu'on écrive",
   )
-  await page.getByRole("button", { name: "Envoyer à Claude Code" }).first().click()
+  await page.getByRole("button", { name: "Nouveau chantier" }).first().click()
   await pause(250)
   const quoiFaire = page.getByLabel("Ce qu'il faut faire")
   verifier("et s'ouvre d'un appui", await quoiFaire.isVisible())
@@ -597,7 +597,12 @@ try {
   )
 
   // ── Gérer les sections ──
-  await page.getByRole("button", { name: "Sections" }).first().click()
+  // exact: true — sans lui, « Sections » matche aussi en sous-chaîne le bouton
+  // « N sections au repos … » d'« Où j'en suis », qui apparaît AVANT ce
+  // bouton-ci dans le DOM dès qu'une section est endormie. Trouvé le 7 sept.
+  // en corrigeant le chantier c612ccdc, dont la conséquence est justement de
+  // faire parfois passer une section d'« attend » à « dort ».
+  await page.getByRole("button", { name: "Sections", exact: true }).first().click()
   await pause(300)
   verifier("la fenêtre des sections s'ouvre", await visible("Nouvelle section"))
   verifier(

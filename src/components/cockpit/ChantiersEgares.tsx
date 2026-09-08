@@ -1,12 +1,13 @@
-import { ArrowRightLeft, Check, TriangleAlert } from "lucide-react"
+import { ArrowRightLeft, Check, FolderPlus, TriangleAlert } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { chantiersEgares } from "@/lib/tacheOuChantier"
+import { chantiersEgares, sectionsEgarees } from "@/lib/tacheOuChantier"
 import { chantiersProches } from "@/lib/doublonChantier"
+import { cleTheme } from "@/lib/themeChantier"
 import { alreadyNotified } from "@/lib/notifyError"
-import type { DevItem, Task } from "@/types/database"
+import type { DevItem, DevSection, Task } from "@/types/database"
 
 /**
  * « Je ne vois pas de quelles 7 lignes existantes tu parles. »
@@ -48,38 +49,57 @@ import type { DevItem, Task } from "@/types/database"
  * sujet de développement au milieu de ses courses et rendez-vous. Le
  * signalement PAR LIGNE, dans TaskItem.tsx (chantierDeguise), reste en place :
  * il ne s'affiche qu'en dépliant la tâche concernée, jamais en permanence.
+ *
+ * ET ELLE DISTINGUE UNE SECTION D'UN CHANTIER, depuis le 7 sept. 2026
+ * (chantier 2d575977). Sa dictée du 4 sept., « une nouvelle section de
+ * chantier qui s'appelle fonctionnalité », demandait un RANGEMENT — elle a
+ * atterri comme un chantier vide et incompréhensible (« Fonctionnalité »,
+ * sans notes, archivé depuis). `sectionsEgarees` (voir `tacheOuChantier.ts`)
+ * reconnaît cette tournure à part de `chantiersEgares` ; la carte propose
+ * alors « Créer la section » et non « En faire un chantier ». Et avant de
+ * créer, elle vérifie qu'une section équivalente n'existe pas déjà
+ * (`cleTheme`, insensible aux accents et à la casse) : sinon on lui proposerait
+ * une section en double, exactement le défaut que « Ça existe déjà »
+ * corrige pour les chantiers.
  */
 interface ChantiersEgaresProps {
   tasks: Task[]
   /** Les chantiers du cockpit : sans eux, un appui créerait un doublon de ce
    * qui existe déjà — quatre cas sur six dans ses vraies données. */
   devItems: DevItem[]
+  /** Les sections déclarées : pour dire qu'une section proposée existe déjà. */
+  sections: DevSection[]
   onEnFaireUnChantier: (task: Task, titre: string, notes: string | null) => Promise<void>
-  /** Ranger la tâche sans rien créer, quand le chantier existe déjà. */
+  /** Ranger la tâche sans rien créer, quand le chantier — ou la section — existe déjà. */
   onMarquerFaite: (task: Task) => Promise<void>
+  onCreerSection: (nom: string) => Promise<void>
 }
 
 export function ChantiersEgares({
   tasks,
   devItems,
+  sections,
   onEnFaireUnChantier,
   onMarquerFaite,
+  onCreerSection,
 }: ChantiersEgaresProps) {
   const egares = useMemo(() => chantiersEgares(tasks), [tasks])
+  const sectionsDemandees = useMemo(() => sectionsEgarees(tasks), [tasks])
   const [enCours, setEnCours] = useState<string | null>(null)
 
-  if (egares.length === 0) return null
+  const total = egares.length + sectionsDemandees.length
+  if (total === 0) return null
 
   return (
     <Card>
       <CardHeader className="grid-cols-[1fr_auto] items-center gap-2">
         <CardTitle className="text-base">
           <ArrowRightLeft className="mr-1.5 inline size-4 align-[-2px] text-muted-foreground" />
-          {egares.length} tâche{egares.length > 1 ? "s" : ""} qui {egares.length > 1 ? "sont" : "est"}{" "}
-          plutôt {egares.length > 1 ? "des demandes" : "une demande"} à Claude
+          {total} tâche{total > 1 ? "s" : ""} qui {total > 1 ? "sont" : "est"}{" "}
+          plutôt {total > 1 ? "des demandes" : "une demande"} à Claude
         </CardTitle>
         <Badge variant="destructive" className="shrink-0">
-          {egares.length}
+          {total}
         </Badge>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
@@ -87,6 +107,72 @@ export function ChantiersEgares({
           Elles sont dans ta liste de tâches, donc aucune session ne les lit. Voici lesquelles — à
           toi de dire si j'ai raison.
         </CardDescription>
+
+        {sectionsDemandees.map(({ tache, indice }) => {
+          // Insensible aux accents, à la casse et aux apostrophes — même clé
+          // que côté SQL (`cle_section`) : une section proposée qui existe
+          // déjà, même orthographiée autrement, ne doit pas se dupliquer.
+          const dejaLa = sections.some((s) => cleTheme(s.nom) === cleTheme(indice.nom))
+          const occupe = enCours === tache.id
+          const agir = async (action: () => Promise<void>) => {
+            setEnCours(tache.id)
+            try {
+              await action()
+            } catch {
+              alreadyNotified()
+            } finally {
+              setEnCours(null)
+            }
+          }
+
+          return (
+            <div key={tache.id} className="flex flex-col gap-1 rounded-lg border border-dashed p-2">
+              <p className="text-sm">{tache.title}</p>
+              <p className="text-xs text-muted-foreground">
+                Ça commence par {indice.indice} — comme section, ça s'appellerait «{" "}
+                <span className="text-foreground">{indice.nom}</span> ».
+              </p>
+
+              {dejaLa && (
+                <p className="text-xs text-muted-foreground">
+                  <FolderPlus className="mr-1 inline size-3 align-[-1px]" />
+                  Cette section existe déjà.
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-1.5">
+                {dejaLa ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    disabled={occupe}
+                    onClick={() => agir(() => onMarquerFaite(tache))}
+                  >
+                    <Check className="size-3.5" />
+                    {occupe ? "En cours…" : "Ranger la tâche"}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    disabled={occupe}
+                    onClick={() =>
+                      agir(async () => {
+                        await onCreerSection(indice.nom)
+                        await onMarquerFaite(tache)
+                      })
+                    }
+                  >
+                    <FolderPlus className="size-3.5" />
+                    {occupe ? "En cours…" : `Créer la section « ${indice.nom} »`}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )
+        })}
 
         {egares.map(({ tache, indice }) => {
           const proches = chantiersProches(`${indice.titre} ${tache.notes ?? ""}`, devItems, 2)

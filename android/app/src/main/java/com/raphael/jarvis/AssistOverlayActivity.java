@@ -27,12 +27,14 @@ public class AssistOverlayActivity extends BridgeActivity {
         registerPlugin(AssistOverlayPlugin.class);
         registerPlugin(JarvisWidgetPlugin.class);
         registerPlugin(ActionsTelephonePlugin.class);
+        registerPlugin(EtatLivePlugin.class);
         super.onCreate(savedInstanceState);
 
         // Elle doit écouter tout de suite, sans qu'on retouche le micro —
         // même mécanisme que le widget d'écran d'accueil (JarvisWidgetPlugin
         // .demarrerEcoute, lu une fois au montage par MicButton).
         JarvisWidgetPlugin.demarrerEcoute = true;
+        JarvisWidgetPlugin.demarreeA = System.currentTimeMillis();
 
         positionnerFenetre();
     }

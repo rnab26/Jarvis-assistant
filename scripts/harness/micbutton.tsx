@@ -44,10 +44,10 @@ function BancDuCoeur() {
 
   return (
     <MicButton
-      tasksApi={{ tasks, categories: [], addTask: rien, updateTask: rien, deleteTask: rien }}
+      tasksApi={{ tasks, categories: [], addTask: async () => undefined, updateTask: rien, deleteTask: rien }}
       devItemsApi={{ devItems: [], addDevItem: rien, updateDevItem: rien, deleteDevItem: rien, archiveDevItem: rien }}
       devSectionsApi={{ sections: [], addSection: async () => {}, renameSection: async () => 0 }}
-      documentsApi={{ documents: [], saveTextDocument: rien }}
+      documentsApi={{ documents: [], saveTextDocument: rien, saveBinaryDocument: rien }}
       contactsApi={{ contacts: [], addContact: rien, updateContact: rien, deleteContact: rien }}
       placeRemindersApi={{ placeReminders: [], addPlaceReminder: rien, deletePlaceReminder: rien, geocodePlace: null }}
       pronunciationsApi={{ pronunciations: [], addPronunciation: rien, deletePronunciation: rien }}

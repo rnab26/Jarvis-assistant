@@ -157,6 +157,15 @@ const REFUSES: [string, Partial<DevItem>][] = [
   ["un chantier sans notes n'est pas pris", { notes: null }],
   ["un [BLOQUÉ PAR] n'est pas pris", { notes: "[BLOQUÉ PAR : 12ab] …" }],
   ["un [REPORTÉ] n'est pas pris", { notes: "[REPORTÉ] plus tard." }],
+  [
+    // Chantier cc2d9392, 6 sept. 2026 : un chantier LIVRÉ qui n'attend plus
+    // que Raphaël l'essaie sur son téléphone était jusque-là marqué [LIBRE —
+    // reste la vérification …], donc repris et refait par une session
+    // autonome pendant qu'il dormait. Le nouveau marqueur porte une phrase
+    // distincte de « libre », que `marqueurDe` classe à part.
+    "un [LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE] n'est pas pris",
+    { notes: "[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]\nLe code est fini, reste l'essai réel." },
+  ],
   ["un chantier déjà réservé n'est pas pris", { claimed_by: "claude/x", claim_expires_at: dans(30) }],
   ["un chantier archivé n'est pas pris", { archived_at: "2026-09-05T10:00:00Z" }],
   ["un chantier déjà fait n'est pas pris", { status: "done" }],

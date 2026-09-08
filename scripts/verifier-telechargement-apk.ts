@@ -151,6 +151,58 @@ verifier(
     /maj_apk/.test(readFileSync("src/lib/erreurs.ts", "utf8")),
 )
 
+// ── Installer sans la fenêtre « Analyse d'appli recommandée » (chantier
+// 0847b38f) ──
+// PackageInstaller en mode SESSION, avec repli sur l'ancien intent en cas
+// d'échec — jamais un bouton mort si l'API refuse pour une raison ou une
+// autre. « L'APPEL », pas la présence du mot, comme pour tout le reste de ce
+// fichier.
+const installation = corps("private void lancerInstallation")
+verifier(
+  "l'installation silencieuse est tentée, avec repli sur l'intent classique",
+  /installerSansFenetre\(apk\)/.test(sansCommentaires(installation)) &&
+    /catch[\s\S]{0,200}lancerInstallationAvecIntent\(call, apk\)/.test(sansCommentaires(installation)) &&
+    // Le repli doit aussi être atteint par les appareils trop vieux pour
+    // l'API : pas seulement dans le bloc catch.
+    /lancerInstallationAvecIntent\(call, apk\)/.test(sansCommentaires(installation)),
+  "un échec de PackageInstaller ne doit jamais laisser le bouton sans suite",
+)
+const session = corps("private void installerSansFenetre")
+verifier(
+  "la session ne demande pas la fenêtre quand Android peut s'en passer",
+  /setRequireUserAction\(PackageInstaller\.SessionParams\.USER_ACTION_NOT_REQUIRED\)/.test(session),
+)
+verifier(
+  "le PendingIntent du commit est MUTABLE : Android doit pouvoir y ajouter EXTRA_STATUS",
+  /PendingIntent\.FLAG_MUTABLE/.test(session) && /session\.commit\(pendingIntent\.getIntentSender\(\)\)/.test(session),
+  "immuable, le commit échouerait en silence depuis Android 12 — comportement documenté, pas une hypothèse",
+)
+verifier(
+  "une session ratée est abandonnée, pas laissée ouverte",
+  /catch[\s\S]{0,150}session\.abandon\(\)/.test(sansCommentaires(session)),
+)
+
+const receiver = readFileSync(
+  "android/app/src/main/java/com/raphael/jarvis/ApkInstallReceiver.java",
+  "utf8",
+)
+verifier(
+  "STATUS_PENDING_USER_ACTION relance la fenêtre système, dans TOUS les cas",
+  // Sans ça, la toute première installation par cette voie (avant que Jarvis
+  // soit son propre "installer of record") ne demanderait jamais sa
+  // confirmation, et resterait bloquée en silence pour toujours.
+  /STATUS_PENDING_USER_ACTION/.test(receiver) &&
+    /EXTRA_INTENT/.test(receiver) &&
+    /startActivity\(confirmIntent\)/.test(sansCommentaires(receiver)),
+)
+
+const manifest = readFileSync("android/app/src/main/AndroidManifest.xml", "utf8")
+verifier(
+  "le récepteur est déclaré dans le manifeste, non exporté",
+  /<receiver android:name="\.ApkInstallReceiver" android:exported="false" \/>/.test(manifest),
+  "sans déclaration, le PendingIntent du commit ne trouverait personne à qui parler",
+)
+
 console.log("")
 console.log(echecs === 0 ? "Tout est vert." : `${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

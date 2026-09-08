@@ -195,6 +195,7 @@ function BancDesTaches() {
         <ChantiersEgares
           tasks={taches}
           devItems={CHANTIERS}
+          sections={[]}
           onEnFaireUnChantier={async (t, titre) => {
             setChantiersCrees((liste) => [...liste, titre])
             setTaches((liste) => liste.map((x) => (x.id === t.id ? { ...x, status: "done" } : x)))
@@ -202,6 +203,7 @@ function BancDesTaches() {
           onMarquerFaite={async (t) => {
             setTaches((liste) => liste.map((x) => (x.id === t.id ? { ...x, status: "done" } : x)))
           }}
+          onCreerSection={async () => {}}
         />
       </div>
       {taches.map((t) => (

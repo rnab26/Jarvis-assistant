@@ -41,6 +41,9 @@ jobs:
       - name: Ce que Jarvis fera sonner, et quand
         run: node --experimental-strip-types scripts/verifier-notifications.ts
 
+      - name: Ce que Jarvis apprend de ses propres notifications
+        run: node --experimental-strip-types scripts/verifier-apprentissage-notifications.ts
+
       # Sa demande du 5 sept. : « tout ce qu'on lui demande ça ne doit pas être
       # figé […] il doit être en mesure de répondre ». Ce contrôle tient les
       # trois moitiés : le bloc « ce qui t'attend » (et son SILENCE quand il n'y
@@ -106,6 +109,15 @@ jobs:
       # obéi. La moitié des contrôles garde ce « uniquement ».
       - name: Jarvis se tait pendant une mise à jour, et rien de plus
         run: node --experimental-strip-types scripts/verifier-maj-ecoute.ts
+
+      # Mesuré dans journal_ecoute : 70 rafales de la veille classique en
+      # ~9 minutes PENDANT une conversation Live, parce que l'app a deux
+      # fenêtres (ProtectedShell, AssistantOverlayPage) donc deux tas JS —
+      # le statut React de l'une ne dit rien à l'autre. Un drapeau natif
+      # partagé comble le trou ; la moitié des contrôles garde qu'un appui
+      # volontaire sur le cœur, lui, n'est jamais bloqué par l'autre fenêtre.
+      - name: La veille se tait quand Live tourne dans l'autre fenêtre
+        run: node --experimental-strip-types scripts/verifier-live-croise.ts
 
       - name: La clôture de la conversation à la voix
         run: node --experimental-strip-types scripts/verifier-fin-conversation.ts
@@ -285,6 +297,11 @@ jobs:
       - name: Une dictée atterrit au bon endroit, et se corrige d'un mot
         run: node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts
 
+      # « Pour quand ? » complète la même tâche sans jamais dater la mauvaise ;
+      # la catégorie suggérée attend sa validation, jamais posée en silence.
+      - name: Une tâche sans date se complète, une catégorie suggérée se valide
+        run: node --experimental-strip-types scripts/verifier-tache-date-categorie.ts
+
       # Les applications proposées doivent être celles du TÉLÉPHONE. Une
       # liste écrite dans le code est fausse le jour où il installe autre
       # chose — et « en aucun cas il y a Waze » est exactement ça.
@@ -309,6 +326,13 @@ jobs:
 
       - name: Les autorisations du téléphone
         run: node --experimental-strip-types scripts/verifier-autorisations.ts
+
+      # Trouvé le 7 sept. en clôturant le chantier aab81d79 (doublon de
+      # b1b6172d, déjà livré le 6 sept., commit b8696b3) : le script existait
+      # mais n'était jamais lancé en CI, donc une régression sur « lire
+      # seulement sur demande » serait passée inaperçue.
+      - name: Lire les notifications, uniquement sur demande
+        run: node --experimental-strip-types scripts/verifier-notifications-lues.ts
 
       - name: Retrouver quelqu'un dans le répertoire du téléphone
         run: node --experimental-strip-types scripts/verifier-contact-repertoire.ts

@@ -1,4 +1,4 @@
-import { Send, Sparkles } from "lucide-react"
+import { Plus, Sparkles } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,21 +21,37 @@ const PRIORITES: { valeur: DevPriority; libelle: string }[] = [
 ]
 
 /**
- * La fenêtre d'où Raphaël envoie un chantier à Claude Code.
+ * La fenêtre où Raphaël crée un chantier de développement.
+ *
+ * RENOMMÉE le 7 sept. 2026 (chantier d0ac66f1). Elle s'appelait « Envoyer à
+ * Claude Code » — un nom qu'il a signalé introuvable : « dans le cockpit dev,
+ * je n'ai pas la possibilité de créer un chantier manuellement ». Le moyen
+ * existait bien (c'est ce composant), mais rien dans son titre ne se lisait
+ * comme « nouveau chantier », et le nom lui-même le dérangeait. Sa décision,
+ * le même jour : « à part la fenêtre de Claude Code qui me dérangeait, on
+ * peut remettre directement dans la partie cockpit dev » — donc on garde tout
+ * ce qui marche (dédoublonnage, section suggérée, priorité), on jette juste
+ * le nom.
  *
  * CE QUE C'EST VRAIMENT, ET POURQUOI C'EST ÉCRIT ICI. Il n'existe aucune API
  * pour pousser un chantier vers une session Claude Code en train de tourner :
  * une session ne reçoit rien, elle LIT. Au démarrage, le hook
  * .claude/hooks/session-start.sh interroge la base et injecte les chantiers et
- * le journal dans son contexte. « Envoyer à Claude Code » veut donc dire :
- * écrire une ligne dans dev_items que la PROCHAINE session lira.
+ * le journal dans son contexte. Créer un chantier ici veut donc dire : écrire
+ * une ligne dans dev_items que la PROCHAINE session lira.
  *
- * L'écart entre les deux — envoyer et être lu — est la seule chose qui peut
+ * L'écart entre les deux — créer et être lu — est la seule chose qui peut
  * décevoir ici. D'où le bandeau permanent en bas de la fenêtre : il dit
- * combien de sessions travaillent en ce moment, et que ce qu'il envoie leur
+ * combien de sessions travaillent en ce moment, et que ce qu'il ajoute leur
  * parviendra à leur prochain démarrage, pas maintenant. Ne pas le retirer
- * pour gagner de la place : sans lui, la fenêtre promet un envoi temps réel
+ * pour gagner de la place : sans lui, la fenêtre promet un effet immédiat
  * qu'elle ne tient pas.
+ *
+ * NE PAS ROUVRIR LA CARTE PAR DÉFAUT NI EN AJOUTER UNE SECONDE : le budget de
+ * hauteur du cockpit (résumé par section ≤ 482 points, `verifier-cockpit-web.
+ * mjs`) tient parce que cette carte reste repliée. Le titre porte maintenant
+ * le « + » qui manquait ; c'est lui qui rend la porte visible, pas une
+ * ouverture par défaut.
  */
 
 /** Au-delà, la réservation ne prouve plus qu'une session est vivante. */
@@ -55,19 +71,19 @@ function sessionsActives(devItems: DevItem[]): string[] {
   ].sort((a, b) => a.localeCompare(b, "fr"))
 }
 
-interface EnvoyerAClaudeCodeProps {
+interface NouveauChantierProps {
   devItems: DevItem[]
   sections: DevSection[]
   themes: string[]
   onSend: (input: DevItemInput) => Promise<unknown>
 }
 
-export function EnvoyerAClaudeCode({
+export function NouveauChantier({
   devItems,
   sections,
   themes,
   onSend,
-}: EnvoyerAClaudeCodeProps) {
+}: NouveauChantierProps) {
   const [texte, setTexte] = useState("")
   const [theme, setTheme] = useState("")
   const [nouveauTheme, setNouveauTheme] = useState(false)
@@ -135,10 +151,17 @@ export function EnvoyerAClaudeCode({
     // Repliée par défaut, et c'est un arbitrage assumé. Le cockpit s'ouvre
     // d'abord pour LIRE — « où j'en suis ? » —, et cette fenêtre-ci coûtait
     // 222 points en haut de l'écran, qu'on lise ou qu'on écrive. Écrire est
-    // un geste délibéré : il vaut bien un appui. Le badge dit ce qui est en
-    // cours de saisie, pour qu'un brouillon replié ne se perde pas.
+    // un geste délibéré : il vaut bien un appui. Le titre porte le « + » —
+    // c'est lui, pas une ouverture par défaut, qui rend la porte visible. Le
+    // badge dit ce qui est en cours de saisie, pour qu'un brouillon replié ne
+    // se perde pas.
     <CarteRepliable
-      titre="Envoyer à Claude Code"
+      titre={
+        <span className="flex items-center gap-1.5">
+          <Plus className="size-4 shrink-0" />
+          Nouveau chantier
+        </span>
+      }
       badge={
         aEcrit ? (
           <Badge variant="default" className="shrink-0">
@@ -318,8 +341,8 @@ export function EnvoyerAClaudeCode({
           disabled={envoi || !apercu.titre}
           onClick={envoyer}
         >
-          <Send className="size-4" />
-          Envoyer
+          <Plus className="size-4" />
+          Ajouter
         </Button>
         </>
         )}

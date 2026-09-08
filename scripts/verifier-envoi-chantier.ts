@@ -3,7 +3,7 @@
  *
  *   node --experimental-strip-types scripts/verifier-envoi-chantier.ts
  *
- * Aucun réseau. Ce qui est en jeu : la fenêtre « Envoyer à Claude Code »
+ * Aucun réseau. Ce qui est en jeu : la fenêtre « + Nouveau chantier »
  * calcule le titre du chantier au lieu de le demander. Un titre illisible se
  * verrait tout de suite dans la liste, mais une NOTE perdue ne se verrait
  * jamais — Raphaël croirait avoir envoyé un détail qu'aucune session ne lira.

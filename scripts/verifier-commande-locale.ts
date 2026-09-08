@@ -475,5 +475,24 @@ doitLaisserPasser(
 )
 doitLaisserPasser("refais", "rien après le déclencheur")
 
+console.log("\n— Un lien dicté : récupérer le document au bout (chantier 13c39a9b) —")
+
+doitDonner("récupère ce document : https://exemple.com/facture.pdf", {
+  action: "read_link",
+  url: "https://exemple.com/facture.pdf",
+})
+doitDonner("Jarvis, va chercher https://exemple.com/recu.pdf", {
+  action: "read_link",
+  url: "https://exemple.com/recu.pdf",
+})
+doitLaisserPasser(
+  "récupère mes tâches d'aujourd'hui",
+  "un verbe déclencheur sans la moindre adresse ne doit rien deviner",
+)
+doitDonner(
+  "ouvre WhatsApp",
+  { action: "open_app", app_name: "Whatsapp" },
+)
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

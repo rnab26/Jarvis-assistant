@@ -5,6 +5,10 @@ import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Deconnexion } from "@/components/settings/Deconnexion"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
+import {
+  ApprentissageNotifications,
+  useApprentissageNotifications,
+} from "@/components/settings/ApprentissageNotifications"
 import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
 import { CarteAutorisations } from "@/components/settings/Autorisations"
 import { BulleFlottante } from "@/components/settings/BulleFlottante"
@@ -100,7 +104,7 @@ const SECTIONS = {
     titre: "Notifications",
     resume: "Ce que Jarvis a le droit de faire sonner",
     motsCles:
-      "notification sonner déranger alerte rappel échéance heure d'une tâche avance point du matin briefing résumé nouvelle version chantier livré session bloquée alarme exacte permission tester silencieux",
+      "notification sonner déranger alerte rappel échéance heure d'une tâche avance point du matin briefing résumé nouvelle version chantier livré session bloquée alarme exacte permission tester silencieux apprentissage apprend appris priorités insistance ouvre ignore remettre à zéro",
   },
   apps: {
     cle: "apps",
@@ -490,6 +494,8 @@ export function SettingsPage() {
   // combien il me reste de crédit et à combien de temps de discussion ça
   // équivaut ».
   const consommationState = useConsommation()
+  // Ce que Jarvis a appris de ses propres notifications (chantier 05241cc7).
+  const apprentissageState = useApprentissageNotifications()
   const {
     wakeWordState,
     dialogueState,
@@ -960,6 +966,8 @@ export function SettingsPage() {
             feront réellement sonner quelque chose, avec le calcul qui
             programme les alarmes. */}
         <Notifications api={notificationsState} taches={tasksState.tasks} />
+
+        <ApprentissageNotifications api={apprentissageState} />
       </Section>
 
       <Section {...SECTIONS.apps} filtre={recherche}>

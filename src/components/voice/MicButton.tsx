@@ -36,6 +36,7 @@ import {
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
+import { liveActifQuelquePart } from "@/lib/live/etatLiveNatif"
 import { consigneQuestionApp, suiteDeLaQuestion, type QuestionEnAttente } from "@/lib/questionAppLive"
 import { retourOuAveu } from "@/lib/retourVide"
 import { majEnCours, sAbonnerMaj } from "@/lib/majEnCours"
@@ -45,6 +46,7 @@ import type { DevItem } from "@/types/database"
 import {
   type DevSectionsVoiceApi,
   executeVoiceAction,
+  memoireTacheEnAttente,
   type ContactsApi,
   type DevItemsApi,
   type DocumentsApi,
@@ -316,6 +318,8 @@ export function MicButton({
       })),
       contacts: contactsApi.contacts.map((c) => ({ id: c.id, name: c.name, phone: c.phone })),
       sequences: entrainementApi.sequences,
+      categories: tasksApi.categories,
+      tacheEnAttente: memoireTacheEnAttente(),
     })
     if (local) {
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: local.length })
@@ -749,8 +753,16 @@ export function MicButton({
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     JarvisWidget.getPendingListen()
-      .then(({ demarrer }) => {
-        if (demarrer) derniersRef.current.startListening()
+      .then(({ demarrer, demarreeA }) => {
+        if (!demarrer) return
+        // Combien de temps entre l'ouverture (widget ou appui long) et le
+        // premier démarrage d'écoute — chantier 7b8e68a7 : « ça bug, ressort »
+        // sans un mot capté au micro, et il n'y avait aucun moyen de savoir
+        // si le micro s'ouvre trop tard pour l'entendre commencer à parler.
+        if (demarreeA) {
+          noterEcoute("ecoute_auto_demarree", { delai_ms: Date.now() - demarreeA })
+        }
+        derniersRef.current.startListening()
       })
       .catch(() => {
         // Ancienne app pas encore mise à jour, ou plugin absent : tant pis,
@@ -870,6 +882,10 @@ export function MicButton({
             // Relu à CHAQUE tour, pas capturé au montage : une mise à jour
             // commence après le démarrage de la boucle, pas avant.
             majEnCours: majEnCoursRef.current,
+            // Relu à CHAQUE tour aussi, et depuis le natif : une conversation
+            // Live ouverte dans L'AUTRE fenêtre (ProtectedShell ou
+            // AssistantOverlayPage) ne se voit dans aucun état React d'ici.
+            liveAilleurs: await liveActifQuelquePart(),
           }) || enRefroidissement(Date.now(), refroidissementRef.current)
         ) {
           await new Promise((r) => setTimeout(r, 400))

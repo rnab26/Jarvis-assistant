@@ -2,7 +2,11 @@ import { registerPlugin } from "@capacitor/core"
 
 interface JarvisWidgetPlugin {
   refresh(): Promise<void>
-  getPendingListen(): Promise<{ demarrer: boolean }>
+  /** `demarreeA` : System.currentTimeMillis() côté natif au moment où
+   * `demarrer` a été posé — 0 si `demarrer` est faux. Sert à mesurer le
+   * délai réel entre l'ouverture (widget ou fenêtre d'assistance) et le
+   * premier démarrage d'écoute (chantier 7b8e68a7). */
+  getPendingListen(): Promise<{ demarrer: boolean; demarreeA?: number }>
   /** Recopie le cœur dans un fichier que les widgets savent lire. `null`
    * revient au réacteur livré dans l'APK. */
   setCoreImage(options: { dataUrl: string | null }): Promise<void>

@@ -12,7 +12,7 @@ import { HistoriqueChantier } from "@/components/cockpit/HistoriqueChantier"
 import type { HistoriqueApi } from "@/hooks/useHistoriqueChantier"
 import type { LigneHistorique } from "@/lib/historiqueChantier"
 import type { VisiteCockpitApi } from "@/hooks/useVisiteCockpit"
-import { EnvoyerAClaudeCode } from "@/components/cockpit/EnvoyerAClaudeCode"
+import { NouveauChantier } from "@/components/cockpit/NouveauChantier"
 import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
@@ -573,7 +573,7 @@ function BancDuCockpit() {
           )
         }}
       />
-      <EnvoyerAClaudeCode
+      <NouveauChantier
         devItems={devItems}
         sections={sections}
         themes={sections.map((s) => s.nom)}

@@ -624,6 +624,16 @@ if (!ANON || !SERVICE) {
         lecture.statut === 409 && lecture.corps?.error === "compte_google_absent",
         `obtenu : HTTP ${lecture.statut} ${JSON.stringify(lecture.corps)}`,
       )
+
+      // document_lien (chantier 13c39a9b) ne touche pas Gmail : elle doit
+      // marcher SANS compte Google branché, sinon Jarvis dirait « connecte
+      // ton compte Google » pour un simple lien qu'on lui donne.
+      const lienSansGoogle = await appeler({ action: "document_lien", url: "pas une adresse" })
+      verifier(
+        "document_lien ne demande pas de compte Google : elle répond sur le lien lui-même",
+        lienSansGoogle.statut === 422 && lienSansGoogle.corps?.error === "lien_inexploitable",
+        `obtenu : HTTP ${lienSansGoogle.statut} ${JSON.stringify(lienSansGoogle.corps)}`,
+      )
     } finally {
       await admin(`/auth/v1/admin/users/${cree.id}`, { method: "DELETE" })
     }

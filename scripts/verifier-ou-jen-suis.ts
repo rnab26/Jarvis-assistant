@@ -147,6 +147,57 @@ const bilanDe = (
 }
 
 {
+  // Chantier c612ccdc, ses mots : « à partir du moment où j'ai répondu, ça
+  // doit se mettre à jour et sortir des chantiers pour moi ». Le marqueur
+  // « à cadrer » est un texte statique que personne n'efface quand il répond
+  // à la question qui va avec — sans cette règle, le chantier restait compté
+  // pour toujours.
+  const aCadrer = chantier({
+    notes: "[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]\nIl faut trancher le coût.",
+  })
+  const saReponse = message({
+    item_id: aCadrer.id,
+    author: "Raphaël",
+    kind: "reponse",
+    created_at: iso(-1 * H),
+  })
+  const b = bilanDe([aCadrer], [saReponse])
+  verifier(
+    "une fois qu'il a répondu, le marqueur ne l'attend plus",
+    b.totaux.attend === 0,
+    "un compteur qui ne redescend jamais après sa réponse n'est plus lu",
+  )
+  verifier("et le chantier repasse dans ce qui dort, en attendant qu'une session le reprenne", b.totaux.dort === 1)
+}
+
+{
+  // « Sauf si ça revient par la suite, si ce même chantier n'est pas terminé
+  // côté Claude Code » : une session qui reprend la parole APRÈS lui, sans
+  // avoir retiré le marqueur, fait revenir le chantier — ce n'est pas réglé.
+  const aCadrer = chantier({
+    notes: "[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]\nIl faut trancher le coût.",
+  })
+  const saReponse = message({
+    item_id: aCadrer.id,
+    author: "Raphaël",
+    kind: "reponse",
+    created_at: iso(-2 * H),
+  })
+  const relanceSession = message({
+    item_id: aCadrer.id,
+    author: "claude/le-cockpit",
+    kind: "info",
+    created_at: iso(-1 * H),
+  })
+  const b = bilanDe([aCadrer], [saReponse, relanceSession])
+  verifier(
+    "une session qui reprend la parole après lui fait revenir le chantier",
+    b.totaux.attend === 1,
+    "le travail n'est pas terminé côté Claude Code, il doit redemander son attention",
+  )
+}
+
+{
   // Une question DÉJÀ répondue ne doit plus rien réclamer : sinon le compteur
   // « pour toi » ne redescend jamais et on cesse de le lire.
   const item = chantier()

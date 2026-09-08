@@ -82,6 +82,37 @@ verifier(
   pastilleDe(etatChantier(item({ notes: "[BLOQUÉ PAR : autre chose] …" }), MAINTENANT)) === null,
   "le marqueur est déjà affiché en étiquette sur la ligne",
 )
+
+{
+  // Chantier cc2d9392, 6 sept. 2026 : un chantier LIVRÉ qui n'attend plus que
+  // Raphaël l'essaie sur son téléphone doit compter comme « pour toi »,
+  // exactement comme « à cadrer » — sa note le demandait explicitement plutôt
+  // que d'ouvrir une notion à part.
+  verifier(
+    "un chantier « livré, reste à constater » attend lui aussi une décision",
+    etatChantier(
+      item({ notes: "[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]\nLe code est fini." }),
+      MAINTENANT,
+    ).etat === "attend",
+  )
+}
+
+{
+  // Chantier c612ccdc, 7 sept. 2026 : « à partir du moment où j'ai répondu,
+  // ça doit sortir des chantiers pour moi. » Le 4ᵉ paramètre porte cette
+  // réponse — la même fonction que « Où j'en suis » (une seule lecture, deux
+  // affichages), donc le même comportement des deux côtés.
+  const aCadrer = item({ notes: "[À CADRER AVEC RAPHAËL] …" })
+  verifier(
+    "sans réponse de sa part, le marqueur l'attend toujours",
+    etatChantier(aCadrer, MAINTENANT, false, false).etat === "attend",
+  )
+  verifier(
+    "une fois qu'il a eu le dernier mot, ce n'est plus « attend »",
+    etatChantier(aCadrer, MAINTENANT, false, true).etat !== "attend",
+    "sinon la ligne dirait « attend » pendant que « Où j'en suis » ne le compte plus",
+  )
+}
 verifier(
   "un archivé est « livré », mais la ligne ne le répète pas",
   etatChantier(item({ archived_at: "2026-09-06T10:00:00Z" }), MAINTENANT).etat === "livre" &&

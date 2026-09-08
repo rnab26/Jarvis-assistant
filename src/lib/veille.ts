@@ -79,9 +79,24 @@ export function peutEcouterEnVeille(p: {
    * exactement le comportement d'avant.
    */
   majEnCours?: boolean
+  /**
+   * Une conversation Live tourne dans L'AUTRE fenêtre (ProtectedShell et
+   * AssistantOverlayPage sont deux BridgeActivity distinctes, donc deux tas
+   * JS distincts — `statut` ne voit que la conversation de SA PROPRE
+   * fenêtre). Mesuré dans journal_ecoute (chantier 2a5b7802) : sans cette
+   * garde, la veille de la fenêtre qui ne parle pas continue de réclamer le
+   * micro toutes les ~7-8 s pendant toute la durée d'une conversation Live
+   * ouverte ailleurs — les activations/désactivations intempestives
+   * signalées.
+   *
+   * Optionnel, faux par défaut : un appelant qui ne sait pas lire le
+   * drapeau natif (le banc d'essai) garde le comportement d'avant.
+   */
+  liveAilleurs?: boolean
 }): boolean {
   if (!p.actif || !p.visible) return false
   if (p.majEnCours) return false
+  if (p.liveAilleurs) return false
   return p.statut === "idle" || p.statut === "error"
 }
 

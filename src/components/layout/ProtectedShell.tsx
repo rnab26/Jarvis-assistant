@@ -24,7 +24,7 @@ function ShellContent() {
     devSectionsState,
   } = useJarvisData()
 
-  useShareReceiver(documentsState.saveTextDocument)
+  useShareReceiver(documentsState.saveTextDocument, documentsState.saveBinaryDocument)
 
   return (
     <DashboardLayout>

@@ -352,6 +352,18 @@ cite souvent un autre chantier en écrivant « [LIBRE] » au passage — le pren
 pour le marqueur du chantier ferait démarrer une session sur un sujet qu'il
 voulait cadrer d'abord. Le contrôle hors réseau garde exactement ce cas.
 
+**`[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]`, ajouté le 7 sept. 2026
+(chantier `cc2d9392`) : NE PAS le confondre avec `[LIBRE]`.** Le code est
+fini, seul un essai sur l'appareil manque (installer l'APK, activer un accès
+spécial…) — personne d'ici ne peut le faire. Deux chantiers réels
+(`3f3ad20b`, `f5621562`) marqués `[LIBRE — reste la vérification…]` ont été
+repris par une session autonome qui a refait un travail déjà livré, parce que
+`chantiersPrenables` (`src/lib/passeAutonome.ts`) n'accepte QUE le marqueur
+exact `libre`. Ce nouveau marqueur compte aussi dans « pour toi » (voir
+`attendSaDecision`, `src/lib/etatChantier.ts`) — même mécanisme que
+`[À CADRER]`, une seule notion pour « ça attend une décision ou un geste de
+Raphaël », pas une deuxième à côté.
+
 ### Un chantier garde ce qu'on y a écrit (migration 0027)
 
 Initiative d'une session le 6 sept. 2026, chantier `765b3d02`. La raison est
@@ -391,6 +403,42 @@ Deux contrôles : `verifier-historique-chantier.ts` (hors ligne, la lecture) et
 `ANON_KEY=... node scripts/verifier-historique-reel.mjs` (le trigger depuis
 n'importe quel chemin, le silence sur les réservations, la restauration tracée,
 le cloisonnement RLS, et la suppression qui emporte l'historique).
+
+### Une SUPPRESSION de dev_items, elle, ne laissait aucune trace (migration 0036)
+
+Trouvé le 7 sept. 2026 (chantier `019144d8`) en enquêtant sur la disparition
+sans explication du chantier `348ca1d3` : un vrai `DELETE`, pas un archivage,
+entre le 6 sept. ~17h et le 7 sept. 04h12 UTC — zéro ligne dans `dev_log`,
+zéro ligne dans `dev_items_historique`. Son contenu n'a été récupéré que
+parce qu'une copie traînait par ailleurs dans une conversation ; sans elle,
+il aurait été perdu pour de bon.
+
+**La cause, vérifiée et pas supposée** :
+`select * from information_schema.triggers where event_object_table =
+'dev_items'` ne montrait qu'UPDATE. `tracer_changement_dev_item()` (migration
+0027) ne s'était jamais déclenchée sur DELETE.
+
+**Bloquer le DELETE aurait été plus simple, et c'était faux** : la
+suppression est une vraie fonctionnalité du cockpit (bouton « Choisir » >
+Supprimer, confirmée à l'écran) — `dev_items_delete_own` existe depuis la
+migration 0003. La bonne réponse est de TRACER, pas d'interdire.
+
+**Pourquoi une table séparée (`dev_items_supprimes`), pas
+`dev_items_historique`** : `item_id` y référence `dev_items(id) on delete
+cascade`. Une ligne de trace insérée avant le DELETE y serait emportée par ce
+même DELETE — exactement le trou qu'on rebouchait. `dev_items_supprimes` n'a
+aucun lien de cascade vers `dev_items` : elle survit à la suppression qu'elle
+décrit. Un trigger `BEFORE DELETE` y copie la ligne complète (titre, notes,
+statut, priorité, thème, dates), et `restaurer_chantier_supprime(p_id)`
+recrée le chantier à l'identique — même logique que `restaurer_note_chantier`
+de la migration 0027 : la restauration efface la trace pour ne pas pouvoir
+recréer le même chantier deux fois.
+
+Vérifié pour de vrai, avec un chantier créé et supprimé exprès (jamais un
+vrai chantier de quelqu'un d'autre) : `ANON_KEY=... node
+scripts/verifier-historique-reel.mjs` couvre maintenant aussi la trace posée
+par le DELETE, son cloisonnement RLS, et la restauration qui rend le même
+titre et la même note.
 
 ### Un chantier porte sa conversation
 
@@ -466,6 +514,22 @@ tâches réelles : 6 signalées, 6 justes, 0 à tort.
 un titre, des notes, rien de plus) — trois « racheter un spot pour l'entrée »
 identiques dormaient dans ses tâches pendant que le cockpit prévenait depuis
 des jours.
+
+**Une demande de SECTION n'est pas un chantier**, depuis le 7 sept. 2026
+(chantier `2d575977`). Sa dictée du 4 sept., « une nouvelle section de
+chantier qui s'appelle fonctionnalité », était comprise par `chantierDeguise`
+comme un CHANTIER — l'amorce « section » y vivait par erreur — et a produit un
+chantier vide et incompréhensible (« Fonctionnalité », sans notes, archivé le
+6 sept.). `sectionDeguisee` (même fichier) reconnaît maintenant à part les
+tournures « une nouvelle section X », « une section qui s'appelle X », « range
+ça dans une section X », avec la même prudence que pour le mot « chantier » :
+une phrase de maçonnerie qui commence pareil (« une nouvelle section du
+chantier Hipouy a été livrée ») ne doit PAS matcher — `ressembleAUneContinuation`
+rejette un nom de section qui commencerait par un mot de liaison (« du »,
+« est », « a »…) plutôt qu'un vrai nom. `ChantiersEgares.tsx` propose alors
+« Créer la section » et vérifie D'ABORD qu'une section équivalente n'existe
+pas déjà (`cleTheme`, insensible aux accents) — sinon « Ranger la tâche »
+sans rien créer, même logique que pour un chantier déjà livré.
 
 ### Les actions groupées et le « Annuler »
 
@@ -763,6 +827,78 @@ que « mets-le en chantier ». La prendre pour une correction déplacerait la
 ligne précédente AU LIEU de créer celle-ci — on perdrait sa demande et on
 abîmerait la précédente, d'un coup.
 
+## Une tâche sans date se rappelle d'elle-même ; sans catégorie, il valide
+
+Chantier `eeca8cca`, élargi par Raphaël le 7 sept. 2026 à 13h40 : « mise a
+part la date jarvis doit apprendre a me connaître […] il doit aussi savoir
+définir dans quel contexte quel catégorie de tâche il faut l'ajouter si je ne
+lui dit pas il doit me le suggérer a voix haute et je lui valide ».
+
+**Deux règles différentes, et il ne faut pas les confondre.** La DATE
+manquante suit la règle du 5 sept. (« on annonce, on ne demande pas ») :
+Jarvis dit « sans date, dis-moi pour quand » et n'attend rien. La CATÉGORIE
+supposée, elle, EST une vraie question — sa demande explicite pour ce cas
+précis, l'inverse de la règle générale — et rien n'est écrit avant qu'il
+valide.
+
+- `src/lib/tacheDateEtCategorie.ts` (pur) reconnaît une réponse qui arrive
+  dans la foulée (« vendredi », « demain matin », « oui », « plutôt dans
+  Perso »), et surtout ce qu'il ne faut PAS prendre pour une réponse : une
+  phrase longue qui ne fait que CONTENIR une date ou le nom d'une catégorie
+  en passant (« demain je pars en voyage, ajoute une tâche pour réserver
+  l'hôtel ») est une NOUVELLE demande, pas une réponse — la prendre pour
+  telle daterait ou rangerait la MAUVAISE tâche.
+- `src/lib/suggestionCategorie.ts` (pur) — même algorithme que
+  `suggestionTheme.ts` (recouvrement de vocabulaire, silence quand rien ne se
+  détache), adapté aux tâches et catégories plutôt qu'aux chantiers et
+  sections.
+- `commandeLocale.ts` reconnaît la réponse SUR L'APPAREIL, contre l'état tenu
+  par `voiceActions.ts` (`derniereTacheEnAttente`, même mécanisme que
+  `derniereCreation` pour « non, mets-le en chantier ») — fenêtre de 5
+  minutes, comme la correction de destination.
+- **Le serveur ne devine plus une catégorie en silence.** Avant, la consigne
+  de `voice-command` lui disait de poser `category_id` « le mieux
+  correspondant » sans le dire — l'inverse exact de sa demande. Une seule
+  source de vérité désormais : le serveur ne pose `category_id` que si
+  l'utilisateur l'a dit explicitement, sinon c'est le téléphone qui suggère
+  et attend sa validation.
+- `useTasks().addTask` rend maintenant l'id de la tâche créée (`{ id }`,
+  jamais un objet reconstitué de valeurs qu'on n'a pas vraiment lues) : sans
+  lui, impossible de compléter la MÊME tâche plutôt que d'en créer une
+  seconde.
+
+`scripts/verifier-tache-date-categorie.ts`, essayé à l'envers (désactiver le
+garde-fou contre une phrase longue fait effectivement rougir le contrôle
+avant d'être remis en place).
+
+## Un onglet dédié aux notes personnelles
+
+Chantier `5ad49cc0`, 6 sept. 2026. Sa dictée : « creer un onglet dedie aux
+notes personnelles pour une meilleure organisation, distinct des taches, des
+documents et de la memoire ». Du texte libre, sans échéance et sans que
+Jarvis en fasse quoi que ce soit tout seul — le seul des quatre endroits où
+atterrit du texte à ne rien déclencher.
+
+Table `notes` (migration 0036), même cloisonnement RLS que `tasks`, même
+mécanisme temps réel que `tasks`/`categories`/`dev_items` (REPLICA IDENTITY
+FULL + publication) — sans ça une note créée depuis le web resterait
+invisible dans l'app ouverte. `src/hooks/useNotes.ts`, `NotesPage.tsx`
+(onglet « Notes », entre Docs et Mémoire), `NoteFormDialog.tsx` (créer et
+modifier, même dialogue). Le jeu complet attendu d'une liste : créer, voir,
+modifier, supprimer (`ConfirmerAction`, comme partout dans l'app), chercher
+(titre et contenu), et les états vide / chargement / erreur / « rien trouvé ».
+Vérifié dans un vrai navigateur, écran de téléphone :
+`scripts/verifier-notes-web.mjs`.
+
+**L'action vocale n'est PAS livrée ici, et ce n'est pas un oubli** : elle
+touche `src/lib/commandeLocale.ts` et `supabase/functions/voice-command/`,
+propriété de la session « Le téléphone » — laissée en `dev_log` pour elle.
+`_shared/environnement.ts` (les deux consignes) connaît déjà l'onglet, pour
+que Jarvis n'envoie pas Raphaël vers un écran qu'il ignore. Au passage, la
+même mise à jour a corrigé une description devenue fausse depuis le 7 sept. :
+elle comptait encore Paramètres comme un onglet alors qu'il vit désormais
+dans un bouton en haut à droite.
+
 ## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
 
 Raphaël, 6 sept. 2026 : « il a une certaine logique de me demander pour un
@@ -831,6 +967,63 @@ les contacts.
 
 Côté consigne : « cherche X » part vers la favorite, « cherche X sur Y » vers
 l'application citée, et **« sur internet » n'est pas un nom d'application**.
+
+## La lecture de liens et de PDF (chantier 13c39a9b)
+
+La recherche (ci-dessus) était livrée depuis le 6 sept. ; il manquait la
+seconde moitié du chantier : donner un lien à Jarvis — à la voix, ou par le
+partage Android — et qu'il en rapporte le document.
+
+**Rien de nouveau côté téléchargement : tout existait déjà, orphelin.**
+`google-gmail/lien.ts` (SSRF, https seul, 8 Mo, PDF/image uniquement),
+l'action serveur `document_lien`, et même le client `recupererDocumentLien`
+dans `googleGmail.ts` étaient écrits depuis le 3 sept. (chantier `4dabe586`)
+— mais **personne ne les appelait**. Ne réécris jamais ce mécanisme, il est
+déjà vérifié par `verifier-gmail.mjs`.
+
+**Trouvé en passant, et volontairement PAS corrigé ici** (thème différent,
+chantier `4dabe586`) : `list_emails`, `read_email`, `prepare_email_reply`,
+`send_email`, `find_receipts` sont dans l'énumération que le modèle connaît
+et dans la consigne, mais **aucune de ces actions n'existe dans
+`voiceActions.ts`**, et `googleGmail.ts` n'est importé nulle part ailleurs
+que par ce chantier. Si le modèle les appelle, le client ne sait pas les
+exécuter. Noté dans `dev_log` et dans la note de `4dabe586` — à la session
+qui reprend ce chantier de vérifier ce que ça donne réellement.
+
+**`document_lien` a été décorrélée de Gmail** (`google-gmail/index.ts`) :
+elle répondait avant `compte_google_absent` si le compte Google n'était pas
+branché, alors qu'elle ne touche jamais Gmail. Elle est traitée maintenant
+avant la recherche du jeton Google — un lien donné à la voix marche même
+sans compte connecté.
+
+Deux chemins, tous les deux réels et vérifiés :
+- **La voix** : un verbe d'introduction (« récupère », « va chercher »,
+  « prends », « télécharge »…) suivi d'une adresse http(s) — reconnu
+  LOCALEMENT (`commandeLocale.ts`, action `read_link`), comme `ask_ai` :
+  une adresse dans la phrase ne veut jamais dire autre chose, pas la peine
+  de consommer le quota du modèle pour ça.
+- **Le partage Android** : `useShareReceiver.ts` distingue maintenant un
+  texte partagé qui **N'EST QUE** un lien (`texteEstUnLien()`,
+  `documentLien.ts`) d'un texte qui en contient un au milieu d'autre chose —
+  sinon un message qu'il voulait garder tel quel serait remplacé par le
+  document du lien. Ce n'est PAS le même chemin que le rapprochement d'une
+  réponse d'IA (`allerRetourIA.ts`) : celui-ci se vérifie en premier (une
+  question en attente prime), celui-là ne s'applique que si aucune réponse
+  d'IA n'a été rapprochée.
+
+`src/lib/documentLien.ts` (pur) décide tout ce qui peut se tromper en
+silence : extraire l'adresse sans avaler la ponctuation de fin de phrase,
+distinguer « lien seul » de « lien au milieu d'un message », et nommer le
+fichier enregistré par le SITE d'origine plutôt qu'un horodatage nu — sinon
+dix documents s'appelleraient tous « Document ». `lireDocumentLien.ts`
+(non pur) relie lecture et enregistrement, et rend `{ ok, message }` : la
+voix dit `message` dans tous les cas (succès ou échec), un toast le colore
+en vert ou en rouge selon `ok`.
+
+**Nouveau côté stockage** : `useDocuments.ts` gagne `saveBinaryDocument()`,
+le pendant de `saveTextDocument()` pour un contenu binaire (PDF/image) déjà
+encodé en base64 par le serveur — `saveTextDocument` écrirait un fichier
+texte illisible pour un vrai PDF.
 
 ## « Garde ça » : reprendre la réponse d'une IA sans le geste de partage
 
@@ -2254,7 +2447,9 @@ ANON_KEY=... node scripts/verifier-donnees.mjs           # temps réel + réglag
 node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole, sans réseau
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
+node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
+node --experimental-strip-types scripts/verifier-live-croise.ts  # la veille se tait quand Live tourne dans l'AUTRE fenêtre (ProtectedShell/AssistantOverlayPage), sans réseau
 node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
@@ -2279,6 +2474,7 @@ node --experimental-strip-types scripts/verifier-autorisations.ts  # un bouton �
 node --experimental-strip-types scripts/verifier-musique.ts       # « je lance » n'est dit que si ça joue vraiment, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
+node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
@@ -2303,6 +2499,7 @@ ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce 
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
+node scripts/verifier-notes-web.mjs                      # l'onglet Notes : créer/modifier/supprimer avec confirmation/chercher, vrai navigateur
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
 ANON_KEY=... node scripts/verifier-connexion-google.mjs  # le branchement Google, avant de le proposer
@@ -2735,6 +2932,52 @@ supprimait l'APPEL — elle voyait la définition de la fonction d'aide. Elle li
 maintenant le corps de `appliquerBundle`. Même piège que le sélecteur
 Playwright du 4 sept.
 
+## Ne plus avoir à cliquer « Installer sans analyser » à chaque mise à jour
+
+Chantier `0847b38f`, 7 sept. 2026. Ses mots, le 6 sept. : « j'en ai marre
+d'avoir à cliquer sur installer sans analyser à chaque mise à jour. »
+Aujourd'hui l'installation passait par un intent `ACTION_VIEW` : Android la
+traite comme une installation manuelle venue d'une source inconnue, d'où
+Play Protect ET l'écran de confirmation, à chaque fois.
+
+**Le chemin qui l'évite** : `PackageInstaller` en mode SESSION, avec
+`setRequireUserAction(SessionParams.USER_ACTION_NOT_REQUIRED)` (API 31+, lu
+dans la doc Android, pas supposé). Cette option ne supprime la fenêtre QUE
+si l'app est déjà son propre « installer of record » pour ce paquet ET
+possède `REQUEST_INSTALL_PACKAGES` (déjà en place). **La toute première
+installation par cette voie redemandera donc encore confirmation** — c'est
+elle qui fait de Jarvis son propre installer, une fois pour toutes.
+
+- `ApkDownloaderPlugin.lancerInstallation` tente `installerSansFenetre`
+  d'abord (SDK 31+ uniquement), et se rabat sur l'ancien intent
+  `ACTION_VIEW` sur toute exception ou en dessous de l'API 31 : jamais de
+  bouton mort si PackageInstaller refuse pour une raison quelconque.
+- `ApkInstallReceiver` (déclaré non exporté dans le manifeste) reçoit le
+  résultat du `commit()`. **`STATUS_PENDING_USER_ACTION` doit être traité
+  dans TOUS les cas**, y compris avec `USER_ACTION_NOT_REQUIRED` posé : sans
+  ce relais, la confirmation de la toute première installation ne
+  s'afficherait jamais, et la mise à jour resterait bloquée en silence.
+- **Le `PendingIntent` du commit doit être `FLAG_MUTABLE`** : depuis
+  Android 12, un `PendingIntent` immuable empêche le système d'y ajouter
+  `EXTRA_STATUS` avant de le diffuser, et le commit échoue en silence —
+  comportement documenté par Android, pas une hypothèse.
+- Condition vérifiée avant d'écrire une ligne de code, comme demandé par la
+  note du chantier : le keystore de debug est **fixe et committé**
+  (`android/keystore/debug.keystore`), pas régénéré à chaque run de CI —
+  sinon la signature changerait à chaque build et rien de tout ça ne
+  marcherait, ni l'installation silencieuse ni même une mise à jour
+  ordinaire.
+
+`scripts/verifier-telechargement-apk.ts` (déjà dans la CI) tient les
+contrôles, essayés à l'envers (retirer `FLAG_MUTABLE` fait rougir le contrôle
+correspondant, remis en place immédiatement après).
+
+**Non vérifiable ici** (pas de SDK Android) : le comportement réel du
+`commit()` sur un appareil. La CI prouve que ça compile, pas que ça
+s'installe sans fenêtre — à confirmer par Raphaël après une installation
+manuelle de cette version (qui redemandera encore confirmation UNE fois),
+puis la suivante devrait passer sans rien demander.
+
 ## Télécharger l'APK : DownloadManager ne peut pas être le seul chemin
 
 Le 6 sept. 2026, Raphaël ne pouvait plus mettre à jour DU TOUT — « installée
@@ -2875,6 +3118,57 @@ puis à défaut la liste des applications par défaut, et les derniers pas reste
 écrits sous le bouton. Corollaire pour le chantier f5621562 : **l'appui long ne
 peut pas avoir d'interrupteur dans l'app**, c'est un rôle exclusif d'Android
 qu'une application ne peut ni s'attribuer ni se retirer.
+
+### Troisième piège de la fenêtre d'assistance : deux tas JS, une seule veille voulue
+
+Chantier `2a5b7802`, 7 sept. 2026. Ses mots : « Lorsque le mode conversation
+live est activé, il y a des activations et désactivation de micro
+intempestive ca doit etre régler car ces bruits sont tres dérangeant ».
+
+**MESURÉ dans `journal_ecoute`, pas supposé.** Sur une conversation Live de
+544957 ms, 70 cycles complets de la veille classique (mot-clé « Jarvis »,
+service Android) se sont déclenchés PENDANT — un toutes les ~7-8 secondes, du
+début à la fin. Le commentaire de `MicButton` affirmait pourtant « pendant la
+conversation, l'état n'est jamais au repos, donc la veille attend » — vrai
+dans une seule fenêtre (`statusRef` y reste `listening`/`speaking` tout du
+long, vérifié en lisant `sessionLive.ts`), mais l'app en a DEUX : la coquille
+normale (`ProtectedShell`) et la fenêtre d'assistance (`AssistantOverlayPage`,
+ouverte par l'appui long — devenu son chemin PRINCIPAL vers Jarvis). Cette
+dernière est une VRAIE seconde `BridgeActivity` avec son propre WebView, donc
+son propre tas JS : le `status` React qui bloque la veille d'une fenêtre
+n'existe tout simplement pas dans l'autre. Une Live ouverte dans l'une n'avait
+aucun moyen de le dire à l'autre.
+
+**`EtatLivePlugin.java`** — un champ statique `volatile boolean actif`, posé
+par n'importe laquelle des deux fenêtres et lu par l'autre. Ça marche parce
+que les deux `Activity` vivent dans le MÊME processus (aucun
+`android:process` déclaré, vérifié dans le manifeste) : pas besoin de
+SharedPreferences ni de sondage réseau, un champ statique suffit — même
+principe que `MainActivity.auPremierPlan` pour `AnnonceApresNotification`.
+**Enregistré dans LES DEUX `Activity`** (`MainActivity` ET
+`AssistOverlayActivity`) : l'oublier dans l'une rendrait le correctif inutile
+pour exactement la fenêtre où le bruit se produit — c'est le premier cas que
+`scripts/verifier-live-croise.ts` garde, essayé à l'envers.
+
+**Le drapeau couvre TOUTE la conversation maintenue, pas une connexion.**
+Posé dans `maintenirSessionLive` (avant que la boucle de reconnexion
+démarre) et baissé dans un `finally` qui entoure cette boucle — jamais dans
+`demarrerSessionLive`, qui ne voit qu'UNE connexion : le poser là referait
+retomber le drapeau à faux pendant chaque reconnexion transparente de Google
+(la limite des 15 minutes), exactement le trou qu'on rebouche.
+
+**La boucle de veille lit le drapeau à chaque tour** (`liveAilleurs: await
+liveActifQuelquePart()`, dans `peutEcouterEnVeille` — même famille que
+`majEnCours`), **`handleClick` ne le lit jamais** : un appui volontaire sur
+le cœur reste obéi même si l'autre fenêtre a une Live ouverte, sinon on
+remplacerait un bruit gênant par un Jarvis sourd dans une fenêtre qu'il
+utilise activement — pire. La moitié de `verifier-live-croise.ts` garde ce
+silence-là, pas seulement la détection.
+
+**Non vérifiable ici** (aucun SDK/appareil Android) : que le bruit a
+réellement cessé chez lui. La mesure future se lit pareil —
+`journal_ecoute`, des rafales de veille qui ne se produisent plus pendant une
+fenêtre `live_debut`→`live_fin`.
 
 ## Le web se met à jour tout seul, l'app Android jamais
 

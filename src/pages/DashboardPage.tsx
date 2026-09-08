@@ -98,7 +98,9 @@ export function DashboardPage() {
       <TaskFormDialog
         categories={categoriesOrdonnees(categories)}
         taches={tasks}
-        onSubmit={addTask}
+        onSubmit={async (input) => {
+          await addTask(input)
+        }}
         trigger={
           <Button className="w-full">
             <Plus className="size-4" />
