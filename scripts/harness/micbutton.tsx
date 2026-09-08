@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { createRoot } from "react-dom/client"
 import { MemoryRouter } from "react-router-dom"
 import { MicButton } from "@/components/voice/MicButton"
+import { resumerConsommation } from "@/lib/consommationModele"
 import type { Task } from "@/types/database"
 
 /**
@@ -33,6 +34,17 @@ function tache(id: string, title: string): Task {
   } as Task
 }
 
+/** Un jour ordinaire chez lui : des phrases passées, aucun refus, le modèle
+ * principal. La pastille doit alors rester DISCRÈTE. */
+const QUOTA_BANC = resumerConsommation([
+  {
+    role: "commande", modele: "gemini-3.1-flash-lite", fournisseur: "gemini",
+    appels: 36, reussis: 36, refus_minute: 0, refus_jour: 0,
+    jetons_entree: 400000, jetons_sortie: 9000, jetons_reflexion: 3000,
+    ms_median: 1200, dernier_at: "2026-09-08T20:00:00Z", rang: 0,
+  },
+])
+
 function BancDuCoeur() {
   const [tasks, setTasks] = useState<Task[]>([])
 
@@ -53,6 +65,10 @@ function BancDuCoeur() {
       pronunciationsApi={{ pronunciations: [], addPronunciation: rien, deletePronunciation: rien }}
       voiceSettingApi={{ muted: false, setMuted: () => {} }}
       widgetApi={{ config: { maxTasks: 5, urgentOnly: false, categoryId: null }, setConfig: () => {} }}
+      // Le banc du cœur : la pastille du quota est montée dans un état PARLANT
+      // (36 phrases, aucun refus) plutôt qu'à null, sinon elle ne s'afficherait
+      // jamais et le banc mesurerait une colonne qui n'existe pas.
+      consommation={QUOTA_BANC}
       wakeWordEnabled={true}
       setWakeWordEnabled={() => {}}
       setGeofenceEnabled={() => {}}

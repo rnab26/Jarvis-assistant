@@ -313,6 +313,27 @@ try {
       echecs++
       console.log("ÉCHEC mot-clé : Jarvis n'a rien répondu")
     })
+  // ── LE QUOTA, À CÔTÉ DU CŒUR ──
+  // Sa demande : « rajouter le quota disponible a cote du cœur de jarvis,
+  // leger ». Le banc monte un jour ordinaire (36 phrases, aucun refus, modèle
+  // principal) : la ligne doit exister et rester DISCRÈTE.
+  {
+    const quota = coeur.locator("[data-quota]")
+    verifier("le quota s'affiche à côté du cœur", (await quota.count()) === 1, true)
+    if ((await quota.count()) === 1) {
+      const ton = await quota.getAttribute("data-quota")
+      const texte = (await quota.innerText()).trim()
+      verifier("et un jour ordinaire il reste discret", ton === "discret", true)
+      if (ton !== "discret") console.log(`      ton = ${ton}, texte = ${texte}`)
+      verifier(
+        "il tient sur une ligne, et n'invente aucun pourcentage",
+        texte.length > 0 && texte.length <= 40 && !texte.includes("%"),
+        true,
+      )
+      if (texte.includes("%") || texte.length > 40) console.log(`      texte = « ${texte} »`)
+    }
+  }
+
   const reponseCoeur = (await coeur.textContent("body")) ?? ""
   verifier(
     "mot-clé : la conversation voit les tâches chargées après le montage",

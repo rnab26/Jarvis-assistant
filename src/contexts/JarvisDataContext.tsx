@@ -10,6 +10,7 @@ import { useEntrainement } from "@/hooks/useEntrainement"
 import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
 import { useGoogleAccount } from "@/hooks/useGoogleAccount"
 import { useJarvisErreurs } from "@/hooks/useJarvisErreurs"
+import { useConsommation } from "@/components/settings/Consommation"
 import { useMajWeb } from "@/hooks/useMajWeb"
 import { useNotes } from "@/hooks/useNotes"
 import { useNotifications } from "@/hooks/useNotifications"
@@ -43,6 +44,7 @@ type WidgetState = ReturnType<typeof useWidgetSetting>
 type NotificationsState = ReturnType<typeof useNotifications>
 type UpdateState = ReturnType<typeof useUpdateCheck>
 type MajWebState = ReturnType<typeof useMajWeb>
+type ConsommationState = ReturnType<typeof useConsommation>
 
 interface JarvisDataValue {
   tasksState: TasksState
@@ -64,6 +66,11 @@ interface JarvisDataValue {
   notificationsState: NotificationsState
   updateState: UpdateState
   majWebState: MajWebState
+  /** Ce que Jarvis a consommé aujourd'hui. MONTÉ ICI et pas dans chaque écran :
+   * la pastille sous le cœur et la carte de Paramètres doivent dire le même
+   * chiffre au même moment, et deux lectures séparées finiraient par diverger
+   * — sans compter le second appel à `etat_consommation` pour rien. */
+  consommationState: ConsommationState
 }
 
 const JarvisDataContext = createContext<JarvisDataValue | null>(null)
@@ -117,6 +124,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   // dans Paramètres : sans ça, rien ne se vérifie ni ne s'applique tant que
   // Raphaël n'ouvre pas cet onglet — c'est exactement ce qui l'a laissé une
   // vingtaine de builds en retard sans le savoir.
+  const consommationState = useConsommation()
   const updateState = useUpdateCheck()
   const majWebState = useMajWeb(
     updateState.published,
@@ -161,6 +169,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         notificationsState,
         updateState,
         majWebState,
+        consommationState,
       }}
     >
       {children}

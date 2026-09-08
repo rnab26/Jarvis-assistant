@@ -13,7 +13,7 @@ import { AssistantTelephone } from "@/components/settings/AssistantTelephone"
 import { CarteAutorisations } from "@/components/settings/Autorisations"
 import { BulleFlottante } from "@/components/settings/BulleFlottante"
 import { Cockpit } from "@/components/settings/Cockpit"
-import { Consommation, useConsommation } from "@/components/settings/Consommation"
+import { Consommation } from "@/components/settings/Consommation"
 import { MoteurDeLangue } from "@/components/settings/MoteurDeLangue"
 import { SessionsAutonomes } from "@/components/settings/SessionsAutonomes"
 import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
@@ -493,7 +493,6 @@ export function SettingsPage() {
   // Ce que Jarvis a consommé aujourd'hui : sa demande du 5 sept., « savoir
   // combien il me reste de crédit et à combien de temps de discussion ça
   // équivaut ».
-  const consommationState = useConsommation()
   // Ce que Jarvis a appris de ses propres notifications (chantier 05241cc7).
   const apprentissageState = useApprentissageNotifications()
   const {
@@ -509,6 +508,11 @@ export function SettingsPage() {
     updateState,
     majWebState,
     notificationsState,
+    // UNE SEULE LECTURE POUR TOUTE L'APP : la carte d'ici et la pastille sous
+    // le cœur doivent dire le même chiffre au même moment (chantier bd3afe97).
+    // Deux `useConsommation()` séparés appelleraient `etat_consommation` deux
+    // fois et finiraient par se contredire à l'écran.
+    consommationState,
   } = useJarvisData()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [recherche, setRecherche] = useState("")

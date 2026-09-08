@@ -222,3 +222,62 @@ export function alerteDe(e: {
   }
   return null
 }
+
+// ── La pastille à côté du cœur ────────────────────────────────────────────
+
+export interface PastilleQuota {
+  ton: "discret" | "orange" | "rouge"
+  /** Court, exprès : c'est une ligne sous le cœur, pas une carte. */
+  texte: string
+}
+
+/**
+ * Ce qui s'affiche à côté du cœur de Jarvis, en une ligne.
+ *
+ * Sa demande : « rajouter le quota disponible a cote du cœur de jarvis,
+ * leger ». Le mot « léger » commande tout ce qui suit — la carte complète
+ * existe déjà dans Paramètres, et la redoubler ici serait la redondance qu'il
+ * refuse. Ce qu'on met sous le cœur est un REPÈRE : de quoi lever les yeux,
+ * pas de quoi analyser.
+ *
+ * TROIS SILENCES, et ils comptent autant que les trois messages :
+ *
+ * - `null` en entrée (lecture pas faite, ou en échec) : on ne dit RIEN. Un
+ *   « ? » sous le cœur ferait douter en permanence de quelque chose qui va
+ *   probablement bien, et une panne de lecture ne doit pas se lire comme un
+ *   quota vide — c'est la règle de `useConsommation` elle-même.
+ * - Aucune phrase aujourd'hui : rien non plus. « 0 phrase » au réveil est du
+ *   bruit ; il le verra bien assez tôt en parlant.
+ * - Un refus « par minute » : rien. C'est le fonctionnement NORMAL quand il
+ *   enchaîne vite, ça se lève tout seul en soixante secondes, et un voyant qui
+ *   s'allume tous les jours n'est plus lu le jour où il compte.
+ *
+ * ET JAMAIS DE POURCENTAGE. Il n'y a pas de solde sur l'offre gratuite : on
+ * annonce un reste UNIQUEMENT quand un plafond a été réellement mesuré sur ce
+ * modèle-là. Sinon on compte ce qu'il a dit, ce qui est vrai par construction.
+ */
+export function pastilleQuota(resume: Consommation | null): PastilleQuota | null {
+  if (!resume || !resume.modele) return null
+
+  if (resume.refusJour > 0) {
+    return { ton: "rouge", texte: "Quota du jour vide" }
+  }
+  if (resume.surSecours) {
+    return { ton: "orange", texte: "Sur un moteur de secours" }
+  }
+  if (resume.msMedian !== null && resume.msMedian > 8000) {
+    return { ton: "orange", texte: `Réponses lentes — ${(resume.msMedian / 1000).toFixed(1)} s` }
+  }
+
+  const p = PLAFONDS_MESURES[resume.modele]
+  if (p?.parJour) {
+    const reste = Math.max(0, p.parJour - resume.phrases)
+    return { ton: "discret", texte: `${reste} phrase${reste > 1 ? "s" : ""} avant le plafond du jour` }
+  }
+  // Aucun plafond mesuré sur ce modèle : on ne peut annoncer qu'un usage, pas
+  // un reste. Le dire ainsi est la seule forme honnête.
+  return {
+    ton: "discret",
+    texte: `${resume.phrases} phrase${resume.phrases > 1 ? "s" : ""} aujourd'hui`,
+  }
+}

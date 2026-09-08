@@ -1,5 +1,6 @@
 import { MicButton } from "@/components/voice/MicButton"
 import { JarvisDataProvider, useJarvisData } from "@/contexts/JarvisDataContext"
+import { resumerConsommation } from "@/lib/consommationModele"
 import { useAuth } from "@/hooks/useAuth"
 import { AssistOverlay } from "@/lib/assistOverlayPlugin"
 import { geocodePlace } from "@/lib/geocodePlace"
@@ -25,6 +26,7 @@ function AssistantOverlayContent() {
     voiceState,
     widgetState,
     devSectionsState,
+    consommationState,
   } = useJarvisData()
 
   return (
@@ -43,6 +45,9 @@ function AssistantOverlayContent() {
         voiceSettingApi={{ muted: voiceState.muted, setMuted: voiceState.setMuted }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
+        consommation={
+          consommationState.lignes === null ? null : resumerConsommation(consommationState.lignes)
+        }
         setWakeWordEnabled={wakeWordState.setEnabled}
         setGeofenceEnabled={geofenceState.setEnabled}
         entrainementApi={{

@@ -2,6 +2,8 @@ import { Capacitor } from "@capacitor/core"
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { JarvisCore } from "@/components/JarvisCore"
+import { pastilleQuota, type Consommation } from "@/lib/consommationModele"
+import { cn } from "@/lib/utils"
 import { themesDe } from "@/components/cockpit/CockpitBoard"
 import { MOTEUR_OCCUPE, useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
@@ -100,6 +102,9 @@ interface MicButtonProps {
   widgetApi: WidgetApi
   entrainementApi: EntrainementApi
   wakeWordEnabled: boolean
+  /** Ce que Jarvis a consommé aujourd'hui, pour la ligne sous le cœur.
+   * `null` = pas encore lu, ou lecture en échec — on n'affiche alors RIEN. */
+  consommation: Consommation | null
   /** Pour que « active le mot-clé » / « désactive la géolocalisation »
    * touchent le VRAI hook (React + persistance), voir ReglagesVoixApi. */
   setWakeWordEnabled: (v: boolean) => void
@@ -184,6 +189,7 @@ export function MicButton({
   widgetApi,
   entrainementApi,
   wakeWordEnabled,
+  consommation,
   setWakeWordEnabled,
   setGeofenceEnabled,
   voiceIndex,
@@ -1025,6 +1031,36 @@ export function MicButton({
         <input type="checkbox" checked={modeLive} onChange={basculerModeLive} className="size-3.5 accent-primary" />
         Mode conversation Live (essai)
       </label>
+      {/* LE QUOTA, À CÔTÉ DU CŒUR — sa demande, « leger ». Une ligne, jamais
+          une carte : celle-là existe déjà dans Paramètres, et la redoubler ici
+          serait la redondance qu'il refuse. Ce qu'on met sous le cœur est un
+          repère, de quoi lever les yeux — pas de quoi analyser.
+
+          SEULEMENT AU REPOS : pendant qu'il parle ou que Jarvis répond,
+          l'écran doit dire ce qui se passe, pas une statistique. Et
+          `pastilleQuota` se tait d'elle-même quand il n'y a rien à dire — pas
+          encore lu, aucune phrase aujourd'hui, ou un simple refus par minute
+          qui se lève tout seul en soixante secondes. */}
+      {(status === "idle" || status === "wake-listening") &&
+        (() => {
+          const pastille = pastilleQuota(consommation)
+          if (!pastille) return null
+          return (
+            <p
+              data-quota={pastille.ton}
+              className={cn(
+                "text-[11px]",
+                pastille.ton === "rouge"
+                  ? "font-medium text-destructive"
+                  : pastille.ton === "orange"
+                    ? "font-medium text-amber-600 dark:text-amber-500"
+                    : "text-muted-foreground",
+              )}
+            >
+              {pastille.texte}
+            </p>
+          )
+        })()}
       {/* Tant que le mot-clé est activé, on le dit — même entre deux rafales
           d'écoute. Raphaël signalait le 3 sept. qu'il ne savait jamais ce qui
           était réellement actif : un indicateur qui n'apparaît qu'une fraction

@@ -17,6 +17,7 @@ import {
   PLAFONDS_MESURES,
   alerteDe,
   margeDe,
+  pastilleQuota,
   resumerConsommation,
 } from "../src/lib/consommationModele.ts"
 
@@ -214,6 +215,59 @@ const ligne = (p: Partial<LigneConsommation> = {}): LigneConsommation => ({
     "et aucune entrée n'est vide : une entrée sans mesure n'est qu'un nom",
     vides.length === 0,
     vides.map(([m]) => m).join(", "),
+  )
+}
+
+// ── LA PASTILLE À CÔTÉ DU CŒUR ────────────────────────────────────────────
+//
+// Sa demande : « rajouter le quota disponible a cote du cœur de jarvis,
+// leger ». LA MOITIÉ DE CES CONTRÔLES VÉRIFIE LE SILENCE : un voyant sous le
+// cœur est vu cent fois par jour, et un voyant qui s'allume tous les jours
+// n'est plus lu le jour où il compte.
+{
+  verifier(
+    "pas encore lu : on ne met RIEN sous le cœur",
+    pastilleQuota(null) === null,
+    "un « ? » permanent ferait douter de quelque chose qui va probablement bien",
+  )
+  verifier(
+    "aucune phrase aujourd'hui : rien non plus",
+    pastilleQuota(resumerConsommation([])) === null,
+    "« 0 phrase » au réveil est du bruit — il le verra en parlant",
+  )
+  verifier(
+    "un refus par MINUTE ne s'affiche pas",
+    pastilleQuota(resumerConsommation([ligne({ refus_minute: 3 })]))?.ton === "discret",
+    "c'est le fonctionnement normal quand il enchaîne vite, ça se lève tout seul en soixante secondes",
+  )
+
+  const jour = pastilleQuota(resumerConsommation([ligne({ refus_jour: 2 })]))
+  verifier("un quota du JOUR vide passe au rouge", jour?.ton === "rouge", JSON.stringify(jour))
+  verifier("et il tient sur une ligne", (jour?.texte.length ?? 99) <= 40, jour?.texte)
+
+  const secours = pastilleQuota(resumerConsommation([ligne({ rang: 1 })]))
+  verifier("tourner sur un secours se voit", secours?.ton === "orange", JSON.stringify(secours))
+
+  const lent = pastilleQuota(resumerConsommation([ligne({ ms_median: 9200 })]))
+  verifier("des réponses lentes se voient aussi", lent?.ton === "orange", JSON.stringify(lent))
+  verifier("avec le chiffre, pas juste « lent »", /9[.,]2 s/.test(lent?.texte ?? ""), lent?.texte)
+
+  // ET JAMAIS DE POURCENTAGE : il n'y a pas de solde sur l'offre gratuite.
+  const normal = pastilleQuota(resumerConsommation([ligne({ reussis: 27 })]))
+  verifier(
+    "un jour ordinaire reste discret",
+    normal?.ton === "discret",
+    JSON.stringify(normal),
+  )
+  verifier(
+    "et n'annonce JAMAIS un pourcentage d'un plafond supposé",
+    !/%/.test(normal?.texte ?? ""),
+    `${normal?.texte} — un pourcentage inventé se lit comme une mesure, et il s'est déjà retrouvé sans Jarvis alors que tout avait l'air normal`,
+  )
+  verifier(
+    "elle tient sur une ligne, elle aussi",
+    (normal?.texte.length ?? 99) <= 40,
+    normal?.texte,
   )
 }
 
