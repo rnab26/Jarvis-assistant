@@ -77,6 +77,29 @@ const NOM_OUTIL = "commande_jarvis"
 const JETON_MAX_MS = 15000
 
 /**
+ * Au-delà, on cesse d'attendre le micro et on ferme la conversation en le
+ * disant.
+ *
+ * MESURÉ, PAS SUPPOSÉ (chantier ba140853, 8 sept. 2026). Sur ses 60 dernières
+ * ouvertures Live, `ms_micro` est petit — 333 ms au minimum, un seul cas
+ * au-dessus de deux secondes. Ce cas-là a duré **106 833 ms**, une minute
+ * quarante-sept. Pendant tout ce temps la session était OUVERTE côté Google
+ * et Jarvis n'entendait rien : l'écran disait « connexion », rien ne bougeait,
+ * et rien n'expliquait pourquoi.
+ *
+ * `capturerMicro` était le seul appel de cette ouverture à n'être borné par
+ * rien — le jeton l'est (JETON_MAX_MS), et partout ailleurs dans le projet les
+ * appels au natif passent par `borner()`. getUserMedia peut attendre
+ * indéfiniment : une fenêtre de permission restée ouverte, un micro tenu par
+ * une autre application.
+ *
+ * Quinze secondes est large exprès : la fenêtre de permission d'Android
+ * attend légitimement une réponse, et la couper trop tôt ferait échouer une
+ * première ouverture parfaitement normale.
+ */
+const MICRO_MAX_MS = 15000
+
+/**
  * Ouvre une session. Rend de quoi l'arrêter ; les événements arrivent au fil
  * de l'eau. Toute panne se traduit par onEtat("fermee", raison).
  */
@@ -232,6 +255,12 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     if (m.goAway) fermer("Google a demandé de fermer la session.")
   }
 
+  // Quelle étape a échoué, pour que `live_echec` ne dise plus « connexion »
+  // quand c'est le micro. Tout ce chantier consiste à savoir OÙ le temps
+  // passe : un journal qui range deux pannes différentes sous le même nom
+  // fait perdre exactement ce qu'on essaie de gagner.
+  let etape = "connexion"
+
   try {
     // 2. La session, ouverte par l'app elle-même avec le jeton.
     const ai = new GoogleGenAI({ apiKey: data.jeton, httpOptions: { apiVersion: "v1alpha" } })
@@ -249,8 +278,23 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     const connectee = Date.now()
 
     // 3. Le micro, en continu. Google décide du reste.
-    capture = await capturerMicro((paquet) => {
-      if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
+    //
+    // BORNÉ : voir MICRO_MAX_MS. Une conversation ouverte où le micro n'est
+    // jamais venu est le pire des états — elle a l'air de marcher. Sa règle
+    // du 6 sept. vaut ici comme ailleurs : on ne laisse pas croire qu'on
+    // écoute quand on n'écoute pas.
+    etape = "micro"
+    capture = await withTimeout(
+      capturerMicro((paquet) => {
+        if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
+      }),
+      MICRO_MAX_MS,
+    ).catch(() => {
+      // ET PAS LE MESSAGE DE `withTimeout`, qui parle du SERVEUR : « Le
+      // serveur ne répond pas, vérifie ta connexion » enverrait chercher une
+      // panne de réseau alors que c'est le micro qui n'est jamais venu. Un
+      // diagnostic faux coûte plus cher qu'une absence de diagnostic.
+      throw new Error("Le micro n'a pas répondu. Une autre application le tient peut-être.")
     })
     // `contexte` : la taille de ce que Jarvis sait à l'ouverture. Zéro ou
     // presque = une conversation aveugle (bug du 4 sept.), à voir d'ici.
@@ -297,7 +341,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     }
   } catch (e) {
     const raison = e instanceof Error ? e.message : String(e)
-    noterEcoute("live_echec", { etape: "connexion", detail: raison.slice(0, 120) })
+    noterEcoute("live_echec", { etape, detail: raison.slice(0, 120) })
     fermer(`Impossible d'ouvrir la conversation : ${raison}`)
   }
 
