@@ -85,6 +85,17 @@ export interface DevItem {
   claim_expires_at: string | null
   created_at: string
   updated_at: string
+  /**
+   * Dicté sans réseau, PAS encore enregistré (chantier 8b804a01). Même
+   * mécanisme que `Task.enAttente` : la ligne s'affiche dans le cockpit,
+   * marquée — un tampon invisible serait un mensonge de plus, il a dicté
+   * quelque chose et il doit le voir.
+   */
+  enAttente?: boolean
+  /** Ce qui a empêché l'écriture, tel quel. */
+  echecEnvoi?: string | null
+  /** On a cessé de renvoyer tout seul : à lui de réessayer. */
+  envoiBloque?: boolean
 }
 
 /** Message du journal de bord : entre sessions, ou écrit par Raphaël. */

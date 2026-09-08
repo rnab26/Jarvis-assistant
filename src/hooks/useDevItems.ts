@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useActualisation } from "@/hooks/useActualisation"
+import { toast } from "sonner"
+import { useFileEnAttente } from "@/hooks/useFileEnAttente"
+import { CLE_FILE_CHANTIERS, estBloque, phraseHorsLigne } from "@/lib/fileEnAttente"
 import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
@@ -77,24 +80,66 @@ export function useDevItems(userId: string | undefined) {
     refresh()
   }, [refresh])
 
-  useRefreshOnForeground(refresh)
+  // ── Ce qu'il a dicté sans réseau ────────────────────────────────────────
+  // Même mécanisme que les tâches, MÊME code (chantier 8b804a01) — pas une
+  // seconde boucle de renvoi qui finirait par ne plus se comporter pareil.
+  // Sa propre clé de stockage, en revanche : deux hooks qui réécriraient le
+  // même tampon s'effaceraient mutuellement.
+  const fileApi = useFileEnAttente<DevItemInput>({
+    cle: CLE_FILE_CHANTIERS,
+    cible: "dev_items",
+    table: "dev_items",
+    userId,
+    refresh,
+    titreAbandon: "Chantier dicté jamais enregistré",
+  })
+
+  useRefreshOnForeground(() => {
+    void fileApi.vider()
+    return refresh()
+  })
   const canal = useRealtimeRefresh("dev_items", userId, refresh)
   const { statut, enCours, actualiser } = useActualisation(refresh, [canal])
 
   /** Renvoie le chantier créé : le registre des erreurs en a besoin pour
    * rattacher l'erreur au chantier qu'elle vient d'ouvrir. */
+  /**
+   * Ajoute un chantier — et le NOTE plutôt que de le perdre quand le réseau
+   * manque (chantier 8b804a01).
+   *
+   * Exactement le même cas que les tâches dictées : « Jarvis, ajoute un
+   * chantier pour… » n'existe que dans le navigateur au moment où l'écriture
+   * échoue, et le cas qui motive tout ça est « il dicte en conduisant, dans un
+   * tunnel ». Deux chantiers dictés le 5 sept. à 18h20 et 19h32 ont déjà été
+   * perdus comme ça ; il a dû les redicter.
+   *
+   * L'IDENTIFIANT EST FABRIQUÉ ICI, pas par Postgres, et c'est tout le
+   * mécanisme : un renvoi porte le même id, donc il ne peut pas créer un
+   * second exemplaire. Le cas qui arrive vraiment n'est pas « l'écriture a
+   * échoué », c'est « elle a réussi et la réponse s'est perdue ».
+   */
   async function addDevItem(input: DevItemInput): Promise<DevItem | undefined> {
     if (!userId) return
-    return await withErrorToast("Impossible d'ajouter le chantier", async () => {
-      const { data, error } = await supabase
-        .from("dev_items")
-        .insert({ ...input, user_id: userId })
-        .select()
-        .single()
+    const id = crypto.randomUUID()
+    try {
+      const { data, error } = await withTimeout(
+        supabase
+          .from("dev_items")
+          .insert({ ...input, id, user_id: userId })
+          .select()
+          .single(),
+      )
       if (error) throw error
       await refresh()
       return data as DevItem
-    })
+    } catch (e) {
+      // ON NE DIT PAS « impossible d'ajouter le chantier » : il n'est pas
+      // perdu, il est noté. Le toast d'échec de withErrorToast dirait le
+      // contraire de ce qui se passe.
+      fileApi.ajouter(id, input, input.title, e)
+      toast.info(phraseHorsLigne(input.title))
+      return undefined
+    }
   }
 
   async function updateDevItem(id: string, input: Partial<DevItemInput>) {
@@ -238,12 +283,48 @@ export function useDevItems(userId: string | undefined) {
     })
   }
 
+  // Ce qui attend s'affiche DANS LA LISTE, marqué — même règle que les
+  // tâches : un tampon invisible serait un mensonge de plus.
+  const chantiersAvecFile = useMemo<DevItem[]>(() => {
+    if (fileApi.file.length === 0) return devItems
+    const enAttente: DevItem[] = fileApi.file.map((e) => ({
+      id: e.id,
+      user_id: userId ?? "",
+      title: e.contenu.title,
+      notes: e.contenu.notes ?? null,
+      status: e.contenu.status ?? "todo",
+      priority: e.contenu.priority ?? "normal",
+      theme: e.contenu.theme ?? null,
+      archived_at: null,
+      claimed_by: null,
+      claimed_at: null,
+      claim_expires_at: null,
+      created_at: new Date(e.creeA).toISOString(),
+      updated_at: new Date(e.creeA).toISOString(),
+      enAttente: true,
+      echecEnvoi: e.dernierEchec,
+      envoiBloque: estBloque(e),
+    }))
+    // Un élément déjà écrit ET encore en file (le renvoi n'a pas eu lieu)
+    // ferait doublon à l'écran : l'id est le même des deux côtés, on garde la
+    // ligne de la base, qui est la vraie.
+    const dejaEnBase = new Set(devItems.map((i) => i.id))
+    return [...enAttente.filter((i) => !dejaEnBase.has(i.id)), ...devItems]
+  }, [devItems, fileApi.file, userId])
+
   return {
+    devItems: chantiersAvecFile,
+    /** Ce qui attend d'être écrit, pour l'écran qui le montre. */
+    fileEnAttente: fileApi.file,
+    /** Vrai quand le tampon n'a PAS pu être lu : ce n'est pas « rien en
+     * attente », c'est « on ne sait pas ». */
+    fileIllisible: fileApi.illisible,
+    relancerEnvoi: fileApi.relancerEnvoi,
+    oublierEnAttente: fileApi.oublier,
     derniereMaj,
     statutDirect: statut,
     actualisationEnCours: enCours,
     actualiser,
-    devItems,
     loading,
     error,
     refresh,
