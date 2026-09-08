@@ -97,7 +97,13 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
 
   // 1. Un jeton éphémère, jamais la clé.
   const { data, error } = await withTimeout(
-    supabase.functions.invoke<{ jeton: string; modele: string }>("live-jeton", { body: { contexte: ev.contexte } }),
+    supabase.functions.invoke<{
+      jeton: string
+      modele: string
+      /** Le découpage du temps passé DANS la fonction (chantier ba140853).
+       * Absent d'une version déployée plus ancienne : ne rien supposer. */
+      temps?: { auth: number; lectures: number; google: number; serveur: number }
+    }>("live-jeton", { body: { contexte: ev.contexte } }),
     JETON_MAX_MS,
   )
   if (error || !data?.jeton) {
@@ -268,6 +274,17 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       modele: data.modele,
       delai_ms: Date.now() - debut,
       ms_jeton: jetonObtenuAt - debut,
+      // LE DÉCOUPAGE DE `ms_jeton`, rendu par la fonction elle-même. Sur ses
+      // 25 dernières ouvertures (6-7 sept.), ms_jeton est BIMODAL : ~1200 à
+      // 1900 ms, ou ~3500 à 4300 ms, presque rien entre les deux. Une marche
+      // pareille a une cause, et il fallait savoir laquelle des cinq étapes
+      // la porte. `ms_serveur` est le temps dans la fonction ; la différence
+      // avec ms_jeton est le réseau du téléphone plus le démarrage à froid de
+      // l'isolat, qu'on ne peut pas chronométrer de l'intérieur.
+      ms_serveur: data.temps?.serveur ?? null,
+      ms_auth: data.temps?.auth ?? null,
+      ms_lectures: data.temps?.lectures ?? null,
+      ms_google: data.temps?.google ?? null,
       ms_connexion: connectee - jetonObtenuAt,
       ms_micro: Date.now() - connectee,
       premier: ev.premierMessage ? 1 : 0,

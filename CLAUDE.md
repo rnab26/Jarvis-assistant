@@ -3119,6 +3119,77 @@ puis à défaut la liste des applications par défaut, et les derniers pas reste
 peut pas avoir d'interrupteur dans l'app**, c'est un rôle exclusif d'Android
 qu'une application ne peut ni s'attribuer ni se retirer.
 
+### Le moteur de Google ne se résume PAS à l'application Google (8 sept. 2026)
+
+Chantier `ba140853`. Ses deux symptômes redits le 7 sept. : « le temps de
+connexion à la discussion live est très long » et « le micro s'active, se
+désactive à plusieurs reprises ». Le second est maintenant EXPLIQUÉ, mesuré sur
+son journal réel.
+
+**La mesure, et elle est sans appel.** Sur 48 heures de `journal_ecoute`, il y
+a autant de rafales mortes en 20-60 ms avec le code Android 11
+(`ERROR_SERVER_DISCONNECTED`) que de rafales normales : 50 contre 51 sur une
+heure, 43 contre 34 sur une autre, heure après heure. **Une ouverture de micro
+sur deux ne sert à rien** — et chacune fait sa tonalité sur Samsung. C'est
+littéralement ce qu'il décrit.
+
+**La cause : `trouverServiceGoogle()` ne cherchait que
+`com.google.android.googlequicksearchbox`**, l'application Google. Elle n'est
+PAS installée chez lui. `queryIntentServices` rend, mot pour mot :
+`com.google.android.as,com.google.android.tts,com.anthropic.claude,com.raphael.jarvis`.
+Le plugin retombait donc sur `"defaut"` — le service par défaut d'Android, dont
+tout le reste du projet dit depuis le début qu'il bipe et qu'il coupe. Et le
+journal le confirme : `service_reconnaissance` dit `nom: "defaut"` à chaque
+ouverture.
+
+`com.google.android.as` est **Android System Intelligence**, la reconnaissance
+EMBARQUÉE de Google — celle des Android récents. Elle est préférée à
+l'application Google quand les deux sont là : pas d'aller-retour réseau, donc
+pas la classe de panne qu'on mesure ici. `com.google.android.tts` est de la
+SYNTHÈSE, pas de la reconnaissance : son nom ressemble, et c'est tout.
+
+**Et `com.raphael.jarvis` est dans cette liste** — c'est notre propre
+`JarvisRecognitionService`, qui ne reconnaît rien et n'existe que pour
+qu'Android accepte Jarvis comme assistant. `selectableAsDefault="false"` ne
+parle qu'à Android : il ne l'enlève pas de `queryIntentServices`. Nos DEUX
+énumérations l'écartent donc explicitement — celle qui choisit toute seule, et
+celle qui propose la liste dans Paramètres. Le choisir rendrait Jarvis sourd,
+sans le moindre message.
+
+Trois contrôles dans `verifier-assistant.ts`, **essayés à l'envers**. Le
+premier était faux : il cherchait « com.google.android.as » n'importe où dans
+le patch, et le paquet est aussi CITÉ dans le commentaire qui explique la
+mesure — retiré de la liste, le contrôle restait vert. Il lit maintenant le
+CONTENU de `PAQUETS_GOOGLE`. Même piège que le sélecteur Playwright et que
+`Filesystem.mkdir`.
+
+**Non vérifié sur l'appareil** (pas de SDK Android ici) : que le service
+d'Android System Intelligence répond bien chez lui. La preuve sera dans son
+journal — le rapport code 11 / code 7 doit s'effondrer. Et il faut une VRAIE
+APK : c'est un patch natif, la mise à jour rapide ne le porte pas.
+
+### Le temps d'ouverture d'une Live : ce que ce N'EST PAS
+
+Même chantier, même jour. `ms_jeton` (notre Edge Function, vue du téléphone)
+est **bimodal** sur ses 25 dernières ouvertures : environ 1200-1900 ms, ou
+3500-4300 ms, presque rien entre les deux. Une marche pareille a une cause.
+
+`live-jeton` rend maintenant le découpage de son PROPRE temps (`temps: {auth,
+lectures, google, serveur}`), et l'app le range dans `journal_ecoute` à côté
+des trois autres nombres. Sondée depuis ici, la fonction déployée donne :
+**Google 124-353 ms, l'authentification 129-471, les trois lectures 118-877,
+le tout dans la fonction 433-1230 ms** — total vu du client 754-1842 ms. Et
+après sept minutes d'inactivité, 1054 ms : **le démarrage à froid de l'isolat
+ne coûte pas non plus deux secondes.**
+
+Donc la marche de ~2,3 s n'est ni Google, ni nos lectures, ni le réveil de la
+fonction. Elle est de SON côté du fil. Le candidat lu dans le code de
+supabase-js 2.114 : `functionsFetch` fait `await auth.getSession()` avant
+CHAQUE appel d'Edge Function, et `getSession()` renouvelle le jeton quand il
+approche de l'expiration — un aller-retour réseau de plus, sur un réseau
+mobile. Non prouvé : `ms_jeton - ms_serveur` le dira dès ses prochaines
+ouvertures. **Ne recodez rien avant d'avoir lu ces nombres-là.**
+
 ### Troisième piège de la fenêtre d'assistance : deux tas JS, une seule veille voulue
 
 Chantier `2a5b7802`, 7 sept. 2026. Ses mots : « Lorsque le mode conversation

@@ -129,6 +129,30 @@ async function souvenirsDeLUtilisateur(supabase: SupabaseClient): Promise<string
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
+  // LE DÉCOUPAGE DE NOTRE PROPRE TEMPS, et c'est la mesure qui manquait.
+  //
+  // Chantier ba140853. Depuis le 5 sept. l'app découpe une ouverture Live en
+  // trois (ms_jeton / ms_connexion / ms_micro) et ça a déjà déplacé le
+  // diagnostic une fois : le micro de la WebView, soupçonné, n'y était pour
+  // rien — le gros morceau est `ms_jeton`, c'est-à-dire NOUS.
+  //
+  // Sauf que `ms_jeton` est un bloc opaque : il contient l'aller-retour
+  // réseau du téléphone, le démarrage à froid de l'isolat, notre
+  // authentification, nos lectures Supabase et l'appel à Google. Relevé sur
+  // ses 25 dernières ouvertures (6-7 sept.), il est BIMODAL — environ 1200 à
+  // 1900 ms dans un cas, 3500 à 4300 ms dans l'autre, presque rien entre les
+  // deux. Une distribution à deux bosses n'est pas du bruit : c'est une
+  // marche, et elle a une cause. Sans ce découpage, la prochaine session en
+  // serait réduite à deviner laquelle des cinq étapes la porte.
+  //
+  // Rendu à l'app EN PLUS d'être journalisé : les journaux de la fonction ne
+  // se lisent pas depuis son téléphone et ne se totalisent pas, alors que
+  // `journal_ecoute` agrège déjà les trois autres nombres.
+  const t0 = Date.now()
+  let tAuth = 0
+  let tLectures = 0
+  let tGoogle = 0
+
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -138,6 +162,7 @@ Deno.serve(async (req) => {
     const {
       data: { user },
     } = await supabase.auth.getUser()
+    tAuth = Date.now() - t0
     if (!user) return json({ error: "Non authentifié." }, 401)
 
     // NOS VÉRIFICATIONS NE DOIVENT PLUS VIDER LE QUOTA DE RAPHAËL. Même motif
@@ -203,14 +228,17 @@ Deno.serve(async (req) => {
     // Les trois sont indépendantes et aucune ne peut échouer bruyamment (elles
     // avalent leurs erreurs et rendent ""), donc Promise.all ne change que le
     // temps. L'ordre du texte final reste celui d'avant.
+    const avantLectures = Date.now()
     const [branchements, souvenirs, corrections] = await Promise.all([
       rappelerBranchements(supabase),
       souvenirsDeLUtilisateur(supabase),
       rappelerCorrections(supabase),
     ])
+    tLectures = Date.now() - avantLectures
     contexte = `${contexte}\n${branchements}\n${souvenirs}\n${corrections}`.trim()
 
     // Les jetons éphémères ne vivent que dans la version v1alpha de l'API.
+    const avantGoogle = Date.now()
     const ai = new GoogleGenAI({ apiKey: cle, httpOptions: { apiVersion: "v1alpha" } })
     const jeton = await ai.authTokens.create({
       config: {
@@ -233,10 +261,15 @@ Deno.serve(async (req) => {
       },
     })
 
+    tGoogle = Date.now() - avantGoogle
     if (!jeton.name) return json({ error: "Google n'a pas rendu de jeton." }, 502)
 
-    console.log("live-jeton", JSON.stringify({ utilisateur: user.id, modele, contexte: contexte.length }))
-    return json({ jeton: jeton.name, modele, expire: jeton.expireTime ?? null })
+    // `serveur` est le temps passé DANS la fonction : ce que l'app mesure en
+    // plus (ms_jeton - serveur) est le réseau du téléphone et le démarrage à
+    // froid de l'isolat, qu'on ne peut pas chronométrer de l'intérieur.
+    const temps = { auth: tAuth, lectures: tLectures, google: tGoogle, serveur: Date.now() - t0 }
+    console.log("live-jeton", JSON.stringify({ utilisateur: user.id, modele, contexte: contexte.length, ...temps }))
+    return json({ jeton: jeton.name, modele, expire: jeton.expireTime ?? null, temps })
   } catch (err) {
     console.error("live-jeton en échec", String(err))
     return json({ error: String(err).slice(0, 300) }, 500)
