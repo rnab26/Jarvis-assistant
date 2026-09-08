@@ -1,6 +1,6 @@
 import { SpeechRecognition as NativeSpeechRecognition } from "@capacitor-community/speech-recognition"
 import { Capacitor } from "@capacitor/core"
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { MAX_TOUR_MS, PREMIER_MOT_MS, SILENCE_COURT_MS, readDialoguePrefs } from "@/lib/dialoguePrefs"
 import {
   cloturerSegment,
@@ -234,7 +234,33 @@ export function useSpeechRecognition() {
   // journal d'écoute — rien ne dépend de cette valeur côté comportement.
   const serviceUtilise = NativeSpeechRecognition as unknown as {
     serviceUtilise?: () => Promise<{ nom: string; disponibles: string }>
+    addListener?: (
+      eventName: "focusAudio",
+      listenerFunc: (data: { action: "baisse" | "retabli" | "perdu" }) => void,
+    ) => Promise<{ remove: () => void }>
   }
+
+  // Diagnostic chantier 93f6ee23 : Raphaël dit que le son des médias reste
+  // bas APRÈS qu'il ait fini de parler — cause pas encore trouvée à la
+  // lecture du code (le bug stop() corrigé à côté n'explique pas ça, il ne
+  // retarde pas retablirSon()). Ce que le plugin sait — quand il baisse le
+  // son, quand il le rend, et si Android le lui a repris sans lui (« perdu »,
+  // un appel par exemple) — n'était tracé nulle part. Écouté pour toute la
+  // durée de l'app (MicButton ne monte ce hook qu'une fois), pas par écoute :
+  // le focus traverse plusieurs rafales.
+  useEffect(() => {
+    if (!isNative) return
+    let handle: { remove: () => void } | null = null
+    serviceUtilise.addListener?.("focusAudio", ({ action }) => {
+      noterEcoute("focus_audio", { action })
+    }).then((h) => {
+      handle = h
+    })
+    return () => {
+      handle?.remove()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const preparerNatif = useCallback(async () => {
     // Une fois la permission accordée, ces deux allers-retours avec Android
