@@ -1,5 +1,5 @@
 diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
-index a99ea69..cb266a6 100644
+index a99ea69..70459ca 100644
 --- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 +++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 @@ -2,10 +2,17 @@ package com.getcapacitor.community.speechrecognition;
@@ -140,7 +140,7 @@ index a99ea69..cb266a6 100644
                  SpeechRecognitionListener listener = new SpeechRecognitionListener();
                  speechRecognizer.setRecognitionListener(listener);
                  Logger.info(getLogTag(), "Instantiated SpeechRecognizer in load()");
-@@ -81,6 +192,10 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -81,13 +192,30 @@ public class SpeechRecognition extends Plugin implements Constants {
          String prompt = call.getString("prompt", null);
          boolean partialResults = call.getBoolean("partialResults", false);
          boolean popup = call.getBoolean("popup", false);
@@ -151,7 +151,28 @@ index a99ea69..cb266a6 100644
          beginListening(language, maxResults, prompt, partialResults, popup, call);
      }
  
-@@ -118,6 +233,62 @@ public class SpeechRecognition extends Plugin implements Constants {
+     @PluginMethod
+     public void stop(final PluginCall call) {
+         try {
+-            stopListening();
++            // AVANT : `call` n'etait jamais resolu ni rejete ici -- ni ce
++            // patch ni le plugin d'origine ne le faisaient. Cote app,
++            // `borner(NativeSpeechRecognition.stop(), 800)` (useSpeechRecognition.ts)
++            // attendait donc TOUJOURS l'integralite des 800 ms, a chaque
++            // rafale de veille et a chaque fin de commande -- que l'arret
++            // reel (quelques millisecondes, un appel synchrone sur le fil
++            // UI) soit deja termine ou non. Trouve le 8 sept. 2026 en
++            // cherchant pourquoi le son restait bas longtemps apres qu'il ait
++            // fini de parler (chantier 93f6ee23) : ce n'etait pas la cause de
++            // CE bug-la, mais la meme lecture a mis a jour un defaut distinct
++            // qui gonflait la latence de chaque cycle de veille de 800 ms
++            // pour rien. `stopListening(call)` resout maintenant DES QUE
++            // l'arret reel est fait.
++            stopListening(call);
+         } catch (Exception ex) {
+             call.reject(ex.getLocalizedMessage());
+         }
+@@ -118,6 +246,53 @@ public class SpeechRecognition extends Plugin implements Constants {
          call.resolve(new JSObject().put("listening", SpeechRecognition.this.listening));
      }
  
@@ -180,15 +201,6 @@ index a99ea69..cb266a6 100644
 +        JSArray applications = new JSArray();
 +        for (ResolveInfo info : services) {
 +            if (info.serviceInfo == null) continue;
-+            // JARVIS N'EST PAS PROPOSE A JARVIS. JarvisRecognitionService ne
-+            // reconnait rien : il existe uniquement pour qu'Android accepte
-+            // Jarvis comme assistant du telephone (VoiceInteractionServiceInfo
-+            // refuse le service entier sans recognitionService declare).
-+            // Il apparait pourtant dans queryIntentServices -- mesure du
-+            // 8 sept. 2026 sur son telephone, "com.raphael.jarvis" est bien
-+            // dans la liste. Le choisir depuis Parametres rendrait Jarvis
-+            // sourd, sans le moindre message.
-+            if (bridge.getContext().getPackageName().equals(info.serviceInfo.packageName)) continue;
 +            ComponentName composant = new ComponentName(info.serviceInfo.packageName, info.serviceInfo.name);
 +            JSObject appli = new JSObject();
 +            appli.put("nom", info.loadLabel(pm).toString());
@@ -214,7 +226,7 @@ index a99ea69..cb266a6 100644
      @ActivityCallback
      private void listeningResult(PluginCall call, ActivityResult result) {
          if (call == null) {
-@@ -151,6 +322,103 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -151,6 +326,58 @@ public class SpeechRecognition extends Plugin implements Constants {
          this.listening = value;
      }
  
@@ -224,65 +236,20 @@ index a99ea69..cb266a6 100644
 +    // sous un autre paquet, ou requete filtree par le systeme).
 +    private String servicesDisponibles = "";
 +
-+    /**
-+     * Les paquets Google qui fournissent une VRAIE reconnaissance vocale, du
-+     * plus souhaitable au moins souhaitable.
-+     *
-+     * MESURE DU 8 SEPT. 2026 SUR SON TELEPHONE, chantier ba140853. On ne
-+     * cherchait que "com.google.android.googlequicksearchbox" -- l'application
-+     * Google. Elle n'est PAS installee chez lui : queryIntentServices() rend
-+     * "com.google.android.as,com.google.android.tts,com.anthropic.claude,
-+     * com.raphael.jarvis". On retombait donc sur le service par defaut, celui
-+     * dont tout le reste du projet dit qu'il bipe et qu'il coupe.
-+     *
-+     * Et ca se voit dans son journal : sur 48 heures, il y a AUTANT de rafales
-+     * mortes en 20-60 ms avec ERROR_SERVER_DISCONNECTED (code 11) que de
-+     * rafales normales -- 50 pour 51 sur une seule heure, 43 pour 34 sur une
-+     * autre. Une ouverture de micro sur deux ne sert a rien, et chacune fait
-+     * sa tonalite. C'est exactement ce qu'il decrit : "le micro s'active, se
-+     * desactive a plusieurs reprises".
-+     *
-+     * "com.google.android.as" est Android System Intelligence, la
-+     * reconnaissance EMBARQUEE de Google -- celle qui fait la dictee hors
-+     * ligne des Android recents. Elle est preferee a l'application Google
-+     * quand les deux sont la : pas d'aller-retour reseau, donc pas la classe
-+     * de panne qu'on mesure ici.
-+     *
-+     * "com.google.android.tts" est de la SYNTHESE vocale, pas de la
-+     * reconnaissance : elle n'a rien a faire dans cette liste meme si son nom
-+     * commence pareil.
-+     */
-+    private static final String[] PAQUETS_GOOGLE = {
-+        "com.google.android.as",
-+        "com.google.android.googlequicksearchbox",
-+    };
-+
-+    /** Le composant d'un service de reconnaissance Google installe, ou null.
-+     * Voir PAQUETS_GOOGLE pour ce qui est cherche et pourquoi. */
++    /** Le composant du service de reconnaissance de Google, si l'app est
++     * installee -- null sinon (elle est absente sur un telephone sans
++     * Play Services, ou son paquet differe de celui attendu ici). */
 +    private ComponentName trouverServiceGoogle() {
 +        PackageManager pm = bridge.getContext().getPackageManager();
 +        List<ResolveInfo> services = pm.queryIntentServices(new Intent(RecognitionService.SERVICE_INTERFACE), 0);
 +        StringBuilder trouves = new StringBuilder();
-+        // Un tableau plutot qu'un ComponentName unique : on garde le MEILLEUR
-+        // rang trouve, pas le premier venu -- l'ordre d'Android n'est pas le
-+        // notre.
 +        ComponentName google = null;
-+        int meilleurRang = Integer.MAX_VALUE;
 +        for (ResolveInfo info : services) {
 +            if (info.serviceInfo == null) continue;
 +            if (trouves.length() > 0) trouves.append(",");
 +            trouves.append(info.serviceInfo.packageName);
-+            // NOTRE PROPRE SERVICE NE RECONNAIT RIEN. JarvisRecognitionService
-+            // n'existe que pour qu'Android accepte Jarvis comme assistant
-+            // (VoiceInteractionServiceInfo exige un recognitionService
-+            // declare). Le choisir ici rendrait Jarvis sourd, en silence.
-+            if (bridge.getContext().getPackageName().equals(info.serviceInfo.packageName)) continue;
-+            for (int rang = 0; rang < PAQUETS_GOOGLE.length; rang++) {
-+                if (!PAQUETS_GOOGLE[rang].equals(info.serviceInfo.packageName)) continue;
-+                if (rang < meilleurRang) {
-+                    meilleurRang = rang;
-+                    google = new ComponentName(info.serviceInfo.packageName, info.serviceInfo.name);
-+                }
++            if ("com.google.android.googlequicksearchbox".equals(info.serviceInfo.packageName)) {
++                google = new ComponentName(info.serviceInfo.packageName, info.serviceInfo.name);
 +            }
 +        }
 +        servicesDisponibles = trouves.length() > 0 ? trouves.toString() : "aucun";
@@ -318,7 +285,7 @@ index a99ea69..cb266a6 100644
      private void beginListening(
          String language,
          int maxResults,
-@@ -188,11 +456,22 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -188,11 +415,22 @@ public class SpeechRecognition extends Plugin implements Constants {
                              speechRecognizer = null;
                          }
  
@@ -342,15 +309,31 @@ index a99ea69..cb266a6 100644
                          speechRecognizer.startListening(intent);
                          SpeechRecognition.this.listening(true);
                          if (partialResults) {
-@@ -217,6 +496,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -208,6 +446,12 @@ public class SpeechRecognition extends Plugin implements Constants {
+     }
+ 
+     private void stopListening() {
++        stopListening(null);
++    }
++
++    /** `call` optionnel : resolu juste apres l'arret reel, pas avant --
++     * voir le commentaire de stop(PluginCall) ci-dessus. */
++    private void stopListening(PluginCall call) {
+         bridge
+             .getWebView()
+             .post(() -> {
+@@ -217,7 +461,10 @@ public class SpeechRecognition extends Plugin implements Constants {
                          speechRecognizer.stopListening();
                          SpeechRecognition.this.listening(false);
                      }
 +                    SpeechRecognition.this.retablirSon();
++                    if (call != null) call.resolve();
                  } catch (Exception ex) {
++                    if (call != null) call.reject(ex.getLocalizedMessage());
                      throw ex;
                  } finally {
-@@ -245,6 +525,13 @@ public class SpeechRecognition extends Plugin implements Constants {
+                     SpeechRecognition.this.lock.unlock();
+@@ -245,6 +492,13 @@ public class SpeechRecognition extends Plugin implements Constants {
          public void onBeginningOfSpeech() {
              try {
                  SpeechRecognition.this.lock.lock();
@@ -364,7 +347,7 @@ index a99ea69..cb266a6 100644
                  // Notify listeners that recording has started
                  JSObject ret = new JSObject();
                  ret.put("status", "started");
-@@ -268,6 +555,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -268,6 +522,7 @@ public class SpeechRecognition extends Plugin implements Constants {
                      try {
                          SpeechRecognition.this.lock.lock();
                          SpeechRecognition.this.listening(false);
@@ -372,7 +355,7 @@ index a99ea69..cb266a6 100644
  
                          JSObject ret = new JSObject();
                          ret.put("status", "stopped");
-@@ -281,8 +569,24 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -281,8 +536,24 @@ public class SpeechRecognition extends Plugin implements Constants {
          @Override
          public void onError(int error) {
              SpeechRecognition.this.stopListening();
