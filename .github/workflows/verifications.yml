@@ -333,6 +333,28 @@ jobs:
       - name: Une tâche dictée hors réseau ne se perd pas, et ne se dédouble pas
         run: node --experimental-strip-types scripts/verifier-file-en-attente.ts
 
+      # Ce que Jarvis peut régler lui-même (« coupe ta voix », « active le
+      # moteur automatique »…) doit exister à l'identique des deux côtés :
+      # le catalogue client et la consigne envoyée au modèle. Une clé
+      # oubliée d'un côté fait deviner un réglage qui n'existe pas, ou
+      # empêche de régler un réglage qui existe.
+      - name: Les réglages que Jarvis peut poser lui-même
+        run: node --experimental-strip-types scripts/verifier-reglages-voix.ts
+
+      # Le 3 sept. : « tu n'as pas lancé la musique que je t'ai demandée » sans
+      # qu'aucune exception ne le signale. Ce contrôle garde les deux points
+      # d'entrée du registre des erreurs — succès et échec — à chaque action
+      # exécutée depuis une commande vocale.
+      - name: Chaque action exécutée se signale, succès ou échec
+        run: node --experimental-strip-types scripts/verifier-capteurs.ts
+
+      # Mode entraînement (chantier 86df4f4a) : démarrer, nommer, rejouer.
+      # La moitié de ces contrôles vérifie le REFUS — deux séquences à égalité,
+      # aucune séquence connue — parce qu'un rejeu de travers clique dans une
+      # application à la place de Raphaël, ce qui ne se rattrape pas.
+      - name: Le mode entraînement reconnaît, nomme et retrouve ses séquences
+        run: node --experimental-strip-types scripts/verifier-entrainement.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.

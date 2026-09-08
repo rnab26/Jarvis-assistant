@@ -13,6 +13,7 @@
  * qu'il faut ensuite retrouver et corriger.
  */
 import { interpreterLocalement, type ContexteLocal } from "../src/lib/commandeLocale.ts"
+import { nomParDefaut } from "../src/lib/entrainement.ts"
 
 // Jeudi 3 septembre 2026, 15 h 30 — figé pour que les dates soient vérifiables.
 const MAINTENANT = new Date("2026-09-03T15:30:00")
@@ -27,6 +28,10 @@ const CTX: ContexteLocal = {
   contacts: [
     { id: "ct-yoni", name: "Yoni", phone: "0612345678" },
     { id: "ct-dylan", name: "Dylan", phone: null },
+  ],
+  sequences: [
+    { id: "seq-midrag", nom: "Vérification midrag", etapes: [{ commande: "clic", cible: "Notes" }] },
+    { id: "seq-notes-clients", nom: "Notes des clients", etapes: [{ commande: "clic", cible: "Clients" }] },
   ],
   maintenant: MAINTENANT,
 }
@@ -438,6 +443,37 @@ doitLaisserPasser(
   "note que Dylan est le client de Melissa",
   "une information sur une personne, pas une reprise d'écran",
 )
+
+console.log("\n— Mode entraînement (chantier 86df4f4a) : démarrer, terminer, rejouer —")
+
+doitDonner("commence l'entraînement", { action: "start_training" })
+doitDonner("Jarvis, démarre l'entraînement", { action: "start_training" })
+doitDonner("active le mode entraînement", { action: "start_training" })
+doitDonner("termine l'entraînement, appelle ça vérification midrag", {
+  action: "stop_training",
+  nom: "verification midrag",
+})
+doitDonner("termine l'entraînement et nomme-la notes des clients", {
+  action: "stop_training",
+  nom: "notes des clients",
+})
+doitDonner("termine l'entraînement", {
+  action: "stop_training",
+  nom: nomParDefaut(MAINTENANT),
+})
+doitDonner("refais vérification midrag", {
+  action: "replay_training",
+  sequence_id: "seq-midrag",
+})
+doitDonner("relance l'entraînement notes des clients", {
+  action: "replay_training",
+  sequence_id: "seq-notes-clients",
+})
+doitLaisserPasser(
+  "refais un truc que je n'ai jamais enregistré",
+  "aucune séquence connue ne correspond : ne jamais deviner, un rejeu de travers clique à la place de Raphaël",
+)
+doitLaisserPasser("refais", "rien après le déclencheur")
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

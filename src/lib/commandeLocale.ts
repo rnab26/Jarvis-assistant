@@ -4,6 +4,13 @@
 import { lireHeure, lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
 import { cibleTropCourante } from "./chercherContact.ts"
 import { correctionDeDestination } from "./ouVaCetteDictee.ts"
+import {
+  estDebutEntrainement,
+  nomDeFinEntrainement,
+  nomParDefaut,
+  sequenceDemandee,
+  type SequenceEntrainement,
+} from "./entrainement.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 
 /**
@@ -48,6 +55,9 @@ export interface ContexteLocal {
   taches: TacheConnue[]
   chantiers: ChantierConnu[]
   contacts?: ContactConnu[]
+  /** Les séquences déjà enregistrées en mode entraînement (86df4f4a), pour
+   * reconnaître « refais X ». */
+  sequences?: SequenceEntrainement[]
   /** Injecté pour que les tests ne dépendent pas du jour où ils tournent. */
   maintenant?: Date
 }
@@ -284,6 +294,25 @@ export function interpreterLocalement(
      phrase au serveur, un faux positif lirait l'écran pour rien. */
   if (/^(garde|retiens|note)(\s*-?\s*(ca|sa reponse|cette reponse|la reponse))\b/.test(texte)) {
     return [{ action: "garder_reponse_ecran" }]
+  }
+
+  /* ---------- Mode entraînement ----------
+     Chantier 86df4f4a. Reconnues LOCALEMENT, comme « garde ça » juste
+     au-dessus : démarrer/arrêter un enregistrement et retrouver une séquence
+     déjà montrée sont des décisions qui vivent sur l'appareil, pas des
+     phrases que le modèle a besoin de comprendre. */
+  if (estDebutEntrainement(texte)) {
+    return [{ action: "start_training" }]
+  }
+  const nomFin = nomDeFinEntrainement(texte)
+  if (nomFin !== null) {
+    return [{ action: "stop_training", nom: nomFin || nomParDefaut(ctx.maintenant ?? new Date()) }]
+  }
+  if (ctx.sequences?.length) {
+    const sequence = sequenceDemandee(texte, ctx.sequences)
+    if (sequence) {
+      return [{ action: "replay_training", sequence_id: sequence.id }]
+    }
   }
 
   /* ---------- La voix ---------- */

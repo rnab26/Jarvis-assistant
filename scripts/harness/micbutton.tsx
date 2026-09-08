@@ -54,6 +54,9 @@ function BancDuCoeur() {
       voiceSettingApi={{ muted: false, setMuted: () => {} }}
       widgetApi={{ config: { maxTasks: 5, urgentOnly: false, categoryId: null }, setConfig: () => {} }}
       wakeWordEnabled={true}
+      setWakeWordEnabled={() => {}}
+      setGeofenceEnabled={() => {}}
+      entrainementApi={{ sequences: [], addSequence: rien, rejouer: async () => "" }}
       voiceIndex={null}
       suiteMs={0}
     />

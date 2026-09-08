@@ -5,6 +5,7 @@ import { useDevItems } from "@/hooks/useDevItems"
 import { useDevSections } from "@/hooks/useDevSections"
 import { useDialogueSetting } from "@/hooks/useDialogueSetting"
 import { useDocuments } from "@/hooks/useDocuments"
+import { useEntrainement } from "@/hooks/useEntrainement"
 import { useGeofenceSetting } from "@/hooks/useGeofenceSetting"
 import { useGoogleAccount } from "@/hooks/useGoogleAccount"
 import { useJarvisErreurs } from "@/hooks/useJarvisErreurs"
@@ -29,6 +30,7 @@ type DocumentsState = ReturnType<typeof useDocuments>
 type ContactsState = ReturnType<typeof useContacts>
 type PlaceRemindersState = ReturnType<typeof usePlaceReminders>
 type PronunciationsState = ReturnType<typeof usePronunciations>
+type EntrainementState = ReturnType<typeof useEntrainement>
 type GeofenceState = ReturnType<typeof useGeofenceSetting>
 type GoogleAccountState = ReturnType<typeof useGoogleAccount>
 type WakeWordState = ReturnType<typeof useWakeWordSetting>
@@ -48,6 +50,7 @@ interface JarvisDataValue {
   contactsState: ContactsState
   placeRemindersState: PlaceRemindersState
   pronunciationsState: PronunciationsState
+  entrainementState: EntrainementState
   geofenceState: GeofenceState
   googleAccountState: GoogleAccountState
   wakeWordState: WakeWordState
@@ -83,6 +86,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const contactsState = useContacts(userId)
   const placeRemindersState = usePlaceReminders(userId)
   const pronunciationsState = usePronunciations(userId)
+  const entrainementState = useEntrainement(userId)
   const geofenceState = useGeofenceSetting()
   const googleAccountState = useGoogleAccount(userId)
   const wakeWordState = useWakeWordSetting()
@@ -135,6 +139,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         contactsState,
         placeRemindersState,
         pronunciationsState,
+        entrainementState,
         geofenceState,
         googleAccountState,
         wakeWordState,

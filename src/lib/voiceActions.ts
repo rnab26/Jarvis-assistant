@@ -2,6 +2,19 @@ import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTele
 import { garderReponseEcran } from "@/lib/garderReponseEcran"
 import { cleTheme } from "@/lib/themeChantier"
 import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
+import { ecrireReglage } from "@/lib/reglages"
+import { listeReglagesVoix, trouverOptionReglageVoix, trouverReglageVoix } from "@/lib/reglagesVoix"
+import {
+  arreterEnregistrement,
+  demarrerEnregistrement,
+  enregistrementEnCours,
+  phraseAucunEntrainementEnCours,
+  phraseDebutEntrainement,
+  phraseFinEntrainement,
+  phraseRejeuIntrouvable,
+  type EtapeEntrainement,
+  type SequenceEntrainement,
+} from "@/lib/entrainement"
 import {
   correctionApplicable,
   phraseDeplacement,
@@ -42,6 +55,12 @@ export type VoiceAction =
    * (commandeLocale.ts), pour la même raison que `move_last_entry` : lire
    * l'écran est une décision qui vit sur l'appareil (chantier 7d7967b2). */
   | { action: "garder_reponse_ecran" }
+  /** Mode entraînement (chantier 86df4f4a), reconnues LOCALEMENT pour la
+   * même raison : regarder l'écran et retrouver une séquence déjà montrée
+   * sont des décisions de l'appareil. */
+  | { action: "start_training" }
+  | { action: "stop_training"; nom: string }
+  | { action: "replay_training"; sequence_id: string }
   | { action: "list_tasks"; filter_category_id?: string; filter_status?: TaskStatus }
   | {
       action: "add_task"
@@ -111,6 +130,14 @@ export type VoiceAction =
     }
   | { action: "delete_calendar_event"; event_id?: string; event_cible?: string }
   | { action: "set_voice"; voice_enabled: boolean }
+  /** Changer un réglage lui-même (chantier f7137b0c). `setting_cle` et
+   * `setting_valeur` viennent de `src/lib/reglagesVoix.ts`, la seule liste
+   * fermée de réglages qu'il sait toucher à la voix. */
+  | { action: "set_setting"; setting_cle: string; setting_valeur: string }
+  /** « Qu'est-ce que tu peux régler toi-même ? » — pas de lecture d'un
+   * réglage précis : `_shared/branchements.ts` dit déjà l'état courant à
+   * chaque phrase, ça ferait double emploi. */
+  | { action: "list_settings" }
   // Actions qui sortent de Jarvis pour aller dans une autre application du
   // téléphone (ouvrir une app, préparer un message, composer un numéro,
   // poser une alarme, ouvrir un itinéraire). Leur exécution vit dans son
@@ -198,6 +225,44 @@ export interface VoiceSettingApi {
 export interface WidgetApi {
   config: { maxTasks: number; urgentOnly: boolean; categoryId: string | null }
   setConfig: (config: { maxTasks?: number; urgentOnly?: boolean; categoryId?: string | null }) => void
+}
+
+/**
+ * Les DEUX réglages de `reglagesVoix.ts` dont l'effet réel dépend d'un état
+ * React tenu par `JarvisDataContext` (`useWakeWordSetting`,
+ * `useGeofenceSetting`), pas seulement du stockage local.
+ *
+ * POURQUOI ÇA NE PASSE PAS PAR `ecrireReglage` COMME LES AUTRES. Ces deux
+ * hooks sont montés UNE FOIS à la racine de l'app et gardent leur propre
+ * `enabled` en mémoire ; ils ne relisent le stockage local qu'au montage ou
+ * quand les réglages reviennent de la base (`REGLAGES_RESTAURES`) — jamais
+ * sur une simple écriture locale (`REGLAGE_MODIFIE`). Écrire directement
+ * dans `localStorage` depuis ici persisterait bien la valeur, mais la boucle
+ * de veille au mot-clé et les rappels de lieu, qui lisent `enabled` en
+ * mémoire, continueraient de tourner sur l'ancienne jusqu'au prochain
+ * redémarrage de l'app — Jarvis dirait « c'est fait » sur un réglage qui
+ * n'aurait rien changé, exactement le défaut que la règle d'honnêteté du
+ * projet interdit. Les deux setters ci-dessous appellent le VRAI hook, qui
+ * met à jour son état ET persiste, comme le fait déjà l'écran Paramètres.
+ */
+export interface ReglagesVoixApi {
+  setWakeWordEnabled: (v: boolean) => void
+  setGeofenceEnabled: (v: boolean) => void
+}
+
+/**
+ * Le mode entraînement (chantier 86df4f4a). `sequences` sert à retrouver le
+ * nom pour l'annoncer et pour le rejeu ; `rejouer` exécute une séquence pas à
+ * pas via `agirSurEcran` — passée en fonction plutôt qu'importée directement
+ * ici pour ne pas alourdir ce module, déjà pur pour tout le reste, d'une
+ * dépendance au service d'accessibilité.
+ */
+export interface EntrainementApi {
+  sequences: SequenceEntrainement[]
+  addSequence: (nom: string, etapes: EtapeEntrainement[]) => Promise<void>
+  /** Exécute la séquence pas à pas et rend ce que Jarvis doit dire — soit la
+   * confirmation finale, soit où et pourquoi ça s'est arrêté. */
+  rejouer: (sequence: SequenceEntrainement) => Promise<string>
 }
 
 function categoryName(categories: Category[], id: string | null | undefined) {
@@ -328,6 +393,8 @@ export async function executeVoiceAction(
   { muted, setMuted }: VoiceSettingApi,
   { setConfig }: WidgetApi,
   agenda: AgendaApi,
+  { setWakeWordEnabled, setGeofenceEnabled }: ReglagesVoixApi,
+  entrainementApi: EntrainementApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -417,6 +484,23 @@ export async function executeVoiceAction(
 
     case "garder_reponse_ecran":
       return await garderReponseEcran(saveTextDocument)
+
+    case "start_training":
+      demarrerEnregistrement()
+      return phraseDebutEntrainement()
+
+    case "stop_training": {
+      if (!enregistrementEnCours()) return phraseAucunEntrainementEnCours()
+      const etapes = arreterEnregistrement()
+      if (etapes.length > 0) await entrainementApi.addSequence(action.nom, etapes)
+      return phraseFinEntrainement(action.nom, etapes.length)
+    }
+
+    case "replay_training": {
+      const sequence = entrainementApi.sequences.find((s) => s.id === action.sequence_id)
+      if (!sequence) return phraseRejeuIntrouvable()
+      return await entrainementApi.rejouer(sequence)
+    }
 
     case "update_task": {
       const task = tasks.find((t) => t.id === action.task_id)
@@ -700,6 +784,29 @@ export async function executeVoiceAction(
       return action.voice_enabled
         ? "Voix rallumée, tu m'entends à nouveau."
         : "D'accord, je me tais. Je continue de te répondre à l'écrit."
+    }
+
+    case "list_settings":
+      return `Je peux régler moi-même : ${listeReglagesVoix()}. Pour le reste, ça se règle depuis Paramètres.`
+
+    case "set_setting": {
+      // Un `setting_cle` ou `setting_valeur` inventé ou mal compris ne doit
+      // JAMAIS écrire n'importe quoi : on refuse plutôt que de deviner, la
+      // même règle que pour un clic à l'écran ou une application introuvable.
+      const reglage = trouverReglageVoix(action.setting_cle)
+      if (!reglage) {
+        return "Je ne sais pas régler ça moi-même. Dis-moi « qu'est-ce que tu peux régler ? » pour la liste, ou passe par Paramètres."
+      }
+      const option = trouverOptionReglageVoix(action.setting_cle, action.setting_valeur)
+      if (!option) {
+        return `Pour ${reglage.nom}, je ne connais que : ${reglage.options.map((o) => o.dit).join(", ")}.`
+      }
+      // Ces deux-là passent par le VRAI hook (React + persistance), pas par
+      // une écriture locale toute seule — voir ReglagesVoixApi.
+      if (reglage.cle === "jarvis_wake_word_enabled") setWakeWordEnabled(option.stocke === "1")
+      else if (reglage.cle === "jarvis_geofence_enabled") setGeofenceEnabled(option.stocke === "1")
+      else ecrireReglage(reglage.cle, option.stocke)
+      return `C'est fait : ${reglage.nom} est maintenant ${option.dit}. Tu peux aussi le voir depuis ${reglage.ou}.`
     }
 
     case "open_app":

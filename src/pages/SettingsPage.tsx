@@ -16,6 +16,7 @@ import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
 import { ControleEcran } from "@/components/settings/ControleEcran"
+import { Entrainement } from "@/components/settings/Entrainement"
 import { LectureNotifications } from "@/components/settings/LectureNotifications"
 import { MoteurReconnaissance } from "@/components/settings/MoteurReconnaissance"
 import { ConnecteursIA } from "@/components/settings/ConnecteursIA"
@@ -498,6 +499,7 @@ export function SettingsPage() {
     widgetState,
     placeRemindersState,
     pronunciationsState,
+    entrainementState,
     updateState,
     majWebState,
     notificationsState,
@@ -966,6 +968,7 @@ export function SettingsPage() {
         <AppsParDefaut />
         <ConnecteursIA />
         <ControleEcran />
+        <Entrainement api={entrainementState} />
         <LectureNotifications />
         <FenetreAnnulation />
       </Section>

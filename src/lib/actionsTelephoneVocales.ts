@@ -21,6 +21,7 @@ import { noterQuestionEnvoyee } from "@/lib/questionEnAttente"
 import { chercherContact } from "@/lib/chercherContact"
 import { lireRepertoire } from "@/lib/repertoire"
 import { agirSurEcran, reglagesListeNoire } from "@/lib/controleEcran"
+import { ajouterEtapeEnregistree } from "@/lib/entrainement"
 import type { CommandeEcran } from "@/lib/ecranTelephone"
 import { CLE_LISTE_NOIRE, entreeDepuisLaVoix, listeEffective } from "@/lib/listeNoire"
 import { lireNotifications } from "@/lib/notificationsAndroid"
@@ -578,7 +579,14 @@ export async function executerActionTelephone(
         // Aucune fenêtre d'annulation ici, et c'est expliqué dans
         // controleEcran.ts : le bandeau est affiché DANS Jarvis, invisible
         // pendant que YouTube ou WhatsApp est au premier plan.
-        return await agirSurEcran(action.screen_command, action.screen_target)
+        //
+        // Mode entraînement (chantier 86df4f4a) : ne fait rien tant que
+        // Raphaël n'a pas dit « commence l'entraînement » — voir
+        // `entrainement.ts`. Posée AVANT l'exécution, pas après : une
+        // commande de LECTURE fait déjà partie de ce qu'il montre (« je
+        // vérifie que je suis actif », par exemple), pas seulement les clics.
+        ajouterEtapeEnregistree({ commande: action.screen_command, cible: action.screen_target ?? null })
+        return (await agirSurEcran(action.screen_command, action.screen_target)).message
       }
 
       case "read_notifications": {
