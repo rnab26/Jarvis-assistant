@@ -1,5 +1,6 @@
 import { useRef, useState } from "react"
 import { BarreActualiser } from "@/components/BarreActualiser"
+import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
 import { LoadError } from "@/components/LoadError"
 import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
 import { ChantiersEgares } from "@/components/cockpit/ChantiersEgares"
@@ -74,6 +75,8 @@ export function CockpitPage() {
     deleteManyDevItems,
     restoreDevItems,
     libererReservation,
+    fileEnAttente,
+    fileIllisible,
     derniereMaj,
     statutDirect,
     actualisationEnCours,
@@ -141,6 +144,14 @@ export function CockpitPage() {
           la question qu'on se pose en revenant, avant même d'envoyer quoi que
           ce soit. */}
       <DepuisTonDernierPassage devItems={devItems} messages={devLog.entries} />
+
+      {/* Ce qu'il a dicté sans réseau, AU-DESSUS du tableau et pas dedans :
+          le filtre de section ne doit pas pouvoir le masquer — un chantier en
+          attente rangé dans une section qu'il ne regarde pas est précisément
+          celui qu'il perdrait. Le même composant que l'onglet Tâches, pas une
+          seconde carte qui dirait la même chose autrement (chantier
+          8b804a01). Silencieuse quand il n'y a rien. */}
+      <EnAttenteDenvoi file={fileEnAttente} illisible={fileIllisible} />
 
       <OuJenSuis
         devItems={devItems}

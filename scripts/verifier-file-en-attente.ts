@@ -316,6 +316,54 @@ const T = 1_000_000
   )
 }
 
+// ── LES CHANTIERS DICTÉS AUSSI ───────────────────────────────────────────
+//
+// Chantier 8b804a01. Deux chantiers dictés le 5 sept. à 18h20 et 19h32 ont été
+// perdus faute de réseau ; il a dû les redicter. C'est exactement le cas des
+// tâches, et il devait donc suivre exactement le même chemin.
+{
+  const source = readFileSync("src/hooks/useDevItems.ts", "utf8")
+  verifier(
+    "un chantier dicté sans réseau part dans la file",
+    /fileApi\.ajouter\(/.test(source),
+    "sinon il est perdu, comme les deux du 5 sept.",
+  )
+  verifier(
+    "et l'identifiant est fabriqué CÔTÉ CLIENT",
+    /const id = crypto\.randomUUID\(\)/.test(source),
+    "sans lui, un renvoi dont la première réponse s'est perdue créerait un jumeau",
+  )
+  verifier(
+    "on ne lui dit pas « impossible d'ajouter » : la phrase hors ligne",
+    /phraseHorsLigne\(input\.title\)/.test(source),
+    "le toast d'échec dirait le contraire de ce qui se passe",
+  )
+  verifier(
+    "et ce qui attend s'affiche DANS la liste, marqué",
+    /enAttente: true/.test(source),
+    "un tampon invisible serait un mensonge de plus",
+  )
+}
+
+{
+  // DEUX FILES, DEUX CLÉS, et c'est le point à ne pas défaire : le tampon est
+  // un tableau JSON réécrit en entier. Deux hooks sur la même clé
+  // s'effaceraient mutuellement — une dictée perdue par le mécanisme censé
+  // les sauver, en silence.
+  const tasks = readFileSync("src/hooks/useTasks.ts", "utf8")
+  const dev = readFileSync("src/hooks/useDevItems.ts", "utf8")
+  verifier(
+    "les tâches et les chantiers n'écrivent pas dans le même tampon",
+    /cle: CLE_FILE,/.test(tasks) && /cle: CLE_FILE_CHANTIERS,/.test(dev),
+    "sur une clé commune, la dernière écriture emporterait ce que l'autre venait d'ajouter",
+  )
+  verifier(
+    "et les deux passent par le MÊME code de renvoi",
+    /useFileEnAttente</.test(tasks) && /useFileEnAttente</.test(dev),
+    "deux boucles recopiées finiraient par ne plus se comporter pareil, sur le seul mécanisme dont le rôle est de ne rien perdre",
+  )
+}
+
 console.log(`\n${vert} vert, ${rouge} rouge`)
 if (rouge > 0) process.exit(1)
 console.log("Tout est vert.")

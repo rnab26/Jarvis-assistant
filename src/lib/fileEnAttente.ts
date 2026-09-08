@@ -43,11 +43,23 @@
  *    erreurs. Ce qu'on ne fait pas, c'est le jeter.
  */
 
-/** Ce que la file sait renvoyer. Une seule pour l'instant, et c'est voulu :
- * ce sont les tâches dictées qu'il perd concrètement. Une commande d'action
- * (appeler quelqu'un, lancer une musique) n'a AUCUN sens différée — elle doit
- * échouer franchement, pas partir toute seule un quart d'heure plus tard. */
-export type CibleEnAttente = "tasks"
+/**
+ * Ce que la file sait renvoyer. Deux, et pas une de plus, parce que ce sont
+ * les seules DICTÉES qu'il perd concrètement — une phrase qui n'existe que
+ * dans le navigateur au moment où l'écriture échoue.
+ *
+ * Une commande d'action (appeler quelqu'un, lancer une musique) n'a AUCUN sens
+ * différée : elle doit échouer franchement, pas partir toute seule un quart
+ * d'heure plus tard.
+ *
+ * ET DEUX AUTRES CANDIDATS ONT ÉTÉ ÉCARTÉS APRÈS VÉRIFICATION (chantier
+ * 8b804a01), pour qu'on ne les repropose pas : les SOUVENIRS ne sont jamais
+ * écrits par le client — `memoire.ts` les crée côté serveur à partir d'une
+ * phrase déjà envoyée, donc rien n'existe ici à remettre en file ; et les
+ * CORRECTIONS du registre sont des retouches au CLAVIER dans le cockpit, pas
+ * des dictées perdables — réessayer d'un clic suffit.
+ */
+export type CibleEnAttente = "tasks" | "dev_items"
 
 export interface ElementEnAttente<T = unknown> {
   /**
@@ -239,6 +251,18 @@ export function phraseHorsLigne(quoi: string): string {
  * préférence, il n'y a rien à régler, et la recopier en base n'aurait aucun
  * sens — ce qu'elle contient a justement échoué à y arriver. */
 export const CLE_FILE = "jarvis_file_en_attente"
+
+/**
+ * UNE CLÉ PAR CIBLE, et c'est délibéré. Le tampon est un simple tableau JSON :
+ * deux hooks qui liraient et réécriraient la MÊME clé s'effaceraient
+ * mutuellement — la dernière écriture emporterait ce que l'autre venait
+ * d'ajouter. Une dictée perdue par le mécanisme censé les sauver serait la
+ * pire panne possible, et parfaitement silencieuse.
+ *
+ * Le préfixe `jarvis_file_en_attente` est déjà déclaré dans
+ * `STOCKAGE_LOCAL_ASSUME` (src/lib/reglages.ts) : cette clé-ci en hérite.
+ */
+export const CLE_FILE_CHANTIERS = "jarvis_file_en_attente_chantiers"
 
 /**
  * Relit le tampon.
