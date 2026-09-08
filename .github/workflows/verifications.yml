@@ -298,7 +298,7 @@ jobs:
       # Gmail à la voix : reconnaître « le dernier » et lire proprement un
       # expéditeur (chantier 4dabe586 — list_emails/read_email/find_receipts
       # existaient côté serveur mais n'avaient jamais été branchés côté app).
-      - name: Gmail à la voix : « le dernier », et un expéditeur lisible
+      - name: "Gmail à la voix : « le dernier », et un expéditeur lisible"
         run: node --experimental-strip-types scripts/verifier-gmail-voix.ts
 
       # La bulle : un interrupteur ne doit jamais dire « Activé » au-dessus
