@@ -9,7 +9,7 @@ import { OrganiserCategories } from "@/components/tasks/OrganiserCategories"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
-import { categoriesOrdonnees } from "@/lib/ordreCategories"
+import { SANS_CATEGORIE, categoriesOrdonnees, compterAFaire } from "@/lib/ordreCategories"
 import type { Task } from "@/types/database"
 
 export function DashboardPage() {
@@ -67,7 +67,11 @@ export function DashboardPage() {
   const filteredTasks =
     categoryFilter === ALL_CATEGORIES
       ? tasks
-      : tasks.filter((t) => t.category_id === categoryFilter)
+      : categoryFilter === SANS_CATEGORIE
+        // `category_id` est null ici, jamais la chaîne "none" : la clé ne vit
+        // qu'à l'écran, elle n'existe pas en base.
+        ? tasks.filter((t) => !t.category_id)
+        : tasks.filter((t) => t.category_id === categoryFilter)
 
 
   return (
@@ -84,6 +88,7 @@ export function DashboardPage() {
           categories={categoriesOrdonnees(categories)}
           value={categoryFilter}
           onChange={setCategoryFilter}
+          compte={compterAFaire(tasks, categories)}
         />
         <OrganiserCategories
           categories={categories}

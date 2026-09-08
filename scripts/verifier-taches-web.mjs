@@ -302,6 +302,48 @@ try {
   await page.keyboard.press("Escape")
   await pause(300)
 
+  // ── LE COMPTEUR À CÔTÉ DE CHAQUE CATÉGORIE ──
+  // Sa demande : « ajouter un compteur a côté des catégories de taches afin
+  // d'avoir une idée du nombre de tache par catégorie ». Le banc monte deux
+  // tâches dans Perso dont UNE FAITE, une dans Leads, rien dans Notes, deux
+  // sans catégorie.
+  {
+    const filtre = page.locator("#filtre-categories")
+    const chiffre = async (nom) =>
+      (await filtre.getByRole("button", { name: new RegExp(`^${nom}`) }).first().innerText())
+        .replace(/\s+/g, " ")
+
+    verifier(
+      "chaque catégorie porte son nombre de tâches à faire",
+      (await chiffre("Perso")).endsWith("1") && (await chiffre("Leads")).endsWith("1"),
+      `Perso « ${await chiffre("Perso")} », Leads « ${await chiffre("Leads")} » — Perso a deux tâches dont une faite`,
+    )
+    verifier(
+      "une catégorie vide affiche zéro plutôt que rien",
+      (await chiffre("Notes")).endsWith("0"),
+      `« ${await chiffre("Notes")} » — sans chiffre, ça se lit « on ne sait pas »`,
+    )
+    verifier(
+      "« Toutes » dit la somme des autres",
+      (await chiffre("Toutes")).endsWith("4"),
+      `« ${await chiffre("Toutes")} » — si le compte ne tombe pas juste sous ses yeux, le compteur devient une source de doute`,
+    )
+    verifier(
+      "les tâches sans catégorie ont enfin leur bouton",
+      await filtre.getByRole("button", { name: /^Sans catégorie/ }).isVisible(),
+      "cinq de ses trente-trois tâches n'en ont aucune, et aucun filtre ne pouvait les isoler",
+    )
+    await filtre.getByRole("button", { name: /^Sans catégorie/ }).click()
+    await pause(200)
+    verifier(
+      "et ce bouton filtre vraiment",
+      (await page.locator("#filtre-choisi").innerText()).includes("none"),
+      await page.locator("#filtre-choisi").innerText(),
+    )
+    await filtre.getByRole("button", { name: /^Toutes/ }).click()
+    await pause(200)
+  }
+
   // ── « AUCUN MOYEN D'ACTUALISER » ──
   // Sa plainte du 7 sept. 2026, chantier ce69489b : « Les taches ne
   // s'affichent pas en live et il n'y a aucun moyen d'actualiser ». La
