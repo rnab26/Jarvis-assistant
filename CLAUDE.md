@@ -2454,6 +2454,7 @@ node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « termi
 node --experimental-strip-types scripts/verifier-envoi-chantier.ts  # « Envoyer à Claude Code », sans réseau
 node --experimental-strip-types scripts/verifier-echeance.ts    # l'étiquette d'échéance d'une tâche, sans réseau
 node --experimental-strip-types scripts/verifier-etat-direct.ts  # « les tâches ne s'affichent pas en live » : ce qu'on dit, et surtout ce qu'on ne dit pas, sans réseau
+node --experimental-strip-types scripts/verifier-action-suggeree.ts  # le bouton « Appeler » d'un rappel, et surtout ce qu'il ne propose pas, sans réseau
 node --experimental-strip-types scripts/verifier-theme.ts       # pas deux thèmes pour le même sujet, sans réseau
 node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoire ne réécrit pas trois fois la même chose, sans réseau
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau

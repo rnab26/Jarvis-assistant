@@ -99,6 +99,23 @@ async function assurerCanaux() {
       visibility: 1,
     })
   }
+  // LE TYPE D'ACTION SE DÉCLARE ICI AUSSI, et au même moment : Android
+  // ignore en silence un `actionTypeId` qu'il ne connaît pas — la
+  // notification s'afficherait, sans son bouton, et rien ne le dirait. Même
+  // piège que le canal manquant deux lignes plus haut.
+  try {
+    await LocalNotifications.registerActionTypes({
+      types: [
+        {
+          id: TYPE_ACTION_APPEL,
+          actions: [{ id: "appeler", title: "Appeler" }],
+        },
+      ],
+    })
+  } catch {
+    // Pas d'action possible sur cette version : la notification part quand
+    // même, sans bouton. Ce n'est pas une panne, c'est un confort en moins.
+  }
   canauxPrets = true
 }
 
@@ -174,14 +191,28 @@ export async function ouvrirReglageAlarmes(): Promise<EtatNotifications> {
   return lireEtat()
 }
 
+/**
+ * Le type d'action déclaré une fois à Android, et réutilisé par toutes les
+ * notifications qui proposent d'appeler (chantier 4363aecf).
+ *
+ * UN SEUL TYPE POUR TOUS LES RAPPELS, et pas un par tâche : Android garde ces
+ * déclarations, et en enregistrer une par notification ferait grossir sa liste
+ * indéfiniment. Le NOM de la personne voyage dans `extra`, pas dans le type.
+ */
+export const TYPE_ACTION_APPEL = "jarvis-rappel-appel"
+
 function versSchema(notif: NotifPlanifiee, quand: Date | null) {
   return {
     id: notif.id,
     title: notif.titre,
     body: notif.corps,
     channelId: CANAUX[notif.canal].id,
-    // Ce qui permet d'ouvrir la bonne page quand on appuie dessus.
-    extra: { route: notif.route },
+    // Ce qui permet d'ouvrir la bonne page quand on appuie dessus. `appeler`
+    // n'y est que lorsqu'un nom a vraiment été reconnu : c'est lui que le
+    // téléphone cherchera dans son répertoire quand Raphaël appuie sur le
+    // bouton — jamais un numéro décidé d'avance ici.
+    extra: { route: notif.route, appeler: notif.action?.qui ?? null },
+    ...(notif.action ? { actionTypeId: TYPE_ACTION_APPEL } : {}),
     autoCancel: true,
     schedule: quand
       ? {

@@ -18,6 +18,8 @@ import type { Task } from "@/types/database"
 
 export type CanalNotif = "taches" | "matin" | "nuit" | "app" | "livraisons" | "blocages"
 
+import { actionSuggeree, type ActionSuggeree } from "./actionSuggeree.ts"
+
 export interface NotifPlanifiee {
   id: number
   titre: string
@@ -27,6 +29,12 @@ export interface NotifPlanifiee {
   canal: CanalNotif
   /** Où emmener Raphaël quand il appuie dessus (route du HashRouter). */
   route: string
+  /**
+   * Le bouton proposé sur la notification, quand la tâche désigne quelqu'un
+   * (chantier 4363aecf). Absent la plupart du temps — et c'est voulu : un
+   * bouton qui n'aboutirait à rien serait pire que pas de bouton.
+   */
+  action?: ActionSuggeree
 }
 
 /**
@@ -279,6 +287,10 @@ export function planifierEcheances(
       // supprimé ou décalé : il est là au réveil, il n'a réveillé personne.
       canal: dansLaPlageSilencieuse(quand, prefs) ? "nuit" : "taches",
       route: "/",
+      // « rappeler Jonathan » : le rappel propose d'appeler, au lieu de le
+      // laisser ouvrir son répertoire et chercher. Le réglage passe avant —
+      // coupé, la notification reste exactement ce qu'elle est.
+      action: prefs.actionRappel ? (actionSuggeree(task.title) ?? undefined) : undefined,
     })
   }
 

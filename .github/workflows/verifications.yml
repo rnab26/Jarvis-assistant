@@ -68,6 +68,13 @@ jobs:
       - name: Ce qu'on dit d'une liste qui devrait se mettre à jour toute seule
         run: node --experimental-strip-types scripts/verifier-etat-direct.ts
 
+      # Le bouton « Appeler » d'un rappel. Ce qui casse en silence ici : un
+      # bouton proposé sur « rappelle-moi de sortir les poubelles », ou pire,
+      # sur une commande mal entendue — « appelle mail » a réellement composé
+      # un répondeur le 5 sept. 2026.
+      - name: Le bouton d'action d'un rappel, et surtout ce qu'il ne propose pas
+        run: node --experimental-strip-types scripts/verifier-action-suggeree.ts
+
       # Sa demande du 7 sept. : le crayon de l'écran Tâches. Ce qui casse en
       # silence ici : un ordre qui se réarrange tout seul (il retrouverait son
       # écran mélangé sans avoir rien touché), et un renommage accepté qui rend
