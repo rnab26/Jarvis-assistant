@@ -129,6 +129,22 @@ jobs:
       - name: La clôture de la conversation à la voix
         run: node --experimental-strip-types scripts/verifier-fin-conversation.ts
 
+      # Mesuré sur ses vraies ouvertures : le jeton (1253 à 4594 ms), le
+      # WebSocket vers Google (630 à 6994 ms) et le micro (333 à 2926 ms)
+      # s'enchaînaient l'un après l'autre, et rendaient compte EXACTEMENT du
+      # total. Le micro ne dépend ni du jeton ni de la session : il part
+      # maintenant en même temps que la connexion. Deux bornes à tenir — pas
+      # APRÈS la connexion (c'est l'attente en série qu'on retire), pas AVANT
+      # le jeton (le service de reconnaissance d'Android tient encore le micro,
+      # stopListening n'étant pas attendu par MicButton).
+      - name: L'ordre des trois étapes d'une ouverture Live
+        run: node --experimental-strip-types scripts/verifier-ouverture-live.ts
+
+      # Laissé de côté par le chantier qui l'a écrit : il était dans CLAUDE.md
+      # mais dans aucun workflow, donc rien ne le lançait.
+      - name: L'espacement du préchauffage de la connexion Live
+        run: node --experimental-strip-types scripts/verifier-prechauffage.ts
+
       # Le registre des erreurs n'avait qu'une ligne ouverte, et c'était une
       # fausse alerte : 363 rafales de veille dans une pièce calme signalées
       # comme des pannes. Ce contrôle garde la frontière dans les DEUX sens —

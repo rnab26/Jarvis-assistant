@@ -5,11 +5,16 @@
  *
  * MESURÉ, PAS SUPPOSÉ (chantier ba140853, 8 sept. 2026, sessionLive.ts) :
  * sur ses ouvertures Live, `ms_jeton` est bimodal (≈1200-1900 ms ou
- * ≈3500-4300 ms), le temps DANS la fonction est stable (±20 ms) dans les
- * deux cas, et `ms_session` (le renouvellement du jeton d'auth,
- * `supabase.auth.getSession()`) reste petit (1-4 ms) dans les deux cas
- * aussi — la piste du jeton d'auth est donc écartée. Il ne reste que le
- * réseau : une poignée de main TCP+TLS neuve coûte une à deux secondes sur
+ * ≈3500-4300 ms) et le temps DANS la fonction est stable (±20 ms) dans les
+ * deux cas. Reste, hors de la fonction, le jeton d'auth et le réseau.
+ *
+ * CE QUI A ÉTÉ MESURÉ DEPUIS, ET CE QUI NE L'A PAS ÉTÉ (relu le 9 sept.) :
+ * `ms_session` (`supabase.auth.getSession()`) vaut 1 à 4 ms sur les quatre
+ * ouvertures qui le portent — c'est une lecture en mémoire, pas un
+ * aller-retour. MAIS CES QUATRE-LÀ SONT TOUTES DANS LE MODE RAPIDE : aucune
+ * ouverture lente ne porte encore `ms_session`. La piste du jeton d'auth est
+ * donc affaiblie, pas écartée, et ce préchauffage repose sur l'hypothèse
+ * réseau — une poignée de main TCP+TLS neuve coûte une à deux secondes sur
  * un réseau mobile, une connexion déjà ouverte ne coûte rien.
  *
  * On ne peut pas chronométrer une poignée de main depuis l'app — seulement
@@ -25,6 +30,10 @@
  * l'API Supabase — mais seul un usage réel dira si la fenêtre de réutilisation
  * suffit. Si `ms_jeton` reste bimodal après ce correctif, cette piste est
  * morte à son tour et il faudra le dire plutôt que de la retenter.
+ *
+ * ET AUCUNE DES QUATRE OUVERTURES MESURÉES CI-DESSUS NE JUGE CE MODULE :
+ * elles sont du 8 sept. à 21h10-21h50, ce commit est de 22h02. Elles ne
+ * prouvent donc rien sur le préchauffage, ni pour ni contre.
  */
 
 // `?.` : sous Node (scripts/verifier-prechauffage.ts), `import.meta.env`

@@ -143,12 +143,51 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   // fraîche, donc pour rien. `ms_jeton - ms_session - ms_serveur` est alors le
   // réseau pur.
   //
-  // CE QUE CHAQUE ISSUE VOUDRA DIRE, pour que la prochaine session n'ait pas à
-  // le redécouvrir : si `ms_session` saute avec `ms_jeton`, c'est le
-  // renouvellement du jeton, et il se pré-chauffe. Si `ms_session` reste petit
-  // dans les deux cas, c'est la poignée de main réseau — et la piste du jeton
-  // est morte, ce qui se voyait déjà à la fréquence (un jeton dure une heure,
-  // la lenteur arrive une fois sur deux).
+  // CE QU'ELLE A RENDU, RELU LE 9 SEPT. SUR SES VRAIES OUVERTURES — et il faut
+  // lire ces quatre lignes en entier avant d'en conclure quoi que ce soit :
+  //
+  //     09-08 21:10  jeton 1393 | session 4 | serveur 569
+  //     09-08 21:14  jeton 1253 | session 4 | serveur 439
+  //     09-08 21:24  jeton 1497 | session 1 | serveur 601
+  //     09-08 21:50  jeton 1653 | session 1 | serveur 663
+  //
+  // `ms_session` vaut 1 à 4 ms : `getSession()` est une lecture en mémoire,
+  // pas un aller-retour réseau. Reste 810 à 989 ms hors de la fonction et hors
+  // du jeton d'auth — le réseau nu.
+  //
+  // MAIS CES QUATRE OUVERTURES SONT TOUTES DANS LE MODE RAPIDE (1253-1653 ms).
+  // IL N'EXISTE ENCORE AUCUN ÉCHANTILLON EN MODE LENT AVEC `ms_session`, donc
+  // la piste du renouvellement de jeton est AFFAIBLIE, PAS MORTE : c'est
+  // justement dans le cas rare qu'un renouvellement se produirait. Ne l'écarte
+  // pas sur ces quatre lignes ; il faut une ouverture à ~3500-4300 ms qui porte
+  // `ms_session`. Ce que la fréquence suggère (un jeton dure une heure, la
+  // lenteur arrive une fois sur deux) reste un indice, pas une preuve.
+
+  const lecteur = new LecteurAudio()
+  let capture: CaptureMicro | null = null
+  let session: Session | null = null
+  let fermee = false
+  let parRaphael = false
+  let reponseEnCours = ""
+  let entenduEnCours = ""
+  // Raphaël a dit « terminé » : le micro ne part plus, on laisse Jarvis
+  // finir sa phrase d'adieu, puis on ferme — comme s'il avait appuyé.
+  let finDemandee = false
+  let resoudreFin: (v: { raison?: string; parRaphael: boolean }) => void = () => {}
+  const finie = new Promise<{ raison?: string; parRaphael: boolean }>((resolve) => {
+    resoudreFin = resolve
+  })
+
+  /** Le micro est lancé plus bas, dès que le jeton est là — voir le bloc qui
+   * l'explique. Déclaré ici parce que `fermer()`, juste en dessous, doit
+   * pouvoir le rendre même s'il n'a pas encore répondu. */
+  let micro: Promise<CaptureMicro> | null = null
+  let microDemarreAt = 0
+  let microPretAt = 0
+  /** Rendre le micro quand on sort sans jamais s'en servir. `arreter()` est
+   * sans effet s'il a déjà été appelé, donc l'appeler des deux côtés est sûr. */
+  const rendreLeMicro = () => void micro?.then((c) => c.arreter()).catch(() => {})
+
   const avantSession = Date.now()
   await supabase.auth.getSession().catch(() => null)
   const msSession = Date.now() - avantSession
@@ -175,25 +214,54 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   // temps d'une ouverture (voir live_debut plus bas).
   const jetonObtenuAt = Date.now()
 
-  const lecteur = new LecteurAudio()
-  let capture: CaptureMicro | null = null
-  let session: Session | null = null
-  let fermee = false
-  let parRaphael = false
-  let reponseEnCours = ""
-  let entenduEnCours = ""
-  // Raphaël a dit « terminé » : le micro ne part plus, on laisse Jarvis
-  // finir sa phrase d'adieu, puis on ferme — comme s'il avait appuyé.
-  let finDemandee = false
-  let resoudreFin: (v: { raison?: string; parRaphael: boolean }) => void = () => {}
-  const finie = new Promise<{ raison?: string; parRaphael: boolean }>((resolve) => {
-    resoudreFin = resolve
+  // LE MICRO PART MAINTENANT, EN MÊME TEMPS QUE LA CONNEXION À GOOGLE. Rien
+  // dans `getUserMedia` ni dans `AudioContext` ne dépend de la session : la
+  // seule raison pour laquelle il partait après elle est l'ordre d'écriture.
+  //
+  // MESURÉ, PAS SUPPOSÉ (chantier ba140853, ses 25 dernières ouvertures) :
+  // `ms_micro` vaut 333 à 986 ms d'ordinaire et 2926 ms le 8 sept. à 21h10,
+  // `ms_connexion` 630 à 1516 ms, et les trois segments rendaient compte
+  // EXACTEMENT du total (résidu vérifié à zéro sur 60 ouvertures). Le micro
+  // était donc de l'attente pure, ajoutée au reste. La mener en parallèle la
+  // retire du chemin critique sans rien parier sur la cause de la lenteur
+  // réseau, qui reste ouverte.
+  //
+  // POURQUOI PAS ENCORE PLUS TÔT, avant le jeton — et c'est le point à ne pas
+  // défaire : `handleClick` (MicButton) appelle `stopListening()` SANS
+  // l'attendre juste avant d'ouvrir le Live. Le service de reconnaissance
+  // d'Android tient encore le micro à cet instant, et deux preneurs du même
+  // micro, c'est `getUserMedia` qui échoue — soit « Le micro n'a pas répondu »
+  // sur une ouverture parfaitement normale. L'aller-retour du jeton (1253 ms
+  // au minimum sur ses vraies ouvertures) est le coussin qui laisse le service
+  // lâcher. Rien ici ne peut le vérifier : il n'y a pas d'appareil.
+  //
+  // LES PAQUETS PRODUITS AVANT LA SESSION SONT PERDUS, et c'est sans
+  // conséquence : `ev.onEtat("ecoute")` n'est dit qu'à la toute fin, donc
+  // Raphaël n'est pas encore invité à parler — comme aujourd'hui, où le micro
+  // n'est pas même ouvert. La garde qui les jette (`session?.`) existait déjà.
+  microDemarreAt = Date.now()
+  micro = withTimeout(
+    capturerMicro((paquet) => {
+      if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
+    }),
+    MICRO_MAX_MS,
+  ).then((c) => {
+    microPretAt = Date.now()
+    return c
   })
+  /** Le micro peut échouer pendant qu'on ouvre encore la session : sans ce
+   * `catch`, ce serait un rejet non géré. Le VRAI traitement (le message qui
+   * parle du micro et pas du serveur) est plus bas, à l'`await`. */
+  micro.catch(() => {})
 
   const fermer = (raison?: string) => {
     if (fermee) return
     fermee = true
+    // `capture` est encore nul si on ferme AVANT que le micro (lancé en
+    // parallèle, plus haut) ait répondu : sans `rendreLeMicro`, il resterait
+    // ouvert tout seul derrière nous.
     capture?.arreter()
+    rendreLeMicro()
     lecteur.fermer()
     try {
       session?.close()
@@ -319,12 +387,11 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     // du 6 sept. vaut ici comme ailleurs : on ne laisse pas croire qu'on
     // écoute quand on n'écoute pas.
     etape = "micro"
-    capture = await withTimeout(
-      capturerMicro((paquet) => {
-        if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
-      }),
-      MICRO_MAX_MS,
-    ).catch(() => {
+    // Le micro a été LANCÉ tout en haut, avant le jeton (voir le bloc qui
+    // l'explique). Ici on ne fait plus que l'attendre : d'ordinaire il est
+    // déjà prêt, et cet `await` ne coûte rien.
+    const avantAttenteMicro = Date.now()
+    capture = await micro!.catch(() => {
       // ET PAS LE MESSAGE DE `withTimeout`, qui parle du SERVEUR : « Le
       // serveur ne répond pas, vérifie ta connexion » enverrait chercher une
       // panne de réseau alors que c'est le micro qui n'est jamais venu. Un
@@ -367,7 +434,17 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       ms_lectures: data.temps?.lectures ?? null,
       ms_google: data.temps?.google ?? null,
       ms_connexion: connectee - jetonObtenuAt,
-      ms_micro: Date.now() - connectee,
+      // ATTENTION EN RELISANT CES NOMBRES : depuis le 9 sept. 2026, les trois
+      // segments ne s'additionnent PLUS pour faire `delai_ms`. Le micro part
+      // en même temps que le jeton, donc `ms_micro` (sa durée propre) recouvre
+      // les deux autres. Ce qu'il coûte VRAIMENT sur le chemin critique, c'est
+      // `ms_micro_attente` : ce qu'on a encore attendu une fois la session
+      // ouverte. Il doit être proche de zéro ; s'il ne l'est pas, le micro est
+      // plus lent que les deux allers-retours réseau réunis, et c'est lui le
+      // sujet. Une ouverture sans `ms_micro_attente` est d'AVANT ce changement
+      // et se lit avec l'ancienne règle.
+      ms_micro: microPretAt ? microPretAt - microDemarreAt : null,
+      ms_micro_attente: Date.now() - avantAttenteMicro,
       premier: ev.premierMessage ? 1 : 0,
       contexte: ev.contexte.length,
     })
