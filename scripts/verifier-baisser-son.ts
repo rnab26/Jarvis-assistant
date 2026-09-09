@@ -107,6 +107,42 @@ const ajoutees = patch
     ajoutees.includes('getBoolean("baisserLeSon"'),
     "sinon la veille baisserait le son malgré le réglage côté app",
   )
+
+  // UNE FENÊTRE DÉTRUITE DOIT RENDRE LE FOCUS — chantier 93f6ee23.
+  //
+  // L'app a DEUX Activity dans UN SEUL processus (MainActivity et
+  // AssistOverlayActivity, l'appui long). Chacune a son WebView, donc sa
+  // propre instance du plugin, donc son propre focus. Android ne rend le
+  // focus tout seul QUE si le PROCESSUS meurt : une fenêtre détruite pendant
+  // qu'elle écoute ne rend rien, et le processus reste en vie puisque l'autre
+  // fenêtre le tient. La musique reste alors basse — ce qu'il décrit.
+  //
+  // On vise le CORPS de handleOnDestroy, pas la présence du mot : le nom
+  // apparaît aussi dans le commentaire qui explique la mesure, et dans
+  // `super.handleOnDestroy()`. C'est le piège du sélecteur Playwright, de
+  // `Filesystem.mkdir` et de `com.google.android.as`.
+  const corpsDestroy = ajoutees.slice(
+    ajoutees.indexOf("protected void handleOnDestroy()"),
+    ajoutees.indexOf("super.handleOnDestroy()"),
+  )
+  verifier(
+    "une fenêtre détruite rend le focus audio",
+    ajoutees.includes("protected void handleOnDestroy()") && corpsDestroy.includes("retablirSon()"),
+    "sans ça, le ducking demandé par la fenêtre de l'appui long lui survit, et la musique reste basse",
+  )
+
+  // Et `handleOnStop` serait FAUX ici : passer en arrière-plan est normal
+  // pendant une écoute (il regarde une autre application pendant que Jarvis
+  // écoute). Rendre le focus là remonterait la musique au pire moment —
+  // l'erreur déjà payée le 6 sept. avec onBeginningOfSpeech.
+  verifier(
+    "le focus n'est PAS rendu au simple passage en arrière-plan",
+    // La DÉCLARATION, pas le mot : il apparaît aussi dans le commentaire
+    // java qui explique pourquoi on ne le fait pas, et le contrôle rougissait
+    // sur sa propre explication.
+    !/protected\s+void\s+handleOnStop\s*\(/.test(ajoutees),
+    "handleOnStop remonterait la musique pendant qu'il parle à Jarvis depuis une autre application",
+  )
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
