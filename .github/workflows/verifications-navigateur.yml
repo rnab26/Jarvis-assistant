@@ -34,6 +34,16 @@ jobs:
       - name: Installer Chromium
         run: npx playwright install --with-deps chromium
 
+      # WebKit EN PLUS de Chromium, pas à sa place : les six parcours
+      # ci-dessous restent sur Chromium (c'est le moteur de son téléphone
+      # Android), et le parcours iPhone est le seul à demander WebKit. Sa
+      # décision du 5 sept. 2026 : « Le site web suffit, mais soigne-le pour
+      # iPhone » — or c'est justement Safari qui casse les marges de
+      # l'encoche, la hauteur de fenêtre et le mode « sur l'écran d'accueil »,
+      # et aucun parcours ne les voyait.
+      - name: Installer WebKit
+        run: npx playwright install --with-deps webkit
+
       # Des valeurs factices : aucun de ces bancs ne parle à Supabase, mais
       # src/lib/supabase.ts lève au chargement si elles manquent, et le
       # bundler jette alors toute l'app comme code mort.
@@ -75,6 +85,16 @@ jobs:
 
       - name: L'onglet Notes, sur un écran de téléphone
         run: node scripts/verifier-notes-web.mjs
+
+      # Mesuré le jour où ce parcours a été écrit, dans un vrai WebKit à la
+      # taille d'un iPhone 14 : « Marquer comme faite » faisait 16 × 16 points
+      # dans l'onglet Tâches, et « Supprimer » 28 × 28 collé à « Modifier ».
+      # Il garde aussi le contrat « sur l'écran d'accueil » (viewport-fit,
+      # les trois meta apple, l'icône qui existe vraiment, le manifeste) et
+      # refuse qu'un 100vh revienne — dans Safari il passe sous la barre
+      # d'adresse et coupe le bas de l'écran.
+      - name: Le site dans un moteur WebKit, à la taille d'un iPhone
+        run: node scripts/verifier-ios-web.mjs
         env:
           VITE_SUPABASE_URL: https://banc-d-essai.invalid
           VITE_SUPABASE_ANON_KEY: banc-d-essai

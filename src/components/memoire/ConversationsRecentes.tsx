@@ -141,7 +141,7 @@ export function ConversationsRecentes({ api }: { api: EchangesApi }) {
                       </span>
                       <ConfirmerAction
                         trigger={
-                          <Button variant="ghost" size="icon" aria-label="Effacer cet échange">
+                          <Button variant="ghost" size="icon" className="zone-tactile" aria-label="Effacer cet échange">
                             <Trash2 className="size-4" />
                           </Button>
                         }

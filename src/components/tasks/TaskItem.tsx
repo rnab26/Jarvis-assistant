@@ -85,13 +85,19 @@ export function TaskItem({
             aria-hidden
           />
         ) : (
-          <input
-            type="checkbox"
-            checked={isDone}
-            onChange={() => onToggle(task).catch(alreadyNotified)}
-            className="size-4 shrink-0"
-            aria-label="Marquer comme faite"
-          />
+          // UN LABEL, PAS UN `::after` SUR LA CASE : `input` est un élément
+          // remplacé, ses pseudo-éléments ne sont pas rendus de façon fiable
+          // dans WebKit. Le label ne prend que la place de la case (`flex`
+          // sans marge), donc la ligne ne bouge pas d'un point.
+          <label className="zone-tactile flex shrink-0 items-center">
+            <input
+              type="checkbox"
+              checked={isDone}
+              onChange={() => onToggle(task).catch(alreadyNotified)}
+              className="size-4 shrink-0"
+              aria-label="Marquer comme faite"
+            />
+          </label>
         )}
         {/* Appuyer sur le titre déplie la tâche. Le crayon annonce « modifier »
             et ouvre un formulaire : s'en servir pour LIRE une note, c'est
@@ -129,7 +135,7 @@ export function TaskItem({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="shrink-0"
+                className="zone-tactile shrink-0"
                 aria-label="Réessayer d'enregistrer"
                 onClick={() => onRelancerEnvoi(task.id)}
               >
@@ -150,7 +156,7 @@ export function TaskItem({
                 libelleConfirmation="Abandonner"
                 onConfirmer={async () => onOublierEnAttente(task.id)}
                 trigger={
-                  <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Abandonner">
+                  <Button variant="ghost" size="icon-sm" className="zone-tactile shrink-0" aria-label="Abandonner">
                     <Trash2 className="size-3.5" />
                   </Button>
                 }
@@ -164,7 +170,7 @@ export function TaskItem({
           task={task}
           onSubmit={(input) => onUpdate(task.id, input)}
           trigger={
-            <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Modifier">
+            <Button variant="ghost" size="icon-sm" className="zone-tactile shrink-0" aria-label="Modifier">
               <Pencil className="size-3.5" />
             </Button>
           }
@@ -178,7 +184,7 @@ export function TaskItem({
           libelleConfirmation="Supprimer"
           onConfirmer={() => onDelete(task.id)}
           trigger={
-            <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Supprimer">
+            <Button variant="ghost" size="icon-sm" className="zone-tactile shrink-0" aria-label="Supprimer">
               <Trash2 className="size-3.5" />
             </Button>
           }

@@ -303,3 +303,40 @@
   }
   .jarvis-core-onde { opacity: 0.25; }
 }
+
+/* ---------------------------------------------------------------------------
+   UNE ZONE DE CONTACT ASSEZ GRANDE POUR UN POUCE, SANS RIEN DÉPLACER.
+
+   MESURÉ le 9 sept. 2026 dans un VRAI moteur WebKit à la taille d'un
+   iPhone 14 (chantier a40fccaa, `scripts/verifier-ios-web.mjs`) : dans
+   l'onglet Tâches, « Marquer comme faite » fait 16 × 16 points, et
+   « Supprimer » 28 × 28, collé à « Modifier » de la même taille. Le minimum
+   d'Apple est 44. Seize points, c'est quatre millimètres — et le projet écrit
+   déjà, à propos des confirmations de suppression, que « sur un téléphone la
+   corbeille est à trois millimètres du crayon ». Ici c'est mesuré, plus
+   supposé.
+
+   POURQUOI UN CALQUE ET PAS UNE TAILLE PLUS GRANDE : agrandir les boutons
+   changerait la densité de toutes les listes de l'app, ce qui est une
+   décision d'apparence. Le calque, lui, ne déplace RIEN — le contrôle garde
+   sa taille visible, seule la surface qui répond au doigt grandit.
+
+   ET SEULEMENT EN HAUTEUR, c'est le point à ne pas défaire : mesuré dans le
+   même banc, il ne reste que 8 points entre la case et le titre de la tâche.
+   Une zone élargie horizontalement avalerait le début du titre, et appuyer
+   sur le titre cocherait la tâche. En hauteur il y a 48 points entre deux
+   lignes, donc deux zones de 44 se touchent sans jamais se recouvrir.
+   --------------------------------------------------------------------------- */
+.zone-tactile {
+  position: relative;
+}
+
+.zone-tactile::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}

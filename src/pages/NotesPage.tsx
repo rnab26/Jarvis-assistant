@@ -98,7 +98,7 @@ export function NotesPage() {
                   note={note}
                   onSubmit={(input) => updateNote(note.id, input)}
                   trigger={
-                    <Button variant="ghost" size="icon" aria-label="Modifier">
+                    <Button variant="ghost" size="icon" className="zone-tactile" aria-label="Modifier">
                       <Pencil className="size-4" />
                     </Button>
                   }
@@ -112,7 +112,7 @@ export function NotesPage() {
                   destructif
                   onConfirmer={() => deleteNote(note.id)}
                   trigger={
-                    <Button variant="ghost" size="icon" aria-label="Supprimer">
+                    <Button variant="ghost" size="icon" className="zone-tactile" aria-label="Supprimer">
                       <Trash2 className="size-4" />
                     </Button>
                   }

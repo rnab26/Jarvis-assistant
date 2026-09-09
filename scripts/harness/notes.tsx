@@ -119,7 +119,10 @@ function BancDesNotes() {
                   note={n}
                   onSubmit={(input) => updateNote(n.id, input)}
                   trigger={
-                    <Button variant="ghost" size="icon" aria-label="Modifier">
+                    // LE BALISAGE DE CETTE LIGNE RECOPIE `src/pages/NotesPage.tsx` (le banc
+                    // ne monte pas la vraie page) : toute retouche de l'une va
+                    // dans l'autre, sinon le banc juge un écran qui n'existe pas.
+                    <Button variant="ghost" size="icon" className="zone-tactile" aria-label="Modifier">
                       <Pencil className="size-4" />
                     </Button>
                   }
@@ -131,7 +134,7 @@ function BancDesNotes() {
                   destructif
                   onConfirmer={() => deleteNote(n.id)}
                   trigger={
-                    <Button variant="ghost" size="icon" aria-label="Supprimer">
+                    <Button variant="ghost" size="icon" className="zone-tactile" aria-label="Supprimer">
                       <Trash2 className="size-4" />
                     </Button>
                   }
