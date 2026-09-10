@@ -8,6 +8,7 @@ import {
   phraseAucuneNotificationDe,
   phraseLectureCoupee,
   phraseNotifications,
+  phraseServiceEndormi,
   phraseServiceInactif,
   type NotificationLue,
 } from "@/lib/notificationsLues"
@@ -92,6 +93,14 @@ export async function lireNotifications(nomApplication?: string): Promise<string
 
   const r = await NotificationsAndroid.lire({ paquet })
   if (!r.disponible) {
+    // Même distinction que pour l'écran (chantier 21cf48d2, mirroré ici par
+    // le 2bdf61d2) : `service_endormi` est une panne (autorisé, pas rebranché
+    // à temps), `service_inactif` est un choix (jamais autorisé). Les
+    // confondre renverrait dans les réglages quelqu'un qui y est déjà passé.
+    if (r.raison === "service_endormi") {
+      noterEcoute("notification_lue", { demandee: nomApplication ?? null, resultat: "service_endormi" })
+      return phraseServiceEndormi()
+    }
     noterEcoute("notification_lue", { demandee: nomApplication ?? null, resultat: "service_inactif" })
     return phraseServiceInactif()
   }

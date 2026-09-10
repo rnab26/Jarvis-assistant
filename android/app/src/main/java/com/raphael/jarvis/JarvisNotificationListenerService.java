@@ -41,10 +41,43 @@ public class JarvisNotificationListenerService extends NotificationListenerServi
 
     private static JarvisNotificationListenerService instance;
 
+    /** Le verrou qui sert à ATTENDRE la connexion, pas seulement à la
+     * constater — même motif que JarvisAccessibiliteService.verrou
+     * (chantier 21cf48d2, 10 sept. 2026), repris ici pour le même défaut :
+     * `actif()` peut rendre null pour un court instant après qu'Android a
+     * tué le processus, alors que Raphaël avait bien accordé l'accès. */
+    private static final Object verrou = new Object();
+
     /** Le service réellement relié, ou null — l'état RÉEL, jamais un réglage :
      * Android peut couper ce service sans que l'application en sache rien. */
     public static JarvisNotificationListenerService actif() {
-        return instance;
+        synchronized (verrou) {
+            return instance;
+        }
+    }
+
+    /**
+     * ATTEND que le service soit relié, jusqu'à maxMs. Rend null s'il ne
+     * l'est toujours pas — voir JarvisAccessibiliteService.attendreActif(),
+     * même mécanisme, même raison d'être.
+     *
+     * NE JAMAIS APPELER DEPUIS LE FIL PRINCIPAL : elle bloque.
+     */
+    public static JarvisNotificationListenerService attendreActif(long maxMs) {
+        synchronized (verrou) {
+            long fin = android.os.SystemClock.uptimeMillis() + maxMs;
+            while (instance == null) {
+                long reste = fin - android.os.SystemClock.uptimeMillis();
+                if (reste <= 0) return null;
+                try {
+                    verrou.wait(reste);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+            return instance;
+        }
     }
 
     /** Vrai si Jarvis est dans la liste des « accès aux notifications »
@@ -65,12 +98,18 @@ public class JarvisNotificationListenerService extends NotificationListenerServi
     @Override
     public void onListenerConnected() {
         super.onListenerConnected();
-        instance = this;
+        // `notifyAll` : c'est lui qui réveille attendreActif().
+        synchronized (verrou) {
+            instance = this;
+            verrou.notifyAll();
+        }
     }
 
     @Override
     public void onListenerDisconnected() {
-        instance = null;
+        synchronized (verrou) {
+            instance = null;
+        }
         super.onListenerDisconnected();
     }
 

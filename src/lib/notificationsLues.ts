@@ -78,6 +78,18 @@ export function phraseServiceInactif(): string {
   return "Je ne peux pas lire tes notifications : l'accès n'est pas activé sur ton téléphone. Ouvre Paramètres › Ce que Jarvis utilise › « Lire tes notifications »."
 }
 
+/**
+ * DEUX CAUSES, DEUX PHRASES — même distinction que ecranTelephone.ts pour le
+ * service d'accessibilité (chantier 21cf48d2). `service_inactif` veut dire
+ * « tu ne m'as pas encore autorisé » ; `service_endormi` veut dire « tu m'as
+ * autorisé, mais Android a endormi le service ». Envoyer quelqu'un dans les
+ * réglages pour la seconde cause, c'est lui dire de refaire ce qu'il a déjà
+ * fait.
+ */
+export function phraseServiceEndormi(): string {
+  return "Je n'ai pas pu lire tes notifications : l'accès est bien autorisé, mais le service ne s'est pas rebranché à temps — Android l'avait endormi. Redemande-le-moi, ça repart souvent tout seul. Si ça revient souvent, ouvre « Ce que Jarvis a le droit de faire » et autorise-moi à ignorer les économies de batterie."
+}
+
 export function phraseApplicationInconnue(nomDemande: string): string {
   return `Je ne trouve pas d'application qui s'appelle "${nomDemande}" sur ton téléphone.`
 }

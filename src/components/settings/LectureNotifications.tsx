@@ -36,6 +36,8 @@ function libelleResultat(resultat: string, compte: number | null): string {
       return "rien à lire"
     case "service_inactif":
       return "accès non activé sur le téléphone"
+    case "service_endormi":
+      return "service endormi par Android, pas rebranché à temps"
     case "app_introuvable":
       return "application introuvable"
     case "coupe":

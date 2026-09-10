@@ -201,6 +201,21 @@ export function erreurDepuisEcoute(
     }
   }
 
+  // Même défaut, même correctif que ecran_action ci-dessus, mirroré le
+  // 10 sept. 2026 sur le service de lecture des notifications (chantier
+  // 2bdf61d2) : `service_endormi` (autorisé, pas rebranché à temps) est une
+  // vraie panne système, `service_inactif` (jamais autorisé) est un choix et
+  // n'entre PAS dans le registre pour la même raison qu'au-dessus.
+  if (evenement === "notification_lue" && texte("resultat") === "service_endormi") {
+    return {
+      categorie: "systeme",
+      titre: "Le service qui permet à Jarvis de lire les notifications s'est endormi",
+      detail:
+        "Android a endormi le service d'accès aux notifications malgré l'autorisation accordée : il ne s'est pas rebranché dans les deux secondes que le plugin lui laisse.",
+      source: "app",
+    }
+  }
+
   // La mise à jour de l'APK. Le 6 sept. 2026, Raphaël est resté devant
   // « 0.0 Mo reçus… » sans que rien nulle part n'en garde la trace : le
   // diagnostic a dû se faire depuis GitHub, à l'aveugle. Ici l'échec se

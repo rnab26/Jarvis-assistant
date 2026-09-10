@@ -21,6 +21,55 @@ import java.util.List;
 @CapacitorPlugin(name = "Notifications")
 public class NotificationsPlugin extends Plugin {
 
+    /**
+     * Combien de temps on laisse au service pour se rebrancher avant de
+     * déclarer forfait — même délai, même raison que
+     * AccessibilitePlugin.DELAI_CONNEXION_MS (chantier 2bdf61d2, 10 sept.
+     * 2026, trouvé en corrigeant le même défaut sur le service d'écran).
+     */
+    private static final long DELAI_CONNEXION_MS = 2000;
+
+    /**
+     * Donne le service au travail demandé, en l'ATTENDANT s'il n'est pas
+     * encore relié — et en distinguant les deux échecs, qui n'appellent pas
+     * la même réponse :
+     *
+     *   service_inactif  Raphaël ne l'a pas autorisé (ou Android l'a coupé).
+     *                     Il faut aller dans les réglages : c'est vrai.
+     *   service_endormi  Il l'a autorisé, mais le service ne s'est pas
+     *                     rebranché à temps. L'envoyer dans les réglages n'y
+     *                     changerait rien — c'est une panne, pas un oubli.
+     *
+     * Les confondre, c'est exactement le défaut déjà corrigé sur
+     * AccessibilitePlugin.avecService() : ne le réintroduis pas ici.
+     */
+    private void avecService(PluginCall call, java.util.function.Consumer<JarvisNotificationListenerService> travail) {
+        JarvisNotificationListenerService dejaLa = JarvisNotificationListenerService.actif();
+        if (dejaLa != null) {
+            travail.accept(dejaLa);
+            return;
+        }
+        if (!JarvisNotificationListenerService.estDeclare(getContext())) {
+            JSObject reponse = new JSObject();
+            reponse.put("disponible", false);
+            reponse.put("raison", "service_inactif");
+            call.resolve(reponse);
+            return;
+        }
+        new Thread(() -> {
+            JarvisNotificationListenerService service =
+                JarvisNotificationListenerService.attendreActif(DELAI_CONNEXION_MS);
+            if (service == null) {
+                JSObject reponse = new JSObject();
+                reponse.put("disponible", false);
+                reponse.put("raison", "service_endormi");
+                call.resolve(reponse);
+                return;
+            }
+            travail.accept(service);
+        }, "jarvis-attente-notifications").start();
+    }
+
     /** L'état réel : autorisé dans les réglages d'Android, et relié. */
     @PluginMethod
     public void etat(PluginCall call) {
@@ -55,15 +104,15 @@ public class NotificationsPlugin extends Plugin {
      */
     @PluginMethod
     public void lire(PluginCall call) {
-        JarvisNotificationListenerService service = JarvisNotificationListenerService.actif();
-        if (service == null) {
-            JSObject reponse = new JSObject();
-            reponse.put("disponible", false);
-            reponse.put("raison", "service_inactif");
-            call.resolve(reponse);
-            return;
-        }
         String paquet = call.getString("paquet", null);
+        avecService(call, (service) -> repondreAvecNotifications(call, service, paquet));
+    }
+
+    private void repondreAvecNotifications(
+        PluginCall call,
+        JarvisNotificationListenerService service,
+        String paquet
+    ) {
         List<JarvisNotificationListenerService.NotificationLue> notifications = service.lireActives(paquet);
 
         JSArray liste = new JSArray();
