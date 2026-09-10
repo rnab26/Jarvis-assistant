@@ -250,6 +250,7 @@ verifier(
   "aucune phrase d'échec ne contient « j'ai appuyé »",
   [
     phraseEcran({ fait: "echec", cause: "service_inactif" }),
+    phraseEcran({ fait: "echec", cause: "service_endormi" }),
     phraseEcran({ fait: "echec", cause: "ecran_change" }),
     phraseEcran({ fait: "echec", cause: "refus" }),
     phraseEcran({ fait: "echec", cause: "app_interdite", application: "Bank Leumi" }),
@@ -380,13 +381,13 @@ verifier(
 const surWhatsApp = erreurDepuisEcoute("ecran_action", {
   commande: "clic",
   cible: "Envoyer",
-  resultat: "service_inactif",
+  resultat: "service_endormi",
   application: "WhatsApp",
 })
 const surYoutube = erreurDepuisEcoute("ecran_action", {
   commande: "clic",
   cible: "la deuxième vidéo",
-  resultat: "service_inactif",
+  resultat: "service_endormi",
   application: "YouTube",
 })
 verifier(
@@ -413,6 +414,50 @@ verifier(
     application: "YouTube",
   })?.titre,
   "un bouton introuvable est spécifique à l'écran, contrairement au service endormi",
+)
+
+// ------------------------- « pas autorisé » et « endormi » ne se disent pas pareil
+//
+// Chantier 21cf48d2, 10 sept. 2026. `journal_ecoute` : trois clics réussis sur
+// « Envoyer » les 6 et 7 sept., puis TROIS « service_inactif » d'affilée, dont
+// un quarante minutes APRÈS qu'il ait réinstallé l'APK. Le diagnostic écrit
+// jusque-là était la batterie. La vraie cause est plus simple : le plugin
+// rendait « service_inactif » dès que son instance statique était nulle,
+// SANS jamais appeler `estDeclare()` — qui existait pourtant depuis le début,
+// documenté pour « distinguer pas autorisé de autorisé mais pas encore
+// démarré ». L'app disait donc « va l'activer » à quelqu'un qui l'avait déjà
+// activé, et c'est exactement le défaut que le projet corrige partout :
+// une PANNE qui se lit comme une ABSENCE.
+const pasAutorise = phraseEcran({ fait: "echec", cause: "service_inactif" })
+const endormi = phraseEcran({ fait: "echec", cause: "service_endormi" })
+verifier(
+  "« pas autorisé » l'envoie dans les réglages",
+  /autoris/i.test(pasAutorise) && /Paramètres/.test(pasAutorise),
+  pasAutorise,
+)
+verifier(
+  "« endormi » ne l'envoie PAS accorder ce qu'il a déjà accordé",
+  !/accorde-le/i.test(endormi) && /rebranch|redis/i.test(endormi),
+  "lui redemander d'activer un service déjà activé est ce qui l'a fait tourner en rond trois jours : " + endormi,
+)
+verifier(
+  "les deux phrases sont différentes",
+  pasAutorise !== endormi,
+  "les confondre est précisément le défaut corrigé",
+)
+
+// Et « pas autorisé » ne va PAS dans le registre : ce n'est pas une panne,
+// c'est un choix de Raphaël. Une ligne qu'il ne peut que fermer rendrait le
+// registre bruyant, donc illisible.
+verifier(
+  "un service non autorisé n'encombre pas le registre des erreurs",
+  erreurDepuisEcoute("ecran_action", {
+    commande: "clic",
+    cible: "Envoyer",
+    resultat: "service_inactif",
+    application: "WhatsApp",
+  }) === null,
+  "seul « endormi » est une panne ; « pas autorisé » est une permission qu'il n'a pas donnée",
 )
 
 console.log("")

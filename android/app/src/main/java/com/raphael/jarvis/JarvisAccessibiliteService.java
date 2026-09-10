@@ -53,8 +53,49 @@ public class JarvisAccessibiliteService extends AccessibilityService {
     /** Le service reellement en vie, ou null. C'est l'etat REEL -- jamais un
      * reglage : Android peut couper un service d'accessibilite sans que
      * l'application en sache rien. */
+    /** Le verrou qui sert a ATTENDRE la connexion, pas seulement a la constater.
+     * Voir attendreActif(). */
+    private static final Object verrou = new Object();
+
     public static JarvisAccessibiliteService actif() {
-        return instance;
+        synchronized (verrou) {
+            return instance;
+        }
+    }
+
+    /**
+     * ATTEND que le service soit relie, jusqu'a maxMs. Rend null s'il ne l'est
+     * toujours pas.
+     *
+     * POURQUOI CETTE ATTENTE EXISTE (chantier 21cf48d2, mesure du 10 sept.
+     * 2026). Le service d'accessibilite et ce plugin vivent dans le MEME
+     * processus, et `instance` n'est posee que par onServiceConnected(). Quand
+     * Android a tue le processus pendant que Raphael etait dans WhatsApp, la
+     * fenetre de Jarvis repart AVANT que le service soit rebranche : `actif()`
+     * rend null pendant ce court instant. L'application concluait alors
+     * « service inactif » et lui disait d'aller l'activer dans les reglages
+     * d'Android -- alors qu'il l'avait deja fait, et que le service allait se
+     * relier une fraction de seconde plus tard.
+     *
+     * NE JAMAIS APPELER DEPUIS LE FIL PRINCIPAL : elle bloque. L'appelant
+     * (AccessibilitePlugin) attend sur un fil a lui, puis repasse sur le fil
+     * principal pour toucher a l'arbre d'accessibilite.
+     */
+    public static JarvisAccessibiliteService attendreActif(long maxMs) {
+        synchronized (verrou) {
+            long fin = android.os.SystemClock.uptimeMillis() + maxMs;
+            while (instance == null) {
+                long reste = fin - android.os.SystemClock.uptimeMillis();
+                if (reste <= 0) return null;
+                try {
+                    verrou.wait(reste);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
+            return instance;
+        }
     }
 
     /** Vrai si notre service est declare dans les reglages d'Android, meme
@@ -77,18 +118,27 @@ public class JarvisAccessibiliteService extends AccessibilityService {
     @Override
     public void onServiceConnected() {
         super.onServiceConnected();
-        instance = this;
+        // `notifyAll` : c'est lui qui reveille attendreActif(). Sans lui,
+        // l'attente irait au bout de son delai alors que le service est la.
+        synchronized (verrou) {
+            instance = this;
+            verrou.notifyAll();
+        }
     }
 
     @Override
     public boolean onUnbind(android.content.Intent intent) {
-        instance = null;
+        synchronized (verrou) {
+            instance = null;
+        }
         return super.onUnbind(intent);
     }
 
     @Override
     public void onDestroy() {
-        instance = null;
+        synchronized (verrou) {
+            instance = null;
+        }
         super.onDestroy();
     }
 

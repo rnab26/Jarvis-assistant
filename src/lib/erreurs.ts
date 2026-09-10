@@ -176,14 +176,20 @@ export function erreurDepuisEcoute(
     // l'écran où on essaie. Une ligne unique, pas une par application
     // touchée — sinon la même panne (Android qui endort le service) se
     // relit comme dix pannes distinctes.
-    if (resultat === "service_inactif") {
+    if (resultat === "service_endormi") {
       return {
         categorie: "systeme",
         titre: "Le service qui permet à Jarvis d'appuyer sur l'écran s'est endormi",
-        detail: "Android a coupé le service d'accessibilité malgré l'autorisation accordée.",
+        detail:
+          "Android a endormi le service d'accessibilité malgré l'autorisation accordée : il ne s'est pas rebranché dans les deux secondes que le plugin lui laisse.",
         source: "app",
       }
     }
+    // `service_inactif` n'entre PAS dans le registre, et c'est voulu : depuis
+    // le 10 sept. 2026 il veut dire « Raphaël ne l'a pas autorisé », ce qui
+    // n'est pas une panne mais un choix. L'y mettre remplirait le registre
+    // d'une ligne qu'il ne peut que fermer, et un registre bruyant n'est plus
+    // lu du tout.
     const ratees = new Set(["introuvable", "ambigu", "rang_trop_grand", "refus", "ecran_change"])
     if (!resultat || !ratees.has(resultat)) return null
     const ou = texte("application") ?? texte("paquet") ?? "une application"

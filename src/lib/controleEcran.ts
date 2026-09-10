@@ -94,14 +94,31 @@ export function reglagesListeNoire(): ReglagesListeNoire {
 /** Exportée pour `garderReponseEcran.ts` (chantier 7d7967b2) : « garde ça »
  * a besoin du texte affiché, pas d'une commande d'écran. Même lecture, même
  * traitement de l'indisponibilité — pas un second chemin. */
-export async function lireEcran(): Promise<LectureEcran | { echec: "service_inactif" | "pas_de_vue" }> {
+export async function lireEcran(): Promise<LectureEcran | { echec: EchecLecture }> {
   return lire()
 }
 
-async function lire(): Promise<LectureEcran | { echec: "service_inactif" | "pas_de_vue" }> {
+/**
+ * Les trois façons de ne pas voir l'écran, et il ne faut pas les confondre :
+ *
+ *   service_inactif  Raphaël ne l'a PAS autorisé. L'envoyer dans les réglages
+ *                    d'Android est la bonne réponse.
+ *   service_endormi  Il l'a autorisé, mais le service ne s'est pas rebranché à
+ *                    temps (le plugin l'attend deux secondes avant de rendre
+ *                    ça). Les réglages n'y changeraient rien : c'est une panne.
+ *   pas_de_vue       Le service répond, mais il n'y a aucune fenêtre à lire.
+ *
+ * Avant le 10 sept. 2026 les deux premières n'en faisaient qu'une, et
+ * l'application disait « va l'activer » à quelqu'un qui l'avait déjà activé.
+ */
+export type EchecLecture = "service_inactif" | "service_endormi" | "pas_de_vue"
+
+async function lire(): Promise<LectureEcran | { echec: EchecLecture }> {
   const r = await Accessibilite.lireEcran()
   if (!r.disponible) {
-    return { echec: r.raison === "service_inactif" ? "service_inactif" : "pas_de_vue" }
+    if (r.raison === "service_inactif") return { echec: "service_inactif" }
+    if (r.raison === "service_endormi") return { echec: "service_endormi" }
+    return { echec: "pas_de_vue" }
   }
   return {
     paquet: r.paquet ?? "",
@@ -134,8 +151,8 @@ export async function agirSurEcran(
   const lecture = await lire()
   if ("echec" in lecture) {
     noterEcoute("ecran_action", { commande, cible: cible ?? null, resultat: lecture.echec })
-    if (lecture.echec === "service_inactif") {
-      return { message: phraseEcran({ fait: "echec", cause: "service_inactif" }), ok: false }
+    if (lecture.echec === "service_inactif" || lecture.echec === "service_endormi") {
+      return { message: phraseEcran({ fait: "echec", cause: lecture.echec }), ok: false }
     }
     return { message: "Je n'arrive pas à voir l'écran en ce moment, donc je n'ai rien touché.", ok: false }
   }

@@ -36,6 +36,82 @@ public class AccessibilitePlugin extends Plugin {
         principal.post(travail);
     }
 
+    /**
+     * Combien de temps on laisse au service pour se rebrancher avant de
+     * declarer forfait.
+     *
+     * MESURE QUI A FAIT ECRIRE CECI (chantier 21cf48d2, 10 sept. 2026) :
+     * `journal_ecoute` montre trois `ecran_action` reussis les 6 et 7 sept.
+     * (clic sur « Envoyer » dans WhatsApp), puis TROIS « service_inactif »
+     * d'affilee -- dont un le 8 sept. a 21h50, quarante minutes APRES qu'il
+     * ait reinstalle l'APK. Le diagnostic ecrit jusque-la etait la batterie.
+     * Il etait faux, ou du moins incomplet : `estDeclare()` existait deja,
+     * documente pour « distinguer pas autorise de autorise mais pas encore
+     * demarre », et AUCUN des quatre chemins qui rendent « service_inactif »
+     * ne l'appelait. L'application disait donc « va l'activer dans les
+     * reglages » a quelqu'un qui l'avait deja active.
+     *
+     * Deux secondes : le rebranchement d'un service d'accessibilite par
+     * Android prend une fraction de seconde. Plus long ferait attendre pour
+     * rien quelqu'un qui n'a vraiment rien active -- mais ce cas-la ne passe
+     * jamais par cette attente, il est ecarte avant par `estDeclare()`.
+     */
+    private static final long DELAI_CONNEXION_MS = 2000;
+
+    private interface AvecService {
+        void faire(JarvisAccessibiliteService service);
+    }
+
+    /**
+     * Donne le service au travail demande, en l'ATTENDANT s'il n'est pas
+     * encore relie -- et en distinguant les deux echecs, qui n'appellent pas
+     * la meme reponse :
+     *
+     *   service_inactif  Raphael ne l'a pas autorise (ou Android l'a coupe).
+     *                    Il faut aller dans les reglages : c'est vrai.
+     *   service_endormi  Il l'a autorise, mais le service ne s'est pas
+     *                    rebranche a temps. L'envoyer dans les reglages n'y
+     *                    changerait rien -- c'est une panne, pas un oubli.
+     *
+     * Les confondre, c'est ce que l'application faisait depuis le debut.
+     */
+    private void avecService(
+        PluginCall call,
+        java.util.function.Function<String, JSObject> echec,
+        AvecService travail
+    ) {
+        JarvisAccessibiliteService dejaLa = JarvisAccessibiliteService.actif();
+        if (dejaLa != null) {
+            surLeFilPrincipal(() -> travail.faire(dejaLa));
+            return;
+        }
+        if (!JarvisAccessibiliteService.estDeclare(getContext())) {
+            call.resolve(echec.apply("service_inactif"));
+            return;
+        }
+        // Sur un fil A NOUS : attendreActif() bloque, et bloquer le fil
+        // principal fige l'interface de Jarvis pendant deux secondes.
+        new Thread(() -> {
+            JarvisAccessibiliteService service =
+                JarvisAccessibiliteService.attendreActif(DELAI_CONNEXION_MS);
+            if (service == null) {
+                call.resolve(echec.apply("service_endormi"));
+                return;
+            }
+            surLeFilPrincipal(() -> travail.faire(service));
+        }, "jarvis-attente-accessibilite").start();
+    }
+
+    /** L'echec d'une lecture : `disponible` faux, plus la raison. */
+    private static JSObject echecLecture(String raison) {
+        return new JSObject().put("disponible", false).put("raison", raison);
+    }
+
+    /** L'echec d'un geste : `ok` faux, plus la raison. */
+    private static JSObject echecGeste(String raison) {
+        return new JSObject().put("ok", false).put("raison", raison);
+    }
+
     /** L'etat reel : autorise dans les reglages d'Android, et relie. */
     @PluginMethod
     public void etat(PluginCall call) {
@@ -67,15 +143,7 @@ public class AccessibilitePlugin extends Plugin {
 
     @PluginMethod
     public void lireEcran(PluginCall call) {
-        JarvisAccessibiliteService service = JarvisAccessibiliteService.actif();
-        if (service == null) {
-            JSObject reponse = new JSObject();
-            reponse.put("disponible", false);
-            reponse.put("raison", "service_inactif");
-            call.resolve(reponse);
-            return;
-        }
-        surLeFilPrincipal(() -> {
+        avecService(call, AccessibilitePlugin::echecLecture, (service) -> {
             JarvisAccessibiliteService.Lecture lecture = service.lire();
             JSObject reponse = new JSObject();
             if (lecture == null) {
@@ -105,14 +173,11 @@ public class AccessibilitePlugin extends Plugin {
 
     @PluginMethod
     public void cliquer(PluginCall call) {
-        JarvisAccessibiliteService service = JarvisAccessibiliteService.actif();
-        if (service == null) {
-            call.resolve(new JSObject().put("resultat", "service_inactif"));
-            return;
-        }
         int index = call.getInt("index", -1);
         String libelle = call.getString("libelle", "");
-        surLeFilPrincipal(() -> {
+        // Un clic rend son verdict dans `resultat`, pas dans `ok` : les deux
+        // echecs du service y prennent donc la place d'un verdict.
+        avecService(call, (raison) -> new JSObject().put("resultat", raison), (service) -> {
             JarvisAccessibiliteService.ResultatClic r = service.cliquer(index, libelle);
             String mot;
             switch (r) {
@@ -127,34 +192,23 @@ public class AccessibilitePlugin extends Plugin {
 
     @PluginMethod
     public void defiler(PluginCall call) {
-        JarvisAccessibiliteService service = JarvisAccessibiliteService.actif();
-        if (service == null) {
-            call.resolve(new JSObject().put("ok", false).put("raison", "service_inactif"));
-            return;
-        }
         boolean bas = Boolean.TRUE.equals(call.getBoolean("bas", true));
-        surLeFilPrincipal(() ->
+        avecService(call, AccessibilitePlugin::echecGeste, (service) ->
             call.resolve(new JSObject().put("ok", service.defiler(bas)))
         );
     }
 
     @PluginMethod
     public void retour(PluginCall call) {
-        JarvisAccessibiliteService service = JarvisAccessibiliteService.actif();
-        if (service == null) {
-            call.resolve(new JSObject().put("ok", false).put("raison", "service_inactif"));
-            return;
-        }
-        surLeFilPrincipal(() -> call.resolve(new JSObject().put("ok", service.retour())));
+        avecService(call, AccessibilitePlugin::echecGeste, (service) ->
+            call.resolve(new JSObject().put("ok", service.retour()))
+        );
     }
 
     @PluginMethod
     public void accueil(PluginCall call) {
-        JarvisAccessibiliteService service = JarvisAccessibiliteService.actif();
-        if (service == null) {
-            call.resolve(new JSObject().put("ok", false).put("raison", "service_inactif"));
-            return;
-        }
-        surLeFilPrincipal(() -> call.resolve(new JSObject().put("ok", service.accueil())));
+        avecService(call, AccessibilitePlugin::echecGeste, (service) ->
+            call.resolve(new JSObject().put("ok", service.accueil()))
+        );
     }
 }

@@ -316,7 +316,7 @@ export function phraseEcran(
     | { fait: "retour" }
     | { fait: "accueil" }
     | { fait: "lu"; lecture: LectureEcran }
-    | { fait: "echec"; cause: DesignationRatee | "service_inactif" | "app_interdite" | "ecran_change" | "rien_a_defiler" | "refus" ; lecture?: LectureEcran; application?: string },
+    | { fait: "echec"; cause: DesignationRatee | "service_inactif" | "service_endormi" | "app_interdite" | "ecran_change" | "rien_a_defiler" | "refus" ; lecture?: LectureEcran; application?: string },
 ): string {
   switch (resultat.fait) {
     case "clic":
@@ -337,8 +337,16 @@ export function phraseEcran(
     }
     case "echec": {
       const cause = resultat.cause
+      // DEUX CAUSES, DEUX PHRASES — elles n'en faisaient qu'une avant le
+      // 10 sept. 2026, et celle qui restait supposait toujours l'autorisation
+      // accordée. Envoyer quelqu'un dans les réglages alors qu'il y est déjà
+      // passé, c'est la même faute que de lui dire « tu n'as personne » quand
+      // on n'a pas regardé son répertoire.
       if (cause === "service_inactif") {
-        return "Je n'ai pas pu appuyer sur l'écran : le service qui me le permet semble endormi par Android, même s'il est autorisé. Éteins-le puis rallume-le dans Paramètres, « Appuyer sur l'écran à ta place ». Si ça revient, ouvre aussi « Ce que Jarvis a le droit de faire » et autorise-moi à ignorer les économies de batterie."
+        return "Je n'ai pas pu appuyer sur l'écran : tu ne m'y as pas encore autorisé. Ouvre Paramètres, « Appuyer sur l'écran à ta place », et accorde-le — c'est un accès spécial d'Android, je ne peux pas me l'attribuer moi-même."
+      }
+      if (cause === "service_endormi") {
+        return "Je n'ai pas pu appuyer sur l'écran : le service est bien autorisé, mais il ne s'est pas rebranché à temps — Android l'avait endormi. Redis-le-moi, ça repart souvent tout seul. Si ça revient souvent, ouvre « Ce que Jarvis a le droit de faire » et autorise-moi à ignorer les économies de batterie."
       }
       if (cause === "app_interdite") {
         return `Je ne touche pas à ${resultat.application ?? "cette application"} : tu l'as mise dans les applications où je n'ai pas le droit d'appuyer.`
