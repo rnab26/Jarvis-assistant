@@ -2,7 +2,7 @@
 // `node --experimental-strip-types` pour sa vérification, qui ne connaît pas
 // l'alias « @/ » de Vite. Les imports de TYPES, eux, sont effacés à la
 // compilation et peuvent garder l'alias.
-import { marqueurDe, type Marqueur } from "./marqueurChantier.ts"
+import { A_TRIER, marqueurDe, type Etiquette } from "./marqueurChantier.ts"
 import { cleTheme } from "./themeChantier.ts"
 import type { DevItem, DevPriority, DevSection, DevStatus } from "@/types/database"
 
@@ -144,7 +144,9 @@ export interface FiltreCockpit {
   statut: FiltreStatut
   recherche: string
   /** Marqueur en tête des notes (« à cadrer », « libre »…), ou null. */
-  marqueur: Marqueur | null
+  /** `null` = on ne filtre pas. `A_TRIER` = ceux qui n'ont AUCUN marqueur —
+   * c'est un état à part entière, pas l'absence de filtre. */
+  marqueur: Etiquette | null
 }
 
 export const FILTRE_VIDE: FiltreCockpit = {
@@ -172,7 +174,10 @@ export function filtrerChantiers(items: DevItem[], filtre: FiltreCockpit): DevIt
   return items.filter((item) => {
     if (cleSection !== null && cleTheme(sectionDe(item)) !== cleSection) return false
     if (filtre.statut !== "tous" && item.status !== filtre.statut) return false
-    if (filtre.marqueur !== null && marqueurDe(item) !== filtre.marqueur) return false
+    // `?? A_TRIER` : sans lui, « à trier » ne sélectionnerait jamais rien —
+    // marqueurDe rend `null` pour ces chantiers-là, et `null` veut déjà dire
+    // « pas de filtre » un peu plus haut.
+    if (filtre.marqueur !== null && (marqueurDe(item) ?? A_TRIER) !== filtre.marqueur) return false
     if (mots.length === 0) return true
     const foin = normaliserRecherche(`${item.title} ${item.notes ?? ""} ${sectionDe(item)}`)
     // Tous les mots doivent être là : deux mots tapés servent à réduire, pas

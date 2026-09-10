@@ -19,7 +19,7 @@ import {
   grouperParSection,
   themesSansSection,
 } from "../src/lib/sections.ts"
-import { compterMarqueurs, marqueurDe, notesSansMarqueur } from "../src/lib/marqueurChantier.ts"
+import { A_TRIER, compterMarqueurs, marqueurDe, notesSansMarqueur } from "../src/lib/marqueurChantier.ts"
 import type { DevItem, DevPriority, DevSection, DevStatus } from "../src/types/database.ts"
 
 let echecs = 0
@@ -254,6 +254,63 @@ verifier(
 verifier(
   "et ce filtre est bien signalé comme actif",
   filtreActif({ ...FILTRE_VIDE, marqueur: "a_cadrer" }),
+)
+
+// ── CE QUI N'A AUCUN MARQUEUR DOIT SE COMPTER ET SE FILTRER ──
+//
+// Chantier ba8bd119. Mesuré le 9 sept. 2026 : six de ses dix-huit chantiers
+// ouverts n'en portaient aucun. Invisibles DEUX FOIS — aucune passe autonome
+// ne les prend (elle exige `libre`), et « Où j'en suis » ne les compte ni
+// dans « pour toi » ni dans « dort ». Trois étaient en priorité haute, et
+// l'un était une dictée de Raphaël jamais triée.
+//
+// LES QUATRE EN-TÊTES CI-DESSOUS SONT COPIÉS DE SES VRAIS CHANTIERS, jamais
+// inventés : c'est le piège payé par `verifier-sessions-autonomes.ts` le
+// 6 sept., dont les cas d'essai étaient des paraphrases de ses propres
+// expressions régulières — le contrôle vérifiait que la regex se reconnaît
+// elle-même.
+const NON_TRIES: [string, string][] = [
+  [
+    "l'appui long (marqueur au 75e caractère)",
+    "[JARVIS EST DANS LA LISTE — CONFIRMÉ PAR SES CAPTURES DU 6 SEPT., 8 h 23. IL RESTE À CONSTATER QUE LA FENÊTRE ÉCOUTE.] CE QUI A MARCHÉ : le VoiceInteractionService.",
+  ],
+  ["les reçus (« CADRE » sans le R)", "[CADRE — Raphael a tranche le 3 sept. au soir. Fiche …]"],
+  [
+    "la musique (dit son état autrement)",
+    "[LIVRE COTE CODE LE 6 SEPT., PAS ENCORE CONFIRME PAR RAPHAEL — ne pas archiver avant.] SES MOTS…",
+  ],
+  ["le test en direct (aucun crochet)", "MISE A JOUR DU 6 SEPT. AU MATIN par claude/voix-ecoute-0509…"],
+]
+for (const [quoi, notes] of NON_TRIES) {
+  verifier(
+    `${quoi} : sans marqueur reconnu, donc à trier`,
+    marqueurDe(chantier(quoi, null, "todo", "normal", false, notes)) === null,
+    "si celui-ci change, c'est que la lecture des marqueurs a bougé — refais la mesure sur ses vrais chantiers",
+  )
+}
+
+const nonTries = NON_TRIES.map(([q, n]) => chantier(q, null, "todo", "normal", false, n))
+const compteTrier = compterMarqueurs(nonTries)
+verifier(
+  "un chantier sans marqueur est COMPTÉ, au lieu de disparaître",
+  compteTrier.length === 1 && compteTrier[0].marqueur === A_TRIER && compteTrier[0].nb === 4,
+  JSON.stringify(compteTrier),
+)
+verifier(
+  "et « à trier » vient en DERNIER, après ce qui attend vraiment Raphaël",
+  compterMarqueurs([
+    ...nonTries,
+    chantier("x", null, "todo", "normal", false, "[À CADRER AVEC RAPHAËL]"),
+  ]).at(-1)?.marqueur === A_TRIER,
+  "c'est du rangement, pas une urgence : il ne doit pas passer devant « à cadrer »",
+)
+verifier(
+  "filtrer sur « à trier » ne garde que ceux-là",
+  filtrerChantiers(
+    [...nonTries, chantier("marqué", null, "todo", "normal", false, "[LIBRE]")],
+    { ...FILTRE_VIDE, marqueur: A_TRIER },
+  ).length === 4,
+  "sans le repli sur A_TRIER dans filtrerChantiers, ce filtre ne rendrait jamais rien",
 )
 
 // L'aperçu d'une note ne doit pas répéter en toutes lettres ce que

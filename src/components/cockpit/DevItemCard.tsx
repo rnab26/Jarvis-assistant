@@ -11,6 +11,7 @@ import { HistoriqueChantier } from "@/components/cockpit/HistoriqueChantier"
 import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
 import {
   EXPLICATION_MARQUEUR,
+  A_TRIER,
   LIBELLE_MARQUEUR,
   VARIANTE_MARQUEUR,
   marqueurDe,
@@ -205,15 +206,26 @@ export function DevItemCard({
             >
               {LIBELLE_MARQUEUR[marqueur]}
             </Badge>
+          ) : PRIORITY_LABEL[item.priority] ? (
+            <Badge
+              variant={PRIORITY_VARIANT[item.priority]}
+              className="shrink-0 px-1.5 text-xs font-normal"
+            >
+              {PRIORITY_LABEL[item.priority]}
+            </Badge>
           ) : (
-            PRIORITY_LABEL[item.priority] && (
-              <Badge
-                variant={PRIORITY_VARIANT[item.priority]}
-                className="shrink-0 px-1.5 text-xs font-normal"
-              >
-                {PRIORITY_LABEL[item.priority]}
-              </Badge>
-            )
+            /* NI marqueur NI priorité à dire : la place est libre, et c'est
+               justement le chantier que personne ne prendra — aucune session
+               ne le voit, « Où j'en suis » ne le compte nulle part. Le
+               compteur en tête du tableau les porte tous, y compris ceux qui
+               affichent « Haute » ici : c'est lui qu'il faut regarder, pas
+               cette ligne. Six chantiers étaient dans ce cas le 9 sept. 2026. */
+            <Badge
+              variant={VARIANTE_MARQUEUR[A_TRIER]}
+              className="shrink-0 px-1.5 text-xs font-normal"
+            >
+              {LIBELLE_MARQUEUR[A_TRIER]}
+            </Badge>
           )}
           {questionsEnAttente > 0 && (
             <Badge variant="default" className="shrink-0 px-1.5 text-xs font-normal">

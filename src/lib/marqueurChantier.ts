@@ -34,7 +34,33 @@ export type Marqueur =
   | "doublon"
   | "libre"
 
-export const LIBELLE_MARQUEUR: Record<Marqueur, string> = {
+/**
+ * CE QUI N'A PAS ENCORE ÉTÉ TRIÉ — et pourquoi ça mérite d'être visible.
+ *
+ * Ce n'est PAS un marqueur : personne ne l'écrit dans une note, `marqueurDe`
+ * ne le rend jamais. C'est l'ABSENCE de marqueur, rendue visible.
+ *
+ * MESURÉ le 9 sept. 2026 sur ses 18 chantiers ouverts (chantier ba8bd119) :
+ * SIX n'en portaient aucun. Ils étaient invisibles DEUX FOIS — une passe
+ * autonome ne les prend pas (elle exige `libre`), et « Où j'en suis » ne les
+ * compte ni dans « pour toi » ni dans « dort ». Quatre disaient pourtant leur
+ * état en toutes lettres, dont trois en priorité haute, et l'un d'eux était
+ * une dictée de Raphaël jamais triée. Ils ont dormi des jours sans que rien
+ * ne le signale.
+ *
+ * ON SIGNALE, ON NE CLASSE JAMAIS TOUT SEUL — même choix que pour les
+ * doublons déjà en base et les thèmes non déclarés. Un classement automatique
+ * mettrait un marqueur dans le dos de celui qui a écrit la note, et le pire
+ * cas est un `libre` posé à tort : une session autonome coderait alors un
+ * sujet qu'il voulait trancher d'abord (chantier 4d0ebdf3, 6 sept.).
+ */
+export const A_TRIER = "a_trier" as const
+
+/** Ce qui s'affiche en étiquette sur une ligne : un marqueur, ou son absence. */
+export type Etiquette = Marqueur | typeof A_TRIER
+
+export const LIBELLE_MARQUEUR: Record<Etiquette, string> = {
+  a_trier: "à trier",
   pour_raphael: "pour toi",
   a_cadrer: "à cadrer",
   a_constater: "à constater",
@@ -45,7 +71,9 @@ export const LIBELLE_MARQUEUR: Record<Marqueur, string> = {
 }
 
 /** Ce que le marqueur veut dire, en une phrase, sur la carte dépliée. */
-export const EXPLICATION_MARQUEUR: Record<Marqueur, string> = {
+export const EXPLICATION_MARQUEUR: Record<Etiquette, string> = {
+  a_trier:
+    "Aucun marqueur : aucune session ne le prendra, et il n'est compté nulle part. Dis s'il est libre, ou s'il attend une décision de toi.",
   pour_raphael: "Ce n'est pas du code : c'est une action de ton côté.",
   a_cadrer: "Une session ne le prendra pas : il attend une décision de toi.",
   a_constater:
@@ -56,8 +84,10 @@ export const EXPLICATION_MARQUEUR: Record<Marqueur, string> = {
   libre: "Spécifié de bout en bout : la prochaine session peut le prendre.",
 }
 
-export const VARIANTE_MARQUEUR: Record<Marqueur, "default" | "secondary" | "destructive" | "outline"> =
+export const VARIANTE_MARQUEUR: Record<Etiquette, "default" | "secondary" | "destructive" | "outline"> =
   {
+    // Discret exprès : ce n'est pas une alerte, c'est un rangement qui manque.
+    a_trier: "secondary",
     pour_raphael: "destructive",
     a_cadrer: "destructive",
     a_constater: "destructive",
@@ -147,15 +177,18 @@ export function notesSansMarqueur(notes: string | null): string | null {
 }
 
 /** Combien de chantiers portent chaque marqueur, dans l'ordre d'affichage. */
-export function compterMarqueurs(items: DevItem[]): { marqueur: Marqueur; nb: number }[] {
-  const compte = new Map<Marqueur, number>()
+export function compterMarqueurs(items: DevItem[]): { marqueur: Etiquette; nb: number }[] {
+  const compte = new Map<Etiquette, number>()
   for (const item of items) {
-    const m = marqueurDe(item)
-    if (m) compte.set(m, (compte.get(m) ?? 0) + 1)
+    // L'absence de marqueur est comptée comme le reste : c'est tout l'objet
+    // de A_TRIER. Sans cette ligne, six chantiers sur dix-huit ne figuraient
+    // dans aucun compte, donc nulle part.
+    const m = marqueurDe(item) ?? A_TRIER
+    compte.set(m, (compte.get(m) ?? 0) + 1)
   }
   // Ce qui attend Raphaël d'abord : c'est la question qu'il se pose en
   // ouvrant le cockpit.
-  const ordre: Marqueur[] = [
+  const ordre: Etiquette[] = [
     "pour_raphael",
     "a_cadrer",
     "a_constater",
@@ -163,6 +196,8 @@ export function compterMarqueurs(items: DevItem[]): { marqueur: Marqueur; nb: nu
     "reporte",
     "libre",
     "doublon",
+    // En dernier : c'est du rangement, pas une urgence.
+    A_TRIER,
   ]
   return ordre.filter((m) => compte.has(m)).map((m) => ({ marqueur: m, nb: compte.get(m)! }))
 }
