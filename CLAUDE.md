@@ -3439,6 +3439,18 @@ Cette course-là existait d'ailleurs déjà et a été refermée avec : on avale
 (sa décision l'emporte), et plus personne ne disait à l'écran que c'était
 fini. Le drapeau `avalee` tient la promesse.
 
+**Deux trous du même genre trouvés en faisant ce chantier, corrigés avec.** Le
+premier est cette course-là : on avale le « fermee » en promettant une reprise,
+il appuie sur arrêter dans l'intervalle (sa décision l'emporte), et plus
+personne ne disait à l'écran que c'était fini. Le drapeau `avalee` tient la
+promesse. Le second est pire parce qu'il est muet : **s'il arrête pendant que
+la session se CONNECTE encore**, `arreter()` ne peut rien clore — `courante`
+est encore nul — et la session qui aboutit juste après n'a plus personne pour
+la fermer. Le micro reste pris, le WebSocket ouvert, et
+`definirLiveActifNatif(false)` n'est jamais appelé : la veille de l'autre
+fenêtre se tait pour toujours. D'où le `if (arretDemande)` juste après
+l'`await demarrerSessionLive`.
+
 **Ce qui précède une fermeture part maintenant avec elle.** Les deux premières
 occurrences n'ont pu être rapprochées qu'à la main, en relisant les lignes
 voisines — et ce qu'on ne relève pas à l'instant ne se retrouve plus après.

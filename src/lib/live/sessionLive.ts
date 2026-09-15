@@ -575,6 +575,16 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
             ev.onEtat(etat, detail, parRaphael)
           },
         })
+        // IL A ARRÊTÉ PENDANT QU'ON SE CONNECTAIT. `arreter()` ne pouvait rien
+        // fermer à cet instant — `courante` était encore nul —, et la session
+        // qui vient d'aboutir n'a plus personne pour la clore : le micro
+        // resterait pris, le WebSocket ouvert, et `definirLiveActifNatif(false)`
+        // jamais appelé, donc la veille de l'AUTRE fenêtre se tairait pour
+        // toujours. Même famille que le cœur resté sur « connexion », plus bas.
+        if (arretDemande) {
+          courante.arreter()
+          return
+        }
         const fin = await courante.finie
         const decision = deciderReprise({
           raison: fin.raison,

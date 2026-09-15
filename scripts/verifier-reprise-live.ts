@@ -206,6 +206,18 @@ verifier(
   "un seuil recopié ici diverge de repriseLive.ts sans que rien ne le signale",
 )
 
+/** UN ARRÊT PENDANT LA CONNEXION FERME QUAND MÊME LA SESSION. `arreter()` ne
+ * peut rien clore tant que `demarrerSessionLive` n'a pas rendu la main : la
+ * session qui aboutit ensuite n'a plus personne pour la fermer, le micro reste
+ * pris, et `definirLiveActifNatif(false)` n'est jamais appelé — donc la veille
+ * de l'autre fenêtre se tait pour toujours. Défaut antérieur à ce chantier,
+ * trouvé en le faisant. */
+verifier(
+  "un arrêt demandé pendant la connexion ferme la session qui aboutit quand même",
+  /if \(arretDemande\) \{\s*\n\s*courante\.arreter\(\)/.test(maintenir),
+  "sans ça le micro et le WebSocket restent ouverts indéfiniment, et rien ne le dit",
+)
+
 /** LE CŒUR NE RESTE JAMAIS SUR « CONNEXION » DEVANT RIEN. On avale le
  * « fermee » pour promettre une reprise ; si elle n'a pas lieu — il appuie sur
  * arrêter dans l'intervalle, et sa décision l'emporte sur la nôtre —, plus
