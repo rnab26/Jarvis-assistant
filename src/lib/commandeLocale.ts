@@ -13,6 +13,7 @@ import {
 } from "./entrainement.ts"
 import { completionExpiree, reponseCategorie, reponseDate, type TacheEnAttente } from "./tacheDateEtCategorie.ts"
 import { urlDansLaPhrase } from "./documentLien.ts"
+import { porteUneSecondeDemande } from "./secondeDemande.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 import type { Category } from "@/types/database"
 
@@ -275,6 +276,30 @@ function decouper(phrase: string): { titre: string; notes: string | null } {
  * Traduit une phrase en actions, ou renvoie null si elle sort de ce que les
  * règles savent lire.
  */
+/**
+ * Une queue gloutonne qui porte une SECONDE demande ne se traite pas ici.
+ *
+ * Le 15 sept. 2026, « supprime la tâche Rappel Jonathan Ducamp ET crée la
+ * tâche Rappel Jonathan Dukan… » a rendu `source: "appareil"` et pour toute
+ * réponse « "Rappel Jonathan Ducamp" supprimée. » : le `(.+)$` de la règle
+ * avait avalé la seconde demande, et `meilleur()` avait quand même retrouvé
+ * la tâche par ressemblance. Moitié de sa phrase perdue, sans un mot.
+ *
+ * Rendre `null` ici fait retomber toute la phrase sur le serveur, à qui la
+ * consigne dit de rendre les deux actions dans l'ordre. C'est volontairement
+ * le seul effet : on ne comprend pas plus, on se tait mieux.
+ *
+ * N'EST PAS POSÉ SUR LES RÈGLES DE RECHERCHE NI D'ITINÉRAIRE, et ce n'est
+ * pas un oubli : là, ce qui suit le « et » fait partie de la QUESTION posée
+ * (« lance une recherche via Perplexity et demande-lui combien… »), rien
+ * n'est perdu, et les renvoyer au serveur consommerait pour rien le quota
+ * gratuit que la reconnaissance locale existe justement pour épargner.
+ */
+function queueSimple(reste: string | undefined): string | null {
+  if (!reste) return null
+  return porteUneSecondeDemande(reste) ? null : reste
+}
+
 export function interpreterLocalement(
   phrase: string,
   ctx: ContexteLocal,
@@ -406,9 +431,11 @@ export function interpreterLocalement(
     /^(?:ajoute|rajoute|cree|mets|note|prends?|programme|planifie)\s+(?:un |une |le |la |mon |ma )?(?:rendez-vous|rdv|reunion|evenement)\s*(.*)$/,
   )
   if (ajoutRdv) {
-    const { date, heure, motsRetires } = lireQuand(ajoutRdv[1], maintenant)
+    const resteRdv = queueSimple(ajoutRdv[1])
+    if (!resteRdv) return null
+    const { date, heure, motsRetires } = lireQuand(resteRdv, maintenant)
     if (!date) return null // un rendez-vous sans date n'a pas de sens
-    const titre = titreDepuis(retirerMots(ajoutRdv[1], motsRetires)) || "Rendez-vous"
+    const titre = titreDepuis(retirerMots(resteRdv, motsRetires)) || "Rendez-vous"
     return [
       {
         action: "add_calendar_event",
@@ -434,7 +461,9 @@ export function interpreterLocalement(
     /^(?:(?:dans (?:les|mes) (?:chantiers|taches de developpement)[^,]*,?\s*)?(?:ajouter?|rajouter?|creer?|noter?|nouveau|nouvelle|lance[rz]?|demarrer?|ouvre|ouvrir))\s+(?:un |une |le |la |moi un |moi une )?(?:chantier|tache de developpement)\b\s*(?:a traiter\s*)?(?:et (?:vas-y )?(?:ajoute|rajoute)(?:-le)?\.?\s*)?(?:j'aimerais\s+)?:?\s*(.+)$/,
   )
   if (ajoutChantier) {
-    const brut = titreDepuis(ajoutChantier[1])
+    const resteChantier = queueSimple(ajoutChantier[1])
+    if (!resteChantier) return null
+    const brut = titreDepuis(resteChantier)
     if (!brut || brut.length < 3) return null
     const { titre, notes } = decouper(brut)
     return [{ action: "add_dev_item", title: titre, notes }]
@@ -444,7 +473,10 @@ export function interpreterLocalement(
     /^(?:modifie|change|mets|passe|monte|descends)\s+(?:la priorite (?:du|de la|de l')\s*)?(?:chantier\s+)?(.+?)\s+(?:en|a|comme)\s+(?:priorite\s+)?(haute?|elevee?|tres elevee?|urgente?|normale?|basse?|faible)\b/,
   )
   if (prioriteChantier) {
-    const cible = prioriteChantier[1].replace(/^(?:la priorite (?:du|de la|de l')\s*)?/, "").trim()
+    const cible = queueSimple(
+      prioriteChantier[1].replace(/^(?:la priorite (?:du|de la|de l')\s*)?/, "").trim(),
+    )
+    if (!cible) return null
     const chantier = meilleur(cible, ctx.chantiers)
     if (!chantier) return null
     const mot = prioriteChantier[2]
@@ -456,7 +488,9 @@ export function interpreterLocalement(
     /^(?:archive|termine|clos|ferme)\s+(?:le\s+)?chantier\s+(.+)$/,
   )
   if (archiveChantier) {
-    const chantier = meilleur(archiveChantier[1], ctx.chantiers)
+    const cibleArchive = queueSimple(archiveChantier[1])
+    if (!cibleArchive) return null
+    const chantier = meilleur(cibleArchive, ctx.chantiers)
     if (!chantier) return null
     return [{ action: "archive_dev_item", item_id: chantier.id }]
   }
@@ -471,14 +505,18 @@ export function interpreterLocalement(
     /^(?:marque|passe|mets|coche)\s+(?:la tache\s+)?(.+?)\s+(?:comme\s+)?(?:faite?|terminee?|finie?|ok)\b/,
   )
   if (fait) {
-    const tache = meilleur(fait[1], ctx.taches)
+    const cibleFaite = queueSimple(fait[1])
+    if (!cibleFaite) return null
+    const tache = meilleur(cibleFaite, ctx.taches)
     if (!tache) return null
     return [{ action: "update_task", task_id: tache.id, changes: { status: "done" } }]
   }
 
   const suppr = texte.match(/^(?:supprime|efface|enleve|annule)\s+(?:la\s+)?tache\s+(.+)$/)
   if (suppr) {
-    const tache = meilleur(suppr[1], ctx.taches)
+    const cibleSuppr = queueSimple(suppr[1])
+    if (!cibleSuppr) return null
+    const tache = meilleur(cibleSuppr, ctx.taches)
     if (!tache) return null
     return [{ action: "delete_task", task_id: tache.id }]
   }
@@ -715,9 +753,11 @@ export function interpreterLocalement(
     // « note que Dylan est le client de Melissa » est une information sur
     // quelqu'un, pas une tâche : le module ne s'en occupe pas.
     if (/^que\b/.test(ajoutTache[1])) return null
+    const resteTache = queueSimple(ajoutTache[1])
+    if (!resteTache) return null
 
-    const { date, heure, motsRetires } = lireQuand(ajoutTache[1], maintenant)
-    const brut = titreDepuis(retirerMots(ajoutTache[1], motsRetires))
+    const { date, heure, motsRetires } = lireQuand(resteTache, maintenant)
+    const brut = titreDepuis(retirerMots(resteTache, motsRetires))
     if (!brut || brut.length < 3) return null
     const { titre, notes } = decouper(brut)
 

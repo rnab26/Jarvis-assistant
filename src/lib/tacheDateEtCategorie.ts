@@ -117,9 +117,27 @@ export function reponseCategorie(phrase: string, categories: Category[]): Repons
   if (ACCEPTER.test(nu)) return { verdict: "accepter" }
   if (REFUSER.test(nu)) return { verdict: "refuser" }
   // Une phrase longue est une nouvelle demande, pas une réponse courte.
-  if (nu.split(" ").length > 6) return null
+  //
+  // HUIT MOTS, ET C'EST MESURÉ SUR SA VRAIE DICTÉE. Le 15 sept. 2026 à
+  // 17:32:57 il a répondu « non mets-le dans la catégorie Leads » — sept
+  // mots. À six, cette phrase-là était refusée, elle partait au serveur, et
+  // le serveur (qui ne sait pas qu'une tâche attend) a proposé de déplacer
+  // « la tâche pour la banque Apoalim », créée sept heures plus tôt.
+  //
+  // Ce n'est PAS ce seuil qui protège contre une nouvelle demande prise pour
+  // une réponse : c'est le « reste vide » ci-dessous. Une phrase qui dit
+  // autre chose laisse forcément des mots derrière elle, quelle que soit sa
+  // longueur. Le seuil n'est qu'une sortie rapide.
+  if (nu.split(" ").length > 8) return null
 
-  const MOTS_INTRODUCTION = /\b(?:non|plutot|mets|mets la|mettre|range|range la|la|dans|en|plus|tot)\b/g
+  // Les mots qui n'ajoutent rien à une réponse de rangement. « partie » et
+  // « section » y sont parce que c'est SON vocabulaire, relu dans ses vraies
+  // dictées : « dans la partie perso », « dans la partie lead » — il dit
+  // « partie » au moins aussi souvent que « catégorie ». Et « le » y manquait
+  // alors que « la » y était : « mets-LE dans… » échouait là où « mets-LA
+  // dans… » passait.
+  const MOTS_INTRODUCTION =
+    /\b(?:non|plutot|mets|mets la|mettre|range|range la|le|la|les|dans|en|plus|tot|categorie|partie|section|liste)\b/g
   for (const categorie of categories) {
     const nomNu = aplatir(categorie.name)
     if (!nomNu || !nu.includes(nomNu)) continue

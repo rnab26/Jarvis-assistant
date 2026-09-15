@@ -389,6 +389,14 @@ jobs:
       - name: Le titre d'une tâche est ce qu'il y a à faire
         run: node --experimental-strip-types scripts/verifier-titre-tache.ts
 
+      # « il fait 50% dans la première tâche et 50% en recréant une autre ».
+      # Mesuré : la moitié perdue l'était sur l'APPAREIL, pas au serveur —
+      # une queue gloutonne avalait la seconde demande, et `meilleur()`
+      # retrouvait quand même la cible par ressemblance. Ce contrôle garde
+      # surtout le silence : ses vrais titres portent des « et » innocents.
+      - name: Une phrase à deux demandes rend la main au serveur
+        run: node --experimental-strip-types scripts/verifier-seconde-demande.ts
+
       # Les applications proposées doivent être celles du TÉLÉPHONE. Une
       # liste écrite dans le code est fausse le jour où il installe autre
       # chose — et « en aucun cas il y a Waze » est exactement ça.
