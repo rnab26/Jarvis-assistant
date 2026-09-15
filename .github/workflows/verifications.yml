@@ -291,6 +291,14 @@ jobs:
       - name: Dicter deux fois ne crée pas deux chantiers
         run: node --experimental-strip-types scripts/verifier-doublon-vocal.ts
 
+      # Même garde-fou côté tâches — trouvé le 15 sept. 2026 : deux appels de
+      # add_task à 3 s d'intervalle, pour la même demande, ont créé deux
+      # tâches homonymes. Sans avertissement, la confusion qui a suivi a fini
+      # par en faire supprimer une par erreur (celle qui portait la bonne
+      # échéance).
+      - name: Dicter deux fois ne crée pas deux tâches homonymes
+        run: node --experimental-strip-types scripts/verifier-doublon-tache.ts
+
       # Le garde-fou des commandes mal entendues ne doit jamais redevenir la
       # confirmation bloquante que Raphaël a écartée.
       - name: La fenêtre d'annulation des actions du téléphone

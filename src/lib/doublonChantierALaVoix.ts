@@ -2,7 +2,7 @@
 // qui ne connaît pas l'alias « @/ » de Vite.
 import { chantiersProches } from "./doublonChantier.ts"
 import { motsUtiles } from "./suggestionTheme.ts"
-import type { DevItem } from "@/types/database"
+import type { DevItem, Task } from "@/types/database"
 
 /**
  * « Ça existe déjà », mais à la voix.
@@ -102,5 +102,59 @@ export function deciderDoublonVocal(
     verdict: "creer_en_avertissant",
     proche: meilleur.item,
     phrase: `Ça ressemble à « ${meilleur.item.title} », déjà ouvert. Je l'ajoute quand même.`,
+  }
+}
+
+/**
+ * La même protection, pour ses tâches perso — trouvée en manquant le 15
+ * sept. 2026 : en mode Live, deux appels rapprochés de add_task pour la
+ * même demande ont créé DEUX tâches au titre identique. Sans avertissement,
+ * rien ne l'a averti — il l'a découvert en corrigeant l'orthographe d'un
+ * nom, et la commande de correction suivante a fini par supprimer la
+ * mauvaise des deux (celle qui portait la bonne échéance).
+ *
+ * Mêmes seuils que `deciderDoublonVocal` — ils sont réglés sur ses données
+ * réelles de chantiers, mais la logique (proximité de vocabulaire, refuser
+ * une redite quasi littérale, avertir en dessous) vaut identiquement pour
+ * une tâche. Une tâche n'a pas d'archive : le signal « déjà traité » est
+ * `status === "done"`, pas `archived_at`.
+ */
+export type DecisionDoublonTache =
+  | { verdict: "creer" }
+  | { verdict: "creer_en_avertissant"; proche: Task; phrase: string }
+  | { verdict: "refuser"; proche: Task; phrase: string }
+
+export function deciderDoublonTache(
+  titre: string,
+  notes: string | null | undefined,
+  items: Task[],
+): DecisionDoublonTache {
+  const proches = chantiersProches(`${titre} ${notes ?? ""}`.trim(), items, 3)
+  const meilleur = proches[0]
+  if (!meilleur || meilleur.score < SEUIL_AVERTISSEMENT) return { verdict: "creer" }
+
+  const faite = meilleur.item.status === "done"
+  const assezLong = motsUtiles(titre).length >= MOTS_MINIMUM_REFUS
+
+  if (!faite && assezLong && meilleur.score >= SEUIL_REFUS) {
+    return {
+      verdict: "refuser",
+      proche: meilleur.item,
+      phrase: `Tu as déjà une tâche « ${meilleur.item.title} » qui dit la même chose — je ne la recrée pas. Si tu en veux vraiment une seconde, dis-le clairement.`,
+    }
+  }
+
+  if (faite) {
+    return {
+      verdict: "creer_en_avertissant",
+      proche: meilleur.item,
+      phrase: `Attention : « ${meilleur.item.title} » est déjà marquée faite. Je l'ajoute quand même.`,
+    }
+  }
+
+  return {
+    verdict: "creer_en_avertissant",
+    proche: meilleur.item,
+    phrase: `Ça ressemble à « ${meilleur.item.title} », déjà dans ta liste. Je l'ajoute quand même.`,
   }
 }

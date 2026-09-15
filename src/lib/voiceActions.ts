@@ -5,7 +5,7 @@ import { phraseHorsLigne } from "@/lib/fileEnAttente"
 import type { Brouillon, MessageComplet, MessageResume, Recu } from "@/lib/googleGmail"
 import { estDernierMessage, nomExpediteur } from "@/lib/gmailVoix"
 import { cleTheme } from "@/lib/themeChantier"
-import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
+import { deciderDoublonTache, deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
 import { ecrireReglage } from "@/lib/reglages"
 import { listeReglagesVoix, trouverOptionReglageVoix, trouverReglageVoix } from "@/lib/reglagesVoix"
 import {
@@ -562,6 +562,13 @@ export async function executeVoiceAction(
         return phraseSupposition(suppose.titre, suppose.indice)
       }
 
+      // « Ça existe déjà », côté tâches — trouvé le 15 sept. 2026 : en Live,
+      // deux appels rapprochés de add_task pour la même demande avaient créé
+      // deux tâches au titre identique, sans qu'aucun mot n'en avertisse.
+      // Même garde-fou, même seuils que pour les chantiers (deciderDoublonVocal).
+      const doublonTache = deciderDoublonTache(action.title, action.notes, tasks)
+      if (doublonTache.verdict === "refuser") return doublonTache.phrase
+
       const resultat = await addTask({
         title: action.title,
         notes: action.notes ?? null,
@@ -595,6 +602,7 @@ export async function executeVoiceAction(
       const catName = categoryName(categories, action.category_id)
       const heure = action.due_date && action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
       let reply = `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
+      if (doublonTache.verdict === "creer_en_avertissant") reply = `${doublonTache.phrase} ${reply}`
 
       // Sans date, ou sans catégorie évidente : on le DIT, sans bloquer la
       // commande (chantier eeca8cca). `resultat` est absent quand rien n'a
@@ -731,19 +739,26 @@ export async function executeVoiceAction(
 
     case "update_task": {
       const task = tasks.find((t) => t.id === action.task_id)
-      const label = task?.title ?? "la tâche"
+      // Trouvé le 15 sept. 2026 : un task_id qui ne correspond à AUCUNE
+      // tâche connue passait quand même — la confirmation disait « "la
+      // tâche" mise à jour » (le label générique de repli), et l'écriture
+      // partait dans le vide sans que rien ne le signale. Comme
+      // screen_action, qui REFUSE plutôt que de cliquer au hasard : une
+      // référence qu'on ne peut pas retrouver n'exécute rien.
+      if (!task) return "Je ne retrouve pas cette tâche. Redis-moi laquelle, avec un détail de plus."
       if (riensAModifier(action.changes)) {
-        return `Je n'ai pas compris ce qu'il faut changer sur "${label}". Redis-moi ce que je modifie.`
+        return `Je n'ai pas compris ce qu'il faut changer sur "${task.title}". Redis-moi ce que je modifie.`
       }
       await updateTask(action.task_id, action.changes)
-      if (action.changes.status === "done") return `"${label}" marquée comme faite.`
-      return `"${label}" mise à jour.`
+      if (action.changes.status === "done") return `"${task.title}" marquée comme faite.`
+      return `"${task.title}" mise à jour.`
     }
 
     case "delete_task": {
       const task = tasks.find((t) => t.id === action.task_id)
+      if (!task) return "Je ne retrouve pas cette tâche. Redis-moi laquelle, avec un détail de plus."
       await deleteTask(action.task_id)
-      return `"${task?.title ?? "Tâche"}" supprimée.`
+      return `"${task.title}" supprimée.`
     }
 
     case "list_dev_items": {
@@ -785,9 +800,13 @@ export async function executeVoiceAction(
 
     case "update_dev_item": {
       const item = devItems.find((i) => i.id === action.item_id)
-      const label = item?.title ?? "le chantier"
+      // Même garde-fou que update_task/delete_task ci-dessus, et pour la
+      // même raison : un item_id introuvable ne doit exécuter aucune
+      // écriture, jamais retomber sur un label générique qui masque un
+      // no-op.
+      if (!item) return "Je ne retrouve pas ce chantier. Redis-moi lequel, avec un détail de plus."
       if (riensAModifier(action.changes)) {
-        return `Je n'ai pas compris ce qu'il faut changer sur "${label}". Redis-moi ce que je modifie.`
+        return `Je n'ai pas compris ce qu'il faut changer sur "${item.title}". Redis-moi ce que je modifie.`
       }
       await updateDevItem(action.item_id, action.changes)
       // La confirmation nomme ce qui a vraiment changé : sans ça, un
@@ -797,20 +816,22 @@ export async function executeVoiceAction(
       if (action.changes.status) dits.push(STATUS_LABEL[action.changes.status])
       if (action.changes.priority) dits.push(PRIORITY_LABEL[action.changes.priority])
       if (action.changes.theme) dits.push(`thème ${action.changes.theme}`)
-      if (dits.length > 0) return `"${label}" passé en ${dits.join(", ")}.`
-      return `"${label}" mis à jour.`
+      if (dits.length > 0) return `"${item.title}" passé en ${dits.join(", ")}.`
+      return `"${item.title}" mis à jour.`
     }
 
     case "delete_dev_item": {
       const item = devItems.find((i) => i.id === action.item_id)
+      if (!item) return "Je ne retrouve pas ce chantier. Redis-moi lequel, avec un détail de plus."
       await deleteDevItem(action.item_id)
-      return `"${item?.title ?? "Chantier"}" supprimé du cockpit.`
+      return `"${item.title}" supprimé du cockpit.`
     }
 
     case "archive_dev_item": {
       const item = devItems.find((i) => i.id === action.item_id)
+      if (!item) return "Je ne retrouve pas ce chantier. Redis-moi lequel, avec un détail de plus."
       await archiveDevItem(action.item_id)
-      return `"${item?.title ?? "Chantier"}" marqué fait et archivé.`
+      return `"${item.title}" marqué fait et archivé.`
     }
 
     case "add_dev_section": {
@@ -916,8 +937,9 @@ export async function executeVoiceAction(
 
     case "delete_place_reminder": {
       const reminder = placeReminders.find((p) => p.id === action.reminder_id)
+      if (!reminder) return "Je ne retrouve pas ce rappel de lieu. Redis-moi lequel."
       await deletePlaceReminder(action.reminder_id)
-      return `Rappel pour "${reminder?.place ?? "ce lieu"}" supprimé.`
+      return `Rappel pour "${reminder.place}" supprimé.`
     }
 
     case "list_pronunciations": {
@@ -933,8 +955,9 @@ export async function executeVoiceAction(
 
     case "delete_pronunciation": {
       const p = pronunciations.find((x) => x.id === action.pronunciation_id)
+      if (!p) return "Je ne retrouve pas cette prononciation. Redis-moi laquelle."
       await deletePronunciation(action.pronunciation_id)
-      return `Prononciation "${p?.veut_dire ?? "supprimée"}" oubliée.`
+      return `Prononciation "${p.veut_dire}" oubliée.`
     }
 
     case "list_calendar_events": {
