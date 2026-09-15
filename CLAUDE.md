@@ -2624,6 +2624,7 @@ node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les do
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
 node --experimental-strip-types scripts/verifier-archive-taches.ts  # une tâche cochée va dans l'archive de sa catégorie, et rien ne se perd entre les deux, sans réseau
 node --experimental-strip-types scripts/verifier-coupure-reseau.ts  # une coupure de connexion ne s'annonce jamais comme une réponse du serveur, et « Réessayer » ne part jamais tout seul, sans réseau
+node --experimental-strip-types scripts/verifier-bouton-maj.ts  # on ne propose JAMAIS une mise à jour quand il n'y en a pas, et un téléchargement figé ne dure pas dix minutes, sans réseau
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, et le repère « déjà vu », sans réseau
 ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà vu » suit son compte : non-recul côté SQL et cloisonnement RLS
 node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâche dictée hors réseau ne se perd pas et ne se dédouble pas, sans réseau
@@ -3112,6 +3113,81 @@ correspondant, remis en place immédiatement après).
 s'installe sans fenêtre — à confirmer par Raphaël après une installation
 manuelle de cette version (qui redemandera encore confirmation UNE fois),
 puis la suivante devrait passer sans rien demander.
+
+## Ne JAMAIS proposer une mise à jour quand il n'y en a pas (15 sept. 2026)
+
+Sa capture, où il entoure les deux ensemble : un bouton NOIR « Mettre à jour »
+collé au badge « À jour ». Ses mots : « ya confusion car ca propose de mettre
+la version a jour alors que cest deja a jour ».
+
+**Vérifié côté GitHub au même instant, pas supposé** : la release
+`latest-debug` était `build: 281 / commit: 26e43f5`, exactement ce qu'il
+faisait tourner, et `26e43f5` était le dernier commit de la branche. **Il n'y
+avait rien à installer.** Il a appuyé — c'est la seule chose raisonnable
+devant un bouton plein — et téléchargé 11,1 Mo d'APK sur sa 4G pour rien.
+
+**La cause, lue dans le code** : la mise à jour rapide n'est possible que
+lorsqu'une version ATTEND (`useMajWeb` ne calcule `verdict` que si
+`status === "update-available"`). Dès qu'on est à jour, la condition
+retombait donc sur la branche « APK » et affichait son bouton en action
+PRINCIPALE. Le badge disait vrai, le bouton disait le contraire, à deux
+centimètres l'un de l'autre.
+
+`src/lib/boutonMaj.ts` est **pur** et porte la seule décision qui compte :
+`principal` n'est vrai **que** quand une version attend vraiment. À jour, le
+bouton devient discret et s'appelle « Réinstaller l'application » — il dit ce
+qu'il FAIT, au lieu de promettre une nouveauté qui n'existe pas —, avec une
+phrase qui explique pourquoi il est encore là. Pendant la vérification et
+quand GitHub est injoignable : **aucune action proposée**, on ne devine pas
+une réinstallation de 11 Mo.
+
+**Le banc de l'écran mesure ce cas** (`verifier-reglages-web.mjs`, « à jour :
+aucun bouton ne propose de mettre à jour »), essayé à l'envers : remettre
+l'ancien comportement le fait rougir avec le libellé trouvé. Attention, le
+banc fabriquait un état impossible en vrai (`verdict.possible` alors que
+`status` vaut `up-to-date`) — la décision reste juste dans les deux cas, et
+c'est le but d'un module pur.
+
+### Un téléchargement FIGÉ n'est pas un téléchargement lent (même jour)
+
+Capture précédente du même jour : « 1% · 0.1 / 11.1 Mo », bouton grisé, plus
+rien ne bouge. **Le garde-fou du 6 sept. ne pouvait PAS se déclencher** : il
+testait `recus <= 0`, et 0,1 Mo était déjà arrivé. Une fois le premier octet
+passé, plus aucune sortie de secours avant les **dix minutes** de
+`TIMEOUT_MS` — c'est-à-dire exactement la panne muette qu'on croyait avoir
+corrigée, d'un cran plus loin.
+
+Ce qui compte n'est donc pas le NIVEAU du compteur, c'est qu'il **BOUGE** :
+`DELAI_SANS_PROGRES_MS` (20 s sans un octet de plus, quel que soit le niveau)
+bascule sur le téléchargement direct. **La PAUSE d'Android est exclue de ce
+garde-fou**, et c'est voulu : Android l'annonce avec sa raison, l'écran le
+dit, et reprendre par-dessus doublerait le téléchargement au lieu de le
+sauver.
+
+**Et un téléchargement s'ARRÊTE** (`annuler()`, drapeau `volatile` relu dans
+la boucle de suivi ET dans le repli, qui tourne sur son propre fil ; remis à
+faux à chaque départ, sinon un arrêt demandé la fois d'avant tuerait le
+suivant avant qu'il commence). Sans ça, la seule sortie était d'attendre dix
+minutes ou de tuer l'application.
+
+Faute de SDK Android ici, `verifier-bouton-maj.ts` LIT le code — et vise la
+CONDITION et l'APPEL, jamais la présence du mot. Essayé à l'envers : remettre
+`recus <= 0`, retirer l'exclusion de la pause ou l'annulation du repli fait
+rougir trois contrôles.
+
+**Ça touche `android/` : il lui faut une vraie APK pour en profiter.** Le
+reste (le bouton, les versions dépliées, « Arrêter ») est du `src/` et arrive
+par la mise à jour rapide.
+
+### Et les trois versions se voient sans déplier quand elles divergent
+
+« Y'a plus de voyant rouge pour savoir si on n'est pas à jour. » Le bloc
+« Versions » ne s'ouvrait que si `status === "update-available"` ; il s'ouvre
+maintenant aussi dès que l'APK installée n'a pas le même numéro que la
+dernière publiée. Ce n'est pas forcément un problème — une mise à jour rapide
+suffit tant que le natif n'a pas changé — mais c'est la seule façon de
+répondre à « pourquoi il me redemande une mise à jour alors que je viens d'en
+faire une » sans avoir à deviner.
 
 ## Télécharger l'APK : DownloadManager ne peut pas être le seul chemin
 

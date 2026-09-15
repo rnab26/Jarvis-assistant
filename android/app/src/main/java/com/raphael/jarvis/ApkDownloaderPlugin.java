@@ -57,6 +57,41 @@ public class ApkDownloaderPlugin extends Plugin {
      */
     private static final long DELAI_SANS_OCTET_MS = 20 * 1000;
 
+    /**
+     * ET LE MEME DELAI SANS LE MOINDRE PROGRES, quel que soit le nombre
+     * d'octets deja recus.
+     *
+     * Raphael, 15 sept. 2026, capture a l'appui : « 1% · 0.1 / 11.1 Mo »,
+     * bouton grise, ca ne bouge plus. Le garde-fou du 6 sept. ne pouvait PAS
+     * se declencher : il testait `recus <= 0`, et 0,1 Mo etait deja arrive.
+     * Une fois le premier octet passe, plus aucune sortie de secours avant
+     * les dix minutes de TIMEOUT_MS — c'est-a-dire exactement la panne muette
+     * qu'on croyait avoir corrigee, d'un cran plus loin.
+     *
+     * Ce qui compte n'est donc pas le NIVEAU du compteur, c'est qu'il BOUGE.
+     */
+    private static final long DELAI_SANS_PROGRES_MS = 20 * 1000;
+
+    /**
+     * ARRETER UN TELECHARGEMENT EN COURS.
+     *
+     * Sa capture du 15 sept. 2026 : bouton grise « Telechargement... », barre
+     * a 1%. Sans ce chemin, le seul moyen d'en sortir etait d'attendre les
+     * dix minutes de TIMEOUT_MS ou de tuer l'application. Tout ce qui
+     * telecharge, partout, sait s'arreter — c'est le jeu complet attendu, pas
+     * une option.
+     *
+     * `volatile` : pose depuis le fil de l'interface, lu depuis la boucle de
+     * suivi ET depuis le fil du repli.
+     */
+    private static volatile boolean annulationDemandee = false;
+
+    @PluginMethod
+    public void annuler(PluginCall call) {
+        annulationDemandee = true;
+        call.resolve();
+    }
+
     @PluginMethod
     public void hasInstallPermission(PluginCall call) {
         JSObject result = new JSObject();
@@ -91,6 +126,10 @@ public class ApkDownloaderPlugin extends Plugin {
             call.reject("Permission d'installation manquante.");
             return;
         }
+
+        // Remis a faux A CHAQUE depart : sinon un arret demande la fois
+        // precedente tuerait le telechargement suivant avant qu'il commence.
+        annulationDemandee = false;
 
         Context context = getContext();
         File targetDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
@@ -142,6 +181,11 @@ public class ApkDownloaderPlugin extends Plugin {
         // "je télécharge et il ne se passe rien".
         Handler handler = new Handler(Looper.getMainLooper());
         final long debut = System.currentTimeMillis();
+        // Le dernier niveau vu et QUAND on l'a vu : c'est la seule facon de
+        // distinguer « lent » de « fige ». Des tableaux d'un element parce
+        // qu'on les modifie depuis le Runnable anonyme ci-dessous.
+        final long[] dernierNiveau = { -1 };
+        final long[] dernierProgresA = { debut };
         handler.post(new Runnable() {
             @Override
             public void run() {
@@ -186,17 +230,44 @@ public class ApkDownloaderPlugin extends Plugin {
                     notifyListeners("progression", progres);
                 }
 
-                // RIEN N'EST ARRIVE. Vingt secondes sans un octet : ce n'est
-                // pas un reseau lent, c'est un telechargement qui ne partira
-                // pas. On abandonne DownloadManager et on le fait nous-memes
-                // plutot que de le laisser devant une barre vide.
-                if (recus <= 0 && System.currentTimeMillis() - debut > DELAI_SANS_OCTET_MS) {
+                if (annulationDemandee) {
                     try {
                         downloadManager.remove(downloadId);
                     } catch (Throwable ignore) {
                         // rien a faire : au pire la ligne reste dans la file
                     }
-                    telechargerNousMemes(call, url, targetFile, "aucun_octet");
+                    call.reject("Telechargement arrete.");
+                    return;
+                }
+
+                // LE COMPTEUR A-T-IL BOUGE ? On le note des qu'il avance ;
+                // c'est ce repere, et pas le temps total, qui dit si le
+                // telechargement est fige.
+                if (recus > dernierNiveau[0]) {
+                    dernierNiveau[0] = recus;
+                    dernierProgresA[0] = System.currentTimeMillis();
+                }
+
+                // RIEN N'ARRIVE PLUS. Vingt secondes sans le moindre octet de
+                // plus — que le compteur soit a zero (6 sept.) ou a 0,1 Mo sur
+                // 11,1 (15 sept., sa capture) : ce n'est pas un reseau lent,
+                // c'est un telechargement qui n'aboutira pas. On abandonne
+                // DownloadManager et on le fait nous-memes plutot que de le
+                // laisser devant une barre qui ne bouge plus.
+                //
+                // La PAUSE est exclue, et c'est voulu : Android l'annonce avec
+                // sa raison (« en attente du reseau »), l'ecran le DIT, et
+                // reprendre nous-memes par-dessus doublerait le telechargement
+                // au lieu de le sauver.
+                if (status != DownloadManager.STATUS_PAUSED
+                        && System.currentTimeMillis() - dernierProgresA[0] > DELAI_SANS_PROGRES_MS) {
+                    try {
+                        downloadManager.remove(downloadId);
+                    } catch (Throwable ignore) {
+                        // rien a faire : au pire la ligne reste dans la file
+                    }
+                    telechargerNousMemes(
+                        call, url, targetFile, recus <= 0 ? "aucun_octet" : "fige_a_" + recus);
                     return;
                 }
 
@@ -298,6 +369,10 @@ public class ApkDownloaderPlugin extends Plugin {
                     long derniereAnnonce = 0;
                     int lus;
                     while ((lus = entree.read(tampon)) != -1) {
+                        if (annulationDemandee) {
+                            call.reject("Telechargement arrete.");
+                            return;
+                        }
                         sortie.write(tampon, 0, lus);
                         recus += lus;
                         // Une annonce tous les 200 Ko : assez pour que la

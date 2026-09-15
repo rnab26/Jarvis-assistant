@@ -273,6 +273,9 @@ jobs:
       - name: Une coupure réseau ne se présente pas comme une réponse du serveur
         run: node --experimental-strip-types scripts/verifier-coupure-reseau.ts
 
+      - name: On ne propose pas une mise à jour quand il n'y en a pas
+        run: node --experimental-strip-types scripts/verifier-bouton-maj.ts
+
       - name: Ce qui a bougé depuis le dernier passage
         run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
 

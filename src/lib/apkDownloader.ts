@@ -23,6 +23,10 @@ interface ApkDownloaderPlugin {
   hasInstallPermission(): Promise<{ granted: boolean }>
   openInstallPermissionSettings(): Promise<void>
   downloadAndInstall(options: { url: string }): Promise<void>
+  /** Arrêter le téléchargement en cours. Sans lui, la seule sortie était
+   * d'attendre les dix minutes du délai maximum — sa capture du 15 sept.,
+   * bouton grisé sur une barre à 1 %. */
+  annuler(): Promise<void>
   /** Le dernier recours : ouvrir le lien dans le navigateur du téléphone. Un
    * <a href download> ordinaire ne sort jamais de la WebView — Capacitor
    * l'intercepte. */

@@ -11,6 +11,7 @@ import type { PublishedBuild, UpdateStatus, Verdict } from "@/hooks/useUpdateChe
 import { ApkDownloader, type ProgressionTelechargement } from "@/lib/apkDownloader"
 import { noterEcoute } from "@/lib/journalEcoute"
 import { cn } from "@/lib/utils"
+import { boutonMaj, pourquoiCeBouton } from "@/lib/boutonMaj"
 import { formatBuildDate, versionInstallee } from "@/lib/version"
 
 const isNative = Capacitor.isNativePlatform()
@@ -226,6 +227,26 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
   }
 
   const majRapidePossible = verdict?.possible === true
+
+  /**
+   * QUEL bouton, et surtout lequel ne doit PAS crier — sa capture du 15 sept.
+   * 2026, où il entoure ensemble un bouton noir « Mettre à jour » et le badge
+   * « À jour ». La décision vit dans un module pur parce qu'elle a été fausse
+   * en silence : à jour, l'écran proposait quand même 11,1 Mo d'APK en action
+   * principale, et il a téléchargé pour rien sur sa 4G.
+   */
+  const bouton = boutonMaj({ natif: isNative, etat: status, majRapidePossible })
+  const raisonDuBouton = pourquoiCeBouton(bouton.action, status)
+
+  // L'APK installée n'est pas celle qui est publiée : ce n'est pas forcément
+  // un problème (une mise à jour rapide suffit tant que le natif n'a pas
+  // changé), mais ça doit se VOIR sans déplier — c'est la seule façon de
+  // comprendre l'écran quand il ne dit pas ce qu'on attend.
+  const versionsDiscordantes =
+    isNative &&
+    etat.identiteApk?.build != null &&
+    published?.buildNumber != null &&
+    etat.identiteApk.build !== published.buildNumber
   const enCours = etape !== null
 
   return (
@@ -250,7 +271,11 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
             ne servent qu'à comprendre un DÉSACCORD entre ce qui tourne et ce
             qui est publié : dépliés quand une version attend, repliés sinon —
             mais toujours atteignables en un appui, jamais supprimés. */}
-        <details className="w-full" open={status === "update-available"}>
+        {/* Dépliées dès que les trois identités ne concordent PAS, pas
+            seulement quand une version attend : « pourquoi il me redemande une
+            mise à jour alors que je viens d'en faire une » ne se répond qu'en
+            voyant les trois nombres côte à côte. */}
+        <details className="w-full" open={status === "update-available" || versionsDiscordantes}>
           <summary className="cursor-pointer list-none text-sm text-muted-foreground">
             <span className="underline decoration-dotted underline-offset-4">
               Versions ({versionInstallee()})
@@ -277,21 +302,47 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
         </details>
 
         <div className="flex flex-wrap items-center gap-3">
-          {isNative && majRapidePossible ? (
+          {bouton.action === "maj_rapide" && (
             <Button onClick={mettreAJourVite} disabled={enCours}>
               <Zap className="size-4" />
-              {enCours ? ETAPE_LABEL[etape] : "Mettre à jour maintenant"}
+              {enCours ? ETAPE_LABEL[etape] : bouton.libelle}
             </Button>
-          ) : isNative ? (
-            <Button onClick={telecharger} disabled={etatApk === "telechargement"}>
+          )}
+          {(bouton.action === "installer_apk" || bouton.action === "reinstaller_apk") && (
+            <Button
+              // Discret quand rien n'attend : c'est toute la correction. Un
+              // bouton plein à côté de « À jour » se lit comme une nouveauté.
+              variant={bouton.principal ? "default" : "outline"}
+              size={bouton.principal ? "default" : "sm"}
+              onClick={telecharger}
+              disabled={etatApk === "telechargement"}
+            >
               <Download className="size-4" />
-              {etatApk === "telechargement" ? "Téléchargement..." : "Mettre à jour"}
+              {etatApk === "telechargement" ? "Téléchargement..." : bouton.libelle}
             </Button>
-          ) : (
-            <Button asChild>
+          )}
+          {/* ARRÊTER. Un téléchargement qu'on ne peut pas interrompre laisse
+              l'écran grisé jusqu'au délai maximum — c'est exactement ce qu'il
+              a eu sous les yeux le 15 sept. Le .catch() couvre une APK plus
+              ancienne, où la méthode n'existe pas encore. */}
+          {etatApk === "telechargement" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                void ApkDownloader.annuler?.().catch(() => {})
+                setEtatApk("idle")
+                setProgression(null)
+              }}
+            >
+              Arrêter
+            </Button>
+          )}
+          {bouton.action === "telecharger_web" && (
+            <Button asChild variant={bouton.principal ? "default" : "outline"} size={bouton.principal ? "default" : "sm"}>
               <a href={APK_DOWNLOAD_URL} download>
                 <Download className="size-4" />
-                Télécharger la dernière version
+                {bouton.libelle}
               </a>
             </Button>
           )}
@@ -318,6 +369,9 @@ export function MettreAJour({ update, majWeb }: MettreAJourProps) {
         {isNative && verdict && !verdict.possible && (
           <p className="text-sm text-muted-foreground">{verdict.raison}</p>
         )}
+        {/* Et quand rien n'attend, on DIT pourquoi ce bouton existe encore —
+            sinon sa seule présence redit « il y a du neuf », qui est faux. */}
+        {raisonDuBouton && <p className="text-sm text-muted-foreground">{raisonDuBouton}</p>}
 
         {enCours && (
           <div className="flex w-full flex-col gap-1">
