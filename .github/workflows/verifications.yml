@@ -381,6 +381,14 @@ jobs:
       - name: Une tâche sans date se complète, une catégorie suggérée se valide
         run: node --experimental-strip-types scripts/verifier-tache-date-categorie.ts
 
+      # « note un rappel comme quoi je dois rappeler dan Marciano » donnait le
+      # titre « Un rappel comme quoi je dois rappeler dan marciano matin ».
+      # Sa décision du 15 sept. : « Les deux : le modèle écrit, la règle
+      # rattrape ». Ce contrôle garde la règle — et surtout ce qu'elle NE
+      # touche pas, car un titre coupé ment là où un titre long se lit.
+      - name: Le titre d'une tâche est ce qu'il y a à faire
+        run: node --experimental-strip-types scripts/verifier-titre-tache.ts
+
       # Les applications proposées doivent être celles du TÉLÉPHONE. Une
       # liste écrite dans le code est fausse le jour où il installe autre
       # chose — et « en aucun cas il y a Waze » est exactement ça.

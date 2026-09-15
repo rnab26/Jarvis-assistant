@@ -552,6 +552,55 @@ coût réel. Il remonte dans le padding de la carte par une marge négative, don
 son `getBoundingClientRect` annonce 49 points là où la carte n'en gagne que 9.
 Ce qui se mesure, c'est la liste entière.
 
+## Le titre d'une tâche est ce qu'il y a À FAIRE (15 sept. 2026)
+
+Chantier `7b2c99e2`. Sa phrase : « difficile de boucler l'ajout d'une tâche
+sans avoir a faire des retouches manuelles ».
+
+**Mesuré sur ses vraies dictées**, relues dans `echanges` :
+
+    « note un rappel comme quoi je dois rappeler dan Marciano jeudi matin
+      à 10h »   →  titre créé : « Un rappel comme quoi je dois rappeler dan
+                   marciano matin »
+    « rajoute une tâche dans les prélèvements de relancer Moli aujourd'hui
+      avant midi »  →  « Dans les prelevements de relancer moli avant »
+
+Le titre garde les mots de COMMANDE et perd ceux qui portent le sens. Sur une
+liste de trente lignes, « Un rappel comme quoi je dois… » ne se lit pas.
+
+**Sa décision, mot pour mot** : « Les deux : le modèle écrit, la règle
+rattrape ». La consigne du serveur reste la première ligne de défense ;
+`src/lib/titreTache.ts` (**pur**, `verifier-titre-tache.ts`) est le filet — et
+il rattrape aussi les phrases comprises SANS le modèle (`commandeLocale.ts`),
+où aucune consigne ne s'applique.
+
+**Il nettoie un TITRE, pas une phrase.** C'est ce que sa décision dit : le
+modèle écrit d'abord. Appliquer la même règle à la phrase brute reviendrait à
+se passer de lui.
+
+**Et il en fait le moins possible** : une amorce CONNUE, seulement en TÊTE, et
+jamais si ce qui reste fait moins de trois caractères. Un titre coupé ment là
+où un titre long se lit — d'où autant de contrôles sur ce qui ne doit PAS
+bouger (ses vraies tâches : « Rappeler la banque Apoalim », « Acheter coque
+airpods… ») que sur ce qui doit bouger. **Ne mets JAMAIS un verbe d'action
+dans `AMORCES`** (« rappeler », « appeler », « relancer », « acheter ») : ce
+sont eux le titre, et deux contrôles tombent si on le fait.
+
+Le nettoyage est calculé **une seule fois**, en tête du `case "add_task"` de
+`voiceActions.ts`, et c'est `titre` qui sert partout en dessous — la
+supposition, le doublon, l'écriture et la phrase dite à voix haute. Nettoyer
+plus bas ferait cohabiter deux titres : celui écrit en base et celui qu'il
+entend.
+
+**Deux de mes contrôles ne vérifiaient pas ce qu'ils annonçaient**, trouvé en
+les essayant à l'envers. Celui sur la frontière de mot visait « Noteur de
+frais », qu'aucune amorce ne touche : il restait vert quand on retirait la
+frontière. Il vise maintenant « Note quelque chose d'important », où
+« note que » est un vrai préfixe. Et celui sur « la plus longue amorce gagne »
+était protégé par l'ORDRE de la liste, pas par la logique de longueur : il a
+été remplacé par l'invariant qui compte pour lui — ce qui reste ne commence
+jamais par un morceau de commande — qui rougit quand on casse l'un OU l'autre.
+
 ## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
 Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
@@ -2722,6 +2771,7 @@ node --experimental-strip-types scripts/verifier-musique.ts       # « je lance 
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
 node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
+node --experimental-strip-types scripts/verifier-titre-tache.ts  # le titre d'une tâche est ce qu'il y a à faire, et surtout ce qui ne doit PAS être touché, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau

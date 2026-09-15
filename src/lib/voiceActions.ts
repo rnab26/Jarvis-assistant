@@ -35,6 +35,7 @@ import {
   type DerniereCreation,
   type Destination,
 } from "@/lib/ouVaCetteDictee"
+import { titreLisible } from "@/lib/titreTache"
 import type {
   Category,
   Contact,
@@ -542,13 +543,23 @@ export async function executeVoiceAction(
     }
 
     case "add_task": {
+      // LE FILET SUR LE TITRE, sa décision du 15 sept. : « Les deux : le
+      // modèle écrit, la règle rattrape ». La consigne du serveur demande déjà
+      // un titre court ; elle a quand même produit « Un rappel comme quoi je
+      // dois rappeler dan marciano matin » ce jour-là.
+      //
+      // Calculé UNE FOIS, en tête du cas, et c'est `titre` qui sert partout en
+      // dessous — la supposition, le doublon, l'écriture et la phrase dite à
+      // voix haute. Nettoyer plus bas en ferait cohabiter deux titres : celui
+      // écrit en base et celui qu'il entend.
+      const titre = titreLisible(action.title)
       // LA SUPPOSITION, au moment de la dictée. « R un chantier : … »,
       // « pour Claude Code … » : la commande vocale a compris « une tâche »
       // là où il annonçait une demande aux sessions. Jusqu'ici ça atterrissait
       // dans sa liste de courses et n'en ressortait que des jours plus tard,
       // par la carte de rattrapage de l'onglet Tâches. On range au mieux, on
       // le DIT, et il corrige d'un mot — rien n'attend sa réponse.
-      const suppose = suppositionDictee(action.title, action.notes)
+      const suppose = suppositionDictee(titre, action.notes)
       if (suppose) {
         await addDevItem({
           title: suppose.titre,
@@ -566,18 +577,18 @@ export async function executeVoiceAction(
       // deux appels rapprochés de add_task pour la même demande avaient créé
       // deux tâches au titre identique, sans qu'aucun mot n'en avertisse.
       // Même garde-fou, même seuils que pour les chantiers (deciderDoublonVocal).
-      const doublonTache = deciderDoublonTache(action.title, action.notes, tasks)
+      const doublonTache = deciderDoublonTache(titre, action.notes, tasks)
       if (doublonTache.verdict === "refuser") return doublonTache.phrase
 
       const resultat = await addTask({
-        title: action.title,
+        title: titre,
         notes: action.notes ?? null,
         due_date: action.due_date ?? null,
         due_time: action.due_date ? (action.due_time ?? null) : null,
         category_id: action.category_id ?? null,
         status: "todo",
       })
-      derniereCreation = { vers: "tache", titre: action.title, quand: Date.now() }
+      derniereCreation = { vers: "tache", titre: titre, quand: Date.now() }
 
       // NOTÉE, PAS ENREGISTRÉE — et on le DIT (chantier 9476c7a0).
       //
@@ -596,12 +607,12 @@ export async function executeVoiceAction(
       // deux moteurs, et aucun risque de dire la phrase deux fois.
       if (resultat?.enAttente) {
         derniereTacheEnAttente = null
-        return phraseHorsLigne(action.title)
+        return phraseHorsLigne(titre)
       }
 
       const catName = categoryName(categories, action.category_id)
       const heure = action.due_date && action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
-      let reply = `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
+      let reply = `Tâche "${titre}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
       if (doublonTache.verdict === "creer_en_avertissant") reply = `${doublonTache.phrase} ${reply}`
 
       // Sans date, ou sans catégorie évidente : on le DIT, sans bloquer la
@@ -611,12 +622,12 @@ export async function executeVoiceAction(
       const sansDate = !action.due_date
       const suggestion =
         !action.category_id && resultat?.id
-          ? suggererCategorie(action.title, action.notes, tasks, categories)
+          ? suggererCategorie(titre, action.notes, tasks, categories)
           : null
       if (resultat?.id && (sansDate || suggestion)) {
         derniereTacheEnAttente = {
           taskId: resultat.id,
-          titre: action.title,
+          titre: titre,
           sansDate,
           suggestion: suggestion
             ? { categoryId: suggestion.categoryId, categoryName: suggestion.categoryName }
