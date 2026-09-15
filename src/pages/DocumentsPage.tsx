@@ -4,6 +4,7 @@ import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { Button } from "@/components/ui/button"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import { messageEchecImport } from "@/lib/nomDocument"
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} o`
@@ -35,7 +36,7 @@ export function DocumentsPage() {
     try {
       await uploadFile(file)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Échec de l'envoi du document.")
+      setError(messageEchecImport(err instanceof Error ? err.message : ""))
     } finally {
       setBusy(false)
     }
@@ -68,7 +69,7 @@ export function DocumentsPage() {
         </p>
         <Button size="sm" disabled={busy} onClick={() => fileInputRef.current?.click()}>
           <Upload className="size-4" />
-          Importer
+          {busy ? "Envoi…" : "Importer"}
         </Button>
         <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
       </div>

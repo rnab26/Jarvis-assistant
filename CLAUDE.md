@@ -1028,6 +1028,81 @@ même mise à jour a corrigé une description devenue fausse depuis le 7 sept. :
 elle comptait encore Paramètres comme un onglet alors qu'il vit désormais
 dans un bouton en haut à droite.
 
+## Un nom de fichier n'est PAS une clé de stockage (15 sept. 2026)
+
+Chantier `020cb823`. Sa capture : l'onglet Docs en rouge, « Aucun document. »
+en dessous, et ce message tel quel —
+
+    Invalid key: 8bb3be37-…/טופס 18 פופי יוגה 162437_260915_בעמ.pdf
+
+`useDocuments` posait le nom du fichier DIRECTEMENT dans la clé de l'objet
+Supabase Storage. Storage valide cette clé, et son alphabet est étroit.
+
+**MESURÉ CONTRE SON VRAI PROJET, pas lu dans une documentation** — un POST par
+caractère sur `storage/v1/object/documents`, le 15 sept. :
+
+    ACCEPTÉS : ! * ' & $ @ ; : + , ? = ( ) - . _ (espace) et A-Z a-z 0-9
+    REFUSÉS  : ~ ^ % " < > | \ ` { } # [ ]  — et tout non-ASCII.
+
+**L'HÉBREU N'ÉTAIT QUE LA MOITIÉ VISIBLE, et c'est le point à retenir** :
+« facture été.pdf » et « reçu.pdf » rendaient 400 eux aussi. Il vit entre le
+français et l'hébreu. Ne réduis pas `src/lib/nomDocument.ts` à « le support de
+l'hébreu » — le jour où quelqu'un le simplifie sur cette lecture, les accents
+recassent.
+
+**Pourquoi on n'assainit pas bêtement.** Remplacer l'interdit par « _ » tenait
+en une ligne — et son document se serait appelé
+« ____ 18 ____ ____ 162437_260915____.pdf ». Un nom de document sert à le
+RETROUVER ; le perdre en l'enregistrant est une autre façon de ne pas
+l'importer. D'où un échappement réversible `=uXXXX`, `=` étant accepté par
+Storage (mesuré).
+
+**Le marqueur est `=u`, et les deux caractères comptent.** Avec `=` seul,
+l'ancienne clé « budget=2026.pdf » — un nom parfaitement ordinaire — se serait
+affichée « budget….pdf » : `2026` est de l'hexadécimal valide, U+2026 étant les
+points de suspension. On aurait réparé l'import en abîmant l'affichage de ce
+qui était déjà là. **C'est un contrôle qui l'a trouvé**, pas l'usage.
+
+**Un nom déjà ASCII traverse INCHANGÉ** : les documents d'avant ce correctif
+gardent leur clé, il n'y a rien à migrer. Un contrôle garde ce cas — s'il
+tombe, toute la bibliothèque existante devient introuvable.
+
+Les **trois** chemins d'écriture y passent (l'import à l'écran,
+`saveTextDocument` et `saveBinaryDocument` de la voix) : un seul oublié, et le
+défaut revient par la porte de derrière. Le téléchargement pose
+`{ download: nomLisible(...) }` sur l'URL signée — sans quoi le fichier
+enregistré sur le téléphone porterait la clé échappée et serait introuvable
+hors de Jarvis. Et `messageEchecImport` fait que « Invalid key » ne lui est
+**plus jamais** renvoyé : la phrase dit que le défaut vient de Jarvis, pas de
+son fichier, sinon il renomme ses documents pour rien.
+
+### Le banc de l'écran recopiait ce qu'il devait vérifier
+
+`ligneDeDocument()` (dans `nomDocument.ts`) convertit une ligne de Storage en
+ligne de la liste, et **`useDocuments` comme le banc d'essai appellent la
+même**. Tant qu'elle était recopiée des deux côtés, casser la conversion dans
+le hook laissait `verifier-documents-web.mjs` VERT — essayé à l'envers le
+15 sept., c'est le piège du contrôle qui vérifie sa propre paraphrase, déjà
+payé par le sélecteur Playwright, `Filesystem.mkdir` et `com.google.android.as`.
+Maintenant cinq contrôles rougissent.
+
+Pour cela, `JarvisDataContext` est **exporté** : le banc monte la VRAIE
+`DocumentsPage` avec un `documentsState` fabriqué, au lieu d'en recopier une
+version qui finirait par dire autre chose que l'écran. Rien d'autre ne doit le
+consommer directement — `useJarvisData()` reste le chemin de l'application.
+
+Ce que le banc voit et qu'aucun contrôle pur ne peut voir : un nom hébreu
+s'écrit de droite à gauche, et mêlé à des chiffres et à une extension latine il
+passe par l'algorithme bidirectionnel du navigateur, dans une ligne `truncate`
+à côté de deux boutons. Le module pur prouve que le nom revient intact ; seul
+un vrai moteur de rendu dit s'il TIENT sur 390 points de large.
+
+**Vérifié bout en bout contre son Storage** : son nom brut → 400 « Invalid
+key », la clé échappée → 200, et la liste redonne exactement son nom. Les
+objets d'essai ont été supprimés. **Non constaté sur son téléphone** : c'est à
+lui d'importer pour de vrai le PDF de sa capture. C'est du `src/`, la mise à
+jour rapide suffit.
+
 ## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
 
 Raphaël, 6 sept. 2026 : « il a une certaine logique de me demander pour un
@@ -2580,6 +2655,7 @@ node --experimental-strip-types scripts/verifier-ouverture-live.ts  # l'ordre de
 node --experimental-strip-types scripts/verifier-reprise-live.ts  # une fermeture Live subie rouvre la conversation, une panne installée ne boucle pas, sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
+node --experimental-strip-types scripts/verifier-nom-document.ts  # un nom de fichier hébreu ou accentué devient une clé que Storage accepte, et se relit, sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
 node --experimental-strip-types scripts/verifier-live-croise.ts  # la veille se tait quand Live tourne dans l'AUTRE fenêtre (ProtectedShell/AssistantOverlayPage), sans réseau
 node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
@@ -2636,6 +2712,7 @@ node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru d
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
 node scripts/verifier-notes-web.mjs                      # l'onglet Notes : créer/modifier/supprimer avec confirmation/chercher, vrai navigateur
+node scripts/verifier-documents-web.mjs                  # l'onglet Docs : un nom hébreu ou accentué s'affiche et tient sur un écran de téléphone, vrai navigateur
 node scripts/verifier-ios-web.mjs                        # le site dans un vrai moteur WEBKIT à la taille d'un iPhone : rendu, zones tactiles, contrat « sur l'écran d'accueil »
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS

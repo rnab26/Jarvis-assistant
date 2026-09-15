@@ -140,6 +140,13 @@ jobs:
       - name: L'ordre des trois étapes d'une ouverture Live
         run: node --experimental-strip-types scripts/verifier-ouverture-live.ts
 
+      # Sa capture du 15 sept. 2026 : « Invalid key: …/טופס 18 … .pdf », et
+      # aucun document importable. Mesuré contre son vrai Storage : l'hébreu
+      # n'était que la moitié visible — « facture été.pdf » et « reçu.pdf »
+      # échouaient pareil.
+      - name: Un nom de document n'est pas une clé de stockage
+        run: node --experimental-strip-types scripts/verifier-nom-document.ts
+
       # Deux fermetures mesurées (10 et 15 sept. 2026) : « Session fermée :
       # Internal error occurred. », dont une en pleine correction de tâche. La
       # cause est chez Google et reste inconnue ; ce qui suit est à nous — une

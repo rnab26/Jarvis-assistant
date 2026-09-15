@@ -73,7 +73,13 @@ interface JarvisDataValue {
   consommationState: ConsommationState
 }
 
-const JarvisDataContext = createContext<JarvisDataValue | null>(null)
+/**
+ * Exporté pour que les bancs d'essai (`scripts/harness/`) montent les VRAIES
+ * pages avec un état fabriqué, au lieu d'en recopier une version qui finirait
+ * par dire autre chose que l'écran réel. Rien d'autre ne doit le consommer
+ * directement : `useJarvisData()` reste le chemin de l'application.
+ */
+export const JarvisDataContext = createContext<JarvisDataValue | null>(null)
 
 /**
  * Charge une seule fois les tâches, les chantiers de dev et les documents

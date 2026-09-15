@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
+import { cleStockage, ligneDeDocument, nomLisible } from "@/lib/nomDocument"
 import { withErrorToast } from "@/lib/notifyError"
 import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
@@ -40,13 +41,18 @@ export function useDocuments(userId: string | undefined) {
           // Supabase Storage renvoie un objet "placeholder" pour le dossier
           // lui-même quand il est vide — id null permet de le distinguer.
           .filter((f) => f.id !== null)
-          .map((f) => ({
-            name: f.name,
-            path: `${userId}/${f.name}`,
-            size: f.metadata?.size ?? 0,
-            createdAt: f.created_at ?? "",
-            contentType: f.metadata?.mimetype ?? null,
-          })),
+          // La conversion vit dans `nomDocument.ts`, PAS ici : le banc
+          // d'essai de l'écran appelle la même. Recopiée des deux côtés, elle
+          // laissait le banc vert quand on la cassait dans ce hook.
+          .map((f) =>
+            ligneDeDocument(
+              userId,
+              f.name,
+              f.metadata?.size ?? 0,
+              f.created_at ?? "",
+              f.metadata?.mimetype ?? null,
+            ),
+          ),
       )
       setError(null)
     } catch (e) {
@@ -67,9 +73,13 @@ export function useDocuments(userId: string | undefined) {
 
   async function uploadFile(file: File) {
     if (!userId) return
+    // JAMAIS `file.name` directement : Storage refuse la clé et l'import
+    // échouait pour tout nom accentué ou hébreu (mesuré le 15 sept. 2026).
+    const cle = cleStockage(file.name)
+    if (!cle) throw new Error("Ce fichier n'a pas de nom : renomme-le avant de l'importer.")
     const { error } = await supabase.storage
       .from(BUCKET)
-      .upload(`${userId}/${file.name}`, file, { upsert: true })
+      .upload(`${userId}/${cle}`, file, { upsert: true })
     if (error) throw error
     await refresh()
   }
@@ -78,11 +88,11 @@ export function useDocuments(userId: string | undefined) {
   async function saveTextDocument(filename: string, content: string) {
     if (!userId) return
     await withErrorToast("Impossible d'enregistrer le document", async () => {
-      const safeName = filename.trim().endsWith(".txt") ? filename.trim() : `${filename.trim()}.txt`
+      const voulu = filename.trim().endsWith(".txt") ? filename.trim() : `${filename.trim()}.txt`
       const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
-        .upload(`${userId}/${safeName}`, blob, { upsert: true, contentType: "text/plain" })
+        .upload(`${userId}/${cleStockage(voulu)}`, blob, { upsert: true, contentType: "text/plain" })
       if (uploadError) throw uploadError
       await refresh()
     })
@@ -100,7 +110,7 @@ export function useDocuments(userId: string | undefined) {
       const blob = new Blob([octets], { type: contentType ?? "application/octet-stream" })
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
-        .upload(`${userId}/${filename}`, blob, {
+        .upload(`${userId}/${cleStockage(filename)}`, blob, {
           upsert: true,
           contentType: contentType ?? "application/octet-stream",
         })
@@ -110,9 +120,13 @@ export function useDocuments(userId: string | undefined) {
   }
 
   async function getDownloadUrl(path: string) {
+    // `download` nomme le fichier que le téléphone enregistre. Sans lui, il
+    // recevrait la clé échappée (« =05D8=05D5… ») au lieu de son vrai nom, et
+    // un document sauvé serait introuvable hors de Jarvis. L'option existe
+    // bien dans @supabase/storage-js installé (vérifié dans ses types).
     const { data, error } = await supabase.storage
       .from(BUCKET)
-      .createSignedUrl(path, 60)
+      .createSignedUrl(path, 60, { download: nomLisible(path.split("/").pop() ?? "") })
     if (error) throw error
     return data.signedUrl
   }
