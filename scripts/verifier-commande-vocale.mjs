@@ -125,7 +125,7 @@ let PRONONCIATIONS = []
 // compte par projet : sans lui, les dix controles ci-dessous puisent dans le
 // quota du jour de Raphael, et c est ce qui l a laisse sans Jarvis le 3 sept.
 // 2026 a 21h28. Ne l enleve pas.
-async function demander(phrase) {
+async function demander(phrase, extra = {}) {
   const r = await fetch(`${URL_PROJET}/functions/v1/${FONCTION}`, {
     method: "POST",
     headers: {
@@ -140,6 +140,7 @@ async function demander(phrase) {
       placeReminders: [], pronunciations: PRONONCIATIONS,
       widgetConfig: { maxTasks: 3, urgentOnly: false, categoryId: null },
       todayISO: new Date().toISOString().slice(0, 10),
+      ...extra,
     }),
   })
   return await r.json()
@@ -164,6 +165,77 @@ const cas = [
       const maj = a.find((x) => x.action === "update_task")
       if (maj.task_id !== "t-facture") return [false, `mauvaise tâche visée : ${maj.task_id}`]
       if (maj.changes?.status !== "done") return [false, `changes inattendu : ${JSON.stringify(maj.changes)}`]
+      return [true]
+    },
+  },
+  {
+    // 15 sept. 2026, 17:32:57. Jarvis venait de proposer une categorie pour
+    // « rappeler Dan Marciano » ; il a repondu « non mets-le dans la categor »
+    // (phrase coupee par la reconnaissance vocale), et la reponse a parle de
+    // « la tache pour la banque Apoalim », creee SEPT HEURES plus tot. Le
+    // serveur n avait aucun moyen de savoir laquelle attendait.
+    nom: "une reponse coupee vise la tache qui ATTEND, pas une autre",
+    phrase: "non mets-le dans la catégor",
+    extra: {
+      tacheEnAttente: {
+        id: "t-marciano",
+        titre: "Rappeler Dan Marciano",
+        sans_date: false,
+        categorie_suggeree: "Perso",
+      },
+    },
+    controle: (r) => {
+      const a = r.actions ?? []
+      const texte = JSON.stringify(r).toLowerCase()
+      const autres = ["t-plombier", "t-facture", "t-carreaux"]
+      const visee = autres.find((id) => a.some((x) => x.task_id === id))
+      if (visee) return [false, `il vise ${visee} au lieu de la tache qui attend`]
+      for (const mot of ["plombier", "electricite", "carreaux"]) {
+        if (texte.includes(mot)) return [false, `il parle de « ${mot} », pas de la tache qui attend`]
+      }
+      const nomme = texte.includes("marciano") || a.some((x) => x.task_id === "t-marciano")
+      if (!nomme) return [false, `il ne nomme pas la tache qui attend : ${JSON.stringify(r).slice(0, 200)}`]
+      // CE CONTROLE NE VERIFIE QUE LA CIBLE, ET C EST DELIBERE.
+      //
+      // La VALEUR posee, elle, reste fausse cote serveur : sa phrase commence
+      // par « non » (il refuse « Perso »), et le modele range quand meme dans
+      // Perso. Mesure du 15 sept. sur la fonction deployee, TROIS fois : sans
+      // consigne, avec une consigne qui l explique, puis avec un INTERDIT en
+      // toutes lettres (« INTERDIT : poser un category_id tant qu il n a pas
+      // PRONONCE le nom d une categorie »). Meme reponse les trois fois.
+      // C est un plafond, pas un reglage a affiner.
+      //
+      // La valeur est donc tenue SUR L APPAREIL, ou l information manquante
+      // existe : seul lui sait qu une suggestion vient d etre refusee. Le
+      // verdict `illisible` de tacheDateEtCategorie.ts intercepte cette
+      // phrase avant tout appel reseau et REDEMANDE en nommant la tache —
+      // c est verifier-tache-date-categorie.ts qui garde ce cas, hors ligne.
+      // Chantier ouvert pour le residu cote serveur.
+      return [true]
+    },
+  },
+  {
+    // La moitie qui compte : une tache en attente ne doit pas aimanter tout
+    // ce qui suit. Une NOUVELLE demande reste une nouvelle demande, sinon on
+    // remplacerait « il modifie la mauvaise » par « il ne cree plus rien ».
+    nom: "une tache en attente n'aimante pas une nouvelle demande",
+    phrase: "Ajoute une tâche : acheter du pain.",
+    extra: {
+      tacheEnAttente: {
+        id: "t-marciano",
+        titre: "Rappeler Dan Marciano",
+        sans_date: false,
+        categorie_suggeree: "Perso",
+      },
+    },
+    controle: (r) => {
+      const a = r.actions ?? []
+      if (!a.some((x) => x.action === "add_task")) {
+        return [false, `pas de creation : ${JSON.stringify(a.map((x) => x.action))}`]
+      }
+      if (a.some((x) => x.task_id === "t-marciano")) {
+        return [false, "il a touche a la tache en attente au lieu d en creer une"]
+      }
       return [true]
     },
   },
@@ -1119,7 +1191,7 @@ for (const c of aJouer) {
   if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))
   premier = false
   c.avant?.()
-  const r = await demander(c.phrase)
+  const r = await demander(c.phrase, c.extra)
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }
   const [ok, detail] = c.controle(r)
   verifier(c.nom, ok, detail)

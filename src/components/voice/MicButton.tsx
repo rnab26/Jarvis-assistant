@@ -24,6 +24,7 @@ import {
 } from "@/lib/veille"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
+import { completionExpiree } from "@/lib/tacheDateEtCategorie"
 import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
@@ -429,6 +430,32 @@ export function MicButton({
             veut_dire: p.veut_dire,
           })),
           widgetConfig: widgetApi.config,
+          // LA TÂCHE QUI ATTEND ENCORE UNE RÉPONSE, quand il y en a une.
+          //
+          // Le 15 sept. à 17:32:57, Jarvis venait de proposer une catégorie
+          // pour « rappeler Dan Marciano ». Il a répondu « non mets-le dans
+          // la catégor » — phrase coupée par la reconnaissance vocale, donc
+          // aucune catégorie à reconnaître sur l'appareil. Partie au serveur,
+          // elle est revenue en « Dans quelle catégorie souhaites-tu que je
+          // déplace la tâche pour la banque Apoalim ? » : une tâche créée
+          // SEPT HEURES plus tôt. Le serveur n'avait aucun moyen de savoir
+          // laquelle attendait — `resolveTranscript` ne lui envoie que la
+          // phrase courante, jamais le tour précédent (même défaut que pour
+          // la confirmation d'un envoi, chantier 21cf48d2).
+          //
+          // Quelques dizaines de caractères, et SEULEMENT quand une tâche
+          // attend vraiment : `null` le reste du temps, comme `ceQuiLAttend`
+          // qui ne rend rien plutôt qu'un titre vide.
+          tacheEnAttente: (() => {
+            const attente = memoireTacheEnAttente()
+            if (!attente || completionExpiree(attente, Date.now())) return null
+            return {
+              id: attente.taskId,
+              titre: attente.titre,
+              sans_date: attente.sansDate,
+              categorie_suggeree: attente.suggestion?.categoryName ?? null,
+            }
+          })(),
           todayISO: new Date().toISOString().slice(0, 10),
         },
       }),

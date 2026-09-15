@@ -596,6 +596,42 @@ ${CONSIGNE_ENVIRONNEMENT}
 Réponds toujours en français dans le champ message.`
 
 
+/**
+ * La tâche qui vient d'être créée et qui attend encore une réponse.
+ *
+ * LE 15 SEPT. 2026 À 17:32:57, MESURÉ DANS `echanges`. Jarvis venait de
+ * proposer une catégorie pour « rappeler Dan Marciano ». Raphaël a répondu
+ * « non mets-le dans la catégor » — phrase coupée par la reconnaissance
+ * vocale. L'appareil n'y trouvait aucune catégorie, la phrase est donc
+ * arrivée ici, et la réponse a été : « Dans quelle catégorie souhaites-tu
+ * que je déplace la tâche pour la banque Apoalim ? » — une tâche créée SEPT
+ * HEURES plus tôt. Le modèle a choisi une cible parce qu'il n'avait aucun
+ * moyen de savoir laquelle attendait : `resolveTranscript` ne lui envoie que
+ * la phrase courante, jamais le tour précédent.
+ *
+ * VIDE, ÇA NE REND RIEN — pas même un titre. Chaque phrase envoie déjà
+ * ~45 000 caractères, et un intitulé suivi de « aucune » coûte des jetons
+ * pour ne rien dire (même règle que `ceQuiLAttend.ts`).
+ *
+ * PAS DE VERSION LIVE, et ce n'est pas un oubli : en Live le contexte est
+ * scellé à l'ouverture de la session, donc une tâche créée pendant la
+ * conversation ne pourrait de toute façon pas y être ajoutée après coup.
+ */
+function blocTacheEnAttente(attente: unknown): string {
+  if (!attente || typeof attente !== "object") return ""
+  const a = attente as { titre?: string; sans_date?: boolean; categorie_suggeree?: string | null }
+  if (!a.titre) return ""
+  const manque = [
+    a.sans_date ? "sa date" : null,
+    a.categorie_suggeree ? `sa catégorie (tu as proposé « ${a.categorie_suggeree} »)` : null,
+  ].filter(Boolean).join(" et ")
+  return `
+LA TÂCHE QUI ATTEND UNE RÉPONSE EN CE MOMENT : « ${a.titre} ». Il lui manque ${manque}.
+Si la phrase de l'utilisateur complète ou corrige une tâche sans dire LAQUELLE — « mets-le dans les leads », « plutôt demain », « non, dans Perso », y compris quand la phrase est coupée en plein milieu —, elle porte sur CETTE tâche-LÀ et sur aucune autre. Ne va jamais chercher une autre tâche de la liste par ressemblance : elles ont pu être créées il y a des heures, et déplacer la mauvaise lui coûte deux corrections à la main au lieu d'une.
+INTERDIT : poser un category_id sur cette tâche tant qu'il n'a pas PRONONCÉ le nom d'une catégorie. Ta suggestion n'est pas son choix — tant qu'il ne l'a pas validée, elle ne vaut rien, et « non » veut dire qu'il la refuse.
+Donc si le nom d'une catégorie n'est pas dans sa phrase — coupée en plein milieu, inaudible, ou refus sans remplacement —, rends une action clarify qui NOMME cette tâche-ci et liste les catégories existantes. Jamais un update_task, jamais ta suggestion.`
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders })
@@ -632,6 +668,7 @@ Deno.serve(async (req: Request) => {
       placeReminders,
       pronunciations,
       widgetConfig,
+      tacheEnAttente,
       todayISO,
     } = await req.json()
 
@@ -696,7 +733,7 @@ Documents existants de l'utilisateur : ${JSON.stringify(documents)}.
 Contacts existants de l'utilisateur : ${JSON.stringify(contacts)}.
 Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
 Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?? [])}.
-Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${await rappelerBranchements(supabase)}${await rappelerCorrections(supabase)}${await rappelerCeQuiLAttend(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
+Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${blocTacheEnAttente(tacheEnAttente)}${await rappelerBranchements(supabase)}${await rappelerCorrections(supabase)}${await rappelerCeQuiLAttend(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
 
     const {
       args,
