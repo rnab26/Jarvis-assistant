@@ -267,6 +267,9 @@ jobs:
       - name: Une tâche perso qui est en fait un chantier
         run: node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts
 
+      - name: Les tâches terminées rangées dans l'archive de leur catégorie
+        run: node --experimental-strip-types scripts/verifier-archive-taches.ts
+
       - name: Ce qui a bougé depuis le dernier passage
         run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
 

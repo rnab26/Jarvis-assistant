@@ -15,6 +15,12 @@
 import { spawn } from "node:child_process"
 
 const PORT = 5213
+/** La hauteur de la liste groupée du banc (trois catégories, sept tâches,
+ * archive ouverte), mesurée AVANT le bandeau centré du 15 sept. 2026 :
+ * 609 points sur un écran de 390 × 844. Le bandeau doit tenir DEDANS — sa
+ * règle du cockpit vaut ici : si tu ajoutes quelque chose, prends sa place
+ * quelque part. */
+const BUDGET_LISTE = 609
 const BASE = `http://127.0.0.1:${PORT}`
 
 async function chargerChromium() {
@@ -486,6 +492,105 @@ try {
       window.scrollTo(0, 0)
     })
     await pause(200)
+  }
+
+  // ── LES TERMINÉES, rangées dans le bloc de leur catégorie ────────────────
+  // Chantiers 20435f77 / 7c37b6b0, 15 sept. 2026. Ses mots : « plutôt qu'elle
+  // reste dans la liste de tâches et que ca pollue visuellement ».
+  {
+    const liste = page.locator("#liste-groupee")
+    await liste.scrollIntoViewIfNeeded()
+    await pause(200)
+
+    verifier(
+      "une tâche terminée n'est PAS dans la liste à faire",
+      (await liste.getByText("Appeler Amir").count()) === 0,
+      "c'est tout l'objet de sa demande : elle pollue la liste",
+    )
+    verifier(
+      "le bloc dit combien il y en a, sans qu'on l'ouvre",
+      await liste.getByRole("button", { name: /2 terminées/ }).isVisible(),
+    )
+    verifier(
+      "une catégorie sans aucune terminée n'affiche PAS de dépliant",
+      (await liste.getByRole("button", { name: /0 terminée/ }).count()) === 0,
+      "« 0 terminées » est un contrôle mort",
+    )
+    verifier(
+      "une catégorie entièrement soldée le DIT au lieu de rester vide",
+      await liste.getByText("Tout est fait ici.").isVisible(),
+      "un bloc vide au nom d'une catégorie ne dit pas si elle est finie ou si l'app a raté quelque chose",
+    )
+
+    // On ouvre : les terminées apparaissent, la plus récente en tête.
+    await liste.getByRole("button", { name: /2 terminées/ }).click()
+    await pause(250)
+    const ordre = await liste.evaluate((el) =>
+      [...el.querySelectorAll("button[aria-expanded]")]
+        .map((b) => (b.textContent ?? "").trim())
+        .filter((t) => /Amir|Michael/.test(t)),
+    )
+    verifier(
+      "ouvert, la dernière cochée est en tête",
+      ordre[0]?.includes("Michael") === true && ordre[1]?.includes("Amir") === true,
+      `ordre lu : ${ordre.join(" | ")}`,
+    )
+
+    // Et le chemin du retour : décocher la fait remonter dans la liste.
+    await liste.getByLabel("Marquer comme faite").last().uncheck()
+    await pause(300)
+    verifier(
+      "décocher une terminée la remet dans la liste à faire",
+      (await liste.getByRole("button", { name: /1 terminée$/ }).count()) === 1,
+      "sans retour possible, cocher serait aussi irréversible qu'une suppression",
+    )
+  }
+
+  // ── Le nom de la catégorie, centré et distinct ──────────────────────────
+  // Sa demande du 15 sept. 2026, capture à l'appui : « centre le nom des
+  // catégories de listes dans leur blocs respectifs et fait les plus ressortir
+  // sans que ce soit trop lourd ».
+  {
+    const entetes = await page.locator("#liste-groupee [data-slot=card-header]").evaluateAll((els) =>
+      els.map((el) => {
+        const titre = el.querySelector("[data-slot=card-title]")
+        const s = getComputedStyle(titre ?? el)
+        const rc = el.getBoundingClientRect()
+        const rt = (titre ?? el).getBoundingClientRect()
+        return {
+          nom: (titre?.textContent ?? "").trim(),
+          align: s.textAlign,
+          poids: Number(s.fontWeight),
+          hauteur: Math.round(rc.height),
+          // Écart des marges gauche/droite : centré, il est nul à un point près.
+          decentrage: Math.round(Math.abs((rt.left - rc.left) - (rc.right - rt.right))),
+        }
+      }),
+    )
+    verifier(
+      "les trois noms de catégorie sont centrés",
+      entetes.length === 3 && entetes.every((e) => e.align === "center" && e.decentrage <= 1),
+      JSON.stringify(entetes),
+    )
+    verifier(
+      "ils ressortent plus que le texte des tâches",
+      entetes.every((e) => e.poids >= 600),
+      `poids lus : ${entetes.map((e) => e.poids).join(", ")}`,
+    )
+    // LE BUDGET DE HAUTEUR, et il se mesure sur la LISTE ENTIÈRE, pas sur
+    // l'en-tête : le bandeau remonte dans le padding de la carte (marge
+    // négative), donc sa propre hauteur ne dit rien de ce qu'il coûte
+    // vraiment. Mesuré le 15 sept. 2026 : 502 points pour ces trois
+    // catégories avec l'ancien en-tête aligné à gauche. Sa règle du cockpit
+    // vaut ici — si tu ajoutes quelque chose, prends sa place quelque part.
+    const hauteurListe = await page.locator("#liste-groupee").evaluate((el) =>
+      Math.round(el.getBoundingClientRect().height),
+    )
+    verifier(
+      "et le bandeau ne coûte pas de hauteur à la liste",
+      hauteurListe <= BUDGET_LISTE,
+      `la liste fait ${hauteurListe} points, budget ${BUDGET_LISTE}`,
+    )
   }
 
   await page.getByRole("button", { name: "Supprimer" }).first().click()

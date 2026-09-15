@@ -1,5 +1,4 @@
 import { toast } from "sonner"
-import type { EtatChantier } from "@/hooks/useDevItems"
 
 /**
  * « Annuler », après une action qui a déplacé, archivé ou reclassé des
@@ -13,11 +12,17 @@ import type { EtatChantier } from "@/hooks/useDevItems"
  *
  * Huit secondes plutôt que les quatre par défaut : le temps de lire, de
  * comprendre que ce n'est pas ce qu'on voulait, et de viser le bouton.
+ *
+ * GÉNÉRIQUE depuis le 15 sept. 2026, et pas par goût de l'abstraction :
+ * cocher une tâche la fait maintenant QUITTER la liste pour l'archive de sa
+ * catégorie, donc elle disparaît de sa vue exactement comme un chantier
+ * archivé. Écrire un second « Annuler » à côté de celui-ci, c'est accepter
+ * qu'ils finissent par ne plus durer le même temps ni se comporter pareil.
  */
-export function proposerAnnulation(
+export function proposerAnnulation<T>(
   message: string,
-  etats: EtatChantier[],
-  restaurer: (etats: EtatChantier[]) => Promise<void>,
+  etats: T[],
+  restaurer: (etats: T[]) => Promise<void>,
 ) {
   toast.success(message, {
     duration: 8000,

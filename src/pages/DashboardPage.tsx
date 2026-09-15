@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { BarreActualiser } from "@/components/BarreActualiser"
 import { LoadError } from "@/components/LoadError"
@@ -9,7 +9,10 @@ import { OrganiserCategories } from "@/components/tasks/OrganiserCategories"
 import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskList } from "@/components/tasks/TaskList"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import { proposerAnnulation } from "@/lib/annulation"
+import { CLE_ARCHIVES_OUVERTES, archivesOuvertes, phraseArchivee, phraseRemiseAFaire } from "@/lib/archiveTaches"
 import { SANS_CATEGORIE, categoriesOrdonnees, compterAFaire } from "@/lib/ordreCategories"
+import { REGLAGE_MODIFIE } from "@/lib/reglages"
 import type { Task } from "@/types/database"
 
 export function DashboardPage() {
@@ -38,6 +41,41 @@ export function DashboardPage() {
     oublierEnAttente,
   } = tasksState
   const [categoryFilter, setCategoryFilter] = useState(ALL_CATEGORIES)
+
+  // Les terminées dépliées d'entrée, ou repliées. Relu à chaque changement de
+  // réglage plutôt qu'au seul montage : il l'active dans Paramètres et revient
+  // ici, et l'écran doit déjà le savoir.
+  const [ouvrirArchives, setOuvrirArchives] = useState(() =>
+    archivesOuvertes(lireLocal(CLE_ARCHIVES_OUVERTES)),
+  )
+  useEffect(() => {
+    const relire = () => setOuvrirArchives(archivesOuvertes(lireLocal(CLE_ARCHIVES_OUVERTES)))
+    window.addEventListener(REGLAGE_MODIFIE, relire)
+    return () => window.removeEventListener(REGLAGE_MODIFIE, relire)
+  }, [])
+
+  /**
+   * Cocher une tâche la fait QUITTER la liste pour l'archive de sa catégorie.
+   *
+   * D'où le mot qui suit : sans lui, un appui de travers sur un écran de
+   * téléphone efface une ligne de sa vue sans rien dire, et il faudrait
+   * déplier l'archive pour comprendre où elle est passée. Même « Annuler »
+   * que le cockpit (`annulation.ts`), pas un second.
+   *
+   * L'annulation repasse par `toggleStatus` avec le statut D'ARRIVÉE : c'est
+   * lui qui bascule, donc lui redonner le statut de départ n'annulerait rien.
+   */
+  async function basculerEtDire(task: Task) {
+    const versFait = task.status !== "done"
+    await toggleStatus(task)
+    proposerAnnulation(
+      versFait ? phraseArchivee(task.title) : phraseRemiseAFaire(task.title),
+      [task],
+      async ([t]) => {
+        await toggleStatus({ ...t, status: versFait ? "done" : "todo" })
+      },
+    )
+  }
 
   /**
    * Une « tâche » qui est en fait une demande à Claude passe dans le cockpit.
@@ -144,10 +182,11 @@ export function DashboardPage() {
         <TaskList
           tasks={filteredTasks}
           categories={categories}
-          onToggle={toggleStatus}
+          onToggle={basculerEtDire}
           onUpdate={updateTask}
           onDelete={deleteTask}
           onEnFaireUnChantier={enFaireUnChantier}
+          archivesOuvertes={ouvrirArchives}
           prefsNotifs={notificationsState.prefs}
           onRelancerEnvoi={relancerEnvoi}
           onOublierEnAttente={oublierEnAttente}
@@ -155,4 +194,14 @@ export function DashboardPage() {
       )}
     </div>
   )
+}
+
+/** Le stockage local peut être indisponible (navigation privée, quota) : on
+ * lit alors « rien choisi », jamais une exception qui blanchirait l'onglet. */
+function lireLocal(cle: string): string | null {
+  try {
+    return localStorage.getItem(cle)
+  } catch {
+    return null
+  }
 }

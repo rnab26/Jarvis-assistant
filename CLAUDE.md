@@ -491,7 +491,68 @@ Un jeu d'essai doit être distinct **après normalisation**, pas seulement à
 l'œil : trois listes de longueurs premières entre elles (11, 12, 13) donnent
 83 titres dont aucune paire ne se ressemble.
 
-### Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
+## Une tâche cochée quitte la liste pour l'archive de SA catégorie
+
+Chantiers `20435f77` et `7c37b6b0` (le second dit la même chose, archivé en
+doublon), 15 sept. 2026. Ses mots : « Lorsque une tache est noté comme terminé
+plutôt qu'elle reste dans la liste de tâches et que ca pollue visuellement je
+veux quil y'a une section archives dans les différentes listes de taches et que
+la tâche terminé bascule dedans apres l'avoir coché. »
+
+`src/lib/archiveTaches.ts` est **pur** (`verifier-archive-taches.ts`), et le
+premier de ses contrôles est un COMPTE : tout ce qui entre ressort d'un côté ou
+de l'autre. Une tâche qui sortirait de la liste sans entrer dans l'archive
+serait perdue pour de bon — **il n'y a pas de corbeille pour les tâches**,
+contrairement aux chantiers.
+
+Trois choses à ne pas défaire :
+
+1. **Une dictée hors ligne n'est JAMAIS archivée**, même si son `status` dit
+   « done ». Elle n'existe pas en base : la replier dans un dépliant la
+   rendrait invisible alors que c'est précisément la ligne qu'il doit voir.
+2. **La dernière cochée est en TÊTE de l'archive.** C'est la seule qu'il vient
+   peut-être de cocher par erreur ; en bas d'une liste de trente, il faudrait
+   défiler pour se rattraper.
+3. **Le dépliant ne s'affiche pas quand il n'y a aucune terminée** — « 0
+   terminées » est un contrôle mort, et une catégorie jamais entamée garde
+   exactement la hauteur qu'elle avait.
+
+**Le « Annuler » est celui du cockpit, pas un second.** `proposerAnnulation`
+(`src/lib/annulation.ts`) est devenu générique dans le même travail : cocher
+fait DISPARAÎTRE la ligne de sa vue, exactement comme un chantier archivé, et
+deux retours en arrière côte à côte finiraient par ne plus durer le même temps.
+L'annulation repasse par `toggleStatus` avec le statut D'ARRIVÉE — c'est lui
+qui bascule, lui redonner celui de départ n'annulerait rien.
+
+Réglage livré avec : Paramètres › Tâches et organisation › « Les tâches
+terminées » (`jarvis_taches_archives_ouvertes`, replié par défaut, ce qu'il a
+demandé).
+
+### Le nom de la catégorie : centré, sur un bandeau, et il ne coûte rien
+
+Sa demande du même jour, capture à l'appui (trois noms de catégorie entourés) :
+« centre le nom des catégories de listes dans leur blocs respectifs et fait les
+plus ressortir sans que ce soit trip lourd mais quon puisse mieux faire la
+distinction dans les differents blocs de liste de taches ».
+
+Pas de majuscules forcées — « HIPOUY » crie, et il demande justement que ce ne
+soit pas lourd. Centré, semi-gras, sur un bandeau `bg-muted/40` avec un filet.
+
+**Et la place a été PRISE, pas ajoutée**, comme dans le cockpit. Mesuré sur le
+banc (390 × 844, trois catégories, sept tâches) : l'en-tête centré coûte +9
+points par carte, et l'écart interne des cartes ramené de 16 à 8 points en rend
+8 par intervalle. Bilan, archives repliées : **528 points avant, 515 après** —
+le bandeau est gratuit, et il rend même treize points. Le budget est dans
+`verifier-taches-web.mjs` (`BUDGET_LISTE`, 609 points archive ouverte) : **si
+tu ajoutes quelque chose au bloc d'une catégorie, prends sa place quelque
+part.**
+
+Piège de mesure payé au passage : la hauteur de l'EN-TÊTE ne dit rien de son
+coût réel. Il remonte dans le padding de la carte par une marge négative, donc
+son `getBoundingClientRect` annonce 49 points là où la carte n'en gagne que 9.
+Ce qui se mesure, c'est la liste entière.
+
+## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
 Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
 Claude** — la commande vocale avait compris « ajoute une tâche » là où il
@@ -2493,6 +2554,7 @@ node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la secti
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
+node --experimental-strip-types scripts/verifier-archive-taches.ts  # une tâche cochée va dans l'archive de sa catégorie, et rien ne se perd entre les deux, sans réseau
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, et le repère « déjà vu », sans réseau
 ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà vu » suit son compte : non-recul côté SQL et cloisonnement RLS
 node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâche dictée hors réseau ne se perd pas et ne se dédouble pas, sans réseau
