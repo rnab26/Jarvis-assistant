@@ -28,11 +28,44 @@ qu'une autre session est là.
 node --experimental-strip-types scripts/passe-autonome.ts --demarrer
 ```
 
-Un seul appel à la base. Il répond `verdict : travaille` (code de sortie 0) ou
-`verdict : eteint | occupe | rien_a_prendre` (code 3), avec la raison en clair,
-le chantier à prendre, et l'identifiant de la passe.
+Un seul appel à la base. Il répond `verdict : travaille` ou `il_a_repondu`
+(code de sortie 0 — il y a quelque chose à faire), ou `verdict : eteint |
+occupe | rien_a_prendre` (code 3), avec la raison en clair, le chantier à
+prendre, l'identifiant de la passe, et ce que Raphaël a répondu depuis la
+dernière passe.
 
-**Si le verdict n'est pas `travaille`, arrête-toi là.** N'ouvre aucun fichier, ne
+## Si le verdict est `il_a_repondu`
+
+Raphaël a répondu à une ou plusieurs questions dans son cockpit depuis la
+dernière passe. Le script les imprime en entier, avec la question, ses mots et
+le chantier concerné.
+
+Sa phrase du 15 sept. 2026 : « J'ai répondu dans l'application jarvis faut que
+tu sois au courant quand je réponds ». Avant, la passe se retirait en « rien à
+prendre » alors qu'il venait de trancher trois questions : ses réponses
+débloquent presque toujours un chantier `[À CADRER]`, que la passe refuse de
+prendre toute seule.
+
+**Ce verdict ne réserve rien.** Il te dit d'aller lire, et c'est toi qui
+décides :
+
+1. Relis le chantier concerné en entier (`scripts/sql.sh`, ses notes sont
+   tronquées à l'affichage).
+2. **Recopie sa réponse dans les notes du chantier**, en citant ses mots — la
+   règle du CLAUDE.md sur les réponses qui ne doivent pas rester ailleurs vaut
+   ici aussi.
+3. Si sa réponse suffit à lever le `[À CADRER]`, remplace le marqueur et
+   traite le chantier comme n'importe quel autre.
+4. Si elle ne suffit pas, écris ce qui manque et repose UNE question précise
+   avec `scripts/demander.sh` — jamais la même deux fois.
+
+**Le garde-fou du `[LIBRE]` n'est pas levé pour autant** : les sujets qu'une
+session autonome ne prend jamais (contrôle du téléphone, accès aux
+applications, envoi de messages en son nom, clonage vocal, toute dépense)
+restent interdits, même s'il vient de répondre dessus. Ceux-là se discutent
+avec lui en direct.
+
+**Si le verdict n'est pas `travaille` ni `il_a_repondu`, arrête-toi là.** N'ouvre aucun fichier, ne
 lis pas le cockpit, ne cherche pas « quand même quelque chose à faire » : la
 passe est déjà enregistrée, elle apparaîtra dans Paramètres › Le cockpit, et
 c'est tout ce qu'on attend d'elle. Chaque tour de plus est du crédit dépensé pour

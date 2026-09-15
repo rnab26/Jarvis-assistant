@@ -32,7 +32,7 @@ import type { DevItem } from "@/types/database"
  * voulait d'abord trancher avec nous.
  */
 
-export type Verdict = "travaille" | "eteint" | "occupe" | "rien_a_prendre"
+export type Verdict = "travaille" | "eteint" | "occupe" | "rien_a_prendre" | "il_a_repondu"
 
 export interface Reservation {
   branche: string
@@ -45,11 +45,25 @@ export interface PasseOuverte {
   demarre_at: string
 }
 
+/** Une question à laquelle Raphaël vient de répondre dans son cockpit. */
+export interface ReponseDeRaphael {
+  question: string
+  item_id: string | null
+  answered_at: string
+  /** Ce qu'il a répondu, en toutes lettres. `null` si l'entrée `reponse` n'a
+   * pas été retrouvée — on montre alors quand même la question, plutôt que de
+   * taire qu'il a répondu. */
+  reponse: string | null
+}
+
 export interface EtatAutonomie {
   /** Le réglage tel qu'il est en base : `null` = jamais touché. */
   reglage: string | null
   reservations: Reservation[]
   passes_ouvertes: PasseOuverte[]
+  /** Ce qu'il a répondu depuis la dernière passe terminée. Absent d'une
+   * version ancienne de `etat_pour_passe_autonome()` : on ne suppose rien. */
+  reponses?: ReponseDeRaphael[]
   chantiers: DevItem[]
 }
 
@@ -58,6 +72,10 @@ export interface Decision {
   /** Écrit pour être lu par Raphaël dans Paramètres, pas par une machine. */
   raison: string
   chantier: DevItem | null
+  /** Rendues QUEL QUE SOIT le verdict : une passe qui part travailler sur un
+   * chantier doit voir ses réponses elle aussi, sinon elle code pendant qu'il
+   * attend. */
+  reponses: ReponseDeRaphael[]
 }
 
 /**
@@ -224,11 +242,14 @@ function ageMinutes(depuis: string, maintenant: Date): number {
  * volonté à lui, ensuite les autres sessions, ensuite seulement le travail.
  */
 export function deciderPasse(etat: EtatAutonomie, maintenant: Date): Decision {
+  const reponses = etat.reponses ?? []
+
   if (!autonomieActive(etat.reglage)) {
     return {
       verdict: "eteint",
       raison: "L'interrupteur « Sessions autonomes » est éteint dans Paramètres › Le cockpit.",
       chantier: null,
+      reponses,
     }
   }
 
@@ -241,6 +262,7 @@ export function deciderPasse(etat: EtatAutonomie, maintenant: Date): Decision {
       verdict: "occupe",
       raison: `Une session travaille déjà (${noms}) sur « ${vivantes[0].titre} ». Une seule à la fois, c'est ta consigne du 6 septembre.`,
       chantier: null,
+      reponses,
     }
   }
 
@@ -252,16 +274,39 @@ export function deciderPasse(etat: EtatAutonomie, maintenant: Date): Decision {
       verdict: "occupe",
       raison: `Une passe autonome (${encoreLa[0].branche}) est encore en cours.`,
       chantier: null,
+      reponses,
     }
   }
 
   const prenables = chantiersPrenables(etat, maintenant)
   if (prenables.length === 0) {
+    // IL A RÉPONDU, ET C'EST DU TRAVAIL — même si aucun chantier n'est [LIBRE].
+    //
+    // Sa phrase du 15 sept. : « faut que tu sois au courant quand je réponds ».
+    // Ses réponses débloquent presque toujours un chantier [À CADRER], que
+    // cette passe REFUSE de prendre toute seule, et à raison. Se retirer en
+    // « rien à prendre » alors qu'il vient de trancher trois questions, c'est
+    // exactement ce qu'il reproche : il a fait sa part, et rien ne bouge.
+    //
+    // Le verdict ne PREND pas de chantier : il réveille une session en lui
+    // disant d'aller lire. C'est elle qui décide — le garde-fou du [LIBRE]
+    // n'est pas levé, il est simplement rendu inutile par le fait qu'il a
+    // parlé.
+    if (reponses.length > 0) {
+      const combien = reponses.length === 1 ? "une question" : `${reponses.length} questions`
+      return {
+        verdict: "il_a_repondu",
+        raison: `Raphaël a répondu à ${combien} depuis la dernière passe : va lire et reprends le chantier concerné.`,
+        chantier: null,
+        reponses,
+      }
+    }
     return {
       verdict: "rien_a_prendre",
       raison:
         "Aucun chantier marqué [LIBRE] n'est disponible : tout ce qui reste attend une décision de toi, est déjà pris, ou touche un sujet mis à part.",
       chantier: null,
+      reponses,
     }
   }
 
@@ -270,6 +315,7 @@ export function deciderPasse(etat: EtatAutonomie, maintenant: Date): Decision {
     verdict: "travaille",
     raison: `Chantier pris : « ${chantier.title} ».`,
     chantier,
+    reponses,
   }
 }
 
@@ -295,6 +341,7 @@ export const LIBELLE_VERDICT: Record<Verdict, string> = {
   eteint: "s'est retirée : éteint",
   occupe: "s'est retirée : une autre session travaillait",
   rien_a_prendre: "s'est retirée : rien à prendre",
+  il_a_repondu: "réveillée par une réponse de Raphaël",
 }
 
 /**

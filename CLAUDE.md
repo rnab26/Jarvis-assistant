@@ -1665,6 +1665,44 @@ dans ce cas elle ne peut pas lire la CI, et `docs/session-autonome.md` lui dit
 de lancer elle-même, en entier, ce que la CI lance — ce sont les mêmes
 scripts — puis de l'écrire dans `dev_log`.
 
+### Une réponse de Raphaël réveille le travail (15 sept. 2026)
+
+Sa phrase : « J'ai répondu dans l'application jarvis **faut que tu sois au
+courant quand je réponds** ».
+
+**Mesuré ce jour-là** : il a répondu à trois questions entre 17:49 et 17:54. La
+dernière passe datait de 12:19 et s'était retirée en `rien_a_prendre`. La
+suivante se serait retirée pareil — ses réponses débloquent presque toujours un
+chantier `[À CADRER]`, que la passe REFUSE de prendre par construction. Il avait
+fait sa part, et rien ne bougeait.
+
+`etat_pour_passe_autonome()` (migration 0046) rend donc aussi **ce qu'il a
+répondu depuis la dernière passe TERMINÉE**, et `deciderPasse` a un cinquième
+verdict, `il_a_repondu` (code de sortie 0, comme `travaille`). Le script imprime
+ses mots en entier.
+
+Quatre choses à ne pas défaire :
+
+1. **Le verdict ne RÉSERVE rien.** Il réveille une session en lui disant d'aller
+   lire ; c'est elle qui décide. Le garde-fou du `[LIBRE]` n'est pas levé — il
+   est rendu inutile par le fait qu'il a parlé.
+2. **Sa volonté passe AVANT** : `eteint` et `occupe` l'emportent sur ses
+   réponses. La consigne du 6 sept. (« une seule session à la fois ») ne se
+   contourne pas parce qu'il a répondu entre-temps.
+3. **Une passe qui part travailler emporte quand même ses réponses.** Coder
+   pendant qu'il attend une suite est exactement ce qu'il reproche.
+4. **Le repère est `answered_at` comparé à la dernière passe terminée** — ni un
+   compteur à tenir, ni une colonne de plus. Une passe qui plante ne perd rien :
+   la suivante reverra la même réponse.
+
+**Ce qui N'EST PAS possible, et qu'il ne faut pas retenter** : le réveiller en
+TEMPS RÉEL. `watch_url` rend bien une URL de webhook, mais elle n'accepte que
+des appels signés par un service précis — essayé le 15 sept., un POST nu rend
+**401**, et le secret est scellé pour ce service, illisible depuis la session.
+La base ne peut donc pas réveiller une session Claude. Le délai réel est celui
+de la Routine (toutes les 6 h au 15 sept., d'après `passes_autonomes` : 00:16,
+06:17, 12:19) — c'est sa cadence à lui de la changer dans ses Routines.
+
 **Pour tout arrêter** : Paramètres › Le cockpit › Sessions autonomes. Le
 réglage `jarvis_sessions_autonomes` est lu EN BASE à chaque passe — d'où
 `ecrireAutonomie()` et pas un `localStorage.setItem`, qui resterait sur son

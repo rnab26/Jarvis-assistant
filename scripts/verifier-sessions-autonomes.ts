@@ -342,5 +342,95 @@ verifier(
   "une passe sans raison lisible ne se distingue pas d'une Routine en panne",
 )
 
+/* ------------------------------------------------------------------ *
+ * UNE RÉPONSE DE RAPHAËL RÉVEILLE LE TRAVAIL (15 sept. 2026).
+ *
+ * Sa phrase : « J'ai répondu dans l'application jarvis faut que tu sois au
+ * courant quand je réponds ». Les trois réponses ci-dessous sont les SIENNES,
+ * copiées de dev_log, pas des paraphrases — le piège déjà payé par le filtre
+ * des sujets réservés le 6 sept.
+ * ------------------------------------------------------------------ */
+
+const SES_REPONSES = [
+  {
+    question: "La bulle : que doit faire un appui dessus ?",
+    item_id: "468734ad-9db6-43db-8f20-40e1dbfdc0ee",
+    answered_at: "2026-09-15T17:49:46.273+00:00",
+    reponse: "Moi l'utilisateur j'appuie pour activer jarvis",
+  },
+  {
+    question: "Une tâche dictée : qui écrit le titre ?",
+    item_id: "7b2c99e2-40a0-4781-8497-463fbddc0891",
+    answered_at: "2026-09-15T17:51:14.71+00:00",
+    reponse: "Les deux : le modèle écrit, la règle rattrape",
+  },
+]
+
+{
+  const d = deciderPasse(etat({ reponses: SES_REPONSES }), MAINTENANT)
+  verifier(
+    "il a répondu et aucun chantier n'est [LIBRE] : la passe ne se retire PAS",
+    d.verdict === "il_a_repondu",
+    `verdict ${d.verdict} — c'est exactement le cas du 15 sept. : trois réponses, ` +
+      "et la passe suivante se serait retirée en « rien à prendre »",
+  )
+  verifier(
+    "et elle ne réserve aucun chantier : c'est la session qui décide",
+    d.chantier === null,
+    "le garde-fou du [LIBRE] n'est pas levé par une réponse",
+  )
+  verifier(
+    "ses mots arrivent jusqu'à la session, pas seulement le fait qu'il a répondu",
+    d.reponses.length === 2 && d.reponses[0].reponse === "Moi l'utilisateur j'appuie pour activer jarvis",
+    "une session qui sait qu'il a répondu sans savoir QUOI doit tout relire",
+  )
+}
+
+verifier(
+  "sans réponse de sa part, rien ne change : on se retire comme avant",
+  deciderPasse(etat({ reponses: [] }), MAINTENANT).verdict === "rien_a_prendre",
+  "ce verdict ne doit pas s'allumer tout seul, sinon il réveille une session pour rien à chaque passe",
+)
+
+verifier(
+  "une version ancienne de la fonction SQL (aucun champ reponses) ne casse rien",
+  deciderPasse(etat(), MAINTENANT).verdict === "rien_a_prendre",
+  "`reponses` est optionnel : une passe lancée avant la migration doit répondre comme avant",
+)
+
+{
+  // SA VOLONTÉ D'ABORD. L'interrupteur éteint et une session déjà au travail
+  // passent AVANT ses réponses : la consigne du 6 sept. (« une seule session à
+  // la fois ») ne se contourne pas parce qu'il a répondu entre-temps.
+  verifier(
+    "l'interrupteur éteint l'emporte sur ses réponses",
+    deciderPasse(etat({ reglage: "false", reponses: SES_REPONSES }), MAINTENANT).verdict === "eteint",
+  )
+  verifier(
+    "une autre session au travail l'emporte aussi",
+    deciderPasse(
+      etat({ reservations: [{ branche: "b", titre: "t", expire: dans(10) }], reponses: SES_REPONSES }),
+      MAINTENANT,
+    ).verdict === "occupe",
+  )
+  verifier(
+    "mais la passe occupée rend quand même ses réponses, pour la session qui travaille",
+    deciderPasse(
+      etat({ reservations: [{ branche: "b", titre: "t", expire: dans(10) }], reponses: SES_REPONSES }),
+      MAINTENANT,
+    ).reponses.length === 2,
+    "une session qui code pendant qu'il attend une suite est exactement ce qu'il reproche",
+  )
+}
+
+verifier(
+  "un chantier [LIBRE] ET une réponse : on prend le chantier, mais ses réponses suivent",
+  (() => {
+    const d = deciderPasse(etat({ chantiers: [item("Libre")], reponses: SES_REPONSES }), MAINTENANT)
+    return d.verdict === "travaille" && d.reponses.length === 2
+  })(),
+  "sinon la passe part coder et ses trois réponses restent invisibles",
+)
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)
