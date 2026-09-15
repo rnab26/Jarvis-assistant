@@ -628,8 +628,8 @@ function blocTacheEnAttente(attente: unknown): string {
   return `
 LA TÂCHE QUI ATTEND UNE RÉPONSE EN CE MOMENT : « ${a.titre} ». Il lui manque ${manque}.
 Si la phrase de l'utilisateur complète ou corrige une tâche sans dire LAQUELLE — « mets-le dans les leads », « plutôt demain », « non, dans Perso », y compris quand la phrase est coupée en plein milieu —, elle porte sur CETTE tâche-LÀ et sur aucune autre. Ne va jamais chercher une autre tâche de la liste par ressemblance : elles ont pu être créées il y a des heures, et déplacer la mauvaise lui coûte deux corrections à la main au lieu d'une.
-Si la phrase commence par « non » ou « plutôt », il REFUSE ce que tu as proposé : ne repose JAMAIS la catégorie suggérée comme si c'était son choix.
-Si tu ne vois pas quelle catégorie il veut — phrase coupée, nom inaudible, ou refus sans remplacement —, alors une action clarify, en NOMMANT cette tâche-ci et en listant les catégories existantes. N'invente pas, et ne retombe pas sur ta suggestion.`
+INTERDIT : poser un category_id sur cette tâche tant qu'il n'a pas PRONONCÉ le nom d'une catégorie. Ta suggestion n'est pas son choix — tant qu'il ne l'a pas validée, elle ne vaut rien, et « non » veut dire qu'il la refuse.
+Donc si le nom d'une catégorie n'est pas dans sa phrase — coupée en plein milieu, inaudible, ou refus sans remplacement —, rends une action clarify qui NOMME cette tâche-ci et liste les catégories existantes. Jamais un update_task, jamais ta suggestion.`
 }
 
 Deno.serve(async (req: Request) => {

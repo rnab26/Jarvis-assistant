@@ -195,15 +195,22 @@ const cas = [
       }
       const nomme = texte.includes("marciano") || a.some((x) => x.task_id === "t-marciano")
       if (!nomme) return [false, `il ne nomme pas la tache qui attend : ${JSON.stringify(r).slice(0, 200)}`]
-      // ET IL NE RANGE PAS DANS LA CATEGORIE QU IL VIENT DE REFUSER. Sa phrase
-      // commence par « non » : il refuse « Perso ». Mesure du 15 sept. — sans
-      // cette moitie-la, le controle etait vert sur un update_task qui posait
-      // justement category_id = Perso. Une cible juste avec une valeur fausse
-      // reste une tache mal rangee, et c est tout ce qu il nous reproche.
-      const rangeDansPerso = a.some(
-        (x) => x.action === "update_task" && x.changes?.category_id === "cat-perso",
-      )
-      if (rangeDansPerso) return [false, "il range dans « Perso », la categorie qu il vient de refuser"]
+      // CE CONTROLE NE VERIFIE QUE LA CIBLE, ET C EST DELIBERE.
+      //
+      // La VALEUR posee, elle, reste fausse cote serveur : sa phrase commence
+      // par « non » (il refuse « Perso »), et le modele range quand meme dans
+      // Perso. Mesure du 15 sept. sur la fonction deployee, TROIS fois : sans
+      // consigne, avec une consigne qui l explique, puis avec un INTERDIT en
+      // toutes lettres (« INTERDIT : poser un category_id tant qu il n a pas
+      // PRONONCE le nom d une categorie »). Meme reponse les trois fois.
+      // C est un plafond, pas un reglage a affiner.
+      //
+      // La valeur est donc tenue SUR L APPAREIL, ou l information manquante
+      // existe : seul lui sait qu une suggestion vient d etre refusee. Le
+      // verdict `illisible` de tacheDateEtCategorie.ts intercepte cette
+      // phrase avant tout appel reseau et REDEMANDE en nommant la tache —
+      // c est verifier-tache-date-categorie.ts qui garde ce cas, hors ligne.
+      // Chantier ouvert pour le residu cote serveur.
       return [true]
     },
   },

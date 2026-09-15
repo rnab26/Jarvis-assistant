@@ -714,8 +714,17 @@ mot entier fait rougir un contrôle, retirer le garde-fou en fait rougir trois.
 **Mon propre contrôle bout-en-bout laissait passer ce défaut** : il vérifiait
 que la bonne tâche était visée, pas la valeur posée. Une cible juste avec une
 valeur fausse reste une tâche mal rangée — c'est-à-dire tout ce qu'il nous
-reproche. Il refuse maintenant explicitement un `category_id` égal à la
-suggestion refusée.
+reproche.
+
+**Et le serveur, lui, n'a PAS pu être corrigé — c'est un plafond, pas un
+réglage à affiner.** Trois versions déployées et remesurées : sans consigne
+(106), avec une consigne qui l'explique (107), avec un INTERDIT en toutes
+lettres (108). Les trois fois, `update_task` avec la catégorie refusée. La
+consigne 108 reste en place — elle ne nuit pas, elle ne suffit pas. Le contrôle
+bout-en-bout ne vérifie donc que la CIBLE, avec cette mesure écrite à côté ;
+c'est le contrôle hors ligne qui garde la valeur, là où elle se décide. Le
+résidu (les phrases de rangement que le filtre local ne reconnaît pas) est le
+chantier ouvert `902bf94b`, avec les trois pistes non essayées.
 
 ## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
