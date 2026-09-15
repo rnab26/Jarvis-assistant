@@ -601,6 +601,91 @@ frontière. Il vise maintenant « Note quelque chose d'important », où
 été remplacé par l'invariant qui compte pour lui — ce qui reste ne commence
 jamais par un morceau de commande — qui rougit quand on casse l'un OU l'autre.
 
+## Une phrase à DEUX demandes n'est pas traitée sur l'appareil (15 sept. 2026)
+
+Chantier `7b2c99e2`, sa plainte : « il fait 50% dans la première tâche et 50%
+en recréant une autre tâche […] difficile de boucler l'ajout d'une tâche sans
+avoir a faire des retouches manuelles ». Et sa décision quand je lui ai demandé
+quoi faire d'une phrase qui en porte deux : « **vaut mieux exécuter les deux
+dans l'ordre** ».
+
+La consigne du serveur a été corrigée pour ça (« UNE PHRASE QUI PORTE DEUX
+DEMANDES DOIT RENDRE DEUX ACTIONS, dans l'ordre où il les a dites »), et elle
+marche — `verifier-commande-vocale.mjs` le vérifie sur la fonction déployée.
+
+**Mais elle ne pouvait rien pour le cas qu'il décrit, parce que le modèle n'est
+jamais appelé.** Mesuré dans `echanges`, 06:32:17 :
+
+    « supprime la tâche Rappel Jonathan Ducamp ET crée la tâche Rappel
+      Jonathan Dukan dans la partie perso… »
+    → source: "appareil", réponse : « "Rappel Jonathan Ducamp" supprimée. »
+
+Les règles de `commandeLocale.ts` capturent une queue gloutonne (`(.+)$`) et la
+donnent à `meilleur()`, qui retrouve quand même la cible **par ressemblance**
+malgré la seconde demande collée derrière. Elle disparaît sans un mot. **Avant
+de corriger une commande vocale, regarde d'où la réponse est venue** — la leçon
+de l'appel au répondeur du 5 sept., et elle a encore servi ici.
+
+**La réponse est de se taire, pas de comprendre plus.** `secondeDemande.ts`
+(pur) reconnaît « liaison + verbe de demande » et fait rendre la main à
+l'appareil ; écrire ici un second analyseur de phrases le ferait diverger de
+celui du serveur, et deux lectures du même « et » rangeraient la même dictée à
+deux endroits.
+
+**L'asymétrie justifie le seuil, et c'est ce qu'il faut garder en tête si on y
+touche** : se taire à tort coûte un aller-retour d'une seconde ; parler à tort
+perd la moitié de sa demande, en silence. Mesuré sur ses 40 vraies tâches
+(**0** déclenchement à tort) et ses 290 vraies dictées (13 retenues).
+
+**Ne mets JAMAIS dans `VERBES_DE_DEMANDE` un mot qui peut être un nom.** C'est
+tout le garde-fou : ses vrais titres portent des « et » innocents — « Acheter
+coque airpods ET clefs de voiture », « gocardless a relancer ET molly »,
+« Appeler Yoni pour démarrer + data ET robot ». Ce qui suit le « et » y est un
+complément. Deux contrôles tombent si on le fait.
+
+**Le garde-fou n'est PAS posé sur la recherche ni sur l'itinéraire**, et ce
+n'est pas un oubli : là, ce qui suit le « et » fait partie de la QUESTION
+(« lance une recherche via Perplexity et demande-lui combien… »), rien n'est
+perdu, et les renvoyer au serveur consommerait le quota gratuit que la
+reconnaissance locale existe justement pour épargner.
+
+### Et le serveur sait enfin QUELLE tâche attend une réponse
+
+Même chantier, même journée. À 17:32:57, Jarvis venait de proposer une
+catégorie pour « rappeler Dan Marciano ». Raphaël répond « non mets-le dans la
+catégor » — **phrase coupée par la reconnaissance vocale**. Réponse reçue :
+
+    « Dans quelle catégorie souhaites-tu que je déplace la tâche pour la
+      banque Apoalim ? »
+
+— une tâche créée **sept heures plus tôt**. Le modèle a choisi une cible parce
+qu'il n'avait aucun moyen de savoir laquelle attendait : `resolveTranscript`
+ne lui envoie que la phrase courante, jamais le tour précédent. **Exactement le
+même défaut que pour la confirmation d'un envoi** (chantier `21cf48d2`), et il
+se corrige pareil — en donnant au serveur l'état que seul l'appareil a.
+`MicButton` joint donc `tacheEnAttente` (id, titre, ce qui lui manque), et
+`blocTacheEnAttente` (`voice-command/index.ts`) en fait deux phrases de
+consigne. **Vide, ça ne rend RIEN** — même règle que `ceQuiLAttend.ts`.
+
+**Pas de version Live, et ce n'est pas un oubli** : en Live le contexte est
+scellé à l'ouverture, une tâche créée pendant la conversation ne pourrait pas y
+être ajoutée après coup.
+
+**Et la réponse de catégorie acceptait six mots quand la sienne en faisait
+sept.** « non mets-le dans la catégorie Leads » était refusée par
+`reponseCategorie`, partait au serveur, et c'est ce qui a produit le
+déplacement de la mauvaise tâche. Huit mots désormais, et « partie », « section »
+et « le » rejoignent les mots d'introduction — **« dans la partie perso » est
+son vocabulaire**, relu dans ses vraies dictées ; il dit « partie » au moins
+aussi souvent que « catégorie », et « le » manquait là où « la » était présent.
+Ce n'est pas le seuil qui protège d'une nouvelle demande prise pour une réponse,
+c'est le **« reste vide »** : les deux refus mesurés tiennent (une phrase qui
+dit autre chose laisse forcément des mots derrière elle).
+
+Deux contrôles : `verifier-seconde-demande.ts` (hors ligne, essayé à l'envers
+quatre fois) et deux cas de `verifier-commande-vocale.mjs` — dont **la moitié
+qui compte** : une tâche en attente ne doit pas aimanter une nouvelle demande.
+
 ## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
 Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
@@ -2772,6 +2857,7 @@ node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
 node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
 node --experimental-strip-types scripts/verifier-titre-tache.ts  # le titre d'une tâche est ce qu'il y a à faire, et surtout ce qui ne doit PAS être touché, sans réseau
+node --experimental-strip-types scripts/verifier-seconde-demande.ts  # une phrase à deux demandes rend la main au serveur, et ses vrais titres à « et » n'y tombent pas, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
