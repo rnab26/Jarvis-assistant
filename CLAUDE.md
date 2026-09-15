@@ -686,6 +686,37 @@ Deux contrôles : `verifier-seconde-demande.ts` (hors ligne, essayé à l'envers
 quatre fois) et deux cas de `verifier-commande-vocale.mjs` — dont **la moitié
 qui compte** : une tâche en attente ne doit pas aimanter une nouvelle demande.
 
+### Et une phrase COUPÉE se redemande sur l'appareil, jamais au serveur
+
+**Le bloc `tacheEnAttente` a corrigé la cible et PAS la valeur, et c'est
+mesuré.** Une fois le serveur mis au courant de la tâche qui attend, il a bien
+visé « rappeler Dan Marciano » — et l'a rangée dans **« Perso »**, la catégorie
+suggérée, c'est-à-dire exactement celle que son « non » refusait. Renforcer la
+consigne (« s'il dit non, il REFUSE ta suggestion ; sinon demande ») n'y a rien
+changé : essayé deux fois sur la fonction déployée, même réponse.
+
+**Seul l'appareil sait qu'une suggestion vient d'être refusée**, donc c'est là
+que ça se tranche — comme la confirmation d'un envoi (`21cf48d2`).
+`reponseCategorie` a un quatrième verdict, `illisible` : il parle bien du
+rangement de cette tâche, mais le nom n'est jamais arrivé. `commandeLocale.ts`
+rend alors un `clarify` qui **NOMME la tâche** et liste les catégories — pas un
+« cette tâche » vague, qui est ce qui lui a fait répondre à propos de la
+mauvaise.
+
+**Ce qui tient le silence est le MOT de rangement** (`categ|partie|section|
+liste`), pas la longueur de la phrase : sans lui, « mets la musique dans la
+voiture » dite dans les cinq minutes après une création de tâche serait prise
+pour une réponse de rangement. Et c'est un PRÉFIXE (`categ`, pas `categorie`) :
+sa phrase réelle était coupée sur « la catégor », qui est précisément le cas
+qu'on traite. Les deux se vérifient à l'envers — remplacer le préfixe par le
+mot entier fait rougir un contrôle, retirer le garde-fou en fait rougir trois.
+
+**Mon propre contrôle bout-en-bout laissait passer ce défaut** : il vérifiait
+que la bonne tâche était visée, pas la valeur posée. Une cible juste avec une
+valeur fausse reste une tâche mal rangée — c'est-à-dire tout ce qu'il nous
+reproche. Il refuse maintenant explicitement un `category_id` égal à la
+suggestion refusée.
+
 ## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
 Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à

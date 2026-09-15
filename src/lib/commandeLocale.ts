@@ -323,6 +323,26 @@ export function interpreterLocalement(
     }
     if (attente.suggestion) {
       const r = reponseCategorie(phrase, ctx.categories ?? [])
+      // Il parle du rangement de CETTE tâche, mais le nom de la catégorie
+      // n'est pas arrivé — sa phrase du 15 sept. a été coupée sur « la
+      // catégor ». On redemande ICI, en nommant la tâche et en listant ce qui
+      // existe : partie au serveur, cette phrase-là a d'abord visé une tâche
+      // vieille de sept heures, puis — une fois le bon repère donné — l'a
+      // rangée dans la catégorie suggérée, celle que son « non » refusait.
+      // Mesuré deux fois sur la fonction déployée, consigne renforcée
+      // comprise : la prose ne suffit pas à l'en empêcher, parce que seul
+      // l'appareil sait qu'une suggestion vient d'être refusée.
+      if (r?.verdict === "illisible") {
+        const noms = (ctx.categories ?? []).map((c) => c.name).join(", ")
+        return [
+          {
+            action: "clarify",
+            message: noms
+              ? `Dans quelle catégorie je range "${attente.titre}" ? (${noms})`
+              : `Dans quelle catégorie je range "${attente.titre}" ?`,
+          },
+        ]
+      }
       if (r) {
         const category_verdict =
           r.verdict === "corriger"

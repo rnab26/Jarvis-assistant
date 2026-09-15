@@ -102,6 +102,20 @@ export type ReponseCategorie =
   | { verdict: "accepter" }
   | { verdict: "refuser" }
   | { verdict: "corriger"; category: Category }
+  | { verdict: "illisible" }
+
+/**
+ * Les mots qui disent « je te parle du RANGEMENT de cette tâche ».
+ *
+ * `categ` et non `categorie` : sa phrase du 15 sept. a été coupée par la
+ * reconnaissance vocale sur « la catégor ». Un préfixe attrape la phrase
+ * tronquée, qui est précisément le cas qu'on traite ici.
+ *
+ * C'EST CE MOTIF QUI TIENT LE SILENCE. Sans lui, « mets la musique dans la
+ * voiture », dite dans les cinq minutes après une création de tâche, serait
+ * prise pour une réponse de rangement.
+ */
+const PARLE_DE_RANGEMENT = /\b(?:categ|partie|section|liste)/
 
 /**
  * Cette phrase valide-t-elle (ou corrige-t-elle) la catégorie suggérée ?
@@ -144,5 +158,20 @@ export function reponseCategorie(phrase: string, categories: Category[]): Repons
     const reste = nu.replace(nomNu, "").replace(MOTS_INTRODUCTION, "").replace(/\s+/g, "").trim()
     if (reste.length === 0) return { verdict: "corriger", category: categorie }
   }
+
+  // IL PARLE BIEN DU RANGEMENT, MAIS ON NE SAIT PAS DE QUELLE CATÉGORIE.
+  //
+  // Le 15 sept. à 17:32:57 : « non mets-le dans la catégor » — la phrase est
+  // coupée, le nom n'est jamais arrivé. Rendre `null` ici renvoyait la phrase
+  // au serveur, qui a d'abord visé une tâche vieille de sept heures ; et une
+  // fois qu'il a su LAQUELLE (bloc `tacheEnAttente`), il l'a rangée dans la
+  // catégorie suggérée — « Perso » — c'est-à-dire exactement celle que le
+  // « non » refusait. Mesuré deux fois sur la fonction déployée, consigne
+  // renforcée comprise : la prose ne suffit pas à l'en empêcher.
+  //
+  // C'est l'APPAREIL qui sait qu'il vient de refuser une suggestion, donc
+  // c'est ici que ça se tranche — comme la confirmation d'un envoi. On ne
+  // devine rien : on redemande, en nommant la tâche.
+  if (PARLE_DE_RANGEMENT.test(nu)) return { verdict: "illisible" }
   return null
 }

@@ -195,6 +195,15 @@ const cas = [
       }
       const nomme = texte.includes("marciano") || a.some((x) => x.task_id === "t-marciano")
       if (!nomme) return [false, `il ne nomme pas la tache qui attend : ${JSON.stringify(r).slice(0, 200)}`]
+      // ET IL NE RANGE PAS DANS LA CATEGORIE QU IL VIENT DE REFUSER. Sa phrase
+      // commence par « non » : il refuse « Perso ». Mesure du 15 sept. — sans
+      // cette moitie-la, le controle etait vert sur un update_task qui posait
+      // justement category_id = Perso. Une cible juste avec une valeur fausse
+      // reste une tache mal rangee, et c est tout ce qu il nous reproche.
+      const rangeDansPerso = a.some(
+        (x) => x.action === "update_task" && x.changes?.category_id === "cat-perso",
+      )
+      if (rangeDansPerso) return [false, "il range dans « Perso », la categorie qu il vient de refuser"]
       return [true]
     },
   },
