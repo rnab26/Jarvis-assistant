@@ -512,6 +512,26 @@ export function useSpeechRecognition() {
       setListening(true)
       noterEcoute("commande_debut")
 
+      // COMBIEN DE TEMPS ENTRE L'APPUI ET LE MICRO RÉELLEMENT OUVERT.
+      //
+      // Sa remarque du 15 sept. 2026 : « le temps de préparation du micro est
+      // toujours très long, c'est jamais instantané […] je parle dans le vide
+      // le temps que ça s'initialise ». Rien ne le mesurait : `journal_ecoute`
+      // dit combien de temps le tour a duré et combien de partiels sont
+      // arrivés, jamais QUAND le premier est arrivé. On ne pouvait donc que
+      // supposer — et le projet a déjà payé ça sur la latence du mode Live,
+      // où la mesure a écarté trois causes supposées d'un coup.
+      //
+      // Deux nombres, et il faut les deux pour désigner un coupable :
+      // `ms_ouverture` = ce que coûte NOTRE chemin plus le démarrage du
+      // service Android (les deux `addListener` du pont, puis `start()`) ;
+      // `ms_premier_mot` = ce que le service met à rendre son premier mot une
+      // fois ouvert. Si le premier est petit et le second gros, c'est Android
+      // qui est lent, pas nous — et l'inverse aussi.
+      const appuiAt = Date.now()
+      let microOuvertAt = 0
+      let premierPartielAt = 0
+
       // partialResults:true active le "DICTATION_MODE" natif d'Android, dont
       // la tolérance au silence est plus longue que le mode commande — et
       // c'est aussi ce qui nous donne le texte au fil de l'eau, donc de quoi
@@ -521,6 +541,7 @@ export function useSpeechRecognition() {
         ({ matches }) => {
           const texte = matches?.[0]
           if (typeof texte !== "string") return
+          if (!premierPartielAt) premierPartielAt = Date.now()
           nbPartiels++
           if (stoppedRecu) finalApresStop++
           const avant = flux.etat.courant
@@ -620,6 +641,10 @@ export function useSpeechRecognition() {
           // En mode partiels, `start()` se résout dès que le service est
           // lancé : le micro est ouvert, même si personne n'a encore parlé.
           if (demarre) setReady(true)
+          // La PREMIÈRE ouverture seulement : la boucle relance une session à
+          // chaque silence, et compter la dernière dirait le temps d'une
+          // relance au lieu de ce qu'il attend, lui, avant de parler.
+          if (demarre && !microOuvertAt) microOuvertAt = Date.now()
           await arret
           if (filet) clearTimeout(filet)
           // Le résultat final post-traité par Android arrive APRÈS
@@ -656,6 +681,10 @@ export function useSpeechRecognition() {
           finals_apres_stop: finalApresStop,
           arret_manuel: arretManuelRef.current,
           entendu: extraitEntendu(transcript),
+          // `null` et pas `0` quand ça n'a pas eu lieu : zéro se lirait comme
+          // « instantané », c'est-à-dire le contraire de ce qui s'est passé.
+          ms_ouverture: microOuvertAt ? microOuvertAt - appuiAt : null,
+          ms_premier_mot: premierPartielAt && microOuvertAt ? premierPartielAt - microOuvertAt : null,
         })
         if (!transcript) throw new Error(RIEN_ENTENDU)
         return transcript

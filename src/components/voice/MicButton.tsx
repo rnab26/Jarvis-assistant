@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core"
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { Button } from "@/components/ui/button"
 import { JarvisCore } from "@/components/JarvisCore"
 import { pastilleQuota, type Consommation } from "@/lib/consommationModele"
 import { cn } from "@/lib/utils"
@@ -231,6 +232,20 @@ export function MicButton({
   }, [])
   const [lastUserText, setLastUserText] = useState<string | null>(null)
   const [lastReply, setLastReply] = useState<string | null>(null)
+  /**
+   * La phrase qui n'a pas abouti, gardée pour pouvoir la renvoyer TELLE QUELLE.
+   *
+   * Le 15 sept. 2026, une dictée de 43 secondes (104 résultats partiels, 19
+   * sessions de reconnaissance — mesuré dans `journal_ecoute`) a été perdue
+   * parce que le `fetch` a été rejeté avant la réponse. Redicter 43 secondes
+   * mot pour mot n'est pas une option ; le texte est déjà à l'écran, il
+   * manquait seulement de quoi le renvoyer.
+   *
+   * Gardée à part de `lastUserText`, qui bouge à chaque résultat partiel de
+   * l'écoute suivante : on veut la phrase EXACTE qui est partie, pas ce que
+   * l'affichage montrait à l'instant du renvoi.
+   */
+  const [phraseARejouer, setPhraseARejouer] = useState<string | null>(null)
   // Un tap pendant que Jarvis parle (barge-in) relance l'écoute lui-même ;
   // ce flag évite que le await speak(...) interrompu, une fois débloqué,
   // ne relance À SON TOUR une écoute en double (deux listen() concurrents).
@@ -844,7 +859,12 @@ export function MicButton({
     let transcript = premier
     for (;;) {
       setLastUserText(transcript)
+      setPhraseARejouer(transcript)
       const enchainer = await runTurn(transcript)
+      // Le tour est allé au bout : plus rien à renvoyer. On l'efface ICI et
+      // pas au prochain appui, sinon un bouton « Réessayer » survivrait à une
+      // commande réussie et rejouerait une action déjà faite.
+      setPhraseARejouer(null)
       if (!enchainer) return
 
       setStatus("listening")
@@ -876,6 +896,33 @@ export function MicButton({
       setStatus("listening")
       const transcript = nettoyer(await listen("command", { onTexte: setLastUserText }))
       await conduireConversation(transcript)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue."
+      setLastReply(message)
+      setStatus("error")
+    }
+  }
+
+  /**
+   * Renvoyer la phrase qui n'a pas abouti, sans la redicter.
+   *
+   * ON NE RETENTE JAMAIS TOUT SEUL, et c'est le point à ne pas défaire : le
+   * 15 sept. 2026, la requête qui « a échoué » côté téléphone avait en réalité
+   * reçu un `200` du serveur 310 ms plus tard. Un renvoi automatique aurait
+   * exécuté la demande DEUX fois — deux chantiers, deux messages, deux
+   * alarmes. C'est à Raphaël de décider, et la phrase affichée le lui dit
+   * (« je ne sais pas si ta demande est passée »).
+   *
+   * Le renvoi repasse par `conduireConversation`, pas par un chemin à lui :
+   * une seconde route finirait par ne plus exécuter les actions pareil.
+   */
+  async function rejouerLaPhrase() {
+    const phrase = phraseARejouer
+    if (!phrase) return
+    priseRef.current++
+    try {
+      setStatus("processing")
+      await conduireConversation(phrase)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue."
       setLastReply(message)
@@ -1217,9 +1264,17 @@ export function MicButton({
         )
       )}
       {(lastUserText || lastReply) && (
-        <div className="max-w-xs text-center text-sm">
+        <div className="flex max-w-xs flex-col items-center gap-2 text-center text-sm">
           {lastUserText && <p className="text-muted-foreground">Toi : {lastUserText}</p>}
           {lastReply && <p>Jarvis : {lastReply}</p>}
+          {/* Le seul chemin pour ne pas redicter ce qui n'a pas abouti. Il ne
+              s'affiche QUE sur un échec : proposer « Réessayer » après une
+              commande réussie inviterait à la faire deux fois. */}
+          {status === "error" && phraseARejouer && (
+            <Button size="sm" variant="outline" onClick={() => void rejouerLaPhrase()}>
+              Réessayer sans redicter
+            </Button>
+          )}
         </div>
       )}
     </div>

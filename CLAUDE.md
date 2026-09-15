@@ -779,6 +779,74 @@ rendre une chaîne vide (`src/lib/live/sessionLive.ts`, alimenté par
 `MicButton`). La consigne dit au modèle quoi faire de ce vide, mais la vraie
 correction est de ne jamais le produire — chantier ouvert.
 
+## Une coupure de connexion n'est PAS une réponse du serveur (15 sept. 2026)
+
+Sa capture : « Jarvis : Le serveur vocal a répondu : Failed to send a request
+to the Edge Function », après une dictée de 43 secondes.
+
+**Les deux moitiés de cette phrase étaient fausses, et c'est mesuré, pas
+supposé.** Journaux Supabase du même instant : `POST | 200 |
+.../voice-command` à **10:50:42.027**, alors que l'app avait rendu la main à
+**10:50:41.717** après **2985 ms** (`journal_ecoute`). Le serveur n'a jamais
+répondu ça — il a répondu 200, 310 ms trop tard pour le téléphone. La phrase
+accusait donc quelque chose qu'elle n'avait pas constaté : exactement ce que
+`honnetete.ts` interdit au modèle, appliqué cette fois à notre propre code.
+
+**La cause est mécanique.** `FunctionsFetchError` (supabase-js, levé quand le
+`fetch` lui-même est rejeté) n'a PAS de `context` : `corpsDeLErreur` rend une
+chaîne vide, aucun cas de `traduireErreurServeur` ne reconnaissait le message
+anglais, et le dernier recours le relayait tel quel sous « Le serveur vocal a
+répondu : … ».
+
+**Fréquence, pour ne pas surestimer le défaut** : 1 échec sur 27 réponses
+modèle enregistrées depuis le 8 sept. Ce n'est ni un plafond de quota ni une
+panne serveur — c'est sa 4G, et le message le dit maintenant.
+
+Trois points à ne pas défaire :
+
+1. **On ne dit pas « ça n'est pas parti ».** Ce serait faux ce jour-là. Du
+   téléphone, on ne PEUT pas savoir si le serveur a reçu et exécuté : la
+   phrase dit « je ne sais pas si ta demande est passée ». La moitié de
+   `verifier-coupure-reseau.ts` vérifie ce qu'on ne dit PAS.
+2. **AUCUN renvoi automatique.** Le serveur avait exécuté : un retry aveugle
+   aurait tout fait deux fois — deux chantiers, deux messages, deux alarmes.
+   Le bouton « Réessayer sans redicter » renvoie la phrase EXACTE
+   (`phraseARejouer`, gardée à part de `lastUserText` qui bouge à chaque
+   partiel), et c'est Raphaël qui décide. Un contrôle compte les appels à
+   `rejouerLaPhrase()` : deux, la définition et le `onClick`, pas trois.
+3. **Le registre fait DEUX lignes**, pas une : « La connexion a coupé avant la
+   réponse du serveur vocal » et « Le serveur vocal a refusé de répondre ». Une
+   panne de 4G et un moteur qui refuse ne se corrigent pas du même côté ;
+   les fondre sur une seule empreinte rendrait le compteur illisible.
+
+### Le micro est enfin MESURÉ (même chantier)
+
+Sa remarque du même jour : « le temps de préparation du micro est toujours
+très long, c'est jamais instantané […] je parle dans le vide le temps que ça
+s'initialise ». **Rien ne le mesurait** : `journal_ecoute` disait la durée du
+tour et le nombre de partiels, jamais QUAND le premier est arrivé.
+
+`commande_fin` porte donc deux nombres de plus, et il faut les deux pour
+désigner un coupable : **`ms_ouverture`** (appui → `start()` résolu : notre
+chemin plus le démarrage du service Android) et **`ms_premier_mot`**
+(ouverture → premier résultat partiel : ce que le service met à entendre).
+Petit puis gros = c'est Android ; gros puis petit = c'est nous.
+
+C'est la même méthode que pour la latence Live (`ms_jeton`), et la même
+consigne : **ne recode rien avant d'avoir lu ces nombres-là.** Trois causes
+supposées y avaient été écartées d'un coup par la mesure.
+
+```sql
+select at, detail->>'ms_ouverture' as ouverture, detail->>'ms_premier_mot' as premier_mot,
+       detail->>'partiels' as partiels, detail->>'sessions' as sessions, detail->>'duree_ms' as duree
+from journal_ecoute where evenement = 'commande_fin' order by at desc limit 20;
+```
+
+`null` et pas `0` quand ça n'a pas eu lieu : zéro se lirait comme
+« instantané », c'est-à-dire le contraire de ce qui s'est passé. Et c'est la
+PREMIÈRE ouverture qui est mesurée — la boucle relance une session à chaque
+silence, la dernière dirait le temps d'une relance.
+
 ## « À quoi tu es branché ? » — l'état RÉEL, pas la description de l'app
 
 Sa remarque du 6 sept. 2026 : « Jarvis ne connaît toujours pas son propre
@@ -2555,6 +2623,7 @@ node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça e
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
 node --experimental-strip-types scripts/verifier-archive-taches.ts  # une tâche cochée va dans l'archive de sa catégorie, et rien ne se perd entre les deux, sans réseau
+node --experimental-strip-types scripts/verifier-coupure-reseau.ts  # une coupure de connexion ne s'annonce jamais comme une réponse du serveur, et « Réessayer » ne part jamais tout seul, sans réseau
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, et le repère « déjà vu », sans réseau
 ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà vu » suit son compte : non-recul côté SQL et cloisonnement RLS
 node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâche dictée hors réseau ne se perd pas et ne se dédouble pas, sans réseau

@@ -270,6 +270,9 @@ jobs:
       - name: Les tâches terminées rangées dans l'archive de leur catégorie
         run: node --experimental-strip-types scripts/verifier-archive-taches.ts
 
+      - name: Une coupure réseau ne se présente pas comme une réponse du serveur
+        run: node --experimental-strip-types scripts/verifier-coupure-reseau.ts
+
       - name: Ce qui a bougé depuis le dernier passage
         run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
 
