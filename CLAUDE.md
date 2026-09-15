@@ -3447,9 +3447,21 @@ promesse. Le second est pire parce qu'il est muet : **s'il arrête pendant que
 la session se CONNECTE encore**, `arreter()` ne peut rien clore — `courante`
 est encore nul — et la session qui aboutit juste après n'a plus personne pour
 la fermer. Le micro reste pris, le WebSocket ouvert, et
-`definirLiveActifNatif(false)` n'est jamais appelé : la veille de l'autre
-fenêtre se tait pour toujours. D'où le `if (arretDemande)` juste après
+le drapeau natif n'est jamais rebaissé : la veille de l'autre fenêtre se tait
+pour toujours. D'où le `if (arretDemande)` juste après
 l'`await demarrerSessionLive`.
+
+**Et le contrôle qui garde ce drapeau a été corrigé dans le même travail, deux
+fois.** Il comparait des POSITIONS dans le fichier brut : un commentaire qui
+citait l'appel pour expliquer pourquoi il ne fallait pas le déplacer était
+compté comme un appel, et la CI a rougi sur du code juste (15 sept. 2026) —
+le piège du sélecteur Playwright, de `Filesystem.mkdir` et de
+`com.google.android.as`, une quatrième fois. Il ignore maintenant les
+commentaires. Et en l'essayant à l'envers, il s'est avéré **ne pas vérifier ce
+que son libellé promettait** : sortir l'appel du `finally` pour le poser juste
+en dessous le laissait vert, puisque l'ordre était respecté. Il compte
+désormais les accolades pour délimiter le bloc, et refuse un second appel
+ailleurs.
 
 **Ce qui précède une fermeture part maintenant avec elle.** Les deux premières
 occurrences n'ont pu être rapprochées qu'à la main, en relisant les lignes
