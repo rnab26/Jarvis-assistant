@@ -2577,6 +2577,7 @@ node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-prechauffage.ts  # espacement du préchauffage de la connexion Live, sans réseau
 node --experimental-strip-types scripts/verifier-ouverture-live.ts  # l'ordre des trois étapes d'une ouverture Live : le micro en même temps que la connexion, jamais avant le jeton, sans réseau
+node --experimental-strip-types scripts/verifier-reprise-live.ts  # une fermeture Live subie rouvre la conversation, une panne installée ne boucle pas, sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
@@ -3378,6 +3379,81 @@ CONTENU de `PAQUETS_GOOGLE`. Même piège que le sélecteur Playwright et que
 d'Android System Intelligence répond bien chez lui. La preuve sera dans son
 journal — le rapport code 11 / code 7 doit s'effondrer. Et il faut une VRAIE
 APK : c'est un patch natif, la mise à jour rapide ne le porte pas.
+
+### Une fermeture subie ne finit pas la conversation (15 sept. 2026)
+
+Chantier `dde25deb`. `journal_ecoute` porte deux fermetures de session Live
+avec exactement le même message, indépendantes l'une de l'autre : le 10 sept.
+à 20:20:24 UTC après 12,9 s, et le 15 sept. à 06:33:25 après 48,5 s —
+celle-là capture à l'appui, **en plein milieu d'une correction de tâche**.
+
+    Session fermée : Internal error occurred.
+
+**LA CAUSE N'EST TOUJOURS PAS ÉTABLIE, et ne la présente pas comme telle** :
+le message vient tel quel de la fermeture côté Google. Deux points ne font pas
+une mesure. Pour en retrouver d'autres :
+
+```sql
+select at, detail from journal_ecoute
+where evenement = 'live_fin' and detail->>'raison' ilike '%Internal error%'
+order by at desc;
+```
+
+**Ce qui a été corrigé n'est donc pas la panne, c'est ce qu'on en faisait.**
+`maintenirSessionLive` promet « une conversation qui dure » et rouvrait déjà
+la session à la limite des quinze minutes ; une fermeture qui portait une
+RAISON, elle, arrêtait tout. Une panne transitoire d'un service tiers n'a pas
+à coûter la conversation — il se retrouvait devant un cœur éteint, au milieu
+d'une phrase, à devoir rappuyer.
+
+`src/lib/live/repriseLive.ts` est **pur** (`verifier-reprise-live.ts`, dans la
+CI) et porte les trois bornes, qu'il faut toutes les trois :
+
+1. **On ne rouvre que ce qui s'était vraiment ouvert.** Une ouverture qui
+   échoue (jeton refusé, micro tenu par une autre application) ferme AUSSI
+   avec une raison : la rejouer répéterait le même échec en boucle en cachant
+   le message qui l'explique. D'où `ouverte`, posé au moment exact où Jarvis
+   passe en écoute, et rendu par `finie`.
+2. **Deux reprises après panne au maximum, dans un compteur DISTINCT** de
+   celui des reconnexions normales. Un quart d'heure de conversation ne doit
+   pas consommer le droit de survivre à une panne, ni l'inverse.
+3. **En renonçant, on dit qu'on a essayé.** Trois fermetures d'affilée
+   présentées comme une seule, et il rappuie pour retomber dessus. La phrase
+   dit aussi que ce n'est pas lui.
+
+**La durée ne discrimine QUE les fermetures sans raison** (les quinze minutes
+de Google). L'appliquer à une panne annoncée ferait dépendre la survie d'un
+seuil qui n'a jamais été mesuré sur ce cas-là — d'où le 10 sept., 12,9 s, qui
+se rouvre lui aussi.
+
+**Et la décision est UNE, alors qu'elle était écrite deux fois** : une
+première dans `onEtat` pour avaler le « fermee » et laisser le cœur sur
+« connexion », une seconde après `await courante.finie` pour reboucler. Elles
+étaient d'accord parce que quelqu'un les tenait alignées à la main. Le jour où
+elles divergent, le cœur reste sur « connexion » devant une session qui ne
+rouvrira jamais, et personne ne le voit. Un contrôle compte les appels à
+`deciderReprise` dans `maintenirSessionLive` : deux, pas un.
+
+Cette course-là existait d'ailleurs déjà et a été refermée avec : on avale le
+« fermee » en promettant une reprise, il appuie sur arrêter dans l'intervalle
+(sa décision l'emporte), et plus personne ne disait à l'écran que c'était
+fini. Le drapeau `avalee` tient la promesse.
+
+**Ce qui précède une fermeture part maintenant avec elle.** Les deux premières
+occurrences n'ont pu être rapprochées qu'à la main, en relisant les lignes
+voisines — et ce qu'on ne relève pas à l'instant ne se retrouve plus après.
+`live_fin` emporte donc `ouverte`, `commandes`, `ms_depuis_commande`,
+`parlait` et `contexte`, pour TOUTES les fermetures : sans les normales il n'y
+a pas de repère, et « trois commandes juste avant » ne voudrait rien dire.
+`null` et pas `0` quand ça n'a pas eu lieu. Une reprise après panne se
+distingue d'une reconnexion ordinaire par `apres_panne` dans
+`live_reconnexion`, sinon le compte des « Internal error » devient illisible.
+
+**Non vérifiable ici** (pas d'appareil, pas de vraie session Google) : que la
+reprise se passe bien chez lui. La preuve sera dans son journal — un
+`live_reconnexion` avec `apres_panne: true` juste après un `live_fin` qui
+porte cette raison. C'est du `src/` : la mise à jour rapide suffit, pas besoin
+d'APK.
 
 ### Le temps d'ouverture d'une Live : ce que ce N'EST PAS
 

@@ -7,6 +7,7 @@ import { demandeFinDeConversation } from "@/lib/live/finConversation"
 import { retourOuAveu } from "@/lib/retourVide"
 import { lireClotureLive } from "@/lib/livePrefs"
 import { definirLiveActifNatif } from "@/lib/live/etatLiveNatif"
+import { deciderReprise } from "@/lib/live/repriseLive"
 
 /**
  * Une conversation Live avec Gemini : l'audio part en continu, Google décide
@@ -52,16 +53,16 @@ export interface EvenementsLive {
 
 export interface SessionLive {
   arreter: () => void
-  /** Se résout quand la session est close, avec la raison et qui l'a close. */
-  finie: Promise<{ raison?: string; parRaphael: boolean }>
+  /** Se résout quand la session est close, avec la raison, qui l'a close, et
+   * si elle s'était vraiment ouverte — ce dernier point décide si une
+   * fermeture qui porte une raison se rejoue ou s'affiche (`repriseLive.ts`). */
+  finie: Promise<{ raison?: string; parRaphael: boolean; ouverte: boolean }>
 }
 
-/** Google ferme une session audio au bout de 15 minutes (doc Live). On en
- * rouvre une sans que ça se voie, tant que c'est lui qui a coupé, pas
- * Raphaël — et jamais en boucle sur une vraie panne. */
-const RECONNEXIONS_MAX = 12
-/** En dessous, une fermeture par Google est une panne, pas une limite. */
-const DUREE_MIN_POUR_RECONNECTER_MS = 30000
+/** Quand rouvrir une session fermée, et quand s'arrêter en le disant : la
+ * décision entière est dans `src/lib/live/repriseLive.ts`, pure et vérifiée
+ * hors ligne. Elle était écrite deux fois ici, à deux endroits qu'il fallait
+ * tenir alignés à la main — voir l'en-tête de ce module. */
 
 /**
  * La consigne, le contexte et l'outil sont verrouillés DANS LE JETON par la
@@ -170,11 +171,22 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   let parRaphael = false
   let reponseEnCours = ""
   let entenduEnCours = ""
+  /** Vrai à partir du moment où Jarvis est réellement en écoute (micro pris,
+   * `live_debut` écrit). Une fermeture d'AVANT cet instant est un échec
+   * d'ouverture, et elle ne se rejoue jamais — voir `repriseLive.ts`. */
+  let ouverte = false
+  /** CE QUI PRÉCÈDE LA FERMETURE, pour que la prochaine occurrence d'« Internal
+   * error occurred » soit comparable sans enquête (chantier dde25deb). Les deux
+   * premières n'ont pu être rapprochées que de mémoire, en relisant à la main
+   * les lignes voisines de `journal_ecoute` ; ce qu'on ne relève pas à
+   * l'instant de la fermeture ne se retrouve plus après. */
+  let commandes = 0
+  let derniereCommandeAt = 0
   // Raphaël a dit « terminé » : le micro ne part plus, on laisse Jarvis
   // finir sa phrase d'adieu, puis on ferme — comme s'il avait appuyé.
   let finDemandee = false
-  let resoudreFin: (v: { raison?: string; parRaphael: boolean }) => void = () => {}
-  const finie = new Promise<{ raison?: string; parRaphael: boolean }>((resolve) => {
+  let resoudreFin: (v: { raison?: string; parRaphael: boolean; ouverte: boolean }) => void = () => {}
+  const finie = new Promise<{ raison?: string; parRaphael: boolean; ouverte: boolean }>((resolve) => {
     resoudreFin = resolve
   })
 
@@ -207,7 +219,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     const raison = error ? String((error as { message?: string }).message ?? error) : "pas de jeton"
     noterEcoute("live_echec", { etape: "jeton", detail: raison.slice(0, 120) })
     ev.onEtat("fermee", `Impossible d'ouvrir la conversation : ${raison}`)
-    return { arreter: () => {}, finie: Promise.resolve({ raison, parRaphael: false }) }
+    return { arreter: () => {}, finie: Promise.resolve({ raison, parRaphael: false, ouverte: false }) }
   }
 
   // Le jeton est obtenu : on retient QUAND, pour pouvoir séparer les trois
@@ -268,10 +280,24 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     } catch {
       // déjà fermée
     }
-    noterEcoute("live_fin", { duree_ms: Date.now() - debut, raison: raison ?? null, par_raphael: parRaphael, a_la_voix: finDemandee })
+    noterEcoute("live_fin", {
+      duree_ms: Date.now() - debut,
+      raison: raison ?? null,
+      par_raphael: parRaphael,
+      a_la_voix: finDemandee,
+      // Relevé pour TOUTES les fermetures, pas seulement celles qui portent une
+      // raison : sans les fermetures normales on n'a pas de repère, et « trois
+      // commandes juste avant » ne voudrait rien dire. `null` et pas `0` quand
+      // ça n'a pas eu lieu — zéro se lirait comme « à l'instant », le contraire.
+      ouverte,
+      commandes,
+      ms_depuis_commande: derniereCommandeAt ? Date.now() - derniereCommandeAt : null,
+      parlait: lecteur.enCours,
+      contexte: ev.contexte.length,
+    })
     // Une clôture voulue n'est pas une panne : rien à afficher.
     ev.onEtat("fermee", parRaphael ? undefined : raison, parRaphael)
-    resoudreFin({ raison, parRaphael })
+    resoudreFin({ raison, parRaphael, ouverte })
   }
 
   /** Clôture à la voix : Jarvis finit de parler, puis la session se ferme. */
@@ -349,6 +375,8 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
           }
           // `vide` est noté comme un DÉFAUT, pas comme un cas normal : c'est
           // par cette ligne qu'on retrouvera l'action muette.
+          commandes++
+          derniereCommandeAt = Date.now()
           noterEcoute("live_commande", { demande: demande.slice(0, 80), resultat: resultat.slice(0, 80), vide })
           reponses.push({ id: appel.id, name: appel.name ?? NOM_OUTIL, response: { resultat } })
         }
@@ -448,6 +476,9 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       premier: ev.premierMessage ? 1 : 0,
       contexte: ev.contexte.length,
     })
+    // À PARTIR D'ICI SEULEMENT une fermeture subie mérite d'être rejouée : le
+    // micro est pris, Google écoute, la conversation a vraiment eu lieu.
+    ouverte = true
     ev.onEtat("ecoute")
     if (ev.premierMessage) {
       ev.onEntendu(ev.premierMessage, true)
@@ -469,15 +500,24 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
 }
 
 /**
- * Une conversation qui dure : la session est rouverte quand Google la ferme
- * (limite des 15 minutes), sans que Raphaël ait à retoucher le cœur. Il ne
- * voit qu'une conversation. Une fermeture rapide (moins de 30 s) ou répétée
- * est une panne : on s'arrête et on le dit.
+ * Une conversation qui dure : la session est rouverte quand Google la ferme —
+ * à la limite des quinze minutes, mais AUSSI quand elle tombe en annonçant une
+ * panne de son côté (« Internal error occurred », deux occurrences mesurées les
+ * 10 et 15 sept. 2026). Raphaël ne voit qu'une conversation.
+ *
+ * Quand rouvrir, combien de fois, et quoi dire en renonçant : tout est dans
+ * `deciderReprise` (`src/lib/live/repriseLive.ts`), pure et vérifiée hors
+ * ligne. Les deux endroits qui décidaient ici — avaler le « fermee » pour
+ * laisser le cœur sur « connexion », et reboucler — l'appellent tous les deux,
+ * pour qu'ils ne puissent plus se contredire.
  */
 export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionLive> {
   let courante: SessionLive | null = null
   let arretDemande = false
-  let reconnexions = 0
+  let reprises = 0
+  /** Tenu à part des reconnexions normales : un quart d'heure de conversation
+   * ne doit pas consommer le droit de survivre à une panne, ni l'inverse. */
+  let reprisesApresPanne = 0
 
   // Le drapeau natif couvre TOUTE la durée de la conversation maintenue, y
   // compris les reconnexions transparentes de Google : sans ce wrapper, un
@@ -493,26 +533,76 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
     try {
       while (!arretDemande) {
         const debut = Date.now()
+        /** Ce que la session en cours a dit d'elle-même. `onEtat` décide AVANT
+         * que `finie` se résolve : sans ce relevé, la première décision ne
+         * saurait pas si la session s'était ouverte. */
+        let ouverteVue = false
+        /** Vrai quand on a AVALÉ le « fermee » pour laisser le cœur sur
+         * « connexion ». Il faut le savoir : si la reprise n'a finalement pas
+         * lieu — il appuie sur arrêter dans l'intervalle, et sa décision
+         * l'emporte —, personne n'a encore dit à l'écran que c'était fini, et
+         * le cœur resterait sur « connexion » devant une session qui ne
+         * rouvrira jamais. */
+        let avalee = false
         courante = await demarrerSessionLive({
           ...ev,
-          premierMessage: reconnexions === 0 ? ev.premierMessage : undefined,
+          premierMessage: reprises === 0 ? ev.premierMessage : undefined,
           onEtat: (etat, detail, parRaphael) => {
+            if (etat === "ecoute") ouverteVue = true
             // La fermeture par Google est absorbée ici : le cœur reste sur
             // « conversation en cours » pendant qu'on rouvre. Pas celle de
             // Raphaël (appui ou « terminé ») : elle est définitive.
-            if (etat === "fermee" && !parRaphael && !arretDemande && !detail && Date.now() - debut >= DUREE_MIN_POUR_RECONNECTER_MS && reconnexions < RECONNEXIONS_MAX) {
-              ev.onEtat("connexion")
+            if (etat === "fermee") {
+              const decision = deciderReprise({
+                raison: detail,
+                parRaphael: parRaphael === true,
+                ouverte: ouverteVue,
+                dureeMs: Date.now() - debut,
+                reprises,
+                reprisesApresPanne,
+                arretDemande,
+              })
+              if (decision.reprendre) {
+                avalee = true
+                ev.onEtat("connexion")
+                return
+              }
+              // On renonce : ce qu'il lit doit dire qu'on a essayé, sinon trois
+              // fermetures d'affilée se lisent comme une seule.
+              ev.onEtat("fermee", decision.message, parRaphael)
               return
             }
             ev.onEtat(etat, detail, parRaphael)
           },
         })
         const fin = await courante.finie
-        if (arretDemande || fin.parRaphael) return
-        const duree = Date.now() - debut
-        if (fin.raison || duree < DUREE_MIN_POUR_RECONNECTER_MS || reconnexions >= RECONNEXIONS_MAX) return
-        reconnexions++
-        noterEcoute("live_reconnexion", { numero: reconnexions, apres_ms: duree })
+        const decision = deciderReprise({
+          raison: fin.raison,
+          parRaphael: fin.parRaphael,
+          ouverte: fin.ouverte,
+          dureeMs: Date.now() - debut,
+          reprises,
+          reprisesApresPanne,
+          arretDemande,
+        })
+        if (!decision.reprendre) {
+          // On avait laissé le cœur sur « connexion » en promettant une
+          // reprise qui n'a pas lieu : c'est ici, et nulle part ailleurs,
+          // qu'on tient parole.
+          if (avalee) ev.onEtat("fermee", decision.message, fin.parRaphael)
+          return
+        }
+        reprises++
+        if (decision.apresPanne) reprisesApresPanne++
+        noterEcoute("live_reconnexion", {
+          numero: reprises,
+          apres_ms: Date.now() - debut,
+          // Ce qui distingue une reprise après panne d'une reconnexion normale.
+          // Sans elle, les deux se mélangeraient dans le journal et le compte
+          // des « Internal error » deviendrait illisible.
+          apres_panne: decision.apresPanne,
+          raison: fin.raison ?? null,
+        })
       }
     } finally {
       definirLiveActifNatif(false)
@@ -525,6 +615,6 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
       arretDemande = true
       courante?.arreter()
     },
-    finie: Promise.resolve({ parRaphael: true }),
+    finie: Promise.resolve({ parRaphael: true, ouverte: false }),
   }
 }

@@ -140,6 +140,14 @@ jobs:
       - name: L'ordre des trois étapes d'une ouverture Live
         run: node --experimental-strip-types scripts/verifier-ouverture-live.ts
 
+      # Deux fermetures mesurées (10 et 15 sept. 2026) : « Session fermée :
+      # Internal error occurred. », dont une en pleine correction de tâche. La
+      # cause est chez Google et reste inconnue ; ce qui suit est à nous — une
+      # conversation qui se rouvre au lieu de s'arrêter, bornée pour ne pas
+      # boucler sur une panne installée, et qui DIT qu'elle a essayé.
+      - name: Une fermeture subie ne finit pas la conversation Live
+        run: node --experimental-strip-types scripts/verifier-reprise-live.ts
+
       # Laissé de côté par le chantier qui l'a écrit : il était dans CLAUDE.md
       # mais dans aucun workflow, donc rien ne le lançait.
       - name: L'espacement du préchauffage de la connexion Live
