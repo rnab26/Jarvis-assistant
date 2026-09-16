@@ -726,6 +726,63 @@ c'est le contrôle hors ligne qui garde la valeur, là où elle se décide. Le
 résidu (les phrases de rangement que le filtre local ne reconnaît pas) est le
 chantier ouvert `902bf94b`, avec les trois pistes non essayées.
 
+### Redire une dictée coupée COMPLÈTE la ligne, elle n'en crée pas une seconde
+
+Cinquième défaut du chantier `7b2c99e2`, mesuré le 16 sept. 2026 sur ses **298
+vraies dictées** (`echanges`). Six paires consécutives où la SECONDE contient
+la première mot pour mot, et ajoute quelque chose :
+
+    2,1 s   « appeler Mel ma femme »          → « … à 23h19 »
+    3,3 s   « lance la musique de Booba »     → « … DKR »
+    3,5 s   « Mets-moi un rappel … Ducamp »   → « … échéance à 15h »
+    4,6 s   « envoyer un message à ma femme » → « … lui disant que tu l'aimes »
+    6,9 s   « vidéo sur YouTube »             → « … qui parle de motivation »
+   23,0 s   « Itinéraire de Pierre Amikay »   → « … avec Waze »
+
+**Les six sont le même phénomène, et il n'y a AUCUN faux positif** : le service
+de reconnaissance rend un résultat final trop tôt, il redit sa phrase en la
+complétant. Ce n'est pas une seconde demande.
+
+**ON COMPLÈTE, ON NE REFUSE PAS — c'est le point à ne pas défaire.**
+`deciderDoublonTache` (15 sept.) voit bien que les deux titres se ressemblent
+et refuse le second. Mais **c'est le second qui porte l'échéance à 15 h** :
+refuser perd ce qu'il vient d'ajouter, et le renvoie exactement à la retouche
+manuelle dont il se plaint. `repriseDictee.ts` (pur) transforme donc la
+création en complétion de la MÊME tâche.
+
+**La relation de PRÉFIXE est tout le garde-fou**, pas une ressemblance : deux
+demandes différentes ne commencent pas l'une par l'autre, mot pour mot.
+« rappeler Dan » et « rappeler Mel » se ressemblent beaucoup et ne sont pas la
+même demande. Et le préfixe s'arrête **sur une frontière de mot** — sans ça,
+« appeler Daniel » reprendrait « appeler Danielle Cohen », qui est quelqu'un
+d'autre.
+
+**On n'écrase jamais avec du vide** : le modèle peut ne pas reposer un champ
+qu'il avait déduit au tour d'avant (la catégorie, les notes). Seuls les champs
+renseignés passent dans le `changes`.
+
+Calculé dans `MicButton`, parce que c'est la seule couche qui tient la phrase
+PRÉCÉDENTE — le serveur ne la voit jamais, comme pour la confirmation d'un
+envoi (`21cf48d2`).
+
+**Contrôle essayé à l'envers, et sa première version était FAUSSE.** Le cas de
+la frontière de mot visait « appeler Dan » → « appeler Daniel Nakache » :
+aplatie, la phrase fait onze caractères, donc elle tombait sur
+`LONGUEUR_MINIMUM` (12) et jamais sur la frontière — retirer la frontière
+laissait le contrôle vert. C'est le piège du contrôle qui vérifie autre chose
+que ce qu'il annonce, **payé pour la cinquième fois** dans ce dépôt (sélecteur
+Playwright, `Filesystem.mkdir`, `com.google.android.as`, le drapeau Live).
+Il vise maintenant « appeler Daniel » → « appeler Danielle Cohen », quatorze
+caractères, que seule la frontière peut arrêter.
+
+**Ce n'est branché QUE pour les tâches, et ce n'est pas un oubli** : quatre des
+six reprises mesurées visent la musique, un message, un itinéraire et une
+vidéo — même défaut, conséquences différentes (une musique relancée se
+rattrape, une tâche en double reste dans sa liste). Chantier `e4886791`, en
+`[À CADRER]` : la bonne réponse n'est pas la même pour une musique relancée et
+pour un message préparé deux fois — et « envoi de messages en son nom » est un
+sujet qu'une session autonome ne prend jamais.
+
 ## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
 Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
@@ -2898,6 +2955,7 @@ node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche
 node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
 node --experimental-strip-types scripts/verifier-titre-tache.ts  # le titre d'une tâche est ce qu'il y a à faire, et surtout ce qui ne doit PAS être touché, sans réseau
 node --experimental-strip-types scripts/verifier-seconde-demande.ts  # une phrase à deux demandes rend la main au serveur, et ses vrais titres à « et » n'y tombent pas, sans réseau
+node --experimental-strip-types scripts/verifier-reprise-dictee.ts  # redire une dictée coupée complète la même tâche au lieu d'en créer une seconde, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau

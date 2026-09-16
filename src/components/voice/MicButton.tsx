@@ -25,6 +25,7 @@ import {
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
 import { completionExpiree } from "@/lib/tacheDateEtCategorie"
+import { completerPlutotQueCreer, estUneReprise } from "@/lib/repriseDictee"
 import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
@@ -62,6 +63,7 @@ import type { DevItem } from "@/types/database"
 import {
   type DevSectionsVoiceApi,
   executeVoiceAction,
+  memoireDerniereCreation,
   memoireTacheEnAttente,
   type ContactsApi,
   type DevItemsApi,
@@ -498,7 +500,24 @@ export function MicButton({
     // pas une phrase de Raphaël — les prendre pour une redite serait faux.
     if (round === 0) constaterEchec(transcript, "voix")
     setStatus("processing")
-    const actions = await resolveTranscript(transcript)
+    const brutes = await resolveTranscript(transcript)
+    // IL REDIT SA PHRASE EN L'ALLONGEANT : on COMPLÈTE la tâche qu'il vient
+    // de dicter, on n'en crée pas une seconde (repriseDictee.ts).
+    //
+    // Mesuré sur ses 298 vraies dictées : six paires où la seconde contient
+    // la première mot pour mot, toutes le même phénomène — un résultat final
+    // rendu trop tôt par le service de reconnaissance —, aucun faux positif.
+    // `deciderDoublonTache` voyait bien la ressemblance et REFUSAIT la
+    // seconde ; mais c'est elle qui porte l'échéance à 15 h, et la refuser
+    // perdait ce qu'il venait d'ajouter.
+    //
+    // Calculé ICI parce que c'est la seule couche qui tient la phrase
+    // PRÉCÉDENTE (`dernierTourRef`) — le serveur ne la voit jamais, comme
+    // pour la confirmation d'un envoi (chantier 21cf48d2).
+    const actions =
+      (estUneReprise(dernierTourRef.current, transcript, Date.now())
+        ? completerPlutotQueCreer(brutes, memoireDerniereCreation(), Date.now())
+        : null) ?? brutes
 
     // Quand quelque chose est ambigu, la Edge Function renvoie une seule
     // action clarify : on pose la question plutôt que d'exécuter à moitié.

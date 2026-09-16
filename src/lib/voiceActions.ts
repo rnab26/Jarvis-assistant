@@ -588,7 +588,7 @@ export async function executeVoiceAction(
         category_id: action.category_id ?? null,
         status: "todo",
       })
-      derniereCreation = { vers: "tache", titre: titre, quand: Date.now() }
+      derniereCreation = { vers: "tache", titre: titre, quand: Date.now(), id: resultat?.id }
 
       // NOTÉE, PAS ENREGISTRÉE — et on le DIT (chantier 9476c7a0).
       //
