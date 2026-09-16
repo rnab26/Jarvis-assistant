@@ -79,6 +79,15 @@ export interface DerniereCreation {
   titre: string
   /** Millisecondes epoch. */
   quand: number
+  /**
+   * L'identifiant de la ligne créée, quand on l'a.
+   *
+   * Sert à COMPLÉTER cette ligne-là plutôt qu'en créer une seconde quand il
+   * redit sa phrase en l'allongeant (`repriseDictee.ts`). Facultatif : une
+   * dictée partie dans la file d'attente hors ligne n'a pas encore d'id, et
+   * il n'y a alors rien à compléter.
+   */
+  id?: string
 }
 
 function aplatir(texte: string): string {

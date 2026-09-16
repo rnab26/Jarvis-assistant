@@ -397,6 +397,12 @@ jobs:
       - name: Une phrase à deux demandes rend la main au serveur
         run: node --experimental-strip-types scripts/verifier-seconde-demande.ts
 
+      # Six paires dans ses 298 vraies dictées où il redit sa phrase en
+      # l'allongeant. La seconde porte l'information EN PLUS (l'échéance) :
+      # la refuser perdait ce qu'il venait d'ajouter. On complète.
+      - name: Redire une dictée coupée complète la ligne, n'en crée pas deux
+        run: node --experimental-strip-types scripts/verifier-reprise-dictee.ts
+
       # Les applications proposées doivent être celles du TÉLÉPHONE. Une
       # liste écrite dans le code est fausse le jour où il installe autre
       # chose — et « en aucun cas il y a Waze » est exactement ça.
