@@ -491,7 +491,312 @@ Un jeu d'essai doit être distinct **après normalisation**, pas seulement à
 l'œil : trois listes de longueurs premières entre elles (11, 12, 13) donnent
 83 titres dont aucune paire ne se ressemble.
 
-### Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
+## Une tâche cochée quitte la liste pour l'archive de SA catégorie
+
+Chantiers `20435f77` et `7c37b6b0` (le second dit la même chose, archivé en
+doublon), 15 sept. 2026. Ses mots : « Lorsque une tache est noté comme terminé
+plutôt qu'elle reste dans la liste de tâches et que ca pollue visuellement je
+veux quil y'a une section archives dans les différentes listes de taches et que
+la tâche terminé bascule dedans apres l'avoir coché. »
+
+`src/lib/archiveTaches.ts` est **pur** (`verifier-archive-taches.ts`), et le
+premier de ses contrôles est un COMPTE : tout ce qui entre ressort d'un côté ou
+de l'autre. Une tâche qui sortirait de la liste sans entrer dans l'archive
+serait perdue pour de bon — **il n'y a pas de corbeille pour les tâches**,
+contrairement aux chantiers.
+
+Trois choses à ne pas défaire :
+
+1. **Une dictée hors ligne n'est JAMAIS archivée**, même si son `status` dit
+   « done ». Elle n'existe pas en base : la replier dans un dépliant la
+   rendrait invisible alors que c'est précisément la ligne qu'il doit voir.
+2. **La dernière cochée est en TÊTE de l'archive.** C'est la seule qu'il vient
+   peut-être de cocher par erreur ; en bas d'une liste de trente, il faudrait
+   défiler pour se rattraper.
+3. **Le dépliant ne s'affiche pas quand il n'y a aucune terminée** — « 0
+   terminées » est un contrôle mort, et une catégorie jamais entamée garde
+   exactement la hauteur qu'elle avait.
+
+**Le « Annuler » est celui du cockpit, pas un second.** `proposerAnnulation`
+(`src/lib/annulation.ts`) est devenu générique dans le même travail : cocher
+fait DISPARAÎTRE la ligne de sa vue, exactement comme un chantier archivé, et
+deux retours en arrière côte à côte finiraient par ne plus durer le même temps.
+L'annulation repasse par `toggleStatus` avec le statut D'ARRIVÉE — c'est lui
+qui bascule, lui redonner celui de départ n'annulerait rien.
+
+Réglage livré avec : Paramètres › Tâches et organisation › « Les tâches
+terminées » (`jarvis_taches_archives_ouvertes`, replié par défaut, ce qu'il a
+demandé).
+
+### Le nom de la catégorie : centré, sur un bandeau, et il ne coûte rien
+
+Sa demande du même jour, capture à l'appui (trois noms de catégorie entourés) :
+« centre le nom des catégories de listes dans leur blocs respectifs et fait les
+plus ressortir sans que ce soit trip lourd mais quon puisse mieux faire la
+distinction dans les differents blocs de liste de taches ».
+
+Pas de majuscules forcées — « HIPOUY » crie, et il demande justement que ce ne
+soit pas lourd. Centré, semi-gras, sur un bandeau `bg-muted/40` avec un filet.
+
+**Et la place a été PRISE, pas ajoutée**, comme dans le cockpit. Mesuré sur le
+banc (390 × 844, trois catégories, sept tâches) : l'en-tête centré coûte +9
+points par carte, et l'écart interne des cartes ramené de 16 à 8 points en rend
+8 par intervalle. Bilan, archives repliées : **528 points avant, 515 après** —
+le bandeau est gratuit, et il rend même treize points. Le budget est dans
+`verifier-taches-web.mjs` (`BUDGET_LISTE`, 609 points archive ouverte) : **si
+tu ajoutes quelque chose au bloc d'une catégorie, prends sa place quelque
+part.**
+
+Piège de mesure payé au passage : la hauteur de l'EN-TÊTE ne dit rien de son
+coût réel. Il remonte dans le padding de la carte par une marge négative, donc
+son `getBoundingClientRect` annonce 49 points là où la carte n'en gagne que 9.
+Ce qui se mesure, c'est la liste entière.
+
+## Le titre d'une tâche est ce qu'il y a À FAIRE (15 sept. 2026)
+
+Chantier `7b2c99e2`. Sa phrase : « difficile de boucler l'ajout d'une tâche
+sans avoir a faire des retouches manuelles ».
+
+**Mesuré sur ses vraies dictées**, relues dans `echanges` :
+
+    « note un rappel comme quoi je dois rappeler dan Marciano jeudi matin
+      à 10h »   →  titre créé : « Un rappel comme quoi je dois rappeler dan
+                   marciano matin »
+    « rajoute une tâche dans les prélèvements de relancer Moli aujourd'hui
+      avant midi »  →  « Dans les prelevements de relancer moli avant »
+
+Le titre garde les mots de COMMANDE et perd ceux qui portent le sens. Sur une
+liste de trente lignes, « Un rappel comme quoi je dois… » ne se lit pas.
+
+**Sa décision, mot pour mot** : « Les deux : le modèle écrit, la règle
+rattrape ». La consigne du serveur reste la première ligne de défense ;
+`src/lib/titreTache.ts` (**pur**, `verifier-titre-tache.ts`) est le filet — et
+il rattrape aussi les phrases comprises SANS le modèle (`commandeLocale.ts`),
+où aucune consigne ne s'applique.
+
+**Il nettoie un TITRE, pas une phrase.** C'est ce que sa décision dit : le
+modèle écrit d'abord. Appliquer la même règle à la phrase brute reviendrait à
+se passer de lui.
+
+**Et il en fait le moins possible** : une amorce CONNUE, seulement en TÊTE, et
+jamais si ce qui reste fait moins de trois caractères. Un titre coupé ment là
+où un titre long se lit — d'où autant de contrôles sur ce qui ne doit PAS
+bouger (ses vraies tâches : « Rappeler la banque Apoalim », « Acheter coque
+airpods… ») que sur ce qui doit bouger. **Ne mets JAMAIS un verbe d'action
+dans `AMORCES`** (« rappeler », « appeler », « relancer », « acheter ») : ce
+sont eux le titre, et deux contrôles tombent si on le fait.
+
+Le nettoyage est calculé **une seule fois**, en tête du `case "add_task"` de
+`voiceActions.ts`, et c'est `titre` qui sert partout en dessous — la
+supposition, le doublon, l'écriture et la phrase dite à voix haute. Nettoyer
+plus bas ferait cohabiter deux titres : celui écrit en base et celui qu'il
+entend.
+
+**Deux de mes contrôles ne vérifiaient pas ce qu'ils annonçaient**, trouvé en
+les essayant à l'envers. Celui sur la frontière de mot visait « Noteur de
+frais », qu'aucune amorce ne touche : il restait vert quand on retirait la
+frontière. Il vise maintenant « Note quelque chose d'important », où
+« note que » est un vrai préfixe. Et celui sur « la plus longue amorce gagne »
+était protégé par l'ORDRE de la liste, pas par la logique de longueur : il a
+été remplacé par l'invariant qui compte pour lui — ce qui reste ne commence
+jamais par un morceau de commande — qui rougit quand on casse l'un OU l'autre.
+
+## Une phrase à DEUX demandes n'est pas traitée sur l'appareil (15 sept. 2026)
+
+Chantier `7b2c99e2`, sa plainte : « il fait 50% dans la première tâche et 50%
+en recréant une autre tâche […] difficile de boucler l'ajout d'une tâche sans
+avoir a faire des retouches manuelles ». Et sa décision quand je lui ai demandé
+quoi faire d'une phrase qui en porte deux : « **vaut mieux exécuter les deux
+dans l'ordre** ».
+
+La consigne du serveur a été corrigée pour ça (« UNE PHRASE QUI PORTE DEUX
+DEMANDES DOIT RENDRE DEUX ACTIONS, dans l'ordre où il les a dites »), et elle
+marche — `verifier-commande-vocale.mjs` le vérifie sur la fonction déployée.
+
+**Mais elle ne pouvait rien pour le cas qu'il décrit, parce que le modèle n'est
+jamais appelé.** Mesuré dans `echanges`, 06:32:17 :
+
+    « supprime la tâche Rappel Jonathan Ducamp ET crée la tâche Rappel
+      Jonathan Dukan dans la partie perso… »
+    → source: "appareil", réponse : « "Rappel Jonathan Ducamp" supprimée. »
+
+Les règles de `commandeLocale.ts` capturent une queue gloutonne (`(.+)$`) et la
+donnent à `meilleur()`, qui retrouve quand même la cible **par ressemblance**
+malgré la seconde demande collée derrière. Elle disparaît sans un mot. **Avant
+de corriger une commande vocale, regarde d'où la réponse est venue** — la leçon
+de l'appel au répondeur du 5 sept., et elle a encore servi ici.
+
+**La réponse est de se taire, pas de comprendre plus.** `secondeDemande.ts`
+(pur) reconnaît « liaison + verbe de demande » et fait rendre la main à
+l'appareil ; écrire ici un second analyseur de phrases le ferait diverger de
+celui du serveur, et deux lectures du même « et » rangeraient la même dictée à
+deux endroits.
+
+**L'asymétrie justifie le seuil, et c'est ce qu'il faut garder en tête si on y
+touche** : se taire à tort coûte un aller-retour d'une seconde ; parler à tort
+perd la moitié de sa demande, en silence. Mesuré sur ses 40 vraies tâches
+(**0** déclenchement à tort) et ses 290 vraies dictées (13 retenues).
+
+**Ne mets JAMAIS dans `VERBES_DE_DEMANDE` un mot qui peut être un nom.** C'est
+tout le garde-fou : ses vrais titres portent des « et » innocents — « Acheter
+coque airpods ET clefs de voiture », « gocardless a relancer ET molly »,
+« Appeler Yoni pour démarrer + data ET robot ». Ce qui suit le « et » y est un
+complément. Deux contrôles tombent si on le fait.
+
+**Le garde-fou n'est PAS posé sur la recherche ni sur l'itinéraire**, et ce
+n'est pas un oubli : là, ce qui suit le « et » fait partie de la QUESTION
+(« lance une recherche via Perplexity et demande-lui combien… »), rien n'est
+perdu, et les renvoyer au serveur consommerait le quota gratuit que la
+reconnaissance locale existe justement pour épargner.
+
+### Et le serveur sait enfin QUELLE tâche attend une réponse
+
+Même chantier, même journée. À 17:32:57, Jarvis venait de proposer une
+catégorie pour « rappeler Dan Marciano ». Raphaël répond « non mets-le dans la
+catégor » — **phrase coupée par la reconnaissance vocale**. Réponse reçue :
+
+    « Dans quelle catégorie souhaites-tu que je déplace la tâche pour la
+      banque Apoalim ? »
+
+— une tâche créée **sept heures plus tôt**. Le modèle a choisi une cible parce
+qu'il n'avait aucun moyen de savoir laquelle attendait : `resolveTranscript`
+ne lui envoie que la phrase courante, jamais le tour précédent. **Exactement le
+même défaut que pour la confirmation d'un envoi** (chantier `21cf48d2`), et il
+se corrige pareil — en donnant au serveur l'état que seul l'appareil a.
+`MicButton` joint donc `tacheEnAttente` (id, titre, ce qui lui manque), et
+`blocTacheEnAttente` (`voice-command/index.ts`) en fait deux phrases de
+consigne. **Vide, ça ne rend RIEN** — même règle que `ceQuiLAttend.ts`.
+
+**Pas de version Live, et ce n'est pas un oubli** : en Live le contexte est
+scellé à l'ouverture, une tâche créée pendant la conversation ne pourrait pas y
+être ajoutée après coup.
+
+**Et la réponse de catégorie acceptait six mots quand la sienne en faisait
+sept.** « non mets-le dans la catégorie Leads » était refusée par
+`reponseCategorie`, partait au serveur, et c'est ce qui a produit le
+déplacement de la mauvaise tâche. Huit mots désormais, et « partie », « section »
+et « le » rejoignent les mots d'introduction — **« dans la partie perso » est
+son vocabulaire**, relu dans ses vraies dictées ; il dit « partie » au moins
+aussi souvent que « catégorie », et « le » manquait là où « la » était présent.
+Ce n'est pas le seuil qui protège d'une nouvelle demande prise pour une réponse,
+c'est le **« reste vide »** : les deux refus mesurés tiennent (une phrase qui
+dit autre chose laisse forcément des mots derrière elle).
+
+Deux contrôles : `verifier-seconde-demande.ts` (hors ligne, essayé à l'envers
+quatre fois) et deux cas de `verifier-commande-vocale.mjs` — dont **la moitié
+qui compte** : une tâche en attente ne doit pas aimanter une nouvelle demande.
+
+### Et une phrase COUPÉE se redemande sur l'appareil, jamais au serveur
+
+**Le bloc `tacheEnAttente` a corrigé la cible et PAS la valeur, et c'est
+mesuré.** Une fois le serveur mis au courant de la tâche qui attend, il a bien
+visé « rappeler Dan Marciano » — et l'a rangée dans **« Perso »**, la catégorie
+suggérée, c'est-à-dire exactement celle que son « non » refusait. Renforcer la
+consigne (« s'il dit non, il REFUSE ta suggestion ; sinon demande ») n'y a rien
+changé : essayé deux fois sur la fonction déployée, même réponse.
+
+**Seul l'appareil sait qu'une suggestion vient d'être refusée**, donc c'est là
+que ça se tranche — comme la confirmation d'un envoi (`21cf48d2`).
+`reponseCategorie` a un quatrième verdict, `illisible` : il parle bien du
+rangement de cette tâche, mais le nom n'est jamais arrivé. `commandeLocale.ts`
+rend alors un `clarify` qui **NOMME la tâche** et liste les catégories — pas un
+« cette tâche » vague, qui est ce qui lui a fait répondre à propos de la
+mauvaise.
+
+**Ce qui tient le silence est le MOT de rangement** (`categ|partie|section|
+liste`), pas la longueur de la phrase : sans lui, « mets la musique dans la
+voiture » dite dans les cinq minutes après une création de tâche serait prise
+pour une réponse de rangement. Et c'est un PRÉFIXE (`categ`, pas `categorie`) :
+sa phrase réelle était coupée sur « la catégor », qui est précisément le cas
+qu'on traite. Les deux se vérifient à l'envers — remplacer le préfixe par le
+mot entier fait rougir un contrôle, retirer le garde-fou en fait rougir trois.
+
+**Mon propre contrôle bout-en-bout laissait passer ce défaut** : il vérifiait
+que la bonne tâche était visée, pas la valeur posée. Une cible juste avec une
+valeur fausse reste une tâche mal rangée — c'est-à-dire tout ce qu'il nous
+reproche.
+
+**Le serveur n'a pas pu être corrigé PAR LA CONSIGNE**, et c'est la leçon à
+garder. Trois versions déployées et remesurées : sans consigne (106), avec une
+consigne qui l'explique (107), avec un INTERDIT en toutes lettres (108). Les
+trois fois, `update_task` avec la catégorie refusée.
+
+**Ce qui a marché (16 sept., v109) tient en une ligne : on ne lui dit plus le
+NOM de la suggestion.** L'app envoie `categorie_a_valider: true`, jamais
+« Perso ». Il ne peut pas reposer ce qu'il ne reçoit pas — et privé de ce nom,
+il fait spontanément ce que trois consignes n'avaient pas obtenu : il redemande
+en NOMMANT la tâche (« Tu souhaites déplacer la tâche "Rappeler Dan Marciano"
+dans quelle catégorie ? »). **C'est du code, pas de la prose.**
+
+Mesuré dans les trois sens avant d'être écrit, sur la fonction déployée :
+sans nom de catégorie dans la phrase → il redemande ; avec (« non mets-le dans
+les leads ») → il range dans Leads, la bonne tâche ; une nouvelle demande
+(« ajoute une tâche : acheter du pain ») → `add_task`, la tâche en attente n'est
+pas touchée.
+
+**NE REMETS PAS LE NOM DE LA SUGGESTION DANS LE CORPS ENVOYÉ AU SERVEUR** : le
+contrôle bout-en-bout rougit, et le défaut revient tel quel. Le verdict
+`illisible` côté appareil reste en place par-dessus — il évite l'aller-retour
+réseau et couvre le cas où il ne nomme rien du tout.
+
+### Redire une dictée coupée COMPLÈTE la ligne, elle n'en crée pas une seconde
+
+Cinquième défaut du chantier `7b2c99e2`, mesuré le 16 sept. 2026 sur ses **298
+vraies dictées** (`echanges`). Six paires consécutives où la SECONDE contient
+la première mot pour mot, et ajoute quelque chose :
+
+    2,1 s   « appeler Mel ma femme »          → « … à 23h19 »
+    3,3 s   « lance la musique de Booba »     → « … DKR »
+    3,5 s   « Mets-moi un rappel … Ducamp »   → « … échéance à 15h »
+    4,6 s   « envoyer un message à ma femme » → « … lui disant que tu l'aimes »
+    6,9 s   « vidéo sur YouTube »             → « … qui parle de motivation »
+   23,0 s   « Itinéraire de Pierre Amikay »   → « … avec Waze »
+
+**Les six sont le même phénomène, et il n'y a AUCUN faux positif** : le service
+de reconnaissance rend un résultat final trop tôt, il redit sa phrase en la
+complétant. Ce n'est pas une seconde demande.
+
+**ON COMPLÈTE, ON NE REFUSE PAS — c'est le point à ne pas défaire.**
+`deciderDoublonTache` (15 sept.) voit bien que les deux titres se ressemblent
+et refuse le second. Mais **c'est le second qui porte l'échéance à 15 h** :
+refuser perd ce qu'il vient d'ajouter, et le renvoie exactement à la retouche
+manuelle dont il se plaint. `repriseDictee.ts` (pur) transforme donc la
+création en complétion de la MÊME tâche.
+
+**La relation de PRÉFIXE est tout le garde-fou**, pas une ressemblance : deux
+demandes différentes ne commencent pas l'une par l'autre, mot pour mot.
+« rappeler Dan » et « rappeler Mel » se ressemblent beaucoup et ne sont pas la
+même demande. Et le préfixe s'arrête **sur une frontière de mot** — sans ça,
+« appeler Daniel » reprendrait « appeler Danielle Cohen », qui est quelqu'un
+d'autre.
+
+**On n'écrase jamais avec du vide** : le modèle peut ne pas reposer un champ
+qu'il avait déduit au tour d'avant (la catégorie, les notes). Seuls les champs
+renseignés passent dans le `changes`.
+
+Calculé dans `MicButton`, parce que c'est la seule couche qui tient la phrase
+PRÉCÉDENTE — le serveur ne la voit jamais, comme pour la confirmation d'un
+envoi (`21cf48d2`).
+
+**Contrôle essayé à l'envers, et sa première version était FAUSSE.** Le cas de
+la frontière de mot visait « appeler Dan » → « appeler Daniel Nakache » :
+aplatie, la phrase fait onze caractères, donc elle tombait sur
+`LONGUEUR_MINIMUM` (12) et jamais sur la frontière — retirer la frontière
+laissait le contrôle vert. C'est le piège du contrôle qui vérifie autre chose
+que ce qu'il annonce, **payé pour la cinquième fois** dans ce dépôt (sélecteur
+Playwright, `Filesystem.mkdir`, `com.google.android.as`, le drapeau Live).
+Il vise maintenant « appeler Daniel » → « appeler Danielle Cohen », quatorze
+caractères, que seule la frontière peut arrêter.
+
+**Ce n'est branché QUE pour les tâches, et ce n'est pas un oubli** : quatre des
+six reprises mesurées visent la musique, un message, un itinéraire et une
+vidéo — même défaut, conséquences différentes (une musique relancée se
+rattrape, une tâche en double reste dans sa liste). Chantier `e4886791`, en
+`[À CADRER]` : la bonne réponse n'est pas la même pour une musique relancée et
+pour un message préparé deux fois — et « envoi de messages en son nom » est un
+sujet qu'une session autonome ne prend jamais.
+
+## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
 Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
 Claude** — la commande vocale avait compris « ajoute une tâche » là où il
@@ -718,6 +1023,74 @@ rendre une chaîne vide (`src/lib/live/sessionLive.ts`, alimenté par
 `MicButton`). La consigne dit au modèle quoi faire de ce vide, mais la vraie
 correction est de ne jamais le produire — chantier ouvert.
 
+## Une coupure de connexion n'est PAS une réponse du serveur (15 sept. 2026)
+
+Sa capture : « Jarvis : Le serveur vocal a répondu : Failed to send a request
+to the Edge Function », après une dictée de 43 secondes.
+
+**Les deux moitiés de cette phrase étaient fausses, et c'est mesuré, pas
+supposé.** Journaux Supabase du même instant : `POST | 200 |
+.../voice-command` à **10:50:42.027**, alors que l'app avait rendu la main à
+**10:50:41.717** après **2985 ms** (`journal_ecoute`). Le serveur n'a jamais
+répondu ça — il a répondu 200, 310 ms trop tard pour le téléphone. La phrase
+accusait donc quelque chose qu'elle n'avait pas constaté : exactement ce que
+`honnetete.ts` interdit au modèle, appliqué cette fois à notre propre code.
+
+**La cause est mécanique.** `FunctionsFetchError` (supabase-js, levé quand le
+`fetch` lui-même est rejeté) n'a PAS de `context` : `corpsDeLErreur` rend une
+chaîne vide, aucun cas de `traduireErreurServeur` ne reconnaissait le message
+anglais, et le dernier recours le relayait tel quel sous « Le serveur vocal a
+répondu : … ».
+
+**Fréquence, pour ne pas surestimer le défaut** : 1 échec sur 27 réponses
+modèle enregistrées depuis le 8 sept. Ce n'est ni un plafond de quota ni une
+panne serveur — c'est sa 4G, et le message le dit maintenant.
+
+Trois points à ne pas défaire :
+
+1. **On ne dit pas « ça n'est pas parti ».** Ce serait faux ce jour-là. Du
+   téléphone, on ne PEUT pas savoir si le serveur a reçu et exécuté : la
+   phrase dit « je ne sais pas si ta demande est passée ». La moitié de
+   `verifier-coupure-reseau.ts` vérifie ce qu'on ne dit PAS.
+2. **AUCUN renvoi automatique.** Le serveur avait exécuté : un retry aveugle
+   aurait tout fait deux fois — deux chantiers, deux messages, deux alarmes.
+   Le bouton « Réessayer sans redicter » renvoie la phrase EXACTE
+   (`phraseARejouer`, gardée à part de `lastUserText` qui bouge à chaque
+   partiel), et c'est Raphaël qui décide. Un contrôle compte les appels à
+   `rejouerLaPhrase()` : deux, la définition et le `onClick`, pas trois.
+3. **Le registre fait DEUX lignes**, pas une : « La connexion a coupé avant la
+   réponse du serveur vocal » et « Le serveur vocal a refusé de répondre ». Une
+   panne de 4G et un moteur qui refuse ne se corrigent pas du même côté ;
+   les fondre sur une seule empreinte rendrait le compteur illisible.
+
+### Le micro est enfin MESURÉ (même chantier)
+
+Sa remarque du même jour : « le temps de préparation du micro est toujours
+très long, c'est jamais instantané […] je parle dans le vide le temps que ça
+s'initialise ». **Rien ne le mesurait** : `journal_ecoute` disait la durée du
+tour et le nombre de partiels, jamais QUAND le premier est arrivé.
+
+`commande_fin` porte donc deux nombres de plus, et il faut les deux pour
+désigner un coupable : **`ms_ouverture`** (appui → `start()` résolu : notre
+chemin plus le démarrage du service Android) et **`ms_premier_mot`**
+(ouverture → premier résultat partiel : ce que le service met à entendre).
+Petit puis gros = c'est Android ; gros puis petit = c'est nous.
+
+C'est la même méthode que pour la latence Live (`ms_jeton`), et la même
+consigne : **ne recode rien avant d'avoir lu ces nombres-là.** Trois causes
+supposées y avaient été écartées d'un coup par la mesure.
+
+```sql
+select at, detail->>'ms_ouverture' as ouverture, detail->>'ms_premier_mot' as premier_mot,
+       detail->>'partiels' as partiels, detail->>'sessions' as sessions, detail->>'duree_ms' as duree
+from journal_ecoute where evenement = 'commande_fin' order by at desc limit 20;
+```
+
+`null` et pas `0` quand ça n'a pas eu lieu : zéro se lirait comme
+« instantané », c'est-à-dire le contraire de ce qui s'est passé. Et c'est la
+PREMIÈRE ouverture qui est mesurée — la boucle relance une session à chaque
+silence, la dernière dirait le temps d'une relance.
+
 ## « À quoi tu es branché ? » — l'état RÉEL, pas la description de l'app
 
 Sa remarque du 6 sept. 2026 : « Jarvis ne connaît toujours pas son propre
@@ -898,6 +1271,81 @@ que Jarvis n'envoie pas Raphaël vers un écran qu'il ignore. Au passage, la
 même mise à jour a corrigé une description devenue fausse depuis le 7 sept. :
 elle comptait encore Paramètres comme un onglet alors qu'il vit désormais
 dans un bouton en haut à droite.
+
+## Un nom de fichier n'est PAS une clé de stockage (15 sept. 2026)
+
+Chantier `020cb823`. Sa capture : l'onglet Docs en rouge, « Aucun document. »
+en dessous, et ce message tel quel —
+
+    Invalid key: 8bb3be37-…/טופס 18 פופי יוגה 162437_260915_בעמ.pdf
+
+`useDocuments` posait le nom du fichier DIRECTEMENT dans la clé de l'objet
+Supabase Storage. Storage valide cette clé, et son alphabet est étroit.
+
+**MESURÉ CONTRE SON VRAI PROJET, pas lu dans une documentation** — un POST par
+caractère sur `storage/v1/object/documents`, le 15 sept. :
+
+    ACCEPTÉS : ! * ' & $ @ ; : + , ? = ( ) - . _ (espace) et A-Z a-z 0-9
+    REFUSÉS  : ~ ^ % " < > | \ ` { } # [ ]  — et tout non-ASCII.
+
+**L'HÉBREU N'ÉTAIT QUE LA MOITIÉ VISIBLE, et c'est le point à retenir** :
+« facture été.pdf » et « reçu.pdf » rendaient 400 eux aussi. Il vit entre le
+français et l'hébreu. Ne réduis pas `src/lib/nomDocument.ts` à « le support de
+l'hébreu » — le jour où quelqu'un le simplifie sur cette lecture, les accents
+recassent.
+
+**Pourquoi on n'assainit pas bêtement.** Remplacer l'interdit par « _ » tenait
+en une ligne — et son document se serait appelé
+« ____ 18 ____ ____ 162437_260915____.pdf ». Un nom de document sert à le
+RETROUVER ; le perdre en l'enregistrant est une autre façon de ne pas
+l'importer. D'où un échappement réversible `=uXXXX`, `=` étant accepté par
+Storage (mesuré).
+
+**Le marqueur est `=u`, et les deux caractères comptent.** Avec `=` seul,
+l'ancienne clé « budget=2026.pdf » — un nom parfaitement ordinaire — se serait
+affichée « budget….pdf » : `2026` est de l'hexadécimal valide, U+2026 étant les
+points de suspension. On aurait réparé l'import en abîmant l'affichage de ce
+qui était déjà là. **C'est un contrôle qui l'a trouvé**, pas l'usage.
+
+**Un nom déjà ASCII traverse INCHANGÉ** : les documents d'avant ce correctif
+gardent leur clé, il n'y a rien à migrer. Un contrôle garde ce cas — s'il
+tombe, toute la bibliothèque existante devient introuvable.
+
+Les **trois** chemins d'écriture y passent (l'import à l'écran,
+`saveTextDocument` et `saveBinaryDocument` de la voix) : un seul oublié, et le
+défaut revient par la porte de derrière. Le téléchargement pose
+`{ download: nomLisible(...) }` sur l'URL signée — sans quoi le fichier
+enregistré sur le téléphone porterait la clé échappée et serait introuvable
+hors de Jarvis. Et `messageEchecImport` fait que « Invalid key » ne lui est
+**plus jamais** renvoyé : la phrase dit que le défaut vient de Jarvis, pas de
+son fichier, sinon il renomme ses documents pour rien.
+
+### Le banc de l'écran recopiait ce qu'il devait vérifier
+
+`ligneDeDocument()` (dans `nomDocument.ts`) convertit une ligne de Storage en
+ligne de la liste, et **`useDocuments` comme le banc d'essai appellent la
+même**. Tant qu'elle était recopiée des deux côtés, casser la conversion dans
+le hook laissait `verifier-documents-web.mjs` VERT — essayé à l'envers le
+15 sept., c'est le piège du contrôle qui vérifie sa propre paraphrase, déjà
+payé par le sélecteur Playwright, `Filesystem.mkdir` et `com.google.android.as`.
+Maintenant cinq contrôles rougissent.
+
+Pour cela, `JarvisDataContext` est **exporté** : le banc monte la VRAIE
+`DocumentsPage` avec un `documentsState` fabriqué, au lieu d'en recopier une
+version qui finirait par dire autre chose que l'écran. Rien d'autre ne doit le
+consommer directement — `useJarvisData()` reste le chemin de l'application.
+
+Ce que le banc voit et qu'aucun contrôle pur ne peut voir : un nom hébreu
+s'écrit de droite à gauche, et mêlé à des chiffres et à une extension latine il
+passe par l'algorithme bidirectionnel du navigateur, dans une ligne `truncate`
+à côté de deux boutons. Le module pur prouve que le nom revient intact ; seul
+un vrai moteur de rendu dit s'il TIENT sur 390 points de large.
+
+**Vérifié bout en bout contre son Storage** : son nom brut → 400 « Invalid
+key », la clé échappée → 200, et la liste redonne exactement son nom. Les
+objets d'essai ont été supprimés. **Non constaté sur son téléphone** : c'est à
+lui d'importer pour de vrai le PDF de sa capture. C'est du `src/`, la mise à
+jour rapide suffit.
 
 ## Les applications proposées viennent du TÉLÉPHONE, jamais d'une liste écrite
 
@@ -1460,6 +1908,44 @@ si `session_context.sources` est vide.
 dans ce cas elle ne peut pas lire la CI, et `docs/session-autonome.md` lui dit
 de lancer elle-même, en entier, ce que la CI lance — ce sont les mêmes
 scripts — puis de l'écrire dans `dev_log`.
+
+### Une réponse de Raphaël réveille le travail (15 sept. 2026)
+
+Sa phrase : « J'ai répondu dans l'application jarvis **faut que tu sois au
+courant quand je réponds** ».
+
+**Mesuré ce jour-là** : il a répondu à trois questions entre 17:49 et 17:54. La
+dernière passe datait de 12:19 et s'était retirée en `rien_a_prendre`. La
+suivante se serait retirée pareil — ses réponses débloquent presque toujours un
+chantier `[À CADRER]`, que la passe REFUSE de prendre par construction. Il avait
+fait sa part, et rien ne bougeait.
+
+`etat_pour_passe_autonome()` (migration 0046) rend donc aussi **ce qu'il a
+répondu depuis la dernière passe TERMINÉE**, et `deciderPasse` a un cinquième
+verdict, `il_a_repondu` (code de sortie 0, comme `travaille`). Le script imprime
+ses mots en entier.
+
+Quatre choses à ne pas défaire :
+
+1. **Le verdict ne RÉSERVE rien.** Il réveille une session en lui disant d'aller
+   lire ; c'est elle qui décide. Le garde-fou du `[LIBRE]` n'est pas levé — il
+   est rendu inutile par le fait qu'il a parlé.
+2. **Sa volonté passe AVANT** : `eteint` et `occupe` l'emportent sur ses
+   réponses. La consigne du 6 sept. (« une seule session à la fois ») ne se
+   contourne pas parce qu'il a répondu entre-temps.
+3. **Une passe qui part travailler emporte quand même ses réponses.** Coder
+   pendant qu'il attend une suite est exactement ce qu'il reproche.
+4. **Le repère est `answered_at` comparé à la dernière passe terminée** — ni un
+   compteur à tenir, ni une colonne de plus. Une passe qui plante ne perd rien :
+   la suivante reverra la même réponse.
+
+**Ce qui N'EST PAS possible, et qu'il ne faut pas retenter** : le réveiller en
+TEMPS RÉEL. `watch_url` rend bien une URL de webhook, mais elle n'accepte que
+des appels signés par un service précis — essayé le 15 sept., un POST nu rend
+**401**, et le secret est scellé pour ce service, illisible depuis la session.
+La base ne peut donc pas réveiller une session Claude. Le délai réel est celui
+de la Routine (toutes les 6 h au 15 sept., d'après `passes_autonomes` : 00:16,
+06:17, 12:19) — c'est sa cadence à lui de la changer dans ses Routines.
 
 **Pour tout arrêter** : Paramètres › Le cockpit › Sessions autonomes. Le
 réglage `jarvis_sessions_autonomes` est lu EN BASE à chaque passe — d'où
@@ -2448,8 +2934,10 @@ node --experimental-strip-types scripts/verifier-dialogue.ts   # tours de parole
 node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarvis », sans réseau
 node --experimental-strip-types scripts/verifier-prechauffage.ts  # espacement du préchauffage de la connexion Live, sans réseau
 node --experimental-strip-types scripts/verifier-ouverture-live.ts  # l'ordre des trois étapes d'une ouverture Live : le micro en même temps que la connexion, jamais avant le jeton, sans réseau
+node --experimental-strip-types scripts/verifier-reprise-live.ts  # une fermeture Live subie rouvre la conversation, une panne installée ne boucle pas, sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
+node --experimental-strip-types scripts/verifier-nom-document.ts  # un nom de fichier hébreu ou accentué devient une clé que Storage accepte, et se relit, sans réseau
 node scripts/verifier-ecoute-web.mjs                     # moteur d'écoute + banc du cœur (vrai MicButton), vrai navigateur
 node --experimental-strip-types scripts/verifier-live-croise.ts  # la veille se tait quand Live tourne dans l'AUTRE fenêtre (ProtectedShell/AssistantOverlayPage), sans réseau
 node --experimental-strip-types scripts/verifier-fin-conversation.ts  # « terminé » ferme le Live, « termine le chantier » non
@@ -2478,6 +2966,9 @@ node --experimental-strip-types scripts/verifier-musique.ts       # « je lance 
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
 node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
+node --experimental-strip-types scripts/verifier-titre-tache.ts  # le titre d'une tâche est ce qu'il y a à faire, et surtout ce qui ne doit PAS être touché, sans réseau
+node --experimental-strip-types scripts/verifier-seconde-demande.ts  # une phrase à deux demandes rend la main au serveur, et ses vrais titres à « et » n'y tombent pas, sans réseau
+node --experimental-strip-types scripts/verifier-reprise-dictee.ts  # redire une dictée coupée complète la même tâche au lieu d'en créer une seconde, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
@@ -2493,6 +2984,9 @@ node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la secti
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
+node --experimental-strip-types scripts/verifier-archive-taches.ts  # une tâche cochée va dans l'archive de sa catégorie, et rien ne se perd entre les deux, sans réseau
+node --experimental-strip-types scripts/verifier-coupure-reseau.ts  # une coupure de connexion ne s'annonce jamais comme une réponse du serveur, et « Réessayer » ne part jamais tout seul, sans réseau
+node --experimental-strip-types scripts/verifier-bouton-maj.ts  # on ne propose JAMAIS une mise à jour quand il n'y en a pas, et un téléchargement figé ne dure pas dix minutes, sans réseau
 node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts  # ce qui a bougé pendant son absence, et le repère « déjà vu », sans réseau
 ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà vu » suit son compte : non-recul côté SQL et cloisonnement RLS
 node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâche dictée hors réseau ne se perd pas et ne se dédouble pas, sans réseau
@@ -2503,6 +2997,7 @@ node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru d
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
 node scripts/verifier-notes-web.mjs                      # l'onglet Notes : créer/modifier/supprimer avec confirmation/chercher, vrai navigateur
+node scripts/verifier-documents-web.mjs                  # l'onglet Docs : un nom hébreu ou accentué s'affiche et tient sur un écran de téléphone, vrai navigateur
 node scripts/verifier-ios-web.mjs                        # le site dans un vrai moteur WEBKIT à la taille d'un iPhone : rendu, zones tactiles, contrat « sur l'écran d'accueil »
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
 ANON_KEY=... node scripts/verifier-sections-erreurs.mjs  # sections + registre des erreurs : fonctions SQL et cloisonnement RLS
@@ -2982,6 +3477,81 @@ s'installe sans fenêtre — à confirmer par Raphaël après une installation
 manuelle de cette version (qui redemandera encore confirmation UNE fois),
 puis la suivante devrait passer sans rien demander.
 
+## Ne JAMAIS proposer une mise à jour quand il n'y en a pas (15 sept. 2026)
+
+Sa capture, où il entoure les deux ensemble : un bouton NOIR « Mettre à jour »
+collé au badge « À jour ». Ses mots : « ya confusion car ca propose de mettre
+la version a jour alors que cest deja a jour ».
+
+**Vérifié côté GitHub au même instant, pas supposé** : la release
+`latest-debug` était `build: 281 / commit: 26e43f5`, exactement ce qu'il
+faisait tourner, et `26e43f5` était le dernier commit de la branche. **Il n'y
+avait rien à installer.** Il a appuyé — c'est la seule chose raisonnable
+devant un bouton plein — et téléchargé 11,1 Mo d'APK sur sa 4G pour rien.
+
+**La cause, lue dans le code** : la mise à jour rapide n'est possible que
+lorsqu'une version ATTEND (`useMajWeb` ne calcule `verdict` que si
+`status === "update-available"`). Dès qu'on est à jour, la condition
+retombait donc sur la branche « APK » et affichait son bouton en action
+PRINCIPALE. Le badge disait vrai, le bouton disait le contraire, à deux
+centimètres l'un de l'autre.
+
+`src/lib/boutonMaj.ts` est **pur** et porte la seule décision qui compte :
+`principal` n'est vrai **que** quand une version attend vraiment. À jour, le
+bouton devient discret et s'appelle « Réinstaller l'application » — il dit ce
+qu'il FAIT, au lieu de promettre une nouveauté qui n'existe pas —, avec une
+phrase qui explique pourquoi il est encore là. Pendant la vérification et
+quand GitHub est injoignable : **aucune action proposée**, on ne devine pas
+une réinstallation de 11 Mo.
+
+**Le banc de l'écran mesure ce cas** (`verifier-reglages-web.mjs`, « à jour :
+aucun bouton ne propose de mettre à jour »), essayé à l'envers : remettre
+l'ancien comportement le fait rougir avec le libellé trouvé. Attention, le
+banc fabriquait un état impossible en vrai (`verdict.possible` alors que
+`status` vaut `up-to-date`) — la décision reste juste dans les deux cas, et
+c'est le but d'un module pur.
+
+### Un téléchargement FIGÉ n'est pas un téléchargement lent (même jour)
+
+Capture précédente du même jour : « 1% · 0.1 / 11.1 Mo », bouton grisé, plus
+rien ne bouge. **Le garde-fou du 6 sept. ne pouvait PAS se déclencher** : il
+testait `recus <= 0`, et 0,1 Mo était déjà arrivé. Une fois le premier octet
+passé, plus aucune sortie de secours avant les **dix minutes** de
+`TIMEOUT_MS` — c'est-à-dire exactement la panne muette qu'on croyait avoir
+corrigée, d'un cran plus loin.
+
+Ce qui compte n'est donc pas le NIVEAU du compteur, c'est qu'il **BOUGE** :
+`DELAI_SANS_PROGRES_MS` (20 s sans un octet de plus, quel que soit le niveau)
+bascule sur le téléchargement direct. **La PAUSE d'Android est exclue de ce
+garde-fou**, et c'est voulu : Android l'annonce avec sa raison, l'écran le
+dit, et reprendre par-dessus doublerait le téléchargement au lieu de le
+sauver.
+
+**Et un téléchargement s'ARRÊTE** (`annuler()`, drapeau `volatile` relu dans
+la boucle de suivi ET dans le repli, qui tourne sur son propre fil ; remis à
+faux à chaque départ, sinon un arrêt demandé la fois d'avant tuerait le
+suivant avant qu'il commence). Sans ça, la seule sortie était d'attendre dix
+minutes ou de tuer l'application.
+
+Faute de SDK Android ici, `verifier-bouton-maj.ts` LIT le code — et vise la
+CONDITION et l'APPEL, jamais la présence du mot. Essayé à l'envers : remettre
+`recus <= 0`, retirer l'exclusion de la pause ou l'annulation du repli fait
+rougir trois contrôles.
+
+**Ça touche `android/` : il lui faut une vraie APK pour en profiter.** Le
+reste (le bouton, les versions dépliées, « Arrêter ») est du `src/` et arrive
+par la mise à jour rapide.
+
+### Et les trois versions se voient sans déplier quand elles divergent
+
+« Y'a plus de voyant rouge pour savoir si on n'est pas à jour. » Le bloc
+« Versions » ne s'ouvrait que si `status === "update-available"` ; il s'ouvre
+maintenant aussi dès que l'APK installée n'a pas le même numéro que la
+dernière publiée. Ce n'est pas forcément un problème — une mise à jour rapide
+suffit tant que le natif n'a pas changé — mais c'est la seule façon de
+répondre à « pourquoi il me redemande une mise à jour alors que je viens d'en
+faire une » sans avoir à deviner.
+
 ## Télécharger l'APK : DownloadManager ne peut pas être le seul chemin
 
 Le 6 sept. 2026, Raphaël ne pouvait plus mettre à jour DU TOUT — « installée
@@ -3171,6 +3741,105 @@ CONTENU de `PAQUETS_GOOGLE`. Même piège que le sélecteur Playwright et que
 d'Android System Intelligence répond bien chez lui. La preuve sera dans son
 journal — le rapport code 11 / code 7 doit s'effondrer. Et il faut une VRAIE
 APK : c'est un patch natif, la mise à jour rapide ne le porte pas.
+
+### Une fermeture subie ne finit pas la conversation (15 sept. 2026)
+
+Chantier `dde25deb`. `journal_ecoute` porte deux fermetures de session Live
+avec exactement le même message, indépendantes l'une de l'autre : le 10 sept.
+à 20:20:24 UTC après 12,9 s, et le 15 sept. à 06:33:25 après 48,5 s —
+celle-là capture à l'appui, **en plein milieu d'une correction de tâche**.
+
+    Session fermée : Internal error occurred.
+
+**LA CAUSE N'EST TOUJOURS PAS ÉTABLIE, et ne la présente pas comme telle** :
+le message vient tel quel de la fermeture côté Google. Deux points ne font pas
+une mesure. Pour en retrouver d'autres :
+
+```sql
+select at, detail from journal_ecoute
+where evenement = 'live_fin' and detail->>'raison' ilike '%Internal error%'
+order by at desc;
+```
+
+**Ce qui a été corrigé n'est donc pas la panne, c'est ce qu'on en faisait.**
+`maintenirSessionLive` promet « une conversation qui dure » et rouvrait déjà
+la session à la limite des quinze minutes ; une fermeture qui portait une
+RAISON, elle, arrêtait tout. Une panne transitoire d'un service tiers n'a pas
+à coûter la conversation — il se retrouvait devant un cœur éteint, au milieu
+d'une phrase, à devoir rappuyer.
+
+`src/lib/live/repriseLive.ts` est **pur** (`verifier-reprise-live.ts`, dans la
+CI) et porte les trois bornes, qu'il faut toutes les trois :
+
+1. **On ne rouvre que ce qui s'était vraiment ouvert.** Une ouverture qui
+   échoue (jeton refusé, micro tenu par une autre application) ferme AUSSI
+   avec une raison : la rejouer répéterait le même échec en boucle en cachant
+   le message qui l'explique. D'où `ouverte`, posé au moment exact où Jarvis
+   passe en écoute, et rendu par `finie`.
+2. **Deux reprises après panne au maximum, dans un compteur DISTINCT** de
+   celui des reconnexions normales. Un quart d'heure de conversation ne doit
+   pas consommer le droit de survivre à une panne, ni l'inverse.
+3. **En renonçant, on dit qu'on a essayé.** Trois fermetures d'affilée
+   présentées comme une seule, et il rappuie pour retomber dessus. La phrase
+   dit aussi que ce n'est pas lui.
+
+**La durée ne discrimine QUE les fermetures sans raison** (les quinze minutes
+de Google). L'appliquer à une panne annoncée ferait dépendre la survie d'un
+seuil qui n'a jamais été mesuré sur ce cas-là — d'où le 10 sept., 12,9 s, qui
+se rouvre lui aussi.
+
+**Et la décision est UNE, alors qu'elle était écrite deux fois** : une
+première dans `onEtat` pour avaler le « fermee » et laisser le cœur sur
+« connexion », une seconde après `await courante.finie` pour reboucler. Elles
+étaient d'accord parce que quelqu'un les tenait alignées à la main. Le jour où
+elles divergent, le cœur reste sur « connexion » devant une session qui ne
+rouvrira jamais, et personne ne le voit. Un contrôle compte les appels à
+`deciderReprise` dans `maintenirSessionLive` : deux, pas un.
+
+Cette course-là existait d'ailleurs déjà et a été refermée avec : on avale le
+« fermee » en promettant une reprise, il appuie sur arrêter dans l'intervalle
+(sa décision l'emporte), et plus personne ne disait à l'écran que c'était
+fini. Le drapeau `avalee` tient la promesse.
+
+**Deux trous du même genre trouvés en faisant ce chantier, corrigés avec.** Le
+premier est cette course-là : on avale le « fermee » en promettant une reprise,
+il appuie sur arrêter dans l'intervalle (sa décision l'emporte), et plus
+personne ne disait à l'écran que c'était fini. Le drapeau `avalee` tient la
+promesse. Le second est pire parce qu'il est muet : **s'il arrête pendant que
+la session se CONNECTE encore**, `arreter()` ne peut rien clore — `courante`
+est encore nul — et la session qui aboutit juste après n'a plus personne pour
+la fermer. Le micro reste pris, le WebSocket ouvert, et
+le drapeau natif n'est jamais rebaissé : la veille de l'autre fenêtre se tait
+pour toujours. D'où le `if (arretDemande)` juste après
+l'`await demarrerSessionLive`.
+
+**Et le contrôle qui garde ce drapeau a été corrigé dans le même travail, deux
+fois.** Il comparait des POSITIONS dans le fichier brut : un commentaire qui
+citait l'appel pour expliquer pourquoi il ne fallait pas le déplacer était
+compté comme un appel, et la CI a rougi sur du code juste (15 sept. 2026) —
+le piège du sélecteur Playwright, de `Filesystem.mkdir` et de
+`com.google.android.as`, une quatrième fois. Il ignore maintenant les
+commentaires. Et en l'essayant à l'envers, il s'est avéré **ne pas vérifier ce
+que son libellé promettait** : sortir l'appel du `finally` pour le poser juste
+en dessous le laissait vert, puisque l'ordre était respecté. Il compte
+désormais les accolades pour délimiter le bloc, et refuse un second appel
+ailleurs.
+
+**Ce qui précède une fermeture part maintenant avec elle.** Les deux premières
+occurrences n'ont pu être rapprochées qu'à la main, en relisant les lignes
+voisines — et ce qu'on ne relève pas à l'instant ne se retrouve plus après.
+`live_fin` emporte donc `ouverte`, `commandes`, `ms_depuis_commande`,
+`parlait` et `contexte`, pour TOUTES les fermetures : sans les normales il n'y
+a pas de repère, et « trois commandes juste avant » ne voudrait rien dire.
+`null` et pas `0` quand ça n'a pas eu lieu. Une reprise après panne se
+distingue d'une reconnexion ordinaire par `apres_panne` dans
+`live_reconnexion`, sinon le compte des « Internal error » devient illisible.
+
+**Non vérifiable ici** (pas d'appareil, pas de vraie session Google) : que la
+reprise se passe bien chez lui. La preuve sera dans son journal — un
+`live_reconnexion` avec `apres_panne: true` juste après un `live_fin` qui
+porte cette raison. C'est du `src/` : la mise à jour rapide suffit, pas besoin
+d'APK.
 
 ### Le temps d'ouverture d'une Live : ce que ce N'EST PAS
 

@@ -5,7 +5,7 @@ import { phraseHorsLigne } from "@/lib/fileEnAttente"
 import type { Brouillon, MessageComplet, MessageResume, Recu } from "@/lib/googleGmail"
 import { estDernierMessage, nomExpediteur } from "@/lib/gmailVoix"
 import { cleTheme } from "@/lib/themeChantier"
-import { deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
+import { deciderDoublonTache, deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
 import { ecrireReglage } from "@/lib/reglages"
 import { listeReglagesVoix, trouverOptionReglageVoix, trouverReglageVoix } from "@/lib/reglagesVoix"
 import {
@@ -35,6 +35,7 @@ import {
   type DerniereCreation,
   type Destination,
 } from "@/lib/ouVaCetteDictee"
+import { titreLisible } from "@/lib/titreTache"
 import type {
   Category,
   Contact,
@@ -542,13 +543,23 @@ export async function executeVoiceAction(
     }
 
     case "add_task": {
+      // LE FILET SUR LE TITRE, sa décision du 15 sept. : « Les deux : le
+      // modèle écrit, la règle rattrape ». La consigne du serveur demande déjà
+      // un titre court ; elle a quand même produit « Un rappel comme quoi je
+      // dois rappeler dan marciano matin » ce jour-là.
+      //
+      // Calculé UNE FOIS, en tête du cas, et c'est `titre` qui sert partout en
+      // dessous — la supposition, le doublon, l'écriture et la phrase dite à
+      // voix haute. Nettoyer plus bas en ferait cohabiter deux titres : celui
+      // écrit en base et celui qu'il entend.
+      const titre = titreLisible(action.title)
       // LA SUPPOSITION, au moment de la dictée. « R un chantier : … »,
       // « pour Claude Code … » : la commande vocale a compris « une tâche »
       // là où il annonçait une demande aux sessions. Jusqu'ici ça atterrissait
       // dans sa liste de courses et n'en ressortait que des jours plus tard,
       // par la carte de rattrapage de l'onglet Tâches. On range au mieux, on
       // le DIT, et il corrige d'un mot — rien n'attend sa réponse.
-      const suppose = suppositionDictee(action.title, action.notes)
+      const suppose = suppositionDictee(titre, action.notes)
       if (suppose) {
         await addDevItem({
           title: suppose.titre,
@@ -562,15 +573,22 @@ export async function executeVoiceAction(
         return phraseSupposition(suppose.titre, suppose.indice)
       }
 
+      // « Ça existe déjà », côté tâches — trouvé le 15 sept. 2026 : en Live,
+      // deux appels rapprochés de add_task pour la même demande avaient créé
+      // deux tâches au titre identique, sans qu'aucun mot n'en avertisse.
+      // Même garde-fou, même seuils que pour les chantiers (deciderDoublonVocal).
+      const doublonTache = deciderDoublonTache(titre, action.notes, tasks)
+      if (doublonTache.verdict === "refuser") return doublonTache.phrase
+
       const resultat = await addTask({
-        title: action.title,
+        title: titre,
         notes: action.notes ?? null,
         due_date: action.due_date ?? null,
         due_time: action.due_date ? (action.due_time ?? null) : null,
         category_id: action.category_id ?? null,
         status: "todo",
       })
-      derniereCreation = { vers: "tache", titre: action.title, quand: Date.now() }
+      derniereCreation = { vers: "tache", titre: titre, quand: Date.now(), id: resultat?.id }
 
       // NOTÉE, PAS ENREGISTRÉE — et on le DIT (chantier 9476c7a0).
       //
@@ -589,12 +607,13 @@ export async function executeVoiceAction(
       // deux moteurs, et aucun risque de dire la phrase deux fois.
       if (resultat?.enAttente) {
         derniereTacheEnAttente = null
-        return phraseHorsLigne(action.title)
+        return phraseHorsLigne(titre)
       }
 
       const catName = categoryName(categories, action.category_id)
       const heure = action.due_date && action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
-      let reply = `Tâche "${action.title}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
+      let reply = `Tâche "${titre}" ajoutée${catName ? ` dans ${catName}` : ""}${heure}.`
+      if (doublonTache.verdict === "creer_en_avertissant") reply = `${doublonTache.phrase} ${reply}`
 
       // Sans date, ou sans catégorie évidente : on le DIT, sans bloquer la
       // commande (chantier eeca8cca). `resultat` est absent quand rien n'a
@@ -603,12 +622,12 @@ export async function executeVoiceAction(
       const sansDate = !action.due_date
       const suggestion =
         !action.category_id && resultat?.id
-          ? suggererCategorie(action.title, action.notes, tasks, categories)
+          ? suggererCategorie(titre, action.notes, tasks, categories)
           : null
       if (resultat?.id && (sansDate || suggestion)) {
         derniereTacheEnAttente = {
           taskId: resultat.id,
-          titre: action.title,
+          titre: titre,
           sansDate,
           suggestion: suggestion
             ? { categoryId: suggestion.categoryId, categoryName: suggestion.categoryName }
@@ -731,19 +750,26 @@ export async function executeVoiceAction(
 
     case "update_task": {
       const task = tasks.find((t) => t.id === action.task_id)
-      const label = task?.title ?? "la tâche"
+      // Trouvé le 15 sept. 2026 : un task_id qui ne correspond à AUCUNE
+      // tâche connue passait quand même — la confirmation disait « "la
+      // tâche" mise à jour » (le label générique de repli), et l'écriture
+      // partait dans le vide sans que rien ne le signale. Comme
+      // screen_action, qui REFUSE plutôt que de cliquer au hasard : une
+      // référence qu'on ne peut pas retrouver n'exécute rien.
+      if (!task) return "Je ne retrouve pas cette tâche. Redis-moi laquelle, avec un détail de plus."
       if (riensAModifier(action.changes)) {
-        return `Je n'ai pas compris ce qu'il faut changer sur "${label}". Redis-moi ce que je modifie.`
+        return `Je n'ai pas compris ce qu'il faut changer sur "${task.title}". Redis-moi ce que je modifie.`
       }
       await updateTask(action.task_id, action.changes)
-      if (action.changes.status === "done") return `"${label}" marquée comme faite.`
-      return `"${label}" mise à jour.`
+      if (action.changes.status === "done") return `"${task.title}" marquée comme faite.`
+      return `"${task.title}" mise à jour.`
     }
 
     case "delete_task": {
       const task = tasks.find((t) => t.id === action.task_id)
+      if (!task) return "Je ne retrouve pas cette tâche. Redis-moi laquelle, avec un détail de plus."
       await deleteTask(action.task_id)
-      return `"${task?.title ?? "Tâche"}" supprimée.`
+      return `"${task.title}" supprimée.`
     }
 
     case "list_dev_items": {
@@ -785,9 +811,13 @@ export async function executeVoiceAction(
 
     case "update_dev_item": {
       const item = devItems.find((i) => i.id === action.item_id)
-      const label = item?.title ?? "le chantier"
+      // Même garde-fou que update_task/delete_task ci-dessus, et pour la
+      // même raison : un item_id introuvable ne doit exécuter aucune
+      // écriture, jamais retomber sur un label générique qui masque un
+      // no-op.
+      if (!item) return "Je ne retrouve pas ce chantier. Redis-moi lequel, avec un détail de plus."
       if (riensAModifier(action.changes)) {
-        return `Je n'ai pas compris ce qu'il faut changer sur "${label}". Redis-moi ce que je modifie.`
+        return `Je n'ai pas compris ce qu'il faut changer sur "${item.title}". Redis-moi ce que je modifie.`
       }
       await updateDevItem(action.item_id, action.changes)
       // La confirmation nomme ce qui a vraiment changé : sans ça, un
@@ -797,20 +827,22 @@ export async function executeVoiceAction(
       if (action.changes.status) dits.push(STATUS_LABEL[action.changes.status])
       if (action.changes.priority) dits.push(PRIORITY_LABEL[action.changes.priority])
       if (action.changes.theme) dits.push(`thème ${action.changes.theme}`)
-      if (dits.length > 0) return `"${label}" passé en ${dits.join(", ")}.`
-      return `"${label}" mis à jour.`
+      if (dits.length > 0) return `"${item.title}" passé en ${dits.join(", ")}.`
+      return `"${item.title}" mis à jour.`
     }
 
     case "delete_dev_item": {
       const item = devItems.find((i) => i.id === action.item_id)
+      if (!item) return "Je ne retrouve pas ce chantier. Redis-moi lequel, avec un détail de plus."
       await deleteDevItem(action.item_id)
-      return `"${item?.title ?? "Chantier"}" supprimé du cockpit.`
+      return `"${item.title}" supprimé du cockpit.`
     }
 
     case "archive_dev_item": {
       const item = devItems.find((i) => i.id === action.item_id)
+      if (!item) return "Je ne retrouve pas ce chantier. Redis-moi lequel, avec un détail de plus."
       await archiveDevItem(action.item_id)
-      return `"${item?.title ?? "Chantier"}" marqué fait et archivé.`
+      return `"${item.title}" marqué fait et archivé.`
     }
 
     case "add_dev_section": {
@@ -916,8 +948,9 @@ export async function executeVoiceAction(
 
     case "delete_place_reminder": {
       const reminder = placeReminders.find((p) => p.id === action.reminder_id)
+      if (!reminder) return "Je ne retrouve pas ce rappel de lieu. Redis-moi lequel."
       await deletePlaceReminder(action.reminder_id)
-      return `Rappel pour "${reminder?.place ?? "ce lieu"}" supprimé.`
+      return `Rappel pour "${reminder.place}" supprimé.`
     }
 
     case "list_pronunciations": {
@@ -933,8 +966,9 @@ export async function executeVoiceAction(
 
     case "delete_pronunciation": {
       const p = pronunciations.find((x) => x.id === action.pronunciation_id)
+      if (!p) return "Je ne retrouve pas cette prononciation. Redis-moi laquelle."
       await deletePronunciation(action.pronunciation_id)
-      return `Prononciation "${p?.veut_dire ?? "supprimée"}" oubliée.`
+      return `Prononciation "${p.veut_dire}" oubliée.`
     }
 
     case "list_calendar_events": {

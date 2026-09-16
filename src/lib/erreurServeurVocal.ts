@@ -41,6 +41,34 @@ export async function corpsDeLErreur(error: unknown): Promise<string> {
 export function traduireErreurServeur(corps: string, messageBrut = ""): string {
   const texte = `${corps} ${messageBrut}`.toLowerCase()
 
+  // LA COUPURE RÉSEAU PASSE EN PREMIER, et c'est un correctif du 15 sept. 2026.
+  //
+  // Ce qu'il a vu à l'écran : « Le serveur vocal a répondu : Failed to send a
+  // request to the Edge Function ». Vérifié dans les journaux Supabase du même
+  // instant : `POST | 200 | .../voice-command` à 10:50:42.027, alors que l'app
+  // avait abandonné à 10:50:41.717 après 2985 ms. **Le serveur n'a rien
+  // répondu de tel — il a répondu 200.** La phrase accusait donc quelque chose
+  // qu'elle n'avait pas constaté, exactement le défaut que `honnetete.ts`
+  // interdit côté modèle.
+  //
+  // La cause est mécanique : `FunctionsFetchError` (supabase-js, levé quand le
+  // `fetch` lui-même est rejeté) n'a PAS de `context`, donc `corpsDeLErreur`
+  // rend une chaîne vide, aucun cas ne reconnaît le message anglais, et le
+  // dernier recours le relaie tel quel sous « Le serveur vocal a répondu ».
+  //
+  // ET ON NE DIT PAS « ça n'est pas parti » : ce serait faux ce jour-là. Du
+  // téléphone, on ne peut pas savoir si le serveur a reçu et exécuté. On dit
+  // donc qu'on ne sait pas — et on le dit avant de proposer de redire.
+  if (
+    texte.includes("failed to send a request") ||
+    texte.includes("failed to fetch") ||
+    texte.includes("load failed") ||
+    texte.includes("network request failed") ||
+    texte.includes("networkerror")
+  ) {
+    return "La connexion a coupé avant que j'aie une réponse. Je ne sais pas si ta demande est passée : vérifie avant de la redire."
+  }
+
   if (texte.includes("resource_exhausted") || texte.includes("quota")) {
     return "J'ai atteint la limite du moteur pour le moment. Redis-moi ça dans une minute ; si ça se répète toute la journée, c'est le quota du jour qui est épuisé."
   }

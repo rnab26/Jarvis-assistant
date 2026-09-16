@@ -8,6 +8,7 @@ import { ChantiersEgares } from "@/components/cockpit/ChantiersEgares"
 import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
 import { BarreActualiser } from "@/components/BarreActualiser"
 import { CategoryFilter, ALL_CATEGORIES } from "@/components/tasks/CategoryFilter"
+import { TaskList } from "@/components/tasks/TaskList"
 import { compterAFaire } from "@/lib/ordreCategories"
 import type { Category } from "@/types/database"
 import type { StatutDirect } from "@/lib/etatDirect"
@@ -162,6 +163,68 @@ const CATEGORIES_BANC: Category[] = [
   { id: "c-notes", user_id: "banc", name: "Notes", created_at: "2026-09-01T00:00:00Z", position: 2 },
 ]
 
+/**
+ * LA LISTE GROUPÉE, avec ses terminées — chantiers 20435f77 / 7c37b6b0.
+ *
+ * Trois cas qui comptent, et le troisième est celui qu'on oublie :
+ * une catégorie mélangée (à faire + terminées), une catégorie ENTIÈREMENT
+ * soldée (plus rien à faire, mais des terminées), et une catégorie vierge
+ * (rien de terminé du tout — le dépliant ne doit PAS s'afficher).
+ */
+const TACHES_GROUPEES: Task[] = [
+  { ...tache("g1", "Ouvrir le terminal de paiement"), category_id: "c-hipouy" },
+  { ...tache("g2", "Acheter matériel pour les pauses"), category_id: "c-hipouy" },
+  {
+    ...tache("g3", "Appeler Amir"),
+    category_id: "c-hipouy",
+    status: "done",
+    updated_at: "2026-09-14T08:00:00Z",
+  },
+  {
+    ...tache("g4", "Relancer Michael pour le bilan"),
+    category_id: "c-hipouy",
+    status: "done",
+    updated_at: "2026-09-15T08:00:00Z",
+  },
+  // Catégorie entièrement soldée.
+  {
+    ...tache("g5", "Lister les clients"),
+    category_id: "c-prelevements",
+    status: "done",
+    updated_at: "2026-09-13T08:00:00Z",
+  },
+  // Catégorie sans aucune terminée : pas de dépliant du tout.
+  { ...tache("g6", "Finir le tableau simplifié"), category_id: "c-leads" },
+  { ...tache("g7", "Rappeler Samuel"), category_id: "c-leads" },
+]
+
+const CATEGORIES_GROUPES: Category[] = [
+  { id: "c-hipouy", user_id: "banc", name: "Hipouy", created_at: "2026-09-01T00:00:00Z", position: 0 },
+  { id: "c-prelevements", user_id: "banc", name: "Prélèvements", created_at: "2026-09-01T00:00:00Z", position: 1 },
+  { id: "c-leads", user_id: "banc", name: "Leads", created_at: "2026-09-01T00:00:00Z", position: 2 },
+]
+
+function BancDeLaListe() {
+  const [taches, setTaches] = useState<Task[]>(TACHES_GROUPEES)
+  return (
+    <TaskList
+      tasks={taches}
+      categories={CATEGORIES_GROUPES}
+      onToggle={async (t) => {
+        setTaches((liste) =>
+          liste.map((x) =>
+            x.id === t.id
+              ? { ...x, status: x.status === "done" ? "todo" : "done", updated_at: new Date().toISOString() }
+              : x,
+          ),
+        )
+      }}
+      onUpdate={rien}
+      onDelete={rien}
+    />
+  )
+}
+
 function BancDesTaches() {
   const [taches, setTaches] = useState<Task[]>(TACHES)
   const [chantiersCrees, setChantiersCrees] = useState<string[]>([])
@@ -274,6 +337,12 @@ function BancDesTaches() {
       </div>
       <div id="attente-illisible">
         <EnAttenteDenvoi file={[]} illisible />
+      </div>
+
+      {/* LA LISTE GROUPÉE PAR CATÉGORIE : en-tête centré, et les terminées
+          rangées dans le dépliant de leur bloc. */}
+      <div id="liste-groupee">
+        <BancDeLaListe />
       </div>
 
       {/* Et les lignes elles-mêmes : c'est là qu'il agit. */}

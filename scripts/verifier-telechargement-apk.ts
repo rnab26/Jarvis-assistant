@@ -82,15 +82,23 @@ verifier(
   ) && /put\("enPause"/.test(download) && /raisonDePause/.test(java),
   "une attente du Wi-Fi se lisait comme un plantage : le dernier « 0.0 Mo » restait figé",
 )
+// ÉLARGI LE 15 SEPT. 2026, et l'ancienne formulation est gardée dans le
+// libellé pour qu'on sache d'où on vient. Le contrôle du 6 sept. exigeait
+// « recus <= 0 && … DELAI_SANS_OCTET_MS » — il décrivait exactement la faille
+// qui restait : dès que 0,1 Mo était arrivé (sa capture du 15 sept. :
+// « 1% · 0.1 / 11.1 Mo », figé), la condition ne pouvait plus être vraie et
+// rien ne sortait avant les dix minutes. Ce qui compte n'est pas le NIVEAU du
+// compteur, c'est qu'il BOUGE.
 verifier(
-  "zéro octet reçu ne fait pas attendre dix minutes",
-  /DELAI_SANS_OCTET_MS/.test(java) && /recus <= 0[\s\S]{0,120}DELAI_SANS_OCTET_MS/.test(download),
-  "« 0.0 Mo reçus » pendant dix minutes n'est pas un état, c'est une panne muette",
+  "zéro octet reçu — ou un compteur figé — ne fait pas attendre dix minutes",
+  /DELAI_SANS_PROGRES_MS/.test(java) &&
+    /System\.currentTimeMillis\(\) - dernierProgresA\[0\] > DELAI_SANS_PROGRES_MS/.test(download),
+  "« 0.1 / 11.1 Mo » figé pendant dix minutes n'est pas un état, c'est une panne muette",
 )
 verifier(
   "et ce délai reste court (une minute au plus)",
   (() => {
-    const m = /DELAI_SANS_OCTET_MS = ([^;]+);/.exec(java)
+    const m = /DELAI_SANS_PROGRES_MS = ([^;]+);/.exec(java)
     if (!m) return false
     const valeur = Function(`"use strict";return (${m[1].replace(/_/g, "")})`)() as number
     return valeur > 0 && valeur <= 60_000

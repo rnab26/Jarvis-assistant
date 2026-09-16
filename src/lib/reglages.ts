@@ -41,6 +41,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/pages/SettingsPage.tsx",
   },
   {
+    cle: "jarvis_taches_archives_ouvertes",
+    ou: "Paramètres › Tâches et organisation › Les tâches terminées",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
     cle: "jarvis_geofence_enabled",
     ou: "Paramètres › Tâches et organisation › Rappels de lieu",
     fichier: "src/pages/SettingsPage.tsx",

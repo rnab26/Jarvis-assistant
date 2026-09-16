@@ -154,6 +154,39 @@ verifier(
 )
 
 // ---------------------------------------------------------------------------
+// La phrase COUPÉE : il parle du rangement, le nom n'est jamais arrivé
+//
+// 15 sept. 2026, 17:32:57, relu dans `echanges` — sa phrase exacte. Partie au
+// serveur, elle a d'abord visé une tâche vieille de sept heures ; puis, une
+// fois le bon repère donné, elle l'a rangée dans la catégorie SUGGÉRÉE,
+// c'est-à-dire celle que son « non » refusait. Mesuré deux fois sur la
+// fonction déployée, consigne renforcée comprise.
+// ---------------------------------------------------------------------------
+
+verifier(
+  "sa phrase coupée est reconnue comme un rangement qu'on ne sait pas lire",
+  reponseCategorie("non mets-le dans la catégor", categories)?.verdict === "illisible",
+)
+
+verifier(
+  "sa phrase ENTIÈRE, elle, se range sans rien demander",
+  reponseCategorie("non mets-le dans la catégorie Perso", categories)?.verdict === "corriger",
+)
+
+// LA MOITIÉ QUI COMPTE. « mets la musique dans la voiture » dite dans les cinq
+// minutes après une création de tâche ne doit PAS être prise pour une réponse
+// de rangement : c'est le mot de rangement (categ/partie/section/liste) qui
+// tient ce silence, pas la longueur de la phrase.
+verifier(
+  "une commande ordinaire qui contient « dans » reste muette",
+  reponseCategorie("mets la musique dans la voiture", categories) === null,
+)
+verifier(
+  "et une nouvelle demande qui parle de catégories aussi",
+  reponseCategorie("ajoute une tâche pour trier les catégories de la maison demain", categories) === null,
+)
+
+// ---------------------------------------------------------------------------
 // La fenêtre de complétion
 // ---------------------------------------------------------------------------
 
@@ -237,6 +270,23 @@ const ctxAvecSuggestion = {
     quand: maintenant.getTime() - 1000,
   },
 } as unknown as Parameters<typeof interpreterLocalement>[1]
+
+// Le bout qui compte pour lui : l'appareil REDEMANDE, en nommant la tâche, au
+// lieu de laisser la phrase coupée partir au serveur — qui a visé une tâche de
+// sept heures plus tôt, puis rangé dans la catégorie que son « non » refusait.
+verifier(
+  "sa phrase coupée fait redemander ICI, en nommant la tâche",
+  (() => {
+    const a = interpreterLocalement("non mets-le dans la catégor", ctxAvecSuggestion)
+    if (a?.length !== 1 || a[0].action !== "clarify") return false
+    const message = "message" in a[0] ? String(a[0].message) : ""
+    // Elle NOMME la tâche : sans ça on reproduirait le « cette tâche » vague
+    // qui lui a fait répondre à propos de la mauvaise.
+    if (!message.includes("Rappeler Jonathan")) return false
+    // Et elle ne pose RIEN : aucune complétion ne part sur une supposition.
+    return a[0].action !== "complete_last_task"
+  })(),
+)
 
 verifier(
   "« oui » valide la catégorie suggérée",

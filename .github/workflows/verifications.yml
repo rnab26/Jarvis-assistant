@@ -140,6 +140,21 @@ jobs:
       - name: L'ordre des trois étapes d'une ouverture Live
         run: node --experimental-strip-types scripts/verifier-ouverture-live.ts
 
+      # Sa capture du 15 sept. 2026 : « Invalid key: …/טופס 18 … .pdf », et
+      # aucun document importable. Mesuré contre son vrai Storage : l'hébreu
+      # n'était que la moitié visible — « facture été.pdf » et « reçu.pdf »
+      # échouaient pareil.
+      - name: Un nom de document n'est pas une clé de stockage
+        run: node --experimental-strip-types scripts/verifier-nom-document.ts
+
+      # Deux fermetures mesurées (10 et 15 sept. 2026) : « Session fermée :
+      # Internal error occurred. », dont une en pleine correction de tâche. La
+      # cause est chez Google et reste inconnue ; ce qui suit est à nous — une
+      # conversation qui se rouvre au lieu de s'arrêter, bornée pour ne pas
+      # boucler sur une panne installée, et qui DIT qu'elle a essayé.
+      - name: Une fermeture subie ne finit pas la conversation Live
+        run: node --experimental-strip-types scripts/verifier-reprise-live.ts
+
       # Laissé de côté par le chantier qui l'a écrit : il était dans CLAUDE.md
       # mais dans aucun workflow, donc rien ne le lançait.
       - name: L'espacement du préchauffage de la connexion Live
@@ -267,6 +282,15 @@ jobs:
       - name: Une tâche perso qui est en fait un chantier
         run: node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts
 
+      - name: Les tâches terminées rangées dans l'archive de leur catégorie
+        run: node --experimental-strip-types scripts/verifier-archive-taches.ts
+
+      - name: Une coupure réseau ne se présente pas comme une réponse du serveur
+        run: node --experimental-strip-types scripts/verifier-coupure-reseau.ts
+
+      - name: On ne propose pas une mise à jour quand il n'y en a pas
+        run: node --experimental-strip-types scripts/verifier-bouton-maj.ts
+
       - name: Ce qui a bougé depuis le dernier passage
         run: node --experimental-strip-types scripts/verifier-depuis-derniere-visite.ts
 
@@ -287,6 +311,14 @@ jobs:
       # communs : la perdre en silence serait bien pire que le doublon.
       - name: Dicter deux fois ne crée pas deux chantiers
         run: node --experimental-strip-types scripts/verifier-doublon-vocal.ts
+
+      # Même garde-fou côté tâches — trouvé le 15 sept. 2026 : deux appels de
+      # add_task à 3 s d'intervalle, pour la même demande, ont créé deux
+      # tâches homonymes. Sans avertissement, la confusion qui a suivi a fini
+      # par en faire supprimer une par erreur (celle qui portait la bonne
+      # échéance).
+      - name: Dicter deux fois ne crée pas deux tâches homonymes
+        run: node --experimental-strip-types scripts/verifier-doublon-tache.ts
 
       # Le garde-fou des commandes mal entendues ne doit jamais redevenir la
       # confirmation bloquante que Raphaël a écartée.
@@ -348,6 +380,28 @@ jobs:
       # la catégorie suggérée attend sa validation, jamais posée en silence.
       - name: Une tâche sans date se complète, une catégorie suggérée se valide
         run: node --experimental-strip-types scripts/verifier-tache-date-categorie.ts
+
+      # « note un rappel comme quoi je dois rappeler dan Marciano » donnait le
+      # titre « Un rappel comme quoi je dois rappeler dan marciano matin ».
+      # Sa décision du 15 sept. : « Les deux : le modèle écrit, la règle
+      # rattrape ». Ce contrôle garde la règle — et surtout ce qu'elle NE
+      # touche pas, car un titre coupé ment là où un titre long se lit.
+      - name: Le titre d'une tâche est ce qu'il y a à faire
+        run: node --experimental-strip-types scripts/verifier-titre-tache.ts
+
+      # « il fait 50% dans la première tâche et 50% en recréant une autre ».
+      # Mesuré : la moitié perdue l'était sur l'APPAREIL, pas au serveur —
+      # une queue gloutonne avalait la seconde demande, et `meilleur()`
+      # retrouvait quand même la cible par ressemblance. Ce contrôle garde
+      # surtout le silence : ses vrais titres portent des « et » innocents.
+      - name: Une phrase à deux demandes rend la main au serveur
+        run: node --experimental-strip-types scripts/verifier-seconde-demande.ts
+
+      # Six paires dans ses 298 vraies dictées où il redit sa phrase en
+      # l'allongeant. La seconde porte l'information EN PLUS (l'échéance) :
+      # la refuser perdait ce qu'il venait d'ajouter. On complète.
+      - name: Redire une dictée coupée complète la ligne, n'en crée pas deux
+        run: node --experimental-strip-types scripts/verifier-reprise-dictee.ts
 
       # Les applications proposées doivent être celles du TÉLÉPHONE. Une
       # liste écrite dans le code est fausse le jour où il installe autre

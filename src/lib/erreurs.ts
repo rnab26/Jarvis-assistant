@@ -142,10 +142,22 @@ export function erreurDepuisEcoute(
   }
 
   if (evenement === "reponse" && texte("erreur")) {
+    // UNE COUPURE RÉSEAU N'EST PAS UN REFUS DU SERVEUR, et le 15 sept. 2026
+    // la ligne posée dans le registre disait le contraire : « Le serveur
+    // vocal a refusé de répondre », alors que les journaux Supabase du même
+    // instant montrent `POST | 200` sur voice-command. Les deux titres font
+    // deux empreintes distinctes côté base, donc deux lignes : c'est ce qu'on
+    // veut — une panne de sa 4G et un moteur qui refuse ne se corrigent pas
+    // du même côté, et les mélanger sur une seule ligne rendrait le compteur
+    // illisible.
+    const brut = texte("erreur") ?? ""
+    const reseau = /failed to send a request|failed to fetch|load failed|network request failed|networkerror/i.test(brut)
     return {
       categorie: "serveur",
-      titre: "Le serveur vocal a refusé de répondre",
-      detail: texte("erreur"),
+      titre: reseau
+        ? "La connexion a coupé avant la réponse du serveur vocal"
+        : "Le serveur vocal a refusé de répondre",
+      detail: brut,
       source: "voix",
     }
   }

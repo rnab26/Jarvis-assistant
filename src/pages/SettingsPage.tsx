@@ -54,6 +54,8 @@ import {
   SUITE_MAX_MS,
   SUITE_MIN_MS,
 } from "@/lib/dialoguePrefs"
+import { CLE_ARCHIVES_OUVERTES, archivesOuvertes } from "@/lib/archiveTaches"
+import { ecrireReglage } from "@/lib/reglages"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
 
 const isNative = Capacitor.isNativePlatform()
@@ -518,6 +520,16 @@ export function SettingsPage() {
   const [recherche, setRecherche] = useState("")
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
+  // Les terminées dépliées d'entrée dans l'onglet Tâches. Le stockage local
+  // peut être indisponible (navigation privée) : on lit alors « rien choisi »
+  // plutôt que de faire blanchir l'écran des réglages.
+  const [archivesTachesOuvertes, setArchivesTachesOuvertes] = useState(() => {
+    try {
+      return archivesOuvertes(localStorage.getItem(CLE_ARCHIVES_OUVERTES))
+    } catch {
+      return false
+    }
+  })
 
   useEffect(() => {
     getVoices().then(setVoices)
@@ -859,6 +871,32 @@ export function SettingsPage() {
       </Section>
 
       <Section {...SECTIONS.taches} filtre={recherche}>
+        {/* SA DEMANDE (chantiers 20435f77 / 7c37b6b0) : une tâche cochée quitte
+            la liste pour l'archive de sa catégorie. Le réglage existe parce
+            que « replié » est un choix, pas une fatalité — quelqu'un qui coche
+            beaucoup peut vouloir garder ses terminées sous les yeux sans avoir
+            à demander qu'on code l'inverse. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Les tâches terminées</CardTitle>
+            <CardDescription>
+              Une tâche cochée quitte la liste et va dans « … terminées », en bas du bloc de sa
+              catégorie. Elle n'est pas supprimée : la décocher la fait revenir dans la liste.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Interrupteur
+              titre="Les montrer d'entrée"
+              description="Dépliées à l'ouverture de l'onglet Tâches, au lieu d'être repliées."
+              actif={archivesTachesOuvertes}
+              onChange={(actif) => {
+                setArchivesTachesOuvertes(actif)
+                ecrireReglage(CLE_ARCHIVES_OUVERTES, actif ? "1" : null)
+              }}
+            />
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>Widget d'écran d'accueil</CardTitle>

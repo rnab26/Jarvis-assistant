@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core"
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { Button } from "@/components/ui/button"
 import { JarvisCore } from "@/components/JarvisCore"
 import { pastilleQuota, type Consommation } from "@/lib/consommationModele"
 import { cn } from "@/lib/utils"
@@ -24,6 +25,8 @@ import {
 } from "@/lib/veille"
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
+import { completionExpiree } from "@/lib/tacheDateEtCategorie"
+import { completerPlutotQueCreer, estUneReprise } from "@/lib/repriseDictee"
 import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
@@ -61,6 +64,7 @@ import type { DevItem } from "@/types/database"
 import {
   type DevSectionsVoiceApi,
   executeVoiceAction,
+  memoireDerniereCreation,
   memoireTacheEnAttente,
   type ContactsApi,
   type DevItemsApi,
@@ -232,6 +236,20 @@ export function MicButton({
   }, [])
   const [lastUserText, setLastUserText] = useState<string | null>(null)
   const [lastReply, setLastReply] = useState<string | null>(null)
+  /**
+   * La phrase qui n'a pas abouti, gardée pour pouvoir la renvoyer TELLE QUELLE.
+   *
+   * Le 15 sept. 2026, une dictée de 43 secondes (104 résultats partiels, 19
+   * sessions de reconnaissance — mesuré dans `journal_ecoute`) a été perdue
+   * parce que le `fetch` a été rejeté avant la réponse. Redicter 43 secondes
+   * mot pour mot n'est pas une option ; le texte est déjà à l'écran, il
+   * manquait seulement de quoi le renvoyer.
+   *
+   * Gardée à part de `lastUserText`, qui bouge à chaque résultat partiel de
+   * l'écoute suivante : on veut la phrase EXACTE qui est partie, pas ce que
+   * l'affichage montrait à l'instant du renvoi.
+   */
+  const [phraseARejouer, setPhraseARejouer] = useState<string | null>(null)
   // Un tap pendant que Jarvis parle (barge-in) relance l'écoute lui-même ;
   // ce flag évite que le await speak(...) interrompu, une fois débloqué,
   // ne relance À SON TOUR une écoute en double (deux listen() concurrents).
@@ -415,6 +433,45 @@ export function MicButton({
             veut_dire: p.veut_dire,
           })),
           widgetConfig: widgetApi.config,
+          // LA TÂCHE QUI ATTEND ENCORE UNE RÉPONSE, quand il y en a une.
+          //
+          // Le 15 sept. à 17:32:57, Jarvis venait de proposer une catégorie
+          // pour « rappeler Dan Marciano ». Il a répondu « non mets-le dans
+          // la catégor » — phrase coupée par la reconnaissance vocale, donc
+          // aucune catégorie à reconnaître sur l'appareil. Partie au serveur,
+          // elle est revenue en « Dans quelle catégorie souhaites-tu que je
+          // déplace la tâche pour la banque Apoalim ? » : une tâche créée
+          // SEPT HEURES plus tôt. Le serveur n'avait aucun moyen de savoir
+          // laquelle attendait — `resolveTranscript` ne lui envoie que la
+          // phrase courante, jamais le tour précédent (même défaut que pour
+          // la confirmation d'un envoi, chantier 21cf48d2).
+          //
+          // Quelques dizaines de caractères, et SEULEMENT quand une tâche
+          // attend vraiment : `null` le reste du temps, comme `ceQuiLAttend`
+          // qui ne rend rien plutôt qu'un titre vide.
+          tacheEnAttente: (() => {
+            const attente = memoireTacheEnAttente()
+            if (!attente || completionExpiree(attente, Date.now())) return null
+            return {
+              id: attente.taskId,
+              titre: attente.titre,
+              sans_date: attente.sansDate,
+              // ON NE LUI DIT PAS LE NOM DE LA CATÉGORIE SUGGÉRÉE, et c'est
+              // tout le correctif (chantier 902bf94b, mesuré le 16 sept.).
+              //
+              // Tant qu'il le connaissait, le modèle le reposait — même
+              // devant un « non » qui le refusait, et même sous un INTERDIT
+              // en toutes lettres : trois versions déployées, trois fois la
+              // même réponse. Privé de ce nom, il ne peut plus le reposer, et
+              // il fait exactement ce qu'on attend : il redemande en NOMMANT
+              // la tâche. Mesuré aussi dans l'autre sens — quand la phrase
+              // porte un nom de catégorie, il range sans rien demander.
+              //
+              // C'est du code, pas de la prose : il ne peut pas désobéir à ce
+              // qu'il ne reçoit pas.
+              categorie_a_valider: attente.suggestion !== null,
+            }
+          })(),
           todayISO: new Date().toISOString().slice(0, 10),
         },
       }),
@@ -457,7 +514,24 @@ export function MicButton({
     // pas une phrase de Raphaël — les prendre pour une redite serait faux.
     if (round === 0) constaterEchec(transcript, "voix")
     setStatus("processing")
-    const actions = await resolveTranscript(transcript)
+    const brutes = await resolveTranscript(transcript)
+    // IL REDIT SA PHRASE EN L'ALLONGEANT : on COMPLÈTE la tâche qu'il vient
+    // de dicter, on n'en crée pas une seconde (repriseDictee.ts).
+    //
+    // Mesuré sur ses 298 vraies dictées : six paires où la seconde contient
+    // la première mot pour mot, toutes le même phénomène — un résultat final
+    // rendu trop tôt par le service de reconnaissance —, aucun faux positif.
+    // `deciderDoublonTache` voyait bien la ressemblance et REFUSAIT la
+    // seconde ; mais c'est elle qui porte l'échéance à 15 h, et la refuser
+    // perdait ce qu'il venait d'ajouter.
+    //
+    // Calculé ICI parce que c'est la seule couche qui tient la phrase
+    // PRÉCÉDENTE (`dernierTourRef`) — le serveur ne la voit jamais, comme
+    // pour la confirmation d'un envoi (chantier 21cf48d2).
+    const actions =
+      (estUneReprise(dernierTourRef.current, transcript, Date.now())
+        ? completerPlutotQueCreer(brutes, memoireDerniereCreation(), Date.now())
+        : null) ?? brutes
 
     // Quand quelque chose est ambigu, la Edge Function renvoie une seule
     // action clarify : on pose la question plutôt que d'exécuter à moitié.
@@ -845,7 +919,12 @@ export function MicButton({
     let transcript = premier
     for (;;) {
       setLastUserText(transcript)
+      setPhraseARejouer(transcript)
       const enchainer = await runTurn(transcript)
+      // Le tour est allé au bout : plus rien à renvoyer. On l'efface ICI et
+      // pas au prochain appui, sinon un bouton « Réessayer » survivrait à une
+      // commande réussie et rejouerait une action déjà faite.
+      setPhraseARejouer(null)
       if (!enchainer) return
 
       setStatus("listening")
@@ -877,6 +956,33 @@ export function MicButton({
       setStatus("listening")
       const transcript = nettoyer(await listen("command", { onTexte: setLastUserText }))
       await conduireConversation(transcript)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur inconnue."
+      setLastReply(message)
+      setStatus("error")
+    }
+  }
+
+  /**
+   * Renvoyer la phrase qui n'a pas abouti, sans la redicter.
+   *
+   * ON NE RETENTE JAMAIS TOUT SEUL, et c'est le point à ne pas défaire : le
+   * 15 sept. 2026, la requête qui « a échoué » côté téléphone avait en réalité
+   * reçu un `200` du serveur 310 ms plus tard. Un renvoi automatique aurait
+   * exécuté la demande DEUX fois — deux chantiers, deux messages, deux
+   * alarmes. C'est à Raphaël de décider, et la phrase affichée le lui dit
+   * (« je ne sais pas si ta demande est passée »).
+   *
+   * Le renvoi repasse par `conduireConversation`, pas par un chemin à lui :
+   * une seconde route finirait par ne plus exécuter les actions pareil.
+   */
+  async function rejouerLaPhrase() {
+    const phrase = phraseARejouer
+    if (!phrase) return
+    priseRef.current++
+    try {
+      setStatus("processing")
+      await conduireConversation(phrase)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur inconnue."
       setLastReply(message)
@@ -1233,9 +1339,17 @@ export function MicButton({
         )
       )}
       {(lastUserText || lastReply) && (
-        <div className="max-w-xs text-center text-sm">
+        <div className="flex max-w-xs flex-col items-center gap-2 text-center text-sm">
           {lastUserText && <p className="text-muted-foreground">Toi : {lastUserText}</p>}
           {lastReply && <p>Jarvis : {lastReply}</p>}
+          {/* Le seul chemin pour ne pas redicter ce qui n'a pas abouti. Il ne
+              s'affiche QUE sur un échec : proposer « Réessayer » après une
+              commande réussie inviterait à la faire deux fois. */}
+          {status === "error" && phraseARejouer && (
+            <Button size="sm" variant="outline" onClick={() => void rejouerLaPhrase()}>
+              Réessayer sans redicter
+            </Button>
+          )}
         </div>
       )}
     </div>

@@ -84,7 +84,18 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # packages: "" — Google a retiré le paquet "tools" (déprécié) du
+      # dépôt du SDK le 14-15 sept. 2026 ; le comportement par défaut de
+      # cette action (`packages: 'tools platform-tools'`) échoue donc
+      # systématiquement (« Failed to find package 'tools' »), sur TOUS les
+      # projets qui l'utilisent, pas seulement celui-ci. On n'a jamais eu
+      # besoin de ce paquet : Gradle télécharge lui-même les composants du
+      # SDK qu'il lui faut (compileSdkVersion, build-tools) via le plugin
+      # Android. Une valeur vide saute l'installation par défaut, tout en
+      # posant ANDROID_HOME et en acceptant les licences.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ""
 
       - name: Build debug APK
         working-directory: android

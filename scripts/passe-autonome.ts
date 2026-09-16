@@ -89,6 +89,17 @@ if (decision.chantier) {
   console.log(`section : ${decision.chantier.theme ?? "À classer"}`)
 }
 
+// CE QU'IL A RÉPONDU, imprimé QUEL QUE SOIT le verdict — y compris quand la
+// passe part travailler sur autre chose. Une passe qui code pendant qu'il
+// attend une suite est exactement ce qu'il reproche.
+for (const r of decision.reponses) {
+  console.log("")
+  console.log(`RÉPONSE DE RAPHAËL (${r.answered_at})`)
+  console.log(`  question : ${r.question}`)
+  console.log(`  il dit   : ${r.reponse ?? "(la réponse n'a pas été retrouvée — lis dev_log)"}`)
+  if (r.item_id) console.log(`  chantier : ${r.item_id}`)
+}
+
 if (args.includes("--demarrer")) {
   const id = interroger(
     `select public.demarrer_passe_autonome(${litteral(branche)}, ${litteral(decision.verdict)}, ` +
@@ -97,7 +108,13 @@ if (args.includes("--demarrer")) {
   console.log(`passe   : ${id}`)
 }
 
-// Le code de sortie porte la décision : `travaille` = 0, tout le reste = 3.
-// Une session qui se retire n'est pas en échec — d'où un code à part, qu'un
-// `&&` de shell ne confondra pas avec une panne.
-process.exit(decision.verdict === "travaille" ? 0 : 3)
+// Le code de sortie porte la décision : il y a du travail = 0, la passe se
+// retire = 3. Une session qui se retire n'est pas en échec — d'où un code à
+// part, qu'un `&&` de shell ne confondra pas avec une panne.
+//
+// `il_a_repondu` vaut 0 comme `travaille` : dans les deux cas il y a quelque
+// chose à faire, et la consigne de `docs/session-autonome.md` dit quoi. Le
+// rendre à 3 ferait refermer la session sans lire ses réponses — le défaut
+// qu'on corrige.
+const ilYADuTravail = decision.verdict === "travaille" || decision.verdict === "il_a_repondu"
+process.exit(ilYADuTravail ? 0 : 3)

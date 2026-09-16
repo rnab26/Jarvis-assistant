@@ -713,8 +713,15 @@ try {
     const mesures = await bloc.evaluate((racine) => {
       const haut = racine.getBoundingClientRect().top
       const barres = [...racine.querySelectorAll(':scope > div > button[aria-expanded="false"]')]
-      const bouton = [...racine.querySelectorAll("button")].find((b) =>
-        /Mettre à jour maintenant|Télécharger/.test(b.textContent || ""),
+      // ÉLARGI LE 15 SEPT. 2026 : le bouton de cette carte ne s'appelle plus
+      // toujours « Mettre à jour ». Quand rien n'attend, il dit « Réinstaller
+      // l'application » — c'est la correction de son reproche du jour (un
+      // bouton noir « Mettre à jour » collé au badge « À jour »). Ce qui est
+      // mesuré ici reste le même : à quelle HAUTEUR l'action de la carte
+      // commence, sa demande du 5 sept. (« il faut que je descende tout en
+      // bas »). On vise donc l'action, quel que soit son nom.
+      const bouton = [...racine.querySelectorAll("button, a")].find((b) =>
+        /Mettre à jour|Télécharger|Réinstaller/.test(b.textContent || ""),
       )
       return {
         boutonMaj: bouton ? Math.round(bouton.getBoundingClientRect().top - haut) : -1,
@@ -728,6 +735,22 @@ try {
       mesures.nbBarres === 10,
       `${mesures.nbBarres} barres repliées trouvées`,
     )
+    // SON REPROCHE DU 15 SEPT., mesuré à l'écran : un bouton PLEIN « Mettre à
+    // jour » à côté du badge « À jour ». Il a appuyé — c'est la seule chose
+    // raisonnable devant ça — et téléchargé 11,1 Mo d'APK pour rien sur sa 4G.
+    // Le banc monte la carte en état « à jour » : aucune action principale ne
+    // doit s'y trouver.
+    const criard = await bloc.evaluate((racine) =>
+      [...racine.querySelectorAll("button, a")]
+        .filter((b) => /Mettre à jour|Télécharger/i.test(b.textContent || ""))
+        .map((b) => (b.textContent || "").trim().slice(0, 40)),
+    )
+    verifier(
+      "à jour : aucun bouton ne propose de mettre à jour",
+      criard.length === 0,
+      `trouvé(s) : ${criard.join(" | ")}`,
+    )
+
     verifier(
       "le bouton de mise à jour est dans le premier écran",
       mesures.boutonMaj >= 0 && mesures.boutonMaj < 400,

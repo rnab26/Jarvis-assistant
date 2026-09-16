@@ -123,7 +123,16 @@ const verifier = (nom: string, obtenu: unknown, attendu: unknown) => {
   )
   const iMaintenir = session.indexOf("export async function maintenirSessionLive")
   verifier("maintenirSessionLive existe", iMaintenir >= 0, true)
-  const corpsMaintenir = session.slice(iMaintenir)
+  /** SANS LES COMMENTAIRES. Ce qui suit compare des POSITIONS d'appels ; une
+   * phrase de commentaire qui cite `definirLiveActifNatif(false)` pour
+   * expliquer pourquoi il ne faut pas le déplacer serait comptée comme un
+   * appel, et le contrôle rougirait sur du code parfaitement juste. C'est
+   * arrivé le 15 sept. 2026. Le piège inverse est pire et c'est le même :
+   * chercher un mot plutôt qu'un appel, comme le sélecteur Playwright,
+   * `Filesystem.mkdir` et `com.google.android.as` avant lui. */
+  const sansCommentaires = (texte: string) =>
+    texte.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
+  const corpsMaintenir = sansCommentaires(session.slice(iMaintenir))
   const iVrai = corpsMaintenir.indexOf("definirLiveActifNatif(true)")
   const iBoucle = corpsMaintenir.indexOf("const boucle = async ()")
   const iFaux = corpsMaintenir.indexOf("definirLiveActifNatif(false)")
@@ -133,9 +142,25 @@ const verifier = (nom: string, obtenu: unknown, attendu: unknown) => {
     iVrai >= 0 && iVrai < iBoucle,
     true,
   )
+  /** DANS le finally, pas seulement APRÈS lui. Écrite en comparant des
+   * positions, cette vérification restait verte quand on sortait l'appel du
+   * bloc pour le poser juste en dessous — essayé le 15 sept. 2026, et son
+   * libellé promettait donc plus qu'elle ne tenait. On compte les accolades
+   * pour délimiter le bloc pour de vrai. */
+  const corpsDuFinally = (() => {
+    if (iFinally < 0) return ""
+    let profondeur = 0
+    const debut = corpsMaintenir.indexOf("{", iFinally)
+    for (let i = debut; i < corpsMaintenir.length; i++) {
+      if (corpsMaintenir[i] === "{") profondeur++
+      else if (corpsMaintenir[i] === "}" && --profondeur === 0) return corpsMaintenir.slice(debut, i)
+    }
+    return ""
+  })()
   verifier(
     "le drapeau ne retombe que dans un finally — toute sortie de la boucle le baisse, y compris un arrêt manuel ou une panne",
-    iFinally >= 0 && iFinally < iFaux && iFaux < corpsMaintenir.indexOf("void boucle()"),
+    corpsDuFinally.includes("definirLiveActifNatif(false)") &&
+      corpsMaintenir.split("definirLiveActifNatif(false)").length === 2,
     true,
   )
   // demarrerSessionLive (une seule connexion, pas la conversation entière)
@@ -143,7 +168,10 @@ const verifier = (nom: string, obtenu: unknown, attendu: unknown) => {
   // baissé à chaque reconnexion transparente, exactement le trou qu'on evite.
   const iDemarrer = session.indexOf("export async function demarrerSessionLive")
   const iDemarrerFin = session.indexOf("\nexport async function maintenirSessionLive")
-  const corpsDemarrer = session.slice(iDemarrer, iDemarrerFin)
+  /** Sans les commentaires, pour la même raison : ici l'assertion est un
+   * REFUS, donc une phrase qui cite l'appel pour dire de ne pas l'ajouter
+   * rougirait toute seule. */
+  const corpsDemarrer = sansCommentaires(session.slice(iDemarrer, iDemarrerFin))
   verifier(
     "demarrerSessionLive (une seule connexion) ne touche pas au drapeau lui-même",
     /definirLiveActifNatif/.test(corpsDemarrer),
