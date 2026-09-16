@@ -14,6 +14,7 @@ import {
 import { extraitEntendu, noterEcoute } from "@/lib/journalEcoute"
 import { serviceReconnaissanceSouhaite } from "@/lib/reconnaissanceVocale"
 import { estUnePanne, raisonDepuisCode, type RaisonEcoute } from "@/lib/raisonEcoute"
+import { RESPIRATION_MS } from "@/lib/veille"
 
 type SpeechRecognitionCtor = new () => SpeechRecognition
 
@@ -493,7 +494,7 @@ export function useSpeechRecognition() {
   )
 
   const ecouterCommandeNative = useCallback(
-    async (o: OptionsEcoute): Promise<string> => {
+    async (o: OptionsEcoute, appuiExterneAt?: number): Promise<string> => {
       await preparerNatif()
       const opts = optionsTour(o)
       const flux: FluxEcoute = { etat: creerTour(Date.now()), stopDemande: false, erreur: null }
@@ -528,7 +529,17 @@ export function useSpeechRecognition() {
       // `ms_premier_mot` = ce que le service met à rendre son premier mot une
       // fois ouvert. Si le premier est petit et le second gros, c'est Android
       // qui est lent, pas nous — et l'inverse aussi.
-      const appuiAt = Date.now()
+      //
+      // TROUVÉ LE 16 SEPT. 2026, en cherchant pourquoi ces deux nombres
+      // n'apparaissaient JAMAIS dans son journal (25 tours réels, deux
+      // jours, zéro valeur) : `appuiAt` était pris ICI, après que `listen()`
+      // ait déjà arrêté la veille en cours et ATTENDU qu'elle rende la main
+      // (jusqu'à DELAI_RELEVE_MS = 1,5 s) — exactement le morceau le plus
+      // lent, et celui que sa plainte décrit. `appuiExterneAt`, posé par
+      // `listen()` avant cette attente, couvre maintenant le VRAI délai
+      // perçu ; sans lui (banc d'essai, appel direct), on retombe sur l'
+      // ancien comportement.
+      const appuiAt = appuiExterneAt ?? Date.now()
       let microOuvertAt = 0
       let premierPartielAt = 0
 
@@ -617,7 +628,20 @@ export function useSpeechRecognition() {
           nbSessions++
           sessionDebutAt = Date.now()
           stoppedRecu = false
-          const demarre = await borner(
+          // RÉSOLU, PAS "VRAI" : trouvé le 16 sept. 2026 en cherchant
+          // pourquoi `ms_ouverture`/`ms_premier_mot` étaient TOUJOURS null
+          // dans son journal (25 tours réels, deux jours, zéro valeur). Le
+          // plugin Android résout `start()` par `call.resolve()` SANS
+          // argument dès que le service est lancé (mode partiels) — et ça
+          // passe côté JS comme `null`, pas `{}`. `demarre` valait donc
+          // TOUJOURS `null`, même sur un démarrage parfaitement réussi :
+          // `if (demarre)` était systématiquement faux. On distingue donc
+          // « la promesse a RÉSOLU » de « ce qu'elle a rendu », avec un
+          // drapeau posé dans un `.then()` accroché à la promesse elle-même
+          // — jamais à ce que `borner()` en a extrait, qui vaut `null` aussi
+          // bien pour un timeout que pour une résolution sans valeur.
+          let demarrageReussi = false
+          await borner(
             NativeSpeechRecognition.start({
               language: "fr-FR",
               maxResults: 1,
@@ -635,16 +659,19 @@ export function useSpeechRecognition() {
               // arrêt — pire que le défaut qu'on corrige.
               baisserLeSon: true,
               serviceSouhaite: serviceReconnaissanceSouhaite() ?? undefined,
-            } as Parameters<typeof NativeSpeechRecognition.start>[0]),
+            } as Parameters<typeof NativeSpeechRecognition.start>[0]).then((r) => {
+              demarrageReussi = true
+              return r
+            }),
             DELAI_PLUGIN_MS,
           )
           // En mode partiels, `start()` se résout dès que le service est
           // lancé : le micro est ouvert, même si personne n'a encore parlé.
-          if (demarre) setReady(true)
+          if (demarrageReussi) setReady(true)
           // La PREMIÈRE ouverture seulement : la boucle relance une session à
           // chaque silence, et compter la dernière dirait le temps d'une
           // relance au lieu de ce qu'il attend, lui, avant de parler.
-          if (demarre && !microOuvertAt) microOuvertAt = Date.now()
+          if (demarrageReussi && !microOuvertAt) microOuvertAt = Date.now()
           await arret
           if (filet) clearTimeout(filet)
           // Le résultat final post-traité par Android arrive APRÈS
@@ -664,7 +691,17 @@ export function useSpeechRecognition() {
           if (flux.stopDemande || arretManuelRef.current) break
           if (decider(flux.etat, Date.now(), opts, true) !== "relancer") break
           // Android refuse un redémarrage immédiat : lui laisser un souffle.
-          await attendre(150)
+          // MÊME CONSTANTE que la veille (src/lib/veille.ts) — deux copies de
+          // ce délai auraient fini par diverger, comme ça a été le cas
+          // jusqu'au 16 sept. 2026 (chantier 3840996e) : celle-ci était
+          // restée à 150 ms, calibrée sur l'ancien moteur par défaut,
+          // pendant que RESPIRATION_MS montait à 400 ms pour
+          // com.google.android.as. Cette boucle (le tour de PAROLE, après
+          // le mot-clé ou un appui) subit exactement la même collision
+          // qu'à la veille, jamais mesurée ici faute d'instrumentation par
+          // relance — seule la première ouverture du tour est mesurée
+          // (ms_ouverture ci-dessous).
+          await attendre(RESPIRATION_MS)
         }
 
         const transcript = texteDuTour(flux.etat)
@@ -840,6 +877,12 @@ export function useSpeechRecognition() {
   const listen = useCallback(
     async (mode: "command" | "wake" = "command", options: OptionsEcoute = {}): Promise<string> => {
       setError(null)
+      // Le VRAI début, du point de vue de Raphaël — avant même de relever
+      // une écoute précédente (voir juste en dessous). Cette relève peut
+      // coûter jusqu'à DELAI_RELEVE_MS (1,5 s) à elle seule, et c'était
+      // jusqu'ici hors de la mesure `ms_ouverture` d'`ecouterCommandeNative`,
+      // qui prenait son propre `Date.now()` bien après.
+      const appuiAt = Date.now()
 
       // Relève : une écoute est déjà en cours (typiquement la rafale du
       // mot-clé quand on touche le cœur). On la clôt et on attend qu'elle
@@ -859,7 +902,7 @@ export function useSpeechRecognition() {
         const ecoute = isNative
           ? mode === "wake"
             ? ecouterWakeNatif(options)
-            : ecouterCommandeNative(options)
+            : ecouterCommandeNative(options, appuiAt)
           : ecouterWeb(mode, options)
         const suivi = ecoute.catch(() => null)
         enCoursRef.current = suivi
