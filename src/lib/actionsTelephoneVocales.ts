@@ -415,6 +415,23 @@ export async function executerActionTelephone(
 
         // Le répertoire du téléphone en second recours : c'est là que vivent
         // les vrais numéros. Lu seulement s'il en manque un, jamais copié.
+        // POURQUOI ON N'A PAS LE NUMÉRO : ça se DIT, sur WhatsApp comme en SMS.
+        //
+        // Sa capture du 16 sept. 2026 : « on a régressé, il n'envoie plus les
+        // messages ». Mesuré dans journal_ecoute, quatre `live_commande`
+        // d'affilée à 04:13-04:14 rendent tous la MÊME phrase — « Message
+        // écrit, WhatsApp va te demander à qui l'envoyer. » C'est le signe
+        // qu'aucun numéro n'a été trouvé : sans destinataire, WhatsApp ouvre
+        // le sélecteur de partage, il n'y a aucune conversation, donc aucun
+        // bouton « Envoyer » sur lequel cliquer. Rien n'avait régressé dans
+        // l'envoi — on ne trouvait pas le contact, et on ne le DISAIT PAS.
+        //
+        // `numeroDepuisTelephone` sait pourtant exactement pourquoi, et le
+        // formule (« Je n'ai pas accès à ton répertoire », « Je ne trouve
+        // personne qui s'appelle … »). Cette raison était RENDUE en SMS et
+        // JETÉE sur WhatsApp. C'est précisément l'échec silencieux que
+        // `honnetete.ts` interdit, appliqué à notre propre code.
+        let pourquoiSansNumero: string | null = null
         if (!numero && action.contact_name) {
           const r = await numeroDepuisTelephone(action.contact_name)
           if ("numero" in r) {
@@ -422,6 +439,8 @@ export async function executerActionTelephone(
             nom = r.nom
           } else if (canal === "sms") {
             return r.echec
+          } else {
+            pourquoiSansNumero = r.echec
           }
         }
 
@@ -452,7 +471,16 @@ export async function executerActionTelephone(
 
         const ou = canal === "sms" ? "en SMS" : "sur WhatsApp"
         if (nom && numero) return `Message prêt pour ${nom} ${ou}, tu n'as plus qu'à envoyer.`
-        if (canal === "whatsapp") return `Message écrit, WhatsApp va te demander à qui l'envoyer.`
+        // On prépare quand même — le texte est écrit, il peut choisir le
+        // destinataire à la main —, mais on dit POURQUOI il doit le faire.
+        // Sans ça il croit que l'envoi a échoué alors que c'est le répertoire
+        // qui manque, et il redicte sa phrase trois fois pour rien (quatre
+        // fois le 16 sept., mesurées).
+        if (canal === "whatsapp") {
+          return pourquoiSansNumero
+            ? `${pourquoiSansNumero} J'ai quand même écrit le message : WhatsApp va te demander à qui l'envoyer.`
+            : `Message écrit, WhatsApp va te demander à qui l'envoyer.`
+        }
         return `Message prêt ${ou}, tu n'as plus qu'à envoyer.`
       }
 
