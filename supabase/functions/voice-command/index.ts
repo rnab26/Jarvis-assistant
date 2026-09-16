@@ -619,11 +619,15 @@ Réponds toujours en français dans le champ message.`
  */
 function blocTacheEnAttente(attente: unknown): string {
   if (!attente || typeof attente !== "object") return ""
-  const a = attente as { titre?: string; sans_date?: boolean; categorie_suggeree?: string | null }
+  const a = attente as { titre?: string; sans_date?: boolean; categorie_a_valider?: boolean }
   if (!a.titre) return ""
+  // LE NOM DE LA CATÉGORIE SUGGÉRÉE N'ARRIVE PLUS JUSQU'ICI, exprès.
+  // Tant qu'il le connaissait, le modèle le reposait malgré un « non » qui le
+  // refusait — trois consignes essayées, trois échecs (chantier 902bf94b).
+  // Ne pas le recevoir est la seule chose qui l'en empêche vraiment.
   const manque = [
     a.sans_date ? "sa date" : null,
-    a.categorie_suggeree ? `sa catégorie (tu as proposé « ${a.categorie_suggeree} »)` : null,
+    a.categorie_a_valider ? "sa catégorie" : null,
   ].filter(Boolean).join(" et ")
   return `
 LA TÂCHE QUI ATTEND UNE RÉPONSE EN CE MOMENT : « ${a.titre} ». Il lui manque ${manque}.
