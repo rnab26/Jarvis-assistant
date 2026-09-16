@@ -716,15 +716,28 @@ que la bonne tâche était visée, pas la valeur posée. Une cible juste avec un
 valeur fausse reste une tâche mal rangée — c'est-à-dire tout ce qu'il nous
 reproche.
 
-**Et le serveur, lui, n'a PAS pu être corrigé — c'est un plafond, pas un
-réglage à affiner.** Trois versions déployées et remesurées : sans consigne
-(106), avec une consigne qui l'explique (107), avec un INTERDIT en toutes
-lettres (108). Les trois fois, `update_task` avec la catégorie refusée. La
-consigne 108 reste en place — elle ne nuit pas, elle ne suffit pas. Le contrôle
-bout-en-bout ne vérifie donc que la CIBLE, avec cette mesure écrite à côté ;
-c'est le contrôle hors ligne qui garde la valeur, là où elle se décide. Le
-résidu (les phrases de rangement que le filtre local ne reconnaît pas) est le
-chantier ouvert `902bf94b`, avec les trois pistes non essayées.
+**Le serveur n'a pas pu être corrigé PAR LA CONSIGNE**, et c'est la leçon à
+garder. Trois versions déployées et remesurées : sans consigne (106), avec une
+consigne qui l'explique (107), avec un INTERDIT en toutes lettres (108). Les
+trois fois, `update_task` avec la catégorie refusée.
+
+**Ce qui a marché (16 sept., v109) tient en une ligne : on ne lui dit plus le
+NOM de la suggestion.** L'app envoie `categorie_a_valider: true`, jamais
+« Perso ». Il ne peut pas reposer ce qu'il ne reçoit pas — et privé de ce nom,
+il fait spontanément ce que trois consignes n'avaient pas obtenu : il redemande
+en NOMMANT la tâche (« Tu souhaites déplacer la tâche "Rappeler Dan Marciano"
+dans quelle catégorie ? »). **C'est du code, pas de la prose.**
+
+Mesuré dans les trois sens avant d'être écrit, sur la fonction déployée :
+sans nom de catégorie dans la phrase → il redemande ; avec (« non mets-le dans
+les leads ») → il range dans Leads, la bonne tâche ; une nouvelle demande
+(« ajoute une tâche : acheter du pain ») → `add_task`, la tâche en attente n'est
+pas touchée.
+
+**NE REMETS PAS LE NOM DE LA SUGGESTION DANS LE CORPS ENVOYÉ AU SERVEUR** : le
+contrôle bout-en-bout rougit, et le défaut revient tel quel. Le verdict
+`illisible` côté appareil reste en place par-dessus — il évite l'aller-retour
+réseau et couvre le cas où il ne nomme rien du tout.
 
 ### Redire une dictée coupée COMPLÈTE la ligne, elle n'en crée pas une seconde
 

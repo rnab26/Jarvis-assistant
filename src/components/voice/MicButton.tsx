@@ -455,7 +455,20 @@ export function MicButton({
               id: attente.taskId,
               titre: attente.titre,
               sans_date: attente.sansDate,
-              categorie_suggeree: attente.suggestion?.categoryName ?? null,
+              // ON NE LUI DIT PAS LE NOM DE LA CATÉGORIE SUGGÉRÉE, et c'est
+              // tout le correctif (chantier 902bf94b, mesuré le 16 sept.).
+              //
+              // Tant qu'il le connaissait, le modèle le reposait — même
+              // devant un « non » qui le refusait, et même sous un INTERDIT
+              // en toutes lettres : trois versions déployées, trois fois la
+              // même réponse. Privé de ce nom, il ne peut plus le reposer, et
+              // il fait exactement ce qu'on attend : il redemande en NOMMANT
+              // la tâche. Mesuré aussi dans l'autre sens — quand la phrase
+              // porte un nom de catégorie, il range sans rien demander.
+              //
+              // C'est du code, pas de la prose : il ne peut pas désobéir à ce
+              // qu'il ne reçoit pas.
+              categorie_a_valider: attente.suggestion !== null,
             }
           })(),
           todayISO: new Date().toISOString().slice(0, 10),

@@ -181,7 +181,7 @@ const cas = [
         id: "t-marciano",
         titre: "Rappeler Dan Marciano",
         sans_date: false,
-        categorie_suggeree: "Perso",
+        categorie_a_valider: true,
       },
     },
     controle: (r) => {
@@ -195,22 +195,20 @@ const cas = [
       }
       const nomme = texte.includes("marciano") || a.some((x) => x.task_id === "t-marciano")
       if (!nomme) return [false, `il ne nomme pas la tache qui attend : ${JSON.stringify(r).slice(0, 200)}`]
-      // CE CONTROLE NE VERIFIE QUE LA CIBLE, ET C EST DELIBERE.
+      // ET IL NE RANGE PAS DANS LA CATEGORIE QU IL VIENT DE REFUSER.
       //
-      // La VALEUR posee, elle, reste fausse cote serveur : sa phrase commence
-      // par « non » (il refuse « Perso »), et le modele range quand meme dans
-      // Perso. Mesure du 15 sept. sur la fonction deployee, TROIS fois : sans
-      // consigne, avec une consigne qui l explique, puis avec un INTERDIT en
-      // toutes lettres (« INTERDIT : poser un category_id tant qu il n a pas
-      // PRONONCE le nom d une categorie »). Meme reponse les trois fois.
-      // C est un plafond, pas un reglage a affiner.
+      // Cette moitie-la a ete impossible a obtenir par la consigne : trois
+      // versions deployees le 15 sept. (sans consigne, avec une consigne qui
+      // l explique, avec un INTERDIT en toutes lettres) rendaient toutes un
+      // update_task vers « Perso », la categorie que son « non » refusait.
       //
-      // La valeur est donc tenue SUR L APPAREIL, ou l information manquante
-      // existe : seul lui sait qu une suggestion vient d etre refusee. Le
-      // verdict `illisible` de tacheDateEtCategorie.ts intercepte cette
-      // phrase avant tout appel reseau et REDEMANDE en nommant la tache —
-      // c est verifier-tache-date-categorie.ts qui garde ce cas, hors ligne.
-      // Chantier ouvert pour le residu cote serveur.
+      // Ce qui a marche, le 16 sept., est de ne plus LUI DIRE le nom de la
+      // suggestion : l app envoie `categorie_a_valider: true`, jamais
+      // « Perso ». Il ne peut pas reposer ce qu il ne recoit pas, et il fait
+      // alors ce qu on attend — il redemande en nommant la tache.
+      // NE REMETS PAS LE NOM DANS LE CORPS : ce controle rougirait.
+      const range = a.find((x) => x.action === "update_task" && x.changes?.category_id)
+      if (range) return [false, `il range dans ${range.changes.category_id} sans qu il ait nomme de categorie`]
       return [true]
     },
   },
@@ -225,7 +223,7 @@ const cas = [
         id: "t-marciano",
         titre: "Rappeler Dan Marciano",
         sans_date: false,
-        categorie_suggeree: "Perso",
+        categorie_a_valider: true,
       },
     },
     controle: (r) => {
