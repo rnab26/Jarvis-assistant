@@ -25,8 +25,29 @@ import { chercherMotCle } from "./motCle.ts"
 
 export type StatutVoix = "idle" | "wake-listening" | "listening" | "processing" | "speaking" | "error"
 
-/** Entre deux rafales : Android refuse un redémarrage immédiat du service. */
-export const RESPIRATION_MS = 150
+/**
+ * Entre deux rafales qui n'ont RIEN raté (une vraie écoute qui vient de finir
+ * normalement) : Android refuse un redémarrage immédiat du service.
+ *
+ * VALEUR REVUE le 16 sept. 2026 (chantier 3840996e) : 150 ms, choisi pour le
+ * service par défaut d'Android, s'est mesuré INSUFFISANT pour
+ * com.google.android.as (Android System Intelligence, en service chez
+ * Raphaël depuis le 8 sept.). Sur la version qui venait de corriger le recul
+ * des refus consécutifs (delaiApresOccupe), 13 des 43 collisions (30 %)
+ * suivaient une rafale qui s'était terminée NORMALEMENT — donc passaient par
+ * CE délai, pas par le recul des échecs. Monté à 400 ms : encore net pour une
+ * conversation (le silence court, `silenceCourtMs`, tourne autour de 1,5 s),
+ * mais laisse près de trois fois plus de temps au service pour relâcher le
+ * micro.
+ *
+ * NON PROUVÉ QUE ÇA SUFFISE : 7 des 43 collisions suivaient une rafale
+ * MUETTE, dont le recul est déjà ≥ 1 s (voir `delaiAvantRafaleSuivante`) — un
+ * délai bien plus long que celui-ci collisait donc déjà par moments. Si le
+ * rapport service+occupé/total ne baisse pas nettement après ce changement,
+ * la piste à creuser n'est plus un délai JS mais le temps réel qu'Android met
+ * à relâcher com.google.android.as, qui semble variable et parfois > 1 s.
+ */
+export const RESPIRATION_MS = 400
 
 /** Après un démarrage refusé (service encore occupé) : lui laisser le temps
  * de se libérer, plutôt que de le harceler et de faire clignoter le micro. */
