@@ -196,8 +196,15 @@ verifier(
   )
   verifier(
     "c'est la PREMIÈRE ouverture qui est mesurée, pas la dernière relance",
-    /if \(demarre && !microOuvertAt\) microOuvertAt = Date\.now\(\)/.test(hook),
+    /if \(demarrageReussi && !microOuvertAt\) microOuvertAt = Date\.now\(\)/.test(hook),
     "la boucle relance une session à chaque silence : compter la dernière dirait le temps d'une relance",
+  )
+  verifier(
+    "l'ouverture réussie se lit sur la RÉSOLUTION de la promesse, jamais sur ce qu'elle rend",
+    /demarrageReussi = true/.test(hook) && /if \(demarrageReussi\) setReady\(true\)/.test(hook),
+    "trouvé le 16 sept. 2026 : le plugin résout start() par call.resolve() SANS argument en " +
+      "mode partiels, ce qui arrive côté JS comme null — `if (demarre)` était donc TOUJOURS " +
+      "faux, même sur un démarrage réussi, et ms_ouverture ne s'est jamais rempli",
   )
 }
 
