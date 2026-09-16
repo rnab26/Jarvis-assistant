@@ -152,6 +152,41 @@ export function texteAAfficherEnVeille(partiel: string): string | null {
 export const RECUL_MAX_MS = 8000
 
 /**
+ * Plafond du recul entre deux essais qui se heurtent à un service occupé
+ * (voir `delaiApresOccupe`) — distinct de `RECUL_MAX_MS`, qui plafonne le
+ * silence : ici on attend qu'Android relâche une ressource, pas qu'un mot
+ * arrive.
+ */
+export const RECUL_OCCUPE_MAX_MS = 4000
+
+/**
+ * Recul après des démarrages refusés CONSÉCUTIFS (codes Android 8/11 : le
+ * service n'a pas encore lâché le micro du tour précédent) — séparé du recul
+ * exponentiel du silence (`delaiAvantRafaleSuivante`), dont le rôle est de
+ * laisser respirer un silence réel, pas d'attendre la libération d'une
+ * ressource.
+ *
+ * MESURÉ le 16 sept. 2026, sur son téléphone réel, APK avec le correctif
+ * stop() (a21c452) et le moteur com.google.android.as en service : le recul
+ * fixe `RECUL_APRES_ECHEC_MS` (700 ms) échoue EN CHAÎNE — 7 à 8 refus à la
+ * suite avant qu'un essai réussisse, à des intervalles réels de 746-770 ms
+ * (donc le réglage était bien appliqué). Android/com.google.android.as met
+ * visiblement plus longtemps que 700 ms à relâcher le micro par moments : un
+ * recul FIXE le martèle pendant qu'il n'est pas encore libre. Palier montant
+ * à la place, à partir du même point de départ (pas de régression sur un
+ * refus isolé, le cas le plus fréquent).
+ *
+ * NON VÉRIFIÉ : le plafond de 4 s est un choix raisonnable, pas une mesure —
+ * combien de temps Android met RÉELLEMENT à relâcher n'est pas observable
+ * d'ici. À confirmer sur son téléphone : le rapport codes 8+11 / total sur
+ * `evenement='rafale_fin'` devrait baisser nettement.
+ */
+export function delaiApresOccupe(echecsConsecutifs: number): number {
+  if (echecsConsecutifs <= 1) return RECUL_APRES_ECHEC_MS
+  return Math.min(RECUL_OCCUPE_MAX_MS, RECUL_APRES_ECHEC_MS * 2 ** (echecsConsecutifs - 1))
+}
+
+/**
  * Délai avant la rafale suivante.
  *
  * Le service Android meurt après quelques secondes de silence, et chaque
