@@ -13,7 +13,17 @@ import type { DevLogEntry, DevLogKind, EtatAction, OptionDecision } from "@/type
  * chargeable sans React pour les vérifications hors réseau. */
 export { AUTEUR_RAPHAEL } from "@/lib/journalDestinataire"
 
-const LIMITE = 60
+/**
+ * Combien d'entrées on charge d'un coup.
+ *
+ * Ce plafond existait déjà, mais MUET : le 17 sept. 2026 il y avait 304
+ * entrées au journal et l'écran en montrait 60, sans rien dire — ce qui se lit
+ * exactement comme « il n'y a plus rien ». C'est la moitié « incohérence sur
+ * la durée de consultation » de ce qu'il a signalé. Le nombre n'a pas changé ;
+ * ce qui change, c'est que l'écran dit ce qu'il ne montre pas, et propose la
+ * suite.
+ */
+export const PAR_PAGE = 60
 
 /**
  * Journal de bord partagé : les sessions Claude Code qui travaillent en
@@ -22,6 +32,11 @@ const LIMITE = 60
  */
 export function useDevLog(userId: string | undefined) {
   const [entries, setEntries] = useState<DevLogEntry[]>([])
+  const [limite, setLimite] = useState(PAR_PAGE)
+  /** Combien il y en a EN TOUT. `null` = on ne sait pas, et on se tait plutôt
+   * que d'annoncer un nombre faux (le compte peut échouer alors que la liste
+   * est arrivée). */
+  const [total, setTotal] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const latestRequest = useRef(0)
@@ -29,6 +44,7 @@ export function useDevLog(userId: string | undefined) {
   const refresh = useCallback(async () => {
     if (!userId) {
       setEntries([])
+      setTotal(null)
       setError(null)
       setLoading(false)
       return
@@ -36,18 +52,22 @@ export function useDevLog(userId: string | undefined) {
 
     const request = ++latestRequest.current
     try {
-      const { data, error: queryError } = await withTimeout(
+      // `count: "exact"` plutôt qu'une seconde requête : le total et la page
+      // doivent venir du MÊME instant, sinon « 60 sur 304 » peut annoncer un
+      // total qui n'a jamais correspondu à ce qui est à l'écran.
+      const { data, count, error: queryError } = await withTimeout(
         supabase
           .from("dev_log")
-          .select("*")
+          .select("*", { count: "exact" })
           .order("created_at", { ascending: false })
-          .limit(LIMITE),
+          .limit(limite),
       )
 
       if (request !== latestRequest.current) return // réponse périmée
       if (queryError) throw queryError
 
       setEntries(data ?? [])
+      setTotal(typeof count === "number" ? count : null)
       setError(null)
     } catch (e) {
       if (request !== latestRequest.current) return
@@ -55,7 +75,10 @@ export function useDevLog(userId: string | undefined) {
     } finally {
       if (request === latestRequest.current) setLoading(false)
     }
-  }, [userId])
+  }, [userId, limite])
+
+  /** La page suivante. L'effet ci-dessous relit dès que la limite bouge. */
+  const chargerPlus = useCallback(() => setLimite((l) => l + PAR_PAGE), [])
 
   useEffect(() => {
     refresh()
@@ -63,7 +86,14 @@ export function useDevLog(userId: string | undefined) {
 
   useRefreshOnForeground(refresh)
 
-  async function addEntry(body: string, kind: DevLogKind = "info", itemId: string | null = null) {
+  async function addEntry(
+    body: string,
+    kind: DevLogKind = "info",
+    itemId: string | null = null,
+    /** L'entrée à laquelle celle-ci répond — c'est elle qui fait le fil
+     * (migration 0047), pas `itemId`, qui ne dit que le chantier. */
+    repondA: string | null = null,
+  ) {
     if (!userId) return
     await withErrorToast("Impossible d'écrire dans le journal", async () => {
       const { error: insertError } = await supabase.from("dev_log").insert({
@@ -72,6 +102,7 @@ export function useDevLog(userId: string | undefined) {
         author: AUTEUR_RAPHAEL,
         kind,
         body,
+        repond_a: repondA,
       })
       if (insertError) throw insertError
       await refresh()
@@ -117,6 +148,7 @@ export function useDevLog(userId: string | undefined) {
         kind: "reponse",
         body: corpsReponse(option, commentaire),
         photo_chemin: chemin,
+        repond_a: question.id,
       })
       if (insertError) throw insertError
 
@@ -168,6 +200,8 @@ export function useDevLog(userId: string | undefined) {
 
   return {
     entries,
+    total,
+    chargerPlus,
     loading,
     error,
     refresh,

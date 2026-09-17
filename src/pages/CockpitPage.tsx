@@ -183,9 +183,11 @@ export function CockpitPage() {
       <DevLogFeed
         entries={devLog.entries}
         devItems={devItems}
+        total={devLog.total}
         loading={devLog.loading}
         error={devLog.error}
         onRefresh={devLog.refresh}
+        onChargerPlus={devLog.chargerPlus}
         onAdd={devLog.addEntry}
         onMarkAnswered={devLog.markAnswered}
       />
