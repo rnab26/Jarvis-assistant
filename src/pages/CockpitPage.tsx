@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { BarreActualiser } from "@/components/BarreActualiser"
 import { EnAttenteDenvoi } from "@/components/tasks/EnAttenteDenvoi"
 import { LoadError } from "@/components/LoadError"
@@ -12,6 +12,7 @@ import { NouveauChantier } from "@/components/cockpit/NouveauChantier"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
 import { ThemesNonDeclares } from "@/components/cockpit/ThemesNonDeclares"
+import { useActualisation } from "@/hooks/useActualisation"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useDevLog } from "@/hooks/useDevLog"
@@ -78,10 +79,23 @@ export function CockpitPage() {
     fileEnAttente,
     fileIllisible,
     derniereMaj,
-    statutDirect,
-    actualisationEnCours,
-    actualiser,
+    canalDirect,
   } = devItemsState
+
+  // Une seule barre pour tout le cockpit, mais DEUX canaux : les chantiers
+  // ET le journal (chantier 221a3ba6). Une coupure sur l'un des deux suffit
+  // à le dire, et « Actualiser » recharge les deux d'un coup — sinon il
+  // faudrait deux boutons pour un seul geste.
+  const rafraichirTout = useCallback(async () => {
+    await Promise.all([refresh(), devLog.refresh()])
+  }, [refresh, devLog.refresh])
+  const { statut, enCours, actualiser } = useActualisation(rafraichirTout, [
+    canalDirect,
+    devLog.canalDirect,
+  ])
+  const derniereMajCombinee = [derniereMaj, devLog.derniereMaj]
+    .filter((t): t is number => t !== null)
+    .reduce((min, t) => (min === null || t < min ? t : min), null as number | null)
 
   // Les puces de la fenêtre d'envoi listent les sections déclarées ET les
   // thèmes déjà portés par un chantier : une section créée à l'avance et
@@ -229,9 +243,9 @@ export function CockpitPage() {
           lui, garde le bouton en permanence : c'est là qu'il l'a réclamé. */}
       <BarreActualiser
         seulementSiProbleme
-        statut={statutDirect}
-        derniereMaj={derniereMaj}
-        enCours={actualisationEnCours}
+        statut={statut}
+        derniereMaj={derniereMajCombinee}
+        enCours={enCours}
         onActualiser={actualiser}
       />
 
