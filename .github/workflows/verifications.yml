@@ -217,6 +217,14 @@ jobs:
       - name: Le moteur — quel fournisseur, quel modèle, quels seaux de quota
         run: node --experimental-strip-types scripts/verifier-moteur.ts
 
+      # « Pouvoir connaitre le moteur de langue utilisé, même en mode
+      # automatique de bascule. » Ce qu'on annonce est MESURÉ (le modèle qui a
+      # réellement répondu), jamais une configuration devinée — et la règle de
+      # sélection doit rendre le même verdict côté serveur et côté cockpit,
+      # deux fichiers distincts qui pourraient diverger sans ce contrôle.
+      - name: Quel moteur Jarvis annonce quand on le lui demande
+        run: node --experimental-strip-types scripts/verifier-moteur-actif.ts
+
       # « Savoir combien il me reste, et à combien de temps de discussion ça
       # équivaut. » Sur l'offre gratuite il n'y a pas de solde, seulement des
       # plafonds qui ne se lisent qu'une fois dépassés : la moitié de ces

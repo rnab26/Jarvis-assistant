@@ -2319,8 +2319,44 @@ Quatre choses à ne pas défaire :
    Seuls le quota du JOUR, le passage sur un secours et une latence au-delà de
    8 s le dérangent.
 
-L'écran reste à faire : demande posée dans `dev_log` pour la session
-« Le cockpit ».
+L'écran est `src/components/settings/Consommation.tsx` (Paramètres › Le
+cockpit).
+
+### « Quel moteur tournes-tu, en ce moment ? » (17 sept. 2026)
+
+Chantier `920ff758`. Sa demande : pouvoir demander à voix haute quel moteur de
+langue tourne — MÊME en mode automatique de bascule (la veille ci-dessous) —
+pour identifier le plus performant.
+
+**L'app ne peut pas le savoir elle-même**, exactement pour la raison écrite
+juste au-dessus : le modèle principal se règle par le secret `GEMINI_MODELE`,
+et ce que la veille automatique a promu vit dans `moteur_choisi` — deux choses
+que l'app ne voit jamais.
+
+**Et lire `moteur_choisi` ou le secret directement aurait été la mauvaise
+réponse** : ça dit ce qui DEVRAIT répondre, pas ce qui répond RÉELLEMENT — le
+problème que `resumerConsommation` a déjà résolu pour le cockpit deux sections
+plus haut. `supabase/functions/_shared/moteurActif.ts` applique donc la MÊME
+règle (« le modèle qui a le plus répondu à ses phrases de commande, pas celui
+qui a le plus été essayé »), mesurée sur `appels_modele`, et rend un bloc de
+contexte — pas une nouvelle action — que voice-command joint à chaque phrase,
+comme `branchements.ts`.
+
+**Deux copies de la même règle, assumées** : une Edge Function ne peut pas
+importer `src/`, donc la sélection du « gagnant » vit à la fois dans
+`resumerConsommation` (cockpit) et dans `moteurActif.ts` (voix). Même stratégie
+que `destinataire.ts` / `journalDestinataire.ts` : `scripts/verifier-moteur-actif.ts`
+fait tourner les deux sur les mêmes cas et refuse qu'elles divergent.
+
+**Silencieux quand rien n'a encore été mesuré** (une base neuve, un compte de
+test) : pas de repli sur une configuration devinée, jamais un nom inventé —
+c'est le seul cas où Jarvis ne pourra pas répondre à cette question.
+
+**« Expliquer toutes les fonctionnalités développées »**, la seconde moitié de
+sa demande, n'avait rien à coder : `_shared/environnement.ts` (déjà importée
+par voice-command ET live-jeton) fait déjà ça — « Réponds avec ça […] ou ce que
+tu sais faire » — et décrit jusqu'à la carte « Le moteur de langue » de
+Paramètres › Le cockpit.
 
 ### La veille des modèles : passer tout seul au meilleur (6 sept. 2026)
 
@@ -2950,6 +2986,7 @@ node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoir
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
 node --experimental-strip-types scripts/verifier-moteur.ts        # quel fournisseur, quel modèle, quels seaux de quota — vrai répartiteur, fetch en doublure
 node --experimental-strip-types scripts/verifier-consommation.ts   # ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas, sans réseau
+node --experimental-strip-types scripts/verifier-moteur-actif.ts  # quel moteur Jarvis annonce à voix haute, mesuré et pas deviné, sans réseau
 node --experimental-strip-types scripts/verifier-veille-modele.ts # on ne change pas de modèle à la légère, sans réseau
 npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
