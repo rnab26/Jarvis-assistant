@@ -14,6 +14,7 @@ import {
 import { completionExpiree, reponseCategorie, reponseDate, type TacheEnAttente } from "./tacheDateEtCategorie.ts"
 import { urlDansLaPhrase } from "./documentLien.ts"
 import { porteUneSecondeDemande } from "./secondeDemande.ts"
+import { resoudreCibleParametres } from "./sectionsParametres.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 import type { Category } from "@/types/database"
 
@@ -591,6 +592,54 @@ export function interpreterLocalement(
       app_name: majuscule(rechercheApresQuestion[2]),
       question: majuscule(question),
     }]
+  }
+
+  /* ---------- Naviguer vers une section de Paramètres ----------
+     Chantier aac9a0dd. La moitié application est déjà livrée
+     (SettingsPage.tsx lit ?section=<cible>, Section.tsx s'ouvre, défile et
+     se met en évidence toute seule) — `resoudreCibleParametres`
+     (sectionsParametres.ts) reste la SEULE décision de cible, importée
+     directement plutôt que recopiée : ce module se contente d'isoler la
+     cible du verbe qui l'introduit.
+
+     Deux familles de verbes, volontairement séparées. « emmène-moi
+     dans… », « va voir… » ne peuvent dire qu'un déplacement dans l'app :
+     la cible seule suffit, même sans le mot « réglages ». « montre-moi… »,
+     « ouvre… » pourraient aussi vouloir dire autre chose (lire une
+     notification reçue, ouvrir une application) : n'acceptés que si
+     « réglages »/« paramètres » est dit explicitement, pour ne jamais
+     deviner.
+
+     « vers » et « à » sont volontairement ABSENTS des connecteurs de
+     déplacement : ce sont ceux de l'itinéraire GPS (« emmène-moi à/vers…,
+     plus bas) — les reprendre ici ferait dévier « emmène-moi à la villa
+     Dan » vers Paramètres au lieu de Waze. Si la cible ne désigne aucune
+     section (ou plusieurs à la fois), on se tait ici : la phrase retombe
+     sur les règles suivantes (dont l'itinéraire), jamais une section
+     ouverte à tort. */
+  // Le préfixe qui précède la cible : soit « de » + article contracté
+  // (« de la », « de l' »), soit un article DÉJÀ contracté sans « de »
+  // devant (« du », « des » — « les réglages du cockpit », pas « de du
+  // cockpit »), soit un simple « de »/« d' ». L'ordre compte : les
+  // alternatives les plus longues d'abord, sinon « de » tout seul
+  // grignoterait le début de « de la voix » et laisserait « la voix » dans
+  // la cible.
+  const PREFIXE_CIBLE = "(?:de\\s+la\\s+|de\\s+l['’]\\s*|du\\s+|des\\s+|de\\s+|d['’]\\s*)?"
+  const deplacementParametres = texte.match(
+    new RegExp(
+      `^(?:emmene[- ]?moi|amene[- ]?moi|va)\\s+(?:dans|voir)\\s+(?:les?\\s+|l['’]\\s*)?(?:reglages?|parametres?)?\\s*${PREFIXE_CIBLE}(.+)$`,
+    ),
+  )
+  const affichageParametres = texte.match(
+    new RegExp(
+      `^(?:montre[- ]?moi|affiche[- ]?moi|ouvre)\\s+(?:les?\\s+|l['’]\\s*)?(?:reglages?|parametres?)\\s*${PREFIXE_CIBLE}(.+)$`,
+    ),
+  )
+  const cibleNavBrute = deplacementParametres?.[1] ?? affichageParametres?.[1]
+  if (cibleNavBrute) {
+    const propre = queueSimple(cibleNavBrute)
+    const cible = propre ? resoudreCibleParametres(propre) : null
+    if (cible) return [{ action: "navigate_settings", cible }]
   }
 
   /* ---------- Ouvrir une application, avec ou sans musique précise ---------- */

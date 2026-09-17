@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core"
 import { useEffect, useRef, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { JarvisCore } from "@/components/JarvisCore"
 import { pastilleQuota, type Consommation } from "@/lib/consommationModele"
@@ -221,6 +221,7 @@ export function MicButton({
 }: MicButtonProps) {
   const { listen, stop: stopListening, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
+  const navigate = useNavigate()
   const [status, setStatus] = useState<Status>("idle")
   // Ne prévenir qu'un vrai retour au repos APRÈS un échange, jamais le repos
   // initial du montage — sinon la fenêtre de l'appui long se refermerait
@@ -734,6 +735,7 @@ export function MicButton({
             { setWakeWordEnabled, setGeofenceEnabled },
             entrainementApi,
             gmailVoiceApi,
+            { navigateVersParametres: (cible) => navigate(`/settings?section=${cible}`) },
           ),
         )
         // Le capteur générique (chantier d50d5f34) : CHAQUE action exécutée par

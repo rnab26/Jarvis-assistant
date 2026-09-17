@@ -37,6 +37,7 @@ import {
   type Destination,
 } from "@/lib/ouVaCetteDictee"
 import { titreLisible } from "@/lib/titreTache"
+import { SECTIONS_PARAMETRES } from "@/lib/sectionsParametres"
 import type {
   Category,
   Contact,
@@ -80,6 +81,11 @@ export type VoiceAction =
    * (commandeLocale.ts), pour la même raison que `move_last_entry` : lire
    * l'écran est une décision qui vit sur l'appareil (chantier 7d7967b2). */
   | { action: "garder_reponse_ecran" }
+  /** « emmène-moi dans les notifications » : naviguer vers une section de
+   * Paramètres. Reconnue LOCALEMENT (commandeLocale.ts), résolue par
+   * `resoudreCibleParametres` (sectionsParametres.ts) — `cible` est déjà
+   * la clé d'UNE section, jamais une phrase brute (chantier aac9a0dd). */
+  | { action: "navigate_settings"; cible: string }
   /** Mode entraînement (chantier 86df4f4a), reconnues LOCALEMENT pour la
    * même raison : regarder l'écran et retrouver une séquence déjà montrée
    * sont des décisions de l'appareil. */
@@ -485,6 +491,15 @@ export interface DevSectionsVoiceApi {
 }
 
 /**
+ * Naviguer vers une section de Paramètres (chantier aac9a0dd). Le format
+ * d'URL (`/settings?section=<cible>`) est une affaire de routeur, pas de ce
+ * module : c'est MicButton.tsx qui le sait, via `useNavigate`.
+ */
+export interface NavigationApi {
+  navigateVersParametres: (cible: string) => void
+}
+
+/**
  * Ce qui vient d'être créé, pour qu'une correction puisse le déplacer.
  *
  * En mémoire du module, et pas en base : la question est « qu'est-ce que je
@@ -540,6 +555,7 @@ export async function executeVoiceAction(
   { setWakeWordEnabled, setGeofenceEnabled }: ReglagesVoixApi,
   entrainementApi: EntrainementApi,
   gmail: GmailApi,
+  { navigateVersParametres }: NavigationApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -738,6 +754,12 @@ export async function executeVoiceAction(
 
     case "garder_reponse_ecran":
       return await garderReponseEcran(saveTextDocument)
+
+    case "navigate_settings": {
+      navigateVersParametres(action.cible)
+      const section = SECTIONS_PARAMETRES[action.cible as keyof typeof SECTIONS_PARAMETRES]
+      return section ? `Je t'emmène dans ${section.titre}.` : "C'est ouvert."
+    }
 
     case "start_training":
       demarrerEnregistrement()

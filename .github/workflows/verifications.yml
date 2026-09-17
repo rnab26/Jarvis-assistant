@@ -281,6 +281,12 @@ jobs:
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
 
+      # Résoudre une cible parlée (« notifications ») vers UNE section de
+      # Paramètres, jamais une mauvaise. Chantier aac9a0dd — absent de la CI
+      # depuis sa création le 17 sept., corrigé au passage.
+      - name: Naviguer vers une section de Paramètres
+        run: node --experimental-strip-types scripts/verifier-navigation-parametres.ts
+
       # Les quatre nombres par section de « Où j'en suis ». Ce qui se joue là
       # est faux EN SILENCE : un chantier compté comme avançant alors que la
       # session qui l'avait pris s'est arrêtée, une question sans réponse qui
