@@ -137,6 +137,62 @@ interface ActionAjoutTache {
  * d'avant (la catégorie, les notes). Écrire `null` par-dessus effacerait ce
  * qui était juste : on ne transmet que ce qui est renseigné.
  */
+/**
+ * « Prévenir puis refaire » — décision de Raphaël, 17 sept. 2026, sur le
+ * chantier e4886791 : « Prévenir puis refaire ». Pour musique, vidéo et
+ * itinéraire, quand il redit une phrase en l'allongeant APRÈS qu'une
+ * PREMIÈRE action a déjà eu lieu (musique/vidéo lancée, itinéraire ouvert),
+ * Jarvis annonce ce qu'il fait puis relance avec la phrase complète.
+ *
+ * Le MESSAGE reste volontairement absent d'ici : « envoi de messages en son
+ * nom » est un sujet réservé (voir la note du chantier), à coder dans une
+ * session où Raphaël est en ligne pour trancher, pas dans une passe sans
+ * interlocuteur.
+ *
+ * Musique et vidéo passent toutes les deux par `open_app` + `music_query`
+ * (même mécanisme, "ce qu'il faut jouer/regarder") : une seule famille
+ * "media" les couvre.
+ */
+export type FamilleActionTelephone = "media" | "navigation"
+
+export interface DerniereActionTelephone {
+  famille: FamilleActionTelephone
+  quand: number
+}
+
+/** Ce qu'il faut savoir d'une action pour dire si elle refait la précédente. */
+interface ActionFamille {
+  action: string
+  music_query?: string
+}
+
+/**
+ * Rend la phrase à dire AVANT de refaire l'action, ou `null` s'il n'y a rien
+ * à prévenir — pas de reprise détectée, pas d'action téléphone récente de la
+ * même famille, ou fenêtre dépassée. Un seul appelant (MicButton.runTurn) et
+ * seulement quand `estUneReprise` a déjà dit oui : sans cette condition,
+ * "lance la musique de Booba" dix minutes après une première chanson serait
+ * pris pour une reprise de rien du tout.
+ */
+export function phraseRepriseAction(
+  reprise: boolean,
+  actions: ActionFamille[],
+  derniere: DerniereActionTelephone | null,
+  maintenant: number,
+): string | null {
+  if (!reprise || !derniere) return null
+  if (maintenant - derniere.quand > FENETRE_REPRISE_MS) return null
+  if (actions.length !== 1) return null
+  const [a] = actions
+  if (derniere.famille === "media" && a.action === "open_app" && a.music_query) {
+    return "D'accord, je relance avec ta phrase complète."
+  }
+  if (derniere.famille === "navigation" && a.action === "navigate_to") {
+    return "D'accord, je relance avec ta phrase complète."
+  }
+  return null
+}
+
 export function completerPlutotQueCreer<T extends { action: string }>(
   actions: T[],
   creation: CreationRecente | null,

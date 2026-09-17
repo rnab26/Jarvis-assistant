@@ -7,7 +7,12 @@
  *
  *   node --experimental-strip-types scripts/verifier-reprise-dictee.ts
  */
-import { completerPlutotQueCreer, estUneReprise, FENETRE_REPRISE_MS } from "../src/lib/repriseDictee.ts"
+import {
+  completerPlutotQueCreer,
+  estUneReprise,
+  FENETRE_REPRISE_MS,
+  phraseRepriseAction,
+} from "../src/lib/repriseDictee.ts"
 
 let echecs = 0
 function verifier(nom: string, ok: boolean) {
@@ -126,6 +131,77 @@ verifier(
     const r = completerPlutotQueCreer([{ action: "list_tasks" }, ajout], creation, T0 + 3_500)
     return r?.length === 2 && (r[0] as { action: string }).action === "list_tasks"
   })(),
+)
+
+/* ---------- « PRÉVENIR PUIS REFAIRE » (chantier e4886791, réponse du
+   17 sept. 2026) : musique/vidéo et itinéraire, jamais le message. ---------- */
+
+verifier(
+  "vidéo déjà lancée + reprise → annonce avant de relancer",
+  phraseRepriseAction(
+    true,
+    [{ action: "open_app", music_query: "vidéo qui parle de motivation" }],
+    { famille: "media", quand: T0 },
+    T0 + 6_900,
+  ) === "D'accord, je relance avec ta phrase complète.",
+)
+verifier(
+  "itinéraire déjà ouvert + reprise → annonce avant de relancer",
+  phraseRepriseAction(
+    true,
+    [{ action: "navigate_to" }],
+    { famille: "navigation", quand: T0 },
+    T0 + 23_000,
+  ) === "D'accord, je relance avec ta phrase complète.",
+)
+verifier(
+  "sans reprise détectée (nouvelle demande), on ne dit rien même si la famille correspond",
+  phraseRepriseAction(
+    false,
+    [{ action: "open_app", music_query: "du Brassens" }],
+    { famille: "media", quand: T0 },
+    T0 + 2_000,
+  ) === null,
+)
+verifier(
+  "aucune action téléphone récente : rien à prévenir",
+  phraseRepriseAction(true, [{ action: "open_app", music_query: "du Brassens" }], null, T0) === null,
+)
+verifier(
+  "fenêtre dépassée : plus une reprise de CETTE action-là",
+  phraseRepriseAction(
+    true,
+    [{ action: "navigate_to" }],
+    { famille: "navigation", quand: T0 },
+    T0 + FENETRE_REPRISE_MS + 1,
+  ) === null,
+)
+verifier(
+  "familles différentes (musique lancée, puis itinéraire redemandé) : pas la même action, rien à prévenir",
+  phraseRepriseAction(
+    true,
+    [{ action: "navigate_to" }],
+    { famille: "media", quand: T0 },
+    T0 + 2_000,
+  ) === null,
+)
+verifier(
+  "le message reste un sujet réservé : aucune famille ne le couvre",
+  phraseRepriseAction(
+    true,
+    [{ action: "send_message" }],
+    { famille: "media", quand: T0 },
+    T0 + 2_000,
+  ) === null,
+)
+verifier(
+  "plusieurs actions dans le lot (phrase à deux demandes) : on ne prévient rien, l'ambiguïté l'emporte",
+  phraseRepriseAction(
+    true,
+    [{ action: "open_app", music_query: "du Brassens" }, { action: "navigate_to" }],
+    { famille: "media", quand: T0 },
+    T0 + 2_000,
+  ) === null,
 )
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} échec(s).`)
