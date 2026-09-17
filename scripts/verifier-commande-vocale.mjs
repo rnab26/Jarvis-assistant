@@ -146,6 +146,43 @@ async function demander(phrase, extra = {}) {
   return await r.json()
 }
 
+// « Ce qui attend une décision de Raphaël » (ceQuiLAttend.ts) est lu par la
+// fonction DIRECTEMENT en base, jamais envoyé par l'app dans `extra` : pour
+// tester repondre_decision, on pose donc de VRAIES lignes dev_log pour
+// l'utilisateur de test, marquées par cet auteur pour pouvoir les remplacer
+// sans laisser traîner celles d'un cas précédent — sinon « une seule
+// question en attente » et « plusieurs » se marcheraient dessus. Le compte
+// disparaît de toute façon à la fin (dev_log.user_id → auth.users on delete
+// cascade), ce nettoyage sert seulement à isoler les cas entre eux.
+const AUTEUR_CONTROLE_DECISIONS = "controle-repondre-decision"
+
+async function seedDecisions(points) {
+  await admin(
+    `/rest/v1/dev_log?user_id=eq.${userId}&author=eq.${encodeURIComponent(AUTEUR_CONTROLE_DECISIONS)}`,
+    { method: "DELETE" },
+  )
+  for (const p of points) {
+    const { statut, corps } = await admin("/rest/v1/dev_log", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        id: p.id,
+        user_id: userId,
+        item_id: null,
+        author: AUTEUR_CONTROLE_DECISIONS,
+        kind: "question",
+        body: p.body,
+        pourquoi: p.pourquoi ?? null,
+        options: p.options ?? null,
+      }),
+    })
+    if (statut >= 300) {
+      console.error("Impossible de poser une décision de test :", statut, JSON.stringify(corps))
+      process.exit(1)
+    }
+  }
+}
+
 let echecs = 0
 const verifier = (nom, ok, detail) => {
   if (!ok) echecs++
@@ -1197,6 +1234,76 @@ cas.push(
   },
 )
 
+// ── Répondre à voix haute à « Ce qui attend ta décision » (6044d8ad) ──
+// Chantier de Raphaël, 17 sept. 2026 : répondre en phrase libre à une
+// question du cockpit, sans répéter le libellé exact d'une option. Sa règle
+// de sûreté, non négociable : plusieurs questions en attente et une phrase
+// ambiguë → il DEMANDE laquelle plutôt que de deviner ; une seule → il
+// répond directement, même si sa phrase est vague.
+const ID_DECISION_SEULE = "d1000000-0000-4000-8000-000000000001"
+cas.push(
+  {
+    nom: "une seule décision en attente : il répond direct, sans demander laquelle",
+    avant: () =>
+      seedDecisions([
+        {
+          id: ID_DECISION_SEULE,
+          body: "On laisse les sessions autonomes tourner en continu (y compris la nuit) ou seulement pendant la journée ?",
+          pourquoi: "Ça décide si une session peut coder pendant qu'il dort.",
+          options: [
+            { cle: "continu", libelle: "En continu, même la nuit", aide: null, recommande: false },
+            { cle: "journee", libelle: "Seulement la journée", aide: null, recommande: true },
+          ],
+        },
+      ]),
+    phrase: "laisse comme c'est pour les sessions autonomes",
+    controle: (r) => {
+      const a = r.actions ?? []
+      const rep = a.find((x) => x.action === "repondre_decision")
+      if (!rep) return [false, `pas de repondre_decision : ${JSON.stringify(a.map((x) => x.action))}`]
+      if (rep.decision_id !== ID_DECISION_SEULE) {
+        return [false, `mauvais decision_id : ${rep.decision_id} au lieu de ${ID_DECISION_SEULE}`]
+      }
+      if (!rep.decision_reponse?.trim()) return [false, "decision_reponse vide"]
+      return [true]
+    },
+  },
+  {
+    nom: "plusieurs décisions en attente et une phrase ambiguë : il ne devine pas",
+    avant: () =>
+      seedDecisions([
+        {
+          id: "d2000000-0000-4000-8000-000000000002",
+          body: "On garde le mot-à-mot des conversations combien de temps ?",
+          options: [
+            { cle: "illimite", libelle: "Sans limite", aide: null, recommande: true },
+            { cle: "30j", libelle: "30 jours", aide: null, recommande: false },
+          ],
+        },
+        {
+          id: "d3000000-0000-4000-8000-000000000003",
+          body: "Le bouton de la bulle flottante doit ouvrir le micro, ou juste afficher les tâches du jour ?",
+          options: [
+            { cle: "micro", libelle: "Ouvrir le micro", aide: null, recommande: false },
+            { cle: "taches", libelle: "Afficher les tâches du jour", aide: null, recommande: false },
+          ],
+        },
+      ]),
+    // Ne cite ni « conversations »/« mot-à-mot », ni « bulle »/« micro » : rien
+    // ne désigne clairement l'un des deux points plutôt que l'autre.
+    phrase: "laisse comme c'est, ne change rien",
+    controle: (r) => {
+      const a = r.actions ?? []
+      const rep = a.find((x) => x.action === "repondre_decision")
+      if (rep) return [false, `il a deviné entre deux points au lieu de demander : ${JSON.stringify(rep)}`]
+      if (!a.some((x) => x.action === "clarify")) {
+        return [false, `ni repondre_decision ni clarify : ${JSON.stringify(a.map((x) => x.action))}`]
+      }
+      return [true]
+    },
+  },
+)
+
 // Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
 // au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
 // répond « J'ai atteint la limite de l'offre gratuite », ou meurt en
@@ -1227,7 +1334,7 @@ for (const c of aJouer) {
   // espacer deux requêtes déjà envoyées.
   if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))
   premier = false
-  c.avant?.()
+  await c.avant?.()
   const r = await demander(c.phrase, c.extra)
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }
   const [ok, detail] = c.controle(r)

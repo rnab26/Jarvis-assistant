@@ -49,13 +49,33 @@ export const MAX_POINTS = 8
 export const QUESTION_MAX = 220
 
 interface PointEnAttente extends EntreeJournal {
+  id?: string
   created_at?: string | null
   item_id?: string | null
+  options?: unknown
 }
 
 function propre(texte: string | null | undefined, max: number): string {
   const t = (texte ?? "").replace(/\s+/g, " ").trim()
   return t.length > max ? `${t.slice(0, max - 1)}…` : t
+}
+
+/**
+ * Les libellés des options cliquables du cockpit (colonne jsonb `options`),
+ * réduits à ce qui aide le modèle à reprendre le bon mot — pas une seconde
+ * lecture de la structure complète : celle-ci vit dans `src/lib/decisions.ts`
+ * (`optionsDe`), inatteignable d'ici (une Edge Function ne peut pas importer
+ * `src/`). Défensif comme elle : jsonb écrit à la main, souvent imparfait.
+ */
+function libellesOptions(brut: unknown): string[] {
+  if (!Array.isArray(brut)) return []
+  const labels: string[] = []
+  for (const o of brut) {
+    if (!o || typeof o !== "object") continue
+    const libelle = (o as Record<string, unknown>).libelle
+    if (typeof libelle === "string" && libelle.trim()) labels.push(libelle.trim())
+  }
+  return labels
 }
 
 /** Depuis combien de temps ce point attend, dit comme on le dirait. */
@@ -86,7 +106,9 @@ export function formaterCeQuiLAttend(points: PointEnAttente[], maintenant: Date)
   const lignes = retenus.map((p) => {
     const age = depuisQuand(p.created_at, maintenant)
     const quoi = p.kind === "action" ? "à faire par toi" : "à trancher"
-    return `- [${quoi}${age ? `, ${age}` : ""}] ${propre(p.body, QUESTION_MAX)}`
+    const options = libellesOptions(p.options)
+    const optionsTexte = options.length ? ` (options proposées : ${options.join(" / ")})` : ""
+    return `- [id ${p.id ?? "?"}, ${quoi}${age ? `, ${age}` : ""}] ${propre(p.body, QUESTION_MAX)}${optionsTexte}`
   })
 
   return (
@@ -94,7 +116,16 @@ export function formaterCeQuiLAttend(points: PointEnAttente[], maintenant: Date)
     `Ce sont les questions que les sessions Claude Code lui ont posées sur le développement de Jarvis, ` +
     `et les gestes que lui seul peut faire. Sers-t'en quand il demande ce qu'il a à trancher, à décider ou à faire ` +
     `de son côté sur le développement — et PAS autrement : ne les énumère jamais de toi-même, il les voit déjà dans son cockpit.\n` +
-    `${lignes.join("\n")}`
+    `${lignes.join("\n")}\n` +
+    `Il peut aussi répondre à L'UN DE CES POINTS À VOIX HAUTE, en phrase libre — pas forcément le libellé exact d'une ` +
+    `option (« laisse comme c'est pour les sessions autonomes », « pour la dictée redite, préviens puis refais »). ` +
+    `Utilise alors repondre_decision : decision_id = l'identifiant entre crochets ci-dessus du point visé, ` +
+    `decision_reponse = sa réponse mise en forme (reprends TEL QUEL le libellé d'une option proposée si sa phrase ` +
+    `s'y reconnaît clairement, sinon sa phrase telle quelle). S'IL N'Y A QU'UN SEUL POINT ci-dessus, decision_id est ` +
+    `forcément lui, même si sa phrase est vague. S'IL Y EN A PLUSIEURS, ne réponds QUE si sa phrase désigne clairement ` +
+    `l'un d'eux (elle en cite le sujet ou un mot qui ne va qu'à lui) ; si elle pourrait viser plusieurs points à la fois ` +
+    `ou n'en désigne clairement aucun, N'UTILISE PAS repondre_decision — rends clarify, rappelle en une phrase les ` +
+    `sujets en attente et demande auquel il répond. Ne devine jamais au hasard entre plusieurs points.`
   )
 }
 
@@ -126,7 +157,7 @@ export async function rappelerCeQuiLAttend(
   try {
     const { data, error } = await supabase
       .from("dev_log")
-      .select("author, kind, body, answered_at, pourquoi, created_at, item_id")
+      .select("id, author, kind, body, answered_at, pourquoi, created_at, item_id, options")
       .is("answered_at", null)
       .order("created_at", { ascending: false })
       // On en lit plus qu'on n'en garde : `enAttenteDeRaphael` écarte ensuite
