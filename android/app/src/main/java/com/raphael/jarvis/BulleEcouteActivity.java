@@ -56,6 +56,14 @@ public class BulleEcouteActivity extends BridgeActivity {
         registerPlugin(BulleEcoutePlugin.class);
         registerPlugin(JarvisWidgetPlugin.class);
         registerPlugin(ActionsTelephonePlugin.class);
+        // Manquait ici (trouvé le 17 sept. 2026, chantier efe7e44c) alors
+        // qu'AssistOverlayActivity l'a depuis le chantier 2a5b7802 : sans
+        // lui, EtatLive.etat() échoue silencieusement dans CETTE fenêtre
+        // (comportement prévu par etatLiveNatif.ts en cas de plugin absent),
+        // et la boucle de veille de la bulle ne saurait jamais qu'une
+        // conversation Live tourne dans l'autre fenêtre — les activations
+        // intempestives du micro que 2a5b7802 corrigeait ailleurs.
+        registerPlugin(EtatLivePlugin.class);
         super.onCreate(savedInstanceState);
 
         active = true;
@@ -71,20 +79,34 @@ public class BulleEcouteActivity extends BridgeActivity {
     }
 
     /**
-     * La rendre la plus invisible possible : transparente, sans titre, sans
-     * assombrissement (contrairement à AssistOverlayActivity, qui EN a un
-     * exprès — ici on ne veut RIEN voir), et réduite à quelques pixels dans
-     * un coin plutôt qu'un tiers d'écran. Un WebView de cette taille exécute
-     * son JavaScript normalement ; rien dans MicButton n'a besoin d'être
-     * mesuré à l'écran pour fonctionner, l'écoute est entièrement pilotée
-     * par le drapeau démarrerEcoute et par onIdle.
+     * La rendre la plus invisible possible : transparente (Theme.Jarvis
+     * .Assist, sans assombrissement contrairement à AssistOverlayActivity,
+     * qui EN a un exprès — ici on ne veut RIEN voir), et réduite dans un
+     * coin plutôt qu'un tiers d'écran. Ce qui la rend invisible à l'œil est
+     * la classe CSS `sr-only` posée par OverlayMicContent(cache=true) —
+     * PAS la taille de la fenêtre Android elle-même : ce sont deux couches
+     * différentes.
+     *
+     * TAILLE REVUE LE 17 SEPT. 2026 (chantier efe7e44c), après un rapport
+     * de Raphaël (« ça saute directement » sur l'appui de la bulle, la
+     * fenêtre d'assistance ET la bulle le même jour). La première version
+     * (2 dip, soit 5-6 pixels réels) n'avait jamais été essayée sur un vrai
+     * téléphone — le commentaire d'origine le disait déjà. Un WebView/
+     * Chromium créé dans une surface de quelques pixels est un cas limite
+     * documenté (rendu qui échoue ou qui plante selon le fabricant et la
+     * version du système) : DEDUIT comme risque plausible, PAS confirmé
+     * faute d'accès à un appareil ici — mais un risque qui n'a aucune
+     * raison d'être pris, puisque l'invisibilité ne dépend déjà pas de la
+     * taille (voir ci-dessus). 64dip est une taille de bouton ordinaire,
+     * dans la marge de ce qu'Android affiche partout sans jamais poser
+     * problème.
      */
     private void reduireLaFenetre() {
         Window fenetre = getWindow();
         if (fenetre == null) return;
 
         DisplayMetrics metrics = getResources().getDisplayMetrics();
-        int taille = Math.round(2 * metrics.density);
+        int taille = Math.round(64 * metrics.density);
 
         WindowManager.LayoutParams params = fenetre.getAttributes();
         params.gravity = Gravity.TOP | Gravity.START;

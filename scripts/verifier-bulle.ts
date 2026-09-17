@@ -178,6 +178,25 @@ verifier(
     /onDestroy[\s\S]*setEnEcoute\(false\)/.test(activiteEcoute),
   "sinon l'icône resterait « en écoute » après la fin de l'échange, ou ne changerait jamais",
 )
+// Chantier efe7e44c, 17 sept. 2026 : la première version posait 2 dip
+// (quelques pixels réels), jamais essayée sur un vrai téléphone — un WebView
+// créé dans une surface aussi petite est un cas limite connu (rendu qui
+// échoue selon l'appareil). L'invisibilité vient de la classe CSS `sr-only`
+// posée par OverlayMicContent, PAS de la taille de la fenêtre Android :
+// rien n'empêche de lui laisser une taille ordinaire.
+verifier(
+  "la fenêtre invisible a une taille de WebView ordinaire, pas quelques pixels",
+  (() => {
+    const m = activiteEcoute.match(/int taille = Math\.round\((\d+) \* metrics\.density\)/)
+    return m !== null && Number(m[1]) >= 40
+  })(),
+  "un WebView de 2 dip n'a jamais été essayé sur un vrai téléphone ; l'invisibilité ne dépend pas de sa taille",
+)
+verifier(
+  "elle enregistre EtatLivePlugin, comme AssistOverlayActivity",
+  /registerPlugin\(EtatLivePlugin\.class\)/.test(activiteEcoute),
+  "sans lui, la veille de la bulle ne sait jamais qu'une Live tourne dans l'autre fenêtre (chantier 2a5b7802)",
+)
 
 const bridgeSrc = readFileSync("src/lib/bulleEcoutePlugin.ts", "utf8")
 verifier(

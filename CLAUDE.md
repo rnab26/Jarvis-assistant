@@ -1931,6 +1931,64 @@ Quatre choses à ne pas défaire :
    latérale ») lit l'état réel par `RoleManager` et ouvre le meilleur écran
    système atteignable.
 
+### La fenêtre invisible de la bulle : 2 dip n'avait jamais été essayé (17 sept. 2026)
+
+Chantiers `efe7e44c` / `7b8e68a7`. Sa phrase, le 17 sept. à 14h59, en réponse
+au chantier `468734ad` (« la bulle active/désactive le micro sans fenêtre »,
+mergé le matin même) : « Fait mais ca fonctionne pas ca saute directement et
+pareille pour la bulle jarvis ». Régression réelle, pas le même bug qu'avant :
+le 7 sept. il disait encore « La bulle elle fonctionne tres bien », alors que
+l'appui long, lui, « bug[ait], ressort[ait] » — déjà, et jamais confirmé
+corrigé depuis (aucun test réel entre le 8 et le 17 sept. dans `dev_log`).
+
+**VÉRIFIÉ, PAS SUPPOSÉ** : `journal_ecoute` ne porte aucun évènement autour de
+14h59 — ni `ecoute_auto_demarree`, ni rien côté Assistant/Bulle. L'ouverture
+plante ou ressort donc AVANT que la moindre instrumentation JS ne s'exécute
+(pas même `useTraceInteractions`, monté en tête de `AppRoutes`) — c'est du
+côté natif, pas dans `demarrageOverlay.ts`/`App.tsx`, dont la relecture ligne
+à ligne (les deux sondes en parallèle, le filet à 1,5 s, `quoiRendre`) n'a
+montré aucun défaut de logique.
+
+**Fait CONFIRMÉ, chronologique, pas une supposition** : la release
+`latest-debug` correspondant à HEAD (commit `52c0fa2`, run CI 322) a fini de
+publier son APK à 14:59:17 UTC — UNE SECONDE avant sa réponse. Il n'a
+matériellement pas pu tester cet APK-là : au mieux, ce qu'il a essayé
+correspond à un APK installé plus tôt (peut-être avant même le chantier
+`468734ad`, mergé à 12h22-12h23). **La régression de la bulle n'est donc
+peut-être pas encore confirmée sur le VRAI code du jour** — à revérifier
+après une réinstallation propre de l'APK publiée après ce commit-ci.
+
+**Une chose ÉTAIT fausse dans le code, indépendamment de cette incertitude,
+corrigée ici** : `BulleEcouteActivity` réduisait sa fenêtre à **2 dip** (5-6
+pixels réels) — le commentaire d'origine le disait déjà lui-même, « NON
+VÉRIFIÉ SUR UN VRAI TÉLÉPHONE ». Un WebView/Chromium créé dans une surface
+de quelques pixels est un cas limite documenté sur Android (rendu qui échoue
+selon l'appareil et la version du système) — DÉDUIT comme risque plausible,
+PAS confirmé comme LA cause faute d'accès à un appareil ici. Rien ne
+justifiait de prendre ce risque : **l'invisibilité vient de la classe CSS
+`sr-only`** posée par `OverlayMicContent(cache=true)`, pas de la taille de la
+fenêtre Android — les deux sont des couches différentes. La fenêtre fait
+maintenant 64 dip (une taille de bouton ordinaire, jamais problématique).
+`AssistOverlayActivity`, elle, a toujours utilisé une fenêtre normale (40 %
+d'écran) et n'a donc jamais couru ce risque précis.
+
+**Second écart trouvé et corrigé au passage** : `BulleEcouteActivity`
+n'enregistrait pas `EtatLivePlugin` (chantier `2a5b7802`), contrairement à
+`AssistOverlayActivity` — sans lui, la veille de la bulle ne pouvait jamais
+savoir qu'une conversation Live tourne dans l'autre fenêtre. `verifier-bulle.ts`
+et `verifier-live-croise.ts` gardent maintenant les deux (taille minimale,
+plugin enregistré), essayés à l'envers.
+
+**CE QUI RESTE INCONNU, à ne pas présenter comme réglé** : la cause exacte du
+« ça saute directement » de l'appui long (probablement le même défaut non
+confirmé-corrigé depuis le 7 sept., sans lien avec ce chantier-ci) reste
+ouverte. Aucune des deux fenêtres n'est vérifiable depuis cet environnement
+(pas de SDK Android, pas d'appareil, pas de logcat) : la seule preuve possible
+vient d'un nouvel essai de Raphaël, sur l'APK publiée APRÈS ce commit,
+appui long ET bulle testés séparément et décrits précisément (rien ne se
+passe / un flash / l'app complète s'ouvre / une fenêtre s'ouvre et se
+referme).
+
 ## Une commande mal entendue reste rattrapable, sans jamais poser de question
 
 `src/lib/actionsTelephoneFenetre.ts` (pur) + `actionsTelephoneToast.ts` (le
