@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
 import { withErrorToast } from "@/lib/notifyError"
@@ -24,6 +25,9 @@ export function useDevLog(userId: string | undefined) {
   const [entries, setEntries] = useState<DevLogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Même rôle que dans useDevItems : depuis combien de temps l'écran peut
+  // mentir, une fois le direct coupé.
+  const [derniereMaj, setDerniereMaj] = useState<number | null>(null)
   const latestRequest = useRef(0)
 
   const refresh = useCallback(async () => {
@@ -49,6 +53,7 @@ export function useDevLog(userId: string | undefined) {
 
       setEntries(data ?? [])
       setError(null)
+      setDerniereMaj(Date.now())
     } catch (e) {
       if (request !== latestRequest.current) return
       setError(errorMessage(e))
@@ -62,6 +67,16 @@ export function useDevLog(userId: string | undefined) {
   }, [refresh])
 
   useRefreshOnForeground(refresh)
+
+  /**
+   * Sans ça, une question posée ou une réponse écrite depuis une autre
+   * session ou un autre appareil n'apparaissait qu'au retour au premier plan
+   * — chantier 221a3ba6, « la mise à jour automatique et instantanée (live)
+   * dans le cockpit dev ». Même mécanisme que `dev_items` (ce69489b) :
+   * `dev_log` doit donc aussi être dans la publication `supabase_realtime`
+   * (migration 0047).
+   */
+  const canal = useRealtimeRefresh("dev_log", userId, refresh)
 
   async function addEntry(body: string, kind: DevLogKind = "info", itemId: string | null = null) {
     if (!userId) return
@@ -170,6 +185,10 @@ export function useDevLog(userId: string | undefined) {
     entries,
     loading,
     error,
+    derniereMaj,
+    /** Le canal brut, combiné avec celui de `dev_items` dans une seule barre
+     * — voir `CockpitPage`. */
+    canalDirect: canal,
     refresh,
     addEntry,
     markAnswered,

@@ -19,11 +19,13 @@ import {
 } from "../src/lib/dialogueTour.ts"
 import {
   apresRafale,
+  delaiApresOccupe,
   delaiAvantRafaleSuivante,
   enRefroidissement,
   peutEcouterEnVeille,
   RECUL_APRES_ECHEC_MS,
   RECUL_MAX_MS,
+  RECUL_OCCUPE_MAX_MS,
   RESPIRATION_MS,
   sansAccuse,
   texteAAfficherEnVeille,
@@ -177,6 +179,19 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
   verifier("rafales muettes : 3 → 4 s", delaiAvantRafaleSuivante(false, 3), 4000)
   verifier("rafales muettes : plafonné", delaiAvantRafaleSuivante(false, 9), RECUL_MAX_MS)
   verifier("un mot entendu remet le rythme serré", delaiAvantRafaleSuivante(false, 0), RESPIRATION_MS)
+}
+
+// 11 bis. Des refus CONSÉCUTIFS (service pas encore libéré) : un palier
+//         montant, pas le recul fixe qui a mesurément échoué en chaîne le
+//         16 sept. 2026 (chantier 3840996e).
+{
+  verifier("un seul refus : identique à avant, pas de régression", delaiApresOccupe(1), RECUL_APRES_ECHEC_MS)
+  verifier("deux refus à la suite : ça monte", delaiApresOccupe(2), RECUL_APRES_ECHEC_MS * 2)
+  verifier("trois refus à la suite : encore plus", delaiApresOccupe(3), RECUL_APRES_ECHEC_MS * 4)
+  verifier("ça plafonne, comme le recul du silence", delaiApresOccupe(10), RECUL_OCCUPE_MAX_MS)
+  verifier("le plafond des refus reste sous celui du silence pur",
+    RECUL_OCCUPE_MAX_MS < RECUL_MAX_MS, true)
+  verifier("zéro refus se comporte comme un seul (jamais un délai nul)", delaiApresOccupe(0), RECUL_APRES_ECHEC_MS)
 }
 
 // 12. Le « Oui ? » de Jarvis, dit pendant que le micro s'ouvre, ne doit pas

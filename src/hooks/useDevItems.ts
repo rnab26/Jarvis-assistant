@@ -325,6 +325,9 @@ export function useDevItems(userId: string | undefined) {
     statutDirect: statut,
     actualisationEnCours: enCours,
     actualiser,
+    /** Le canal brut, pour le cockpit qui le combine avec celui du journal
+     * dans une seule barre — voir `CockpitPage`. */
+    canalDirect: canal,
     loading,
     error,
     refresh,

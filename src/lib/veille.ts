@@ -25,8 +25,29 @@ import { chercherMotCle } from "./motCle.ts"
 
 export type StatutVoix = "idle" | "wake-listening" | "listening" | "processing" | "speaking" | "error"
 
-/** Entre deux rafales : Android refuse un redémarrage immédiat du service. */
-export const RESPIRATION_MS = 150
+/**
+ * Entre deux rafales qui n'ont RIEN raté (une vraie écoute qui vient de finir
+ * normalement) : Android refuse un redémarrage immédiat du service.
+ *
+ * VALEUR REVUE le 16 sept. 2026 (chantier 3840996e) : 150 ms, choisi pour le
+ * service par défaut d'Android, s'est mesuré INSUFFISANT pour
+ * com.google.android.as (Android System Intelligence, en service chez
+ * Raphaël depuis le 8 sept.). Sur la version qui venait de corriger le recul
+ * des refus consécutifs (delaiApresOccupe), 13 des 43 collisions (30 %)
+ * suivaient une rafale qui s'était terminée NORMALEMENT — donc passaient par
+ * CE délai, pas par le recul des échecs. Monté à 400 ms : encore net pour une
+ * conversation (le silence court, `silenceCourtMs`, tourne autour de 1,5 s),
+ * mais laisse près de trois fois plus de temps au service pour relâcher le
+ * micro.
+ *
+ * NON PROUVÉ QUE ÇA SUFFISE : 7 des 43 collisions suivaient une rafale
+ * MUETTE, dont le recul est déjà ≥ 1 s (voir `delaiAvantRafaleSuivante`) — un
+ * délai bien plus long que celui-ci collisait donc déjà par moments. Si le
+ * rapport service+occupé/total ne baisse pas nettement après ce changement,
+ * la piste à creuser n'est plus un délai JS mais le temps réel qu'Android met
+ * à relâcher com.google.android.as, qui semble variable et parfois > 1 s.
+ */
+export const RESPIRATION_MS = 400
 
 /** Après un démarrage refusé (service encore occupé) : lui laisser le temps
  * de se libérer, plutôt que de le harceler et de faire clignoter le micro. */
@@ -150,6 +171,41 @@ export function texteAAfficherEnVeille(partiel: string): string | null {
 /** Plafond du recul entre deux rafales muettes. Au-delà, « Jarvis » dit
  * dans le trou serait raté trop souvent. */
 export const RECUL_MAX_MS = 8000
+
+/**
+ * Plafond du recul entre deux essais qui se heurtent à un service occupé
+ * (voir `delaiApresOccupe`) — distinct de `RECUL_MAX_MS`, qui plafonne le
+ * silence : ici on attend qu'Android relâche une ressource, pas qu'un mot
+ * arrive.
+ */
+export const RECUL_OCCUPE_MAX_MS = 4000
+
+/**
+ * Recul après des démarrages refusés CONSÉCUTIFS (codes Android 8/11 : le
+ * service n'a pas encore lâché le micro du tour précédent) — séparé du recul
+ * exponentiel du silence (`delaiAvantRafaleSuivante`), dont le rôle est de
+ * laisser respirer un silence réel, pas d'attendre la libération d'une
+ * ressource.
+ *
+ * MESURÉ le 16 sept. 2026, sur son téléphone réel, APK avec le correctif
+ * stop() (a21c452) et le moteur com.google.android.as en service : le recul
+ * fixe `RECUL_APRES_ECHEC_MS` (700 ms) échoue EN CHAÎNE — 7 à 8 refus à la
+ * suite avant qu'un essai réussisse, à des intervalles réels de 746-770 ms
+ * (donc le réglage était bien appliqué). Android/com.google.android.as met
+ * visiblement plus longtemps que 700 ms à relâcher le micro par moments : un
+ * recul FIXE le martèle pendant qu'il n'est pas encore libre. Palier montant
+ * à la place, à partir du même point de départ (pas de régression sur un
+ * refus isolé, le cas le plus fréquent).
+ *
+ * NON VÉRIFIÉ : le plafond de 4 s est un choix raisonnable, pas une mesure —
+ * combien de temps Android met RÉELLEMENT à relâcher n'est pas observable
+ * d'ici. À confirmer sur son téléphone : le rapport codes 8+11 / total sur
+ * `evenement='rafale_fin'` devrait baisser nettement.
+ */
+export function delaiApresOccupe(echecsConsecutifs: number): number {
+  if (echecsConsecutifs <= 1) return RECUL_APRES_ECHEC_MS
+  return Math.min(RECUL_OCCUPE_MAX_MS, RECUL_APRES_ECHEC_MS * 2 ** (echecsConsecutifs - 1))
+}
 
 /**
  * Délai avant la rafale suivante.

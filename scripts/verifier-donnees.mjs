@@ -100,6 +100,10 @@ try {
       "jarvis_erreurs",
       { categorie: "autre", titre: "essai temps réel", empreinte: "autre:essai temps reel" },
     ],
+    // Chantier 221a3ba6 (migration 0047) : le journal de bord n'était PAS
+    // diffusé — une question ou une réponse écrite ailleurs n'apparaissait
+    // qu'au retour au premier plan de l'app restée ouverte.
+    ["dev_log", { author: "essai", kind: "info", body: "essai temps réel" }],
   ]) {
     const recus = await ecouter(a.client, a.jeton, table, a.id)
     const { error } = await admin.from(table).insert({ user_id: a.id, ...ligne })

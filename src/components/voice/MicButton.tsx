@@ -15,6 +15,7 @@ import { GmailError, gmailApi, type Brouillon } from "@/lib/googleGmail"
 import { estConfirmationEnvoiMail } from "@/lib/confirmationEnvoiMail"
 import {
   apresRafale,
+  delaiApresOccupe,
   delaiAvantRafaleSuivante,
   enRefroidissement,
   peutEcouterEnVeille,
@@ -1117,6 +1118,13 @@ export function MicButton({
     async function wakeLoop() {
       let echecDemarrage = false
       let rafalesMuettes = 0
+      // Compte SÉPARÉMENT des rafalesMuettes : un démarrage refusé (service
+      // pas encore libéré) n'a jamais eu la moindre chance d'entendre quoi
+      // que ce soit, donc ne doit ni gonfler le recul du silence (une pièce
+      // calme qui suit une chaîne de refus n'a pas à hériter d'un recul de
+      // 8 s), ni se contenter du recul fixe qui les a mesurément laissés se
+      // répéter en chaîne — voir delaiApresOccupe dans src/lib/veille.ts.
+      let echecsOccupeConsecutifs = 0
       while (!cancelled) {
         if (
           !peutEcouterEnVeille({
@@ -1156,7 +1164,12 @@ export function MicButton({
           echecDemarrage = err instanceof Error && err.message === MOTEUR_OCCUPE
         }
         if (cancelled) return
-        rafalesMuettes = transcript ? 0 : rafalesMuettes + 1
+        echecsOccupeConsecutifs = echecDemarrage ? echecsOccupeConsecutifs + 1 : 0
+        // Un démarrage refusé n'a rien écouté : il ne compte pas comme une
+        // rafale silencieuse, sans quoi un vrai silence qui suit une chaîne
+        // de refus hériterait à tort d'un recul déjà remonté à plusieurs
+        // secondes.
+        rafalesMuettes = echecDemarrage ? rafalesMuettes : transcript ? 0 : rafalesMuettes + 1
 
         const { suite, demande } = apresRafale({
           priseAvant: prise,
@@ -1191,7 +1204,10 @@ export function MicButton({
           setStatus("idle")
         }
         if (!cancelled) {
-          await new Promise((r) => setTimeout(r, delaiAvantRafaleSuivante(echecDemarrage, rafalesMuettes)))
+          const delai = echecDemarrage
+            ? delaiApresOccupe(echecsOccupeConsecutifs)
+            : delaiAvantRafaleSuivante(false, rafalesMuettes)
+          await new Promise((r) => setTimeout(r, delai))
         }
       }
     }
