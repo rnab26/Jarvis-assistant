@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core"
 import { Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Deconnexion } from "@/components/settings/Deconnexion"
 import { Badge } from "@/components/ui/badge"
@@ -29,7 +30,13 @@ import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
 import { Nouveautes } from "@/components/settings/Nouveautes"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
-import { Section, sectionCorrespond } from "@/components/settings/Section"
+import { Section } from "@/components/settings/Section"
+import {
+  LISTE_SECTIONS_PARAMETRES as LISTE_SECTIONS,
+  SECTIONS_PARAMETRES as SECTIONS,
+  resoudreCibleParametres,
+  sectionCorrespond,
+} from "@/lib/sectionsParametres"
 import { Theme } from "@/components/settings/Theme"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Button } from "@/components/ui/button"
@@ -59,98 +66,6 @@ import { ecrireReglage } from "@/lib/reglages"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
 
 const isNative = Capacitor.isNativePlatform()
-
-/** Les sections de l'écran : leur titre, leur résumé, et ce qu'on peut taper
- * pour les retrouver. Déclarées ici et étalées dans le rendu (`{...SECTIONS.voix}`)
- * plutôt qu'écrites deux fois — sinon les mots-clés de la recherche et ceux
- * de la section auraient divergé au premier ajout, et la recherche aurait
- * compté des résultats qu'elle n'affiche pas. */
-const SECTIONS = {
-  // EN PREMIER, et c'est une demande de Raphaël du 5 sept. 2026 : « pour la
-  // mise à jour, il faut que je descende tout en bas, essaye de la rehausser ».
-  // C'est la section qu'il ouvre le plus souvent, et c'était la septième.
-  app: {
-    cle: "app",
-    titre: "L'application",
-    resume: "Version, mise à jour, nouveautés",
-    motsCles:
-      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
-  },
-  // Les autorisations Android, dites par ce qu'elles permettent. Haut de
-  // page volontairement : c'est le premier écran d'un téléphone neuf, et le
-  // seul recours quand une autorisation a été refusée une fois — Android ne
-  // la redemande alors plus jamais tout seul.
-  autorisations: {
-    cle: "autorisations",
-    titre: "Autorisations du téléphone",
-    resume: "Ce que Jarvis a le droit de faire",
-    motsCles:
-      "autorisation permission accès micro enregistrement contacts répertoire numéro téléphone appel appeler notification position gps localisation arrière-plan installer mise à jour assistant appui long bouton refusée bloquée accorder android réglages système premier lancement",
-  },
-  voix: {
-    cle: "voix",
-    titre: "Voix et écoute",
-    resume: "Sa voix, le rythme, le mot-clé de réveil",
-    motsCles:
-      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue mode live conversation continue essai moteur reconnaissance vocale android google automatique service",
-  },
-  taches: {
-    cle: "taches",
-    titre: "Tâches et organisation",
-    resume: "Widget d'écran d'accueil, rappels de lieu",
-    motsCles:
-      "widget écran d'accueil nombre de tâches urgentes catégorie rappel de lieu géolocalisation position gps arriver sur place",
-  },
-  notifications: {
-    cle: "notifications",
-    titre: "Notifications",
-    resume: "Ce que Jarvis a le droit de faire sonner",
-    motsCles:
-      "notification sonner déranger alerte rappel échéance heure d'une tâche avance point du matin briefing résumé nouvelle version chantier livré session bloquée alarme exacte permission tester silencieux apprentissage apprend appris priorités insistance ouvre ignore remettre à zéro",
-  },
-  apps: {
-    cle: "apps",
-    titre: "Ce que Jarvis utilise",
-    resume: "Applications par défaut, appui long sur le bouton",
-    motsCles:
-      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android bulle flottante pastille par-dessus superposition délai annuler arrêter avant d'agir mal entendu",
-  },
-  consommation: {
-    cle: "consommation",
-    titre: "Ce que Jarvis consomme",
-    resume: "Phrases et jetons du jour, et la marge qu'il reste",
-    motsCles:
-      "consommation credit quota jetons tokens gemini plafond limite gratuit combien il reste phrases modele secours lenteur temps de reponse cout",
-  },
-  memoire: {
-    cle: "memoire",
-    titre: "Mémoire",
-    resume: "Combien de temps il garde tes conversations",
-    motsCles:
-      "mémoire conversation mot-à-mot historique échanges garder conserver effacer purge durée 7 30 90 jours sans limite souvenirs oubli",
-  },
-  cockpit: {
-    cle: "cockpit",
-    titre: "Le cockpit",
-    resume: "Ce qui compte comme « livré », les sessions qui travaillent sans toi, et le moteur de langue",
-    motsCles:
-      "cockpit chantier section où j'en suis livré aujourd'hui 24 heures 7 jours semaine bilan avancement bouge dort pour toi sessions autonomes automatique nuit absence routine déclencheur libre crédit",
-  },
-  apparence: {
-    cle: "apparence",
-    titre: "Apparence",
-    resume: "Thème clair ou sombre, image du cœur",
-    motsCles: "thème clair sombre nuit couleur affichage cœur réacteur image logo animation",
-  },
-  comptes: {
-    cle: "comptes",
-    titre: "Comptes et connexions",
-    resume: "Google, déconnexion",
-    motsCles: "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation deconnexion déconnexion se déconnecter quitter session sortir",
-  },
-} as const
-
-const LISTE_SECTIONS = Object.values(SECTIONS)
 
 /**
  * Ce que la barre « L'application » dit sans qu'on l'ouvre.
@@ -518,6 +433,36 @@ export function SettingsPage() {
   } = useJarvisData()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [recherche, setRecherche] = useState("")
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Navigation externe vers une section précise (chantier `aac9a0dd`,
+  // « emmène-moi dans les notifications ») : `?section=<mot ou clé>` dans
+  // l'URL. La cible RÉSOLUE reste en état après lecture — la retenir permet
+  // à `<Section>` de s'ouvrir, défiler jusqu'à elle et se mettre en
+  // évidence, sans qu'on ait à relire l'URL à chaque rendu. L'écriture de
+  // cette action vocale elle-même (reconnaître la phrase, appeler
+  // `navigate("/settings?section=…")`) n'est PAS ici : hors du périmètre de
+  // cette session (voir dev_log, chantier aac9a0dd), propriété du thème
+  // « Le téléphone ». Ce que ce paramètre attend est déjà une cible propre,
+  // pas une phrase entière.
+  const [cibleSection, setCibleSection] = useState<string | null>(null)
+  useEffect(() => {
+    const brut = searchParams.get("section")
+    if (!brut) return
+    const cle = resoudreCibleParametres(brut)
+    // Silence sur l'ambiguïté ou l'absence de résultat, même règle que la
+    // recherche au clavier : ouvrir la mauvaise section serait pire que ne
+    // rien ouvrir. Le paramètre est retiré dans tous les cas, résolu ou
+    // pas : le laisser referait tenter la même résolution à chaque rendu.
+    if (cle) setCibleSection(cle)
+    setSearchParams(
+      (p) => {
+        p.delete("section")
+        return p
+      },
+      { replace: true },
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
   // Les terminées dépliées d'entrée dans l'onglet Tâches. Le stockage local
@@ -645,6 +590,7 @@ export function SettingsPage() {
         filtre={recherche}
         ouverteParDefaut
         badge={<BadgeMaj status={updateState.status} />}
+        cibleNavigation={cibleSection === SECTIONS.app.cle}
       >
         <MettreAJour update={updateState} majWeb={majWebState} />
 
@@ -655,11 +601,19 @@ export function SettingsPage() {
         <Confidentialite />
       </Section>
 
-      <Section {...SECTIONS.autorisations} filtre={recherche}>
+      <Section
+        {...SECTIONS.autorisations}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.autorisations.cle}
+      >
         <CarteAutorisations />
       </Section>
 
-      <Section {...SECTIONS.voix} filtre={recherche}>
+      <Section
+        {...SECTIONS.voix}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.voix.cle}
+      >
         <Card>
           <CardHeader>
             <CardTitle>Voix de Jarvis</CardTitle>
@@ -888,7 +842,11 @@ export function SettingsPage() {
         </Card>
       </Section>
 
-      <Section {...SECTIONS.taches} filtre={recherche}>
+      <Section
+        {...SECTIONS.taches}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.taches.cle}
+      >
         {/* SA DEMANDE (chantiers 20435f77 / 7c37b6b0) : une tâche cochée quitte
             la liste pour l'archive de sa catégorie. Le réglage existe parce
             que « replié » est un choix, pas une fatalité — quelqu'un qui coche
@@ -1021,7 +979,11 @@ export function SettingsPage() {
         <RappelsGeolocalises />
       </Section>
 
-      <Section {...SECTIONS.notifications} filtre={recherche}>
+      <Section
+        {...SECTIONS.notifications}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.notifications.cle}
+      >
         {/* Les tâches viennent d'ici : la carte dit combien d'entre elles
             feront réellement sonner quelque chose, avec le calcul qui
             programme les alarmes. */}
@@ -1030,7 +992,11 @@ export function SettingsPage() {
         <ApprentissageNotifications api={apprentissageState} />
       </Section>
 
-      <Section {...SECTIONS.apps} filtre={recherche}>
+      <Section
+        {...SECTIONS.apps}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.apps.cle}
+      >
         <AssistantTelephone />
         <BulleFlottante />
         <AppsParDefaut />
@@ -1041,27 +1007,47 @@ export function SettingsPage() {
         <FenetreAnnulation />
       </Section>
 
-      <Section {...SECTIONS.consommation} filtre={recherche}>
+      <Section
+        {...SECTIONS.consommation}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.consommation.cle}
+      >
         <Consommation api={consommationState} />
       </Section>
 
-      <Section {...SECTIONS.memoire} filtre={recherche}>
+      <Section
+        {...SECTIONS.memoire}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.memoire.cle}
+      >
         <Memoire api={datesEchanges} />
       </Section>
 
-      <Section {...SECTIONS.cockpit} filtre={recherche}>
+      <Section
+        {...SECTIONS.cockpit}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.cockpit.cle}
+      >
         <Cockpit />
         <SessionsAutonomes />
 
         <MoteurDeLangue />
       </Section>
 
-      <Section {...SECTIONS.apparence} filtre={recherche}>
+      <Section
+        {...SECTIONS.apparence}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.apparence.cle}
+      >
         <Theme />
         <CoeurDeJarvis />
       </Section>
 
-      <Section {...SECTIONS.comptes} filtre={recherche}>
+      <Section
+        {...SECTIONS.comptes}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.comptes.cle}
+      >
         <CompteGoogle />
         <Deconnexion />
       </Section>

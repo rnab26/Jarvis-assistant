@@ -1,6 +1,8 @@
 import { ChevronDown } from "lucide-react"
-import { useEffect, useState, type ReactNode } from "react"
-import { sansAccents } from "@/lib/dateOrale"
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { sectionCorrespond } from "@/lib/sectionsParametres"
+
+export { sectionCorrespond }
 
 /**
  * Une section de Paramètres, repliée par défaut.
@@ -57,22 +59,20 @@ interface SectionProps {
    * rien.
    */
   badge?: ReactNode
+  /**
+   * Vrai quand une navigation externe vise CETTE section (chantier
+   * `aac9a0dd` : « emmène-moi dans les notifications »). Reçu déjà résolu
+   * par `resoudreCibleParametres` — ce composant ne fait qu'ouvrir, défiler
+   * et se mettre en évidence, jamais deviner une cible depuis du texte.
+   */
+  cibleNavigation?: boolean
   children: ReactNode
 }
 
-/** Vrai si la section répond à ce qu'on cherche. Sans accents ni casse :
- * « echeance » doit trouver « échéance ». */
-export function sectionCorrespond(
-  { titre, resume, motsCles }: Pick<SectionProps, "titre" | "resume" | "motsCles">,
-  filtre: string,
-): boolean {
-  const terme = sansAccents(filtre.trim()).toLowerCase()
-  if (!terme) return true
-  const foin = sansAccents(`${titre} ${resume ?? ""} ${motsCles ?? ""}`).toLowerCase()
-  // Chaque mot tapé doit être présent : « voix jarvis » ne doit pas ramener
-  // tout ce qui contient « jarvis ».
-  return terme.split(/\s+/).every((mot) => foin.includes(mot))
-}
+/** Combien de temps la mise en évidence reste visible après une navigation
+ * externe. Assez long pour qu'on la voie en ayant fini de défiler, assez
+ * court pour ne pas devenir un élément permanent de l'écran. */
+const DUREE_MISE_EN_EVIDENCE_MS = 2500
 
 export function Section({
   titre,
@@ -82,9 +82,12 @@ export function Section({
   motsCles,
   filtre = "",
   badge,
+  cibleNavigation = false,
   children,
 }: SectionProps) {
   const [ouverte, setOuverte] = useState(() => lireOuvert(cle, ouverteParDefaut))
+  const [enEvidence, setEnEvidence] = useState(false)
+  const conteneurRef = useRef<HTMLDivElement>(null)
   const recherche = filtre.trim().length > 0
 
   useEffect(() => {
@@ -100,12 +103,21 @@ export function Section({
     }
   }, [cle, ouverte, recherche])
 
+  useEffect(() => {
+    if (!cibleNavigation) return
+    setOuverte(true)
+    setEnEvidence(true)
+    conteneurRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    const minuteur = setTimeout(() => setEnEvidence(false), DUREE_MISE_EN_EVIDENCE_MS)
+    return () => clearTimeout(minuteur)
+  }, [cibleNavigation])
+
   // Une recherche qui laisserait le résultat replié ne servirait à rien : il
   // faudrait encore le déplier à la main pour voir ce qu'on a trouvé.
   if (recherche) {
     if (!sectionCorrespond({ titre, resume, motsCles }, filtre)) return null
     return (
-      <div className="flex flex-col gap-2">
+      <div ref={conteneurRef} className="flex flex-col gap-2">
         <div className="flex items-center gap-2 rounded-lg border px-3 py-2">
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold">{titre}</span>
@@ -122,12 +134,14 @@ export function Section({
   // carte dans une carte doublerait le cadre — le « pavé » que Raphaël veut
   // justement voir disparaître. Ici, une barre, et rien de plus.
   return (
-    <div className="flex flex-col gap-2">
+    <div ref={conteneurRef} className="flex flex-col gap-2">
       <button
         type="button"
         aria-expanded={ouverte}
         onClick={() => setOuverte(!ouverte)}
-        className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left"
+        className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-shadow ${
+          enEvidence ? "ring-2 ring-primary" : ""
+        }`}
       >
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold">{titre}</span>

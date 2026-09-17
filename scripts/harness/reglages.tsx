@@ -305,6 +305,11 @@ function BancDesReglages() {
     window.addEventListener(REGLAGES_RESTAURES, run)
     return () => window.removeEventListener(REGLAGES_RESTAURES, run)
   }, [])
+  // Une navigation externe résolue (chantier aac9a0dd, « emmène-moi dans les
+  // notifications ») : simule ce qu'une action vocale ferait plus tard en
+  // passant `cibleNavigation`. Fermée par défaut, comme sur un vrai écran de
+  // Paramètres jamais ouvert — la section doit s'ouvrir SEULE.
+  const [cibleDemandee, setCibleDemandee] = useState(false)
 
   return (
     <div className="flex flex-col gap-4 p-3">
@@ -422,6 +427,23 @@ function BancDesReglages() {
         >
           <p>Contenu notifications</p>
         </Section>
+      </div>
+
+      {/* Une navigation externe déjà résolue (voir plus haut) : la section
+          visée doit s'ouvrir SEULE, sans qu'on clique dessus. */}
+      <div id="navigation-section">
+        <Section
+          titre="Notifications (cible d'une navigation)"
+          resume="Ce que Jarvis a le droit de faire sonner"
+          cle="banc-nav"
+          motsCles="notification"
+          cibleNavigation={cibleDemandee}
+        >
+          <p>Contenu navigation</p>
+        </Section>
+        <button onClick={() => setCibleDemandee(true)}>
+          Simuler « emmène-moi dans les notifications »
+        </button>
       </div>
 
       {/* Le mode Live : ce qui compte est que le micro, qui garde son propre
