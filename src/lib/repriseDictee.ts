@@ -137,6 +137,73 @@ interface ActionAjoutTache {
  * d'avant (la catégorie, les notes). Écrire `null` par-dessus effacerait ce
  * qui était juste : on ne transmet que ce qui est renseigné.
  */
+/**
+ * « Prévenir puis refaire » — décision de Raphaël, 17 sept. 2026, sur le
+ * chantier e4886791 : « Prévenir puis refaire ». Pour musique, vidéo et
+ * itinéraire, quand il redit une phrase en l'allongeant APRÈS qu'une
+ * PREMIÈRE action a déjà eu lieu (musique/vidéo lancée, itinéraire ouvert),
+ * Jarvis annonce ce qu'il fait puis relance avec la phrase complète.
+ *
+ * Musique et vidéo passent toutes les deux par `open_app` + `music_query`
+ * (même mécanisme, "ce qu'il faut jouer/regarder") : une seule famille
+ * "media" les couvre.
+ *
+ * MESSAGE — chantier b02d70f5, suite de e4886791 : sa réponse du 17 sept.
+ * (« Prévenir puis refaire ») vaut « pour les quatre familles », message
+ * compris. Étendu ici, dans une session avec Raphaël en ligne — pas par une
+ * session autonome, pour qui « envoi de messages en son nom » reste un sujet
+ * réservé (docs/session-autonome.md). Le mécanisme est le MÊME que pour
+ * media/navigation, pas un second : `executerActionTelephone` prépare
+ * TOUJOURS un brouillon sans jamais l'envoyer (« Jarvis prépare, Raphaël
+ * valide »), donc relancer `send_message` avec le texte complet vers le
+ * MÊME destinataire recompose le même brouillon (WhatsApp/SMS affiche le
+ * texte à jour) plutôt que d'en ouvrir un second — il n'y a pas de ligne en
+ * base à transformer comme pour une tâche, `completerPlutotQueCreer` ne
+ * s'applique donc pas ici.
+ */
+export type FamilleActionTelephone = "media" | "navigation" | "message"
+
+export interface DerniereActionTelephone {
+  famille: FamilleActionTelephone
+  quand: number
+}
+
+/** Ce qu'il faut savoir d'une action pour dire si elle refait la précédente. */
+interface ActionFamille {
+  action: string
+  music_query?: string
+}
+
+/**
+ * Rend la phrase à dire AVANT de refaire l'action, ou `null` s'il n'y a rien
+ * à prévenir — pas de reprise détectée, pas d'action téléphone récente de la
+ * même famille, ou fenêtre dépassée. Un seul appelant (MicButton.runTurn) et
+ * seulement quand `estUneReprise` a déjà dit oui : sans cette condition,
+ * "lance la musique de Booba" dix minutes après une première chanson serait
+ * pris pour une reprise de rien du tout.
+ */
+export function phraseRepriseAction(
+  reprise: boolean,
+  actions: ActionFamille[],
+  derniere: DerniereActionTelephone | null,
+  maintenant: number,
+): string | null {
+  if (!reprise || !derniere) return null
+  if (maintenant - derniere.quand > FENETRE_REPRISE_MS) return null
+  if (actions.length !== 1) return null
+  const [a] = actions
+  if (derniere.famille === "media" && a.action === "open_app" && a.music_query) {
+    return "D'accord, je relance avec ta phrase complète."
+  }
+  if (derniere.famille === "navigation" && a.action === "navigate_to") {
+    return "D'accord, je relance avec ta phrase complète."
+  }
+  if (derniere.famille === "message" && a.action === "send_message") {
+    return "D'accord, je reprends le message avec ta phrase complète."
+  }
+  return null
+}
+
 export function completerPlutotQueCreer<T extends { action: string }>(
   actions: T[],
   creation: CreationRecente | null,

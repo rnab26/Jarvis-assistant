@@ -651,6 +651,58 @@ cas.push(
     },
   },
   {
+    // Chantier dc09476d, 17 sept. 2026 : un choix PONCTUEL dicté dans la
+    // phrase, distinct de la préférence retenue (jarvis_app_whatsapp).
+    nom: "message avec WhatsApp Business explicite : message_channel le porte",
+    phrase: "Envoie un message à Dylan sur WhatsApp Business pour lui dire que je passe demain.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "send_message")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.message_channel !== "whatsapp_business") return [false, `message_channel = ${a.message_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "appel sans rien préciser : call_channel absent (appel classique)",
+    phrase: "Appelle Dylan.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "call_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.call_channel) return [false, `call_channel renseigné à tort : ${a.call_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "appel avec WhatsApp explicite : call_channel le porte",
+    phrase: "Appelle Dylan sur WhatsApp.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "call_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.call_channel !== "whatsapp") return [false, `call_channel = ${a.call_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "itinéraire sans application précisée : app_name absent",
+    phrase: "Emmène-moi au 12 rue de la Paix à Paris.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "navigate_to")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.app_name) return [false, `app_name renseigné à tort : ${a.app_name}`]
+      return [true]
+    },
+  },
+  {
+    nom: "itinéraire avec application précisée dans la phrase : app_name la porte",
+    phrase: "Emmène-moi au 12 rue de la Paix à Paris avec Waze.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "navigate_to")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/waze/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      return [true]
+    },
+  },
+  {
     nom: "apprentissage direct : quelle app pour la navigation",
     phrase: "Utilise Waze pour la navigation.",
     controle: (r) => {
@@ -755,6 +807,22 @@ cas.push(
       const a = (r.actions ?? []).find((x) => x.action === "find_receipts")
       if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
       if (!/melissa/i.test(a.mail_recherche ?? "")) return [false, `mail_recherche = ${a.mail_recherche}`]
+      return [true]
+    },
+  },
+  {
+    // Chantier 4dabe586, 17 sept. 2026 : transmettre_recu, jamais confondu
+    // avec find_receipts — la distinction est justement ce qui manquait.
+    nom: "gmail : transmettre un reçu déjà retrouvé, jamais confondu avec le lister",
+    phrase: "Transmets la dernière facture d'électricité à Dan par WhatsApp.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.includes("find_receipts")) return [false, `find_receipts au lieu de transmettre : ${JSON.stringify(types)}`]
+      const a = (r.actions ?? []).find((x) => x.action === "transmettre_recu")
+      if (!a) return [false, `actions : ${JSON.stringify(types)}`]
+      if (!/electricit|électricit/i.test(a.mail_cible ?? "")) return [false, `mail_cible = ${a.mail_cible}`]
+      if (!/dan/i.test(a.contact_name ?? "")) return [false, `contact_name = ${a.contact_name}`]
+      if (a.message_channel !== "whatsapp") return [false, `message_channel = ${a.message_channel}`]
       return [true]
     },
   },

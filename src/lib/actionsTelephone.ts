@@ -50,6 +50,15 @@ interface ActionsTelephonePlugin {
   mettreAlarme(options: { heure: number; minute: number; libelle?: string }): Promise<void>
   mettreMinuteur(options: { secondes: number; libelle?: string }): Promise<void>
   itineraire(options: { destination: string; paquet?: string }): Promise<void>
+  /** Partage un fichier déjà écrit sur le disque (chemin natif, obtenu via
+   * `Filesystem.getUri`) vers une autre application — un reçu retrouvé dans
+   * Gmail, par exemple (chantier 4dabe586). Sans `paquet`, ouvre le
+   * sélecteur Android habituel ; avec, vise directement cette application
+   * (WhatsApp, WhatsApp Business...), qui affiche ensuite SON propre écran
+   * de destinataire — il n'existe aucun intent public pour cibler UNE
+   * conversation précise avec une pièce jointe, contrairement au texte seul
+   * (voir `preparerWhatsApp`, qui utilise le lien wa.me pour ça). */
+  partagerFichier(options: { chemin: string; typeContenu: string; paquet?: string }): Promise<void>
 }
 
 /** Pont vers android/.../ActionsTelephonePlugin.java. N'existe que dans l'app

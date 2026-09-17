@@ -1,4 +1,8 @@
-import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
+import {
+  executerActionTelephone,
+  transmettreFichier,
+  type ActionTelephone,
+} from "@/lib/actionsTelephoneVocales"
 import { garderReponseEcran } from "@/lib/garderReponseEcran"
 import { lireDocumentLien } from "@/lib/lireDocumentLien"
 import { repondreDecisionVoix } from "@/lib/repondreDecisionVoix"
@@ -188,6 +192,19 @@ export type VoiceAction =
       mail_jours?: number
       mail_limite?: number
     }
+  /** Transmettre un reçu déjà retrouvé (find_receipts/read_email) au contact
+   * qu'il désigne, via le partage Android (chantier 4dabe586) — ce que
+   * find_receipts ne pouvait QUE lister jusque-là. Mêmes champs destinataire
+   * que send_message : contact_id si connu, sinon contact_name (résolu dans
+   * le répertoire du téléphone), jamais un numéro deviné. */
+  | {
+      action: "transmettre_recu"
+      mail_cible: string
+      message_channel?: "whatsapp" | "whatsapp_business" | "sms"
+      contact_id?: string
+      contact_name?: string
+      phone_number?: string
+    }
   | { action: "set_voice"; voice_enabled: boolean }
   /** Changer un réglage lui-même (chantier f7137b0c). `setting_cle` et
    * `setting_valeur` viennent de `src/lib/reglagesVoix.ts`, la seule liste
@@ -291,6 +308,12 @@ export interface GmailApi {
     recherche?: string
   }) => Promise<Recu[]>
   lireMessage: (messageId: string, options?: { marquer_lu?: boolean }) => Promise<MessageComplet | null>
+  /** Le contenu d'une pièce jointe (8 Mo max, refusé au-delà par le serveur)
+   * — chantier 4dabe586, transmettre un reçu retrouvé. */
+  recupererPieceJointe: (
+    messageId: string,
+    pieceJointeId: string,
+  ) => Promise<{ taille: number | null; contenu_base64: string } | null>
   preparerReponse: (options: { texte: string; message_id?: string }) => Promise<Brouillon | null>
   // Une réponse dictée n'attache jamais de fichier : le vrai envoyerMessage de
   // googleGmail.ts accepte des pièces jointes EN PLUS, l'appelant fournit un
@@ -1134,10 +1157,39 @@ export async function executeVoiceAction(
         .slice(0, 6)
         .map((r) => `${nomExpediteur(r.de)}${r.date ? ` (${r.date})` : ""}`)
         .join(", ")
-      // Ce que je ne sais PAS encore faire, dit en toutes lettres plutôt que
-      // tu par silence : les transmettre reste du ressort du contrôle du
-      // téléphone (partage Android), pas encore construit.
-      return `J'ai trouvé ${recus.length} reçu${recus.length > 1 ? "s" : ""} : ${liste}. Je ne peux pas encore te les transmettre moi-même, ça viendra avec le contrôle du téléphone.`
+      return `J'ai trouvé ${recus.length} reçu${recus.length > 1 ? "s" : ""} : ${liste}. Dis-moi à qui le transmettre.`
+    }
+
+    case "transmettre_recu": {
+      // Même résolution que read_email/prepare_email_reply : "le dernier",
+      // "la facture d'électricité"... — une seule source de vérité pour
+      // désigner un message.
+      const resolu = await retrouverMessage(gmail, action.mail_cible)
+      if (!resolu.message) return resolu.reponse!
+      const complet = await gmail.lireMessage(resolu.message.id)
+      if (!complet) return "Je n'ai pas réussi à rouvrir ce message."
+      if (complet.pieces_jointes.length === 0) {
+        // Beaucoup de reçus arrivent par un LIEN plutôt qu'en pièce jointe
+        // (google-gmail/lien.ts, chantier 13c39a9b) — on ne le devine pas
+        // ici, on dit ce qui manque plutôt que d'échouer en silence.
+        return "Ce message n'a pas de pièce jointe que je peux transmettre. S'il contient un lien vers le reçu, dis-moi de le récupérer d'abord."
+      }
+      // Plusieurs pièces jointes sur un même reçu, ça arrive (le PDF et son
+      // aperçu) : on prend la première et on la NOMME, pour qu'une commande
+      // mal comprise se repère tout de suite — jamais un choix silencieux.
+      const piece = complet.pieces_jointes[0]
+      const contenu = await gmail.recupererPieceJointe(resolu.message.id, piece.id)
+      if (!contenu) return "Je n'ai pas réussi à récupérer cette pièce jointe."
+      return await transmettreFichier(
+        { nom: piece.nom, typeContenu: piece.type, base64: contenu.contenu_base64 },
+        contacts,
+        {
+          contact_id: action.contact_id,
+          contact_name: action.contact_name,
+          phone_number: action.phone_number,
+        },
+        action.message_channel,
+      )
     }
 
     case "set_voice": {
