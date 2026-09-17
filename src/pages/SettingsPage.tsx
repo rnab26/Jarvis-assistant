@@ -3,6 +3,7 @@ import { Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Deconnexion } from "@/components/settings/Deconnexion"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
@@ -592,13 +593,24 @@ export function SettingsPage() {
         badge={<BadgeMaj status={updateState.status} />}
         cibleNavigation={cibleSection === SECTIONS.app.cle}
       >
-        <MettreAJour update={updateState} majWeb={majWebState} />
-
-        <Nouveautes items={recentChanges} />
-
-        <Reinitialiser />
-
-        <Confidentialite />
+        {/* Fusion demandée par Raphaël le 17 sept. 2026 : « que tout ce qui
+            concerne le bloc mettre a jour soit plus condensé et dans un seul
+            même bloc avec les dernières mises à jour, et que ce soit
+            dépliable — je ne veux pas forcément voir d'entrée de jeu tout
+            ça. » Repliée par défaut (CarteRepliable, comme dans le cockpit) ;
+            le badge « À jour / Nouvelle version » reste visible SANS déplier,
+            même règle que boutonMaj.ts : on ne propose jamais une mise à jour
+            quand il n'y en a pas. */}
+        <CarteRepliable
+          titre="Mettre à jour l'application"
+          badge={<BadgeMaj status={updateState.status} />}
+        >
+          <MettreAJour update={updateState} majWeb={majWebState} />
+          <CardContent className="flex flex-col gap-2 pt-0">
+            <p className="text-sm font-medium">Dernières mises à jour</p>
+            <Nouveautes items={recentChanges} />
+          </CardContent>
+        </CarteRepliable>
       </Section>
 
       <Section
@@ -1052,6 +1064,18 @@ export function SettingsPage() {
         <Deconnexion />
       </Section>
 
+      {/* TOUT EN BAS, demande de Raphaël le 17 sept. 2026 : « ça nous
+          intéresse pas dans les paramètres, c'est vraiment tout en bas qu'il
+          faut le mettre » — pour la confidentialité comme pour les réglages
+          par défaut. Dernière section de la page, exprès. */}
+      <Section
+        {...SECTIONS.confidentialite}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.confidentialite.cle}
+      >
+        <Reinitialiser />
+        <Confidentialite />
+      </Section>
     </div>
   )
 }

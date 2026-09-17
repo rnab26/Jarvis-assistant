@@ -53,7 +53,7 @@ export const SECTIONS_PARAMETRES = {
     titre: "L'application",
     resume: "Version, mise à jour, nouveautés",
     motsCles:
-      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
+      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements",
   },
   // Les autorisations Android, dites par ce qu'elles permettent. Haut de
   // page volontairement : c'est le premier écran d'un téléphone neuf, et le
@@ -126,6 +126,16 @@ export const SECTIONS_PARAMETRES = {
     titre: "Comptes et connexions",
     resume: "Google, déconnexion",
     motsCles: "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation deconnexion déconnexion se déconnecter quitter session sortir",
+  },
+  // TOUT EN BAS, et c'est une demande de Raphaël (17 sept. 2026) : « ça nous
+  // intéresse pas dans les paramètres, c'est vraiment tout en bas qu'il faut
+  // le mettre ». Dernière section de la page, exprès.
+  confidentialite: {
+    cle: "confidentialite",
+    titre: "Confidentialité",
+    resume: "Remettre les réglages par défaut, lire la politique de confidentialité",
+    motsCles:
+      "confidentialité données vie privée politique réinitialiser réglages par défaut remettre à zéro suppression compte",
   },
 } as const satisfies Record<string, SectionParametres>
 
