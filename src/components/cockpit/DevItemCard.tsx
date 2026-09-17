@@ -1,5 +1,5 @@
 import { Archive, ArchiveRestore, Check, MessageSquare, Pencil, Send, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +22,12 @@ import {
   notesSansMarqueur,
 } from "@/lib/marqueurChantier"
 import type { DevItem, DevItemInput, DevLogEntry, DevPriority, DevStatus } from "@/types/database"
+
+/** Combien de temps la mise en évidence reste visible après un lien direct
+ * (notification, message) — même durée que `Section.tsx` (chantier
+ * `aac9a0dd`) : assez long pour la voir en ayant fini de défiler, assez
+ * court pour ne pas devenir un élément permanent de l'écran. */
+const DUREE_MISE_EN_EVIDENCE_MS = 2500
 
 /** « Normale » reste implicite : c'est la priorité de presque tous les
  * chantiers, l'afficher sur chacun ne distingue rien et mange la place du
@@ -120,6 +126,11 @@ interface DevItemCardProps {
   selectionnable?: boolean
   selectionne?: boolean
   onSelectionner?: (id: string) => void
+  /** Vrai quand un lien direct (notification, message) vise CE chantier
+   * (chantiers 04d2fa9e/332d87fd/f613211c). La carte se déplie, défile
+   * jusqu'à elle et se met en évidence — jamais deviné depuis un titre ou
+   * une recherche, reçu déjà résolu par l'appelant (son id). */
+  misEnEvidence?: boolean
 }
 
 export function DevItemCard({
@@ -135,10 +146,22 @@ export function DevItemCard({
   selectionnable = false,
   selectionne = false,
   onSelectionner,
+  misEnEvidence = false,
 }: DevItemCardProps) {
-  const [deplie, setDeplie] = useState(false)
+  const [deplie, setDeplie] = useState(() => misEnEvidence)
+  const [enEvidence, setEnEvidence] = useState(false)
+  const conteneurRef = useRef<HTMLDivElement>(null)
   const [reponse, setReponse] = useState("")
   const [envoiReponse, setEnvoiReponse] = useState(false)
+
+  useEffect(() => {
+    if (!misEnEvidence) return
+    setDeplie(true)
+    setEnEvidence(true)
+    conteneurRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    const minuteur = setTimeout(() => setEnEvidence(false), DUREE_MISE_EN_EVIDENCE_MS)
+    return () => clearTimeout(minuteur)
+  }, [misEnEvidence])
 
   // Une question posée par une session et restée sans réponse est la seule
   // chose qui doive se voir SANS déplier : c'est elle qui bloque le travail.
@@ -173,7 +196,12 @@ export function DevItemCard({
   // étiquettes dans la ligne du titre. Deux listes qui se ressemblent doivent
   // se lire pareil — sinon le cockpit paraît inachevé à côté des tâches.
   return (
-    <div className="flex flex-col gap-1.5 py-1.5">
+    <div
+      ref={conteneurRef}
+      className={`flex flex-col gap-1.5 rounded-lg py-1.5 ${
+        enEvidence ? "ring-2 ring-primary" : ""
+      }`}
+    >
       <div className="flex items-start gap-2">
       {/* En mode sélection, la case prend toute la hauteur de la ligne : sur
           un téléphone, viser un carré de trois millimètres à côté d'un titre

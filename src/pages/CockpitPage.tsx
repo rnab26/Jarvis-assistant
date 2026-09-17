@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { PanelsTopLeft, Sparkles } from "lucide-react"
 import { BarreActualiser } from "@/components/BarreActualiser"
 import { Button } from "@/components/ui/button"
@@ -66,6 +67,38 @@ export function CockpitPage() {
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
   const tableauRef = useRef<HTMLDivElement>(null)
   const journalRef = useRef<HTMLDivElement>(null)
+
+  // Lien direct depuis une notification ou un message (`?chantier=<id>` ou
+  // `?entree=<id>` dans l'URL, chantiers 04d2fa9e/332d87fd/f613211c) : le
+  // même modèle que `?section=<cible>` sur Paramètres (chantier aac9a0dd) —
+  // une cible déjà résolue (un id, pas un texte à deviner), retenue en état
+  // pour que `DevItemCard`/`CeQuiAttendTaDecision` puissent s'ouvrir,
+  // défiler jusqu'à elle et se mettre en évidence sans relire l'URL à
+  // chaque rendu. `chantier` amène sur LE chantier, déjà déplié ; `entree`
+  // sur une entrée précise de « Ce qui attend ta décision » quand elle n'est
+  // rattachée à aucun chantier.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [chantierCible, setChantierCible] = useState<string | null>(null)
+  const [entreeCible, setEntreeCible] = useState<string | null>(null)
+  useEffect(() => {
+    const chantier = searchParams.get("chantier")
+    const entree = searchParams.get("entree")
+    if (!chantier && !entree) return
+    if (chantier) setChantierCible(chantier)
+    if (entree) setEntreeCible(entree)
+    // Retiré dans tous les cas : le laisser referait pointer vers la même
+    // cible à chaque rendu, y compris après qu'il a navigué ailleurs dans le
+    // cockpit.
+    setSearchParams(
+      (p) => {
+        p.delete("chantier")
+        p.delete("entree")
+        return p
+      },
+      { replace: true },
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   // Mode simplifié (Paramètres › Le cockpit, ou ce bouton) : Raphaël, 17 sept.
   // 2026 — « pourquoi j'ai plein d'informations […] faut que ce soit plus
   // clair, plus simple, plus synthétisé, questions, réponses et on next. »
@@ -224,6 +257,7 @@ export function CockpitPage() {
           devItems={devItems}
           onRepondre={devLog.repondreAQuestion}
           onEtat={devLog.changerEtatAction}
+          entreeCible={entreeCible}
           uneALaFois
         />
       ) : (
@@ -263,6 +297,7 @@ export function CockpitPage() {
             devItems={devItems}
             onRepondre={devLog.repondreAQuestion}
             onEtat={devLog.changerEtatAction}
+            entreeCible={entreeCible}
           />
 
           <NouveauChantier
@@ -349,6 +384,7 @@ export function CockpitPage() {
                 sectionsState={devSectionsState}
                 filtre={filtre}
                 onFiltre={setFiltre}
+                chantierCible={chantierCible}
                 onUpdate={updateDevItem}
                 onDelete={deleteDevItem}
                 onArchive={archiveDevItem}
