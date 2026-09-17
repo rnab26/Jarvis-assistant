@@ -931,6 +931,44 @@ rattrape, une tâche en double reste dans sa liste). Chantier `e4886791`, en
 pour un message préparé deux fois — et « envoi de messages en son nom » est un
 sujet qu'une session autonome ne prend jamais.
 
+### « Prévenir puis refaire » : sa réponse à `e4886791`, pour les quatre familles
+
+Sa décision, 17 sept. 2026, mot pour mot : « Prévenir puis refaire ». Quand il
+redit une phrase en l'allongeant APRÈS qu'une PREMIÈRE action de la même
+famille a déjà eu lieu (musique/vidéo lancée, itinéraire ouvert, message
+préparé), Jarvis le dit avant de refaire, plutôt que d'agir une seconde fois
+sans un mot.
+
+`FamilleActionTelephone` (`src/lib/repriseDictee.ts`) porte trois familles —
+`"media"` (musique et vidéo, même mécanisme `open_app` + `music_query`),
+`"navigation"`, `"message"` — et `phraseRepriseAction` (pure) rend la phrase
+d'annonce quand `estUneReprise` a déjà dit oui ET qu'une action de la MÊME
+famille vient de partir (`dernierAppelTelephone()`,
+`src/lib/actionsTelephoneVocales.ts`, en mémoire du module, jamais relu après
+un redémarrage — même principe que `derniereCreation` pour les tâches).
+Musique/vidéo/itinéraire livrés le 17 sept. (claude/telephone-batch-0917,
+commit `fcc7161`) ; le MESSAGE (chantier `b02d70f5`), volontairement laissé de
+côté ce jour-là — « envoi de messages en son nom » est un sujet qu'une session
+autonome ne prend jamais —, complété le même jour dans une session où Raphaël
+était en ligne.
+
+**Pour le message, « refaire » veut dire RECOMPOSER LE MÊME BROUILLON, pas en
+ouvrir un second.** `executerActionTelephone` PRÉPARE toujours sans jamais
+envoyer (« Jarvis prépare, Raphaël valide ») : relancer `send_message` avec le
+texte complet appelle `preparerWhatsApp`/`preparerSms` une seconde fois pour le
+MÊME destinataire, qui affiche le texte à jour — pas de transformation façon
+`completerPlutotQueCreer` (pas de ligne en base à cibler pour un message,
+contrairement à une tâche). `dernierAppelTelephone()` ne retient donc la
+famille `"message"` qu'au moment où un brouillon est RÉELLEMENT préparé
+(après résolution du destinataire), jamais avant un échec.
+
+**Pas de collision avec la relecture vocale (`ed32cbcc`,
+`confirmationEnvoiVocale.ts`) ni avec la confirmation d'un envoi
+(`confirmationEnvoi.ts`), qui partagent `dernierTourRef`** : leur flux de
+relecture — quand il est actif (décoché par défaut) — retourne toujours AVANT
+d'atteindre ce branchement dans `MicButton.runTurn`, donc les deux mécanismes
+ne se déclenchent jamais dans le même tour.
+
 ## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
 Au 5 sept. 2026, **six de ses 29 tâches étaient des demandes adressées à
@@ -3448,6 +3486,56 @@ de l'hébergeur), redirections suivies **à la main et revalidées une par une**
 — une adresse publique peut rediriger vers l'intérieur —, taille plafonnée à
 8 Mo, et seuls un PDF ou une image acceptés en retour. **Ne relâche aucun de
 ces contrôles** ; `scripts/verifier-gmail.mjs` les vérifie tous hors ligne.
+
+### Transmettre un reçu retrouvé au contact désigné (chantier 4dabe586)
+
+La seconde moitié du titre du chantier, restée hors du périmètre
+« Messagerie » depuis le 7/8 sept. 2026 (propriété du contrôle du téléphone,
+`3f3ad20b`) : `find_receipts` ne pouvait QUE lister les reçus, jamais les
+transmettre — Jarvis le disait lui-même dans sa réponse (« je ne peux pas
+encore te les transmettre moi-même »). Livrée le 17 sept. par une session
+avec Raphaël en ligne, dans le thème « Messagerie et agenda ».
+
+Nouvelle action serveur `transmettre_recu` (`mail_cible` pour désigner LEQUEL
+message — mêmes mots que `read_email` : « le dernier », « la facture
+d'électricité » — et les mêmes champs destinataire que `send_message` :
+`contact_id`/`contact_name`/`phone_number`/`message_channel`). Côté client
+(`voiceActions.ts`), elle résout le message (`retrouverMessage`, déjà utilisé
+par `read_email`), lit ses pièces jointes (`gmail.lireMessage`), récupère la
+première via `recupererPieceJointe` — **l'action serveur `piece_jointe`
+existait déjà, déployée depuis le 3 sept., mais n'était appelée depuis aucun
+chemin de la voix** —, et délègue le partage à
+`transmettreFichier()` (`actionsTelephoneVocales.ts`).
+
+**Un fichier trouvé sur Gmail n'est pas sur le téléphone : il faut l'y
+écrire avant de le partager.** `transmettreFichier` écrit le base64 reçu dans
+le cache de l'app (`@capacitor/filesystem`, `Directory.Cache`, même outil que
+`majWeb.ts` pour un paquet téléchargé — chemin `partage/<nom>`, couvert par
+le `<cache-path path="." />` déjà déclaré dans `file_paths.xml`), obtient son
+chemin natif (`Filesystem.getUri`), puis appelle le nouveau plugin
+`ActionsTelephone.partagerFichier` (`ActionsTelephonePlugin.java`) : un
+`FileProvider.getUriForFile` (même motif que `ApkDownloaderPlugin` pour
+installer une APK) et un `Intent.ACTION_SEND` avec `EXTRA_STREAM`.
+
+**Même règle que `preparerWhatsApp`/`preparerSms` : ça PRÉPARE, ça n'envoie
+jamais tout seul.** Et une limite honnête, pas contournée : **il n'existe
+aucun intent public pour cibler UNE conversation précise avec une pièce
+jointe**, contrairement au texte seul (`send_message` avec un numéro connu
+ouvre directement la bonne conversation via le lien wa.me). Avec un `paquet`
+visé (WhatsApp ou WhatsApp Business, résolu par `quelWhatsApp()` comme pour
+`send_message`), l'application affiche son PROPRE écran de destinataire ;
+sans lui (SMS, ou aucune préférence claire), le sélecteur Android habituel.
+Le nom du destinataire désigné dans la phrase sert à le NOMMER dans la
+réponse (« Je prépare le reçu pour Dan sur WhatsApp, choisis-le et appuie sur
+envoyer »), pas à viser techniquement sa conversation — ne le présente jamais
+comme si Jarvis avait choisi le destinataire à sa place.
+
+**Touche `android/**` : une nouvelle APK est nécessaire**, la mise à jour
+rapide ne porte pas un nouveau plugin natif. **Non constaté sur un vrai
+compte Gmail** (pas de compte de test dans cet environnement, jeton Google
+expiré depuis le 8 sept. selon `verifier-gmail.mjs`) : le chantier reste
+ouvert jusqu'à ce que Raphaël confirme que « transmets ce reçu à … » ouvre
+bien WhatsApp avec le bon fichier attaché.
 
 ### Les messages programmés (`messages_programmes`, migration 0017)
 

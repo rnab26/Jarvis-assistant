@@ -186,6 +186,7 @@ Deno.serve(async (req: Request) => {
 
     if (body.type === "chantiers_livres") {
       const titres = Array.isArray(body.titres) ? (body.titres as string[]) : []
+      const ids = Array.isArray(body.ids) ? (body.ids as string[]) : []
       if (titres.length === 0 || !body.user_id) {
         return new Response(JSON.stringify({ ignore: "rien_a_livrer" }), { status: 200 })
       }
@@ -194,14 +195,19 @@ Deno.serve(async (req: Request) => {
         titre: titres.length === 1 ? "Un chantier livré" : `${titres.length} chantiers livrés`,
         corps: corpsChantiersLivres(titres),
         canal: "jarvis_livraisons",
-        route: "/cockpit",
+        // Un seul chantier livré : on sait exactement où l'amener, déjà
+        // déplié (chantier 04d2fa9e). Plusieurs d'un coup : pas UN endroit
+        // précis à proposer, on retombe sur le cockpit tout court.
+        route: ids.length === 1 ? `/cockpit?chantier=${ids[0]}` : "/cockpit",
       }
     } else if (body.type === "dev_log") {
       const { data: entree, error } = await supabase
         .from("dev_log")
         // `pourquoi` sert à distinguer une demande qui l'attend du compte
         // rendu d'une session : sans lui, estPourRaphael les confond.
-        .select("author, kind, body, answered_at, user_id, pourquoi")
+        // `item_id` sert à router : une question rattachée à un chantier
+        // amène directement sur LUI, pas juste sur le cockpit en général.
+        .select("author, kind, body, answered_at, user_id, pourquoi, item_id")
         .eq("id", body.id)
         .maybeSingle()
       if (error || !entree || !estPourRaphael(entree)) {
@@ -212,7 +218,12 @@ Deno.serve(async (req: Request) => {
         titre: entree.kind === "blocage" ? "Une session est bloquée" : "Une session te pose une question",
         corps: (entree.body as string).slice(0, 240),
         canal: "jarvis_blocages",
-        route: "/cockpit",
+        // Rattachée à un chantier : on y amène directement — sa carte montre
+        // déjà la question. Sinon : la carte « Ce qui attend ta décision »,
+        // sur cette entrée précise (chantier 332d87fd).
+        route: entree.item_id
+          ? `/cockpit?chantier=${entree.item_id}`
+          : `/cockpit?entree=${body.id}`,
       }
     } else {
       return new Response(JSON.stringify({ error: "type inconnu." }), { status: 400 })

@@ -76,6 +76,12 @@ interface CeQuiAttendTaDecisionProps {
    * un second écran qui finirait par diverger.
    */
   uneALaFois?: boolean
+  /** Lien direct depuis une notification ou un message (`?entree=<id>`,
+   * chantier 332d87fd) : l'id d'une entrée `dev_log` SANS chantier — sinon
+   * elle s'ouvre directement sur son chantier (`?chantier=<id>`), sa carte
+   * montre déjà la question. En mode « une à la fois », elle devient celle
+   * qu'on montre ; en liste, elle se déplie et se met en évidence. */
+  entreeCible?: string | null
 }
 
 export function CeQuiAttendTaDecision({
@@ -84,6 +90,7 @@ export function CeQuiAttendTaDecision({
   onRepondre,
   onEtat,
   uneALaFois = false,
+  entreeCible = null,
 }: CeQuiAttendTaDecisionProps) {
   const enAttente = useMemo(() => questionsEnAttente(messages), [messages])
   const titreParItem = useMemo(
@@ -95,6 +102,14 @@ export function CeQuiAttendTaDecision({
   // vide — c'est ce qui fait avancer tout seul vers la suivante une fois
   // répondu, sans bouton à appuyer en plus.
   const [indice, setIndice] = useState(0)
+
+  // Mode « une à la fois » : un lien direct doit montrer LA question visée,
+  // pas celle où l'index en était resté.
+  useEffect(() => {
+    if (!entreeCible || !uneALaFois) return
+    const i = enAttente.findIndex((q) => q.id === entreeCible)
+    if (i >= 0) setIndice(i)
+  }, [entreeCible, uneALaFois, enAttente])
 
   const titre = (
     <>
@@ -155,6 +170,7 @@ export function CeQuiAttendTaDecision({
             onRepondre={onRepondre}
             onEtat={onEtat}
             forceOuvert
+            misEnEvidence={question.id === entreeCible}
           />
         </CardContent>
       </CarteRepliable>
@@ -171,6 +187,7 @@ export function CeQuiAttendTaDecision({
             chantier={question.item_id ? titreParItem.get(question.item_id) : undefined}
             onRepondre={onRepondre}
             onEtat={onEtat}
+            misEnEvidence={question.id === entreeCible}
           />
         ))}
       </CardContent>
@@ -184,6 +201,7 @@ function Point({
   onRepondre,
   onEtat,
   forceOuvert = false,
+  misEnEvidence = false,
 }: {
   question: DevLogEntry
   chantier: string | undefined
@@ -192,15 +210,29 @@ function Point({
   /** Mode « une question à la fois » : la seule montrée, pas la peine de la
    * déplier au clic — elle l'est déjà. */
   forceOuvert?: boolean
+  /** Lien direct (`?entree=<id>`, chantier 332d87fd) : cette question précise
+   * se déplie, défile jusqu'à elle et se met en évidence. */
+  misEnEvidence?: boolean
 }) {
   const options = useMemo(() => optionsDe(question), [question])
-  const [ouvertState, setOuvert] = useState(false)
+  const [ouvertState, setOuvert] = useState(() => misEnEvidence)
   const ouvert = forceOuvert || ouvertState
   const [choisie, setChoisie] = useState<OptionDecision | null>(null)
   const [commentaire, setCommentaire] = useState("")
   const [photo, setPhoto] = useState<File | null>(null)
   const [envoi, setEnvoi] = useState(false)
   const champFichier = useRef<HTMLInputElement>(null)
+  const [enEvidence, setEnEvidence] = useState(false)
+  const conteneurRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!misEnEvidence) return
+    setOuvert(true)
+    setEnEvidence(true)
+    conteneurRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    const minuteur = setTimeout(() => setEnEvidence(false), 2500)
+    return () => clearTimeout(minuteur)
+  }, [misEnEvidence])
 
   const estAction = question.kind === "action"
   const prete = reponsePrete(choisie, commentaire) || (estAction && !!question.etat)
@@ -257,7 +289,12 @@ function Point({
   )
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border p-2.5">
+    <div
+      ref={conteneurRef}
+      className={`flex flex-col gap-2 rounded-lg border p-2.5 ${
+        enEvidence ? "ring-2 ring-primary" : ""
+      }`}
+    >
       {/* En mode « une question à la fois », elle est déjà ouverte et seule à
           l'écran : un bouton qui a l'air de replier quelque chose sans rien
           faire serait exactement le défaut corrigé ailleurs dans ce cockpit
