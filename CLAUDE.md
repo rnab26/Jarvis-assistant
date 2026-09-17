@@ -2992,6 +2992,65 @@ au démarrage — dans l'écran dont il dit lui-même qu'il ne sait plus « où 
 le nez ». La question lui est posée dans le cockpit ; s'il tranche l'inverse,
 la place est prête.
 
+## L'écran affiché et le dernier bouton touché : dans journal_ecoute et jarvis_erreurs (chantier 6d94ab6a)
+
+Sa demande, 17 sept. 2026 : mieux comprendre comment Jarvis se comporte lors
+de ses requêtes et de ses problèmes, à la voix ET au clic dans l'app. Sa
+réponse au périmètre, posée en conversation et tranchée le jour même :
+« Enrichir l'existant » — pas un quatrième endroit à côté de `journal_ecoute`,
+`jarvis_erreurs` et `dev_log`.
+
+**`src/lib/contexteInteraction.ts` est le point UNIQUE que les deux lisent.**
+Pur à l'exception de deux variables de module (l'écran actuel, le dernier
+appui) — même discipline que `derniereParole` dans `journalEcoute.ts` : en
+mémoire seulement, jamais en base ni en stockage local, parce que la question
+posée est « où en est-il MAINTENANT », pas « où en était-il à la dernière
+ouverture ». `src/hooks/useTraceInteractions.ts` (DOM + `useLocation`, monté
+une fois dans `AppRoutes`, App.tsx — avant les retours anticipés qui rendent
+soit l'app normale soit la fenêtre d'assistance, pour couvrir les deux) est le
+seul endroit qui a besoin du navigateur ; il ne fait qu'écrire dans le module
+pur, toute la décision (ce qui reste pertinent, comment le formuler) y est
+vérifiable sans navigateur (`scripts/verifier-contexte-interaction.ts`).
+
+**`journalEcoute.ts#noterEcoute` enrichit CHAQUE événement**, sans toucher aux
+dizaines d'appels disséminés dans l'app : `detailInteraction()` ajoute `ecran`
+et, s'il est encore pertinent (moins de 30 s), `clic` + `clic_il_y_a_ms` au
+`detail` jsonb. Le `detail` fourni par l'appelant garde la main sur ces clés.
+**`erreurDepuisEcoute` continue de lire le `detail` ORIGINAL**, pas
+l'enrichi : son résumé JSON (tronqué à 300 caractères pour certains
+événements) ne doit pas voir l'écran et le clic écraser les champs propres à
+l'événement — cette même information arrive déjà dans `jarvis_erreurs.contexte`
+via le point suivant.
+
+**`erreurs.ts#signalerErreur` retombe sur `contextePourErreur()` UNIQUEMENT
+quand l'appelant n'a rien fourni.** C'est le vrai trou trouvé en creusant :
+`src/lib/notifyError.ts#withErrorToast` — le seul endroit par lequel passent
+TOUTES les écritures de l'app — n'a JAMAIS renseigné `contexte`, pas plus que
+`useFileEnAttente.ts`. Une écriture qui échouait disait QUOI avait raté
+(`detail`), jamais OÙ ni APRÈS QUOI. Les appels qui passent déjà quelque chose
+de plus précis (la phrase dictée, dans tout `MicButton.tsx` et
+`repondreDecisionVoix.ts`) gardent la main : le repli ne s'applique qu'en
+l'absence de `contexte` explicite, jamais en écrasement.
+
+**Aucune migration.** `jarvis_erreurs.contexte` (« ce qui se passait : la
+phrase dictée, l'écran, l'action tentée ») et `journal_ecoute.detail` (jsonb)
+existaient déjà exactement pour ça — la colonne le disait dans son propre
+commentaire depuis la migration 0019, personne ne l'alimentait pour l'écran.
+
+**Ce qui n'est PAS fait, volontairement** : `dev_log` n'a pas été touché.
+C'est le journal de bord des sessions et des échanges avec Raphaël, pas un
+journal d'interaction — les deux exemples concrets de sa demande (« quel
+bouton touché juste avant », « le contexte d'écran au moment d'une erreur »)
+visent `journal_ecoute` et `jarvis_erreurs`, pas `dev_log`. Y ajouter quelque
+chose ici aurait été une extension non demandée.
+
+**Non mesuré sur un vrai téléphone** (pas d'appareil ici) : que le clic
+capturé en phase de capture (`document.addEventListener("click", ..., {
+capture: true })`) survit bien aux boîtes de dialogue et menus qui arrêtent la
+propagation (Radix, utilisé par shadcn/ui) — c'est justement pour ce cas que
+la capture a été choisie plutôt que la bulle, mais seule une session future
+avec les vraies données de `journal_ecoute` le confirmera.
+
 ## Ce que Raphaël reprend à Jarvis lui revient
 
 `supabase/functions/_shared/corrections.ts` — **une seule source**, importée
@@ -3207,6 +3266,7 @@ node --experimental-strip-types scripts/verifier-veille-modele.ts # on ne change
 npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
 node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau
+node --experimental-strip-types scripts/verifier-contexte-interaction.ts  # l'écran affiché et le dernier bouton touché, dans journal_ecoute et jarvis_erreurs, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
 node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
