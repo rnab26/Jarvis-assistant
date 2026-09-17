@@ -1379,6 +1379,75 @@ valide.
 garde-fou contre une phrase longue fait effectivement rougir le contrôle
 avant d'être remis en place).
 
+## Un chantier créé à la voix : la section et le titre se PROPOSENT
+
+Chantiers `9369ad72` (classement automatique) et `1be8988d` (titres), tous
+deux répondus par Raphaël le 17 sept. 2026, mot pour mot : « Proposer, je
+valide » — même règle que `suggestionTheme.ts` (saisie manuelle du cockpit)
+et `suggestionCategorie.ts` (tâches, ci-dessus). Avant, la consigne du
+serveur disait explicitement à `add_dev_item` de « classer le chantier dans
+un thème » — exactement l'inverse de sa décision, en silence.
+
+**Deux défauts, MESURÉS sur ses vrais chantiers OUVERTS, pas supposés** :
+
+```sql
+select title from dev_items where archived_at is null
+  and title ~* '^(dans |un |une |comme quoi)';
+```
+
+`54b307b1` (« Comme quoi tous les bruits exterieurs derangent le micro ») et
+`b8a4befd` (« Dans le cockpit pour que tout »), tous deux créés le jour même.
+**Ils ne se réparent PAS de la même façon**, et c'est le point à ne pas
+perdre : le premier garde une amorce de dictée devant une phrase par ailleurs
+complète (mesuré sur trois vrais titres « comme quoi… » du cockpit, aucun
+tronqué) — réparable localement, comme `titreTache.ts` pour les tâches. Le
+second est tronqué EN PLEIN MOT — sa note commence par « Dans le cockpit pour
+que tout ce qui concerne le bloc mettre a jour… », le titre s'arrête à
+« tout » : le contenu réel n'a jamais été synthétisé, et aucune règle locale
+ne peut le reconstituer (retirer « dans le » laisserait « cockpit pour que
+tout », toujours incompréhensible). Ce second cas se corrige côté consigne
+serveur uniquement.
+
+- `src/lib/titreChantier.ts` (pur) — `suggererTitreChantier`, mêmes
+  garde-fous que `titreTache.ts` (une amorce CONNUE, seulement en tête,
+  jamais si le reste est trop court) mais une liste d'amorces mesurée sur les
+  vrais titres de chantiers, pas recopiée de celle des tâches : `AMORCES` n'y
+  contient QUE `"comme quoi"` pour l'instant. **`null` quand rien de
+  récupérable ne se détache** — proposer un fragment tout aussi
+  incompréhensible serait pire que se taire.
+- `src/lib/chantierEnAttente.ts` (pur) — le chantier en attente d'une
+  validation (section et/ou titre), et la reconnaissance de la réponse. **Les
+  deux suggestions se valident ENSEMBLE, d'un seul « oui »** : les poser comme
+  deux questions séparées l'obligerait à répondre deux fois à la même
+  création — le défaut que la fenêtre de complétion des tâches (date +
+  catégorie) a déjà réglé en les regroupant. Mêmes verdicts que
+  `reponseCategorie` (accepter / refuser / corriger / illisible), transposés
+  aux sections. **100 % LOCAL, sans round-trip serveur** — à la différence de
+  la catégorie des tâches, dont l'« illisible » repart au serveur : le volume
+  mesuré (un seul cas réel de titre à corriger) ne justifie pas encore cette
+  complexité, et une phrase coupée sur une section se redemande directement
+  ici, en nommant le chantier.
+- `voiceActions.ts` : `add_dev_item` ne calcule une suggestion de section que
+  **quand le thème n'a pas été dit explicitement** — le serveur peut encore
+  classer un chantier, mais seulement si sa consigne le lui a permis (il l'a
+  nommé lui-même). `complete_last_chantier` (nouvelle action, reconnue
+  UNIQUEMENT par `commandeLocale.ts`, jamais par le serveur) applique la
+  validation. **Une correction de section ne touche jamais le titre en
+  silence** : le titre ne se renomme que sur un « oui » entier.
+
+**Trouvé en touchant ce code, corrigé dans le même travail** : `addDevItem`
+ne distinguait pas un échec réel d'une écriture partie dans la file hors
+ligne (contrairement à `addTask`, qui rend `{ id, enAttente }`) — un chantier
+dicté hors réseau s'entendait donc répondre « ajouté au cockpit », exactement
+le mensonge que `honnetete.ts` interdit pour les tâches depuis le chantier
+9476c7a0. Réparé avec la même `phraseHorsLigne`, et `addDevItem` rend
+maintenant le chantier créé (`DevItem | undefined`) plutôt que `unknown` —
+c'est aussi ce qui donne l'id du chantier à la suggestion en attente.
+
+`scripts/verifier-chantier-en-attente.ts` : les deux titres réels mesurés
+(un récupérable, un non), les verdicts de réponse, la fenêtre de complétion,
+et la consigne serveur (plus posée de thème deviné, plus de titre tronqué).
+
 ## Un onglet dédié aux notes personnelles
 
 Chantier `5ad49cc0`, 6 sept. 2026. Sa dictée : « creer un onglet dedie aux
@@ -3279,6 +3348,7 @@ node --experimental-strip-types scripts/verifier-musique.ts       # « je lance 
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
 node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
+node --experimental-strip-types scripts/verifier-chantier-en-attente.ts  # un chantier créé à la voix : la section et le titre se proposent, ne s'appliquent jamais seuls, sans réseau
 node --experimental-strip-types scripts/verifier-titre-tache.ts  # le titre d'une tâche est ce qu'il y a à faire, et surtout ce qui ne doit PAS être touché, sans réseau
 node --experimental-strip-types scripts/verifier-seconde-demande.ts  # une phrase à deux demandes rend la main au serveur, et ses vrais titres à « et » n'y tombent pas, sans réseau
 node --experimental-strip-types scripts/verifier-reprise-dictee.ts  # redire une dictée coupée complète la même tâche au lieu d'en créer une seconde, sans réseau
