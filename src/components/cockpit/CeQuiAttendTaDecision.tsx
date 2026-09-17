@@ -12,7 +12,7 @@ import {
   questionsEnAttente,
   reponsePrete,
 } from "@/lib/decisions"
-import { ago, courtAuteur } from "@/lib/journalBord"
+import { ago, courtAuteur, extraitAuMot } from "@/lib/journalBord"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { DevItem, DevLogEntry, EtatAction, OptionDecision } from "@/types/database"
 
@@ -184,8 +184,14 @@ function Point({
           )}
         </span>
         {/* La question reste lisible sans ouvrir : c'est elle qui lui dit
-            lequel ouvrir. */}
-        <span className="text-sm">{question.body}</span>
+            lequel ouvrir. COUPÉE, en revanche — mesuré le 17 sept. 2026 : ses
+            cinq points en attente faisaient 697, 561, 146, 110 et 86
+            caractères, et la carte montait à 924 points de haut pour QUATRE
+            points repliés, poussant « Où j'en suis » hors du premier écran.
+            Replier ne suffit pas si la ligne repliée porte 697 caractères. Le
+            texte entier est deux lignes plus bas, une fois ouvert : c'est là
+            qu'il en a besoin, pour répondre. */}
+        <span className="text-sm">{ouvert ? question.body : extraitAuMot(question.body)}</span>
       </button>
 
       {ouvert && (

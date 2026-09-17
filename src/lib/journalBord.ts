@@ -44,3 +44,32 @@ export function ago(iso: string): string {
 export function courtAuteur(auteur: string): string {
   return auteur.replace(/^claude\//, "")
 }
+
+/**
+ * Le début d'un texte, coupé AU MOT.
+ *
+ * POURQUOI C'EST ICI, et pas recopié à chaque endroit qui en a besoin. Il y en
+ * avait déjà deux copies — `extraitLisible` dans `DepuisTonDernierPassage.tsx`
+ * et la citation de `filJournal.ts` — et la troisième a été la fois de trop :
+ * mesuré le 17 sept. 2026, `CeQuiAttendTaDecision` affichait le corps ENTIER
+ * d'une question sur sa ligne repliée. Ses cinq points en attente faisaient
+ * 697, 561, 146, 110 et 86 caractères ; la carte montait à 924 points de haut
+ * pour quatre points repliés, et poussait « Où j'en suis » hors du premier
+ * écran.
+ *
+ * COUPÉ AU MOT, jamais au caractère : une phrase coupée au pixel près se
+ * termine n'importe où et se lit plus mal que pas d'extrait du tout. Et les
+ * blancs sont écrasés d'abord — une note de session contient des retours à la
+ * ligne, qui feraient un extrait haut de cinq lignes pour trois mots.
+ *
+ * Le repli sur une coupe nette existe pour le cas d'un texte sans aucune
+ * espace dans sa première partie (une URL collée, un identifiant) : mieux vaut
+ * couper court que de rendre le texte entier en croyant l'avoir coupé.
+ */
+export function extraitAuMot(texte: string, maximum = 110): string {
+  const propre = texte.replace(/\s+/g, " ").trim()
+  if (propre.length <= maximum) return propre
+  const coupe = propre.slice(0, maximum)
+  const espace = coupe.lastIndexOf(" ")
+  return `${espace > maximum / 3 ? coupe.slice(0, espace) : coupe}…`
+}

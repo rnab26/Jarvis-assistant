@@ -127,6 +127,30 @@ try {
       : `ils se terminent à ${basDecisions} points sur 844`,
   )
 
+  // ET LE MÊME ÉCRAN UNE FOIS LE BANDEAU REFERMÉ. « Depuis ton dernier
+  // passage » est TRANSIENT : il disparaît dès qu'il appuie sur « Vu », et
+  // c'est la première chose sur laquelle il agit. Sans cette seconde mesure,
+  // on ne sait pas si le débordement vient du bandeau (auquel cas il se règle
+  // tout seul en un appui) ou des cartes elles-mêmes (auquel cas il faut
+  // reprendre de la place). Mesuré le 17 sept. : 1102 avec, 770 sans.
+  const bandeauVu = page.getByRole("button", { name: "Vu" }).first()
+  if (await bandeauVu.isVisible().catch(() => false)) {
+    await bandeauVu.click()
+    await new Promise((r) => setTimeout(r, 300))
+    const basApresVu = await page.evaluate(() => {
+      const cartes = [...document.querySelectorAll('[data-slot="card"]')]
+      const c = cartes.find((e) => /Ce qui attend ta décision/.test(e.textContent ?? ""))
+      const t = [...document.querySelectorAll("p")].find((p) => p.textContent?.trim() === "Où j'en suis")
+      const ou = t?.closest('[data-slot="card"]')
+      return Math.round((c ?? ou)?.getBoundingClientRect().bottom ?? 9999)
+    })
+    verifier(
+      "et une fois le bandeau « Vu » refermé, ils tiennent vraiment",
+      basApresVu <= 844,
+      `${basApresVu} points sur 844 — le débordement ne vient donc pas que du bandeau`,
+    )
+  }
+
   const cartes = await page.evaluate(() => {
     const racine = document.getElementById("root").firstElementChild
     return [...racine.children].map((el) => ({

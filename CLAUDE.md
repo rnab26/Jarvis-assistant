@@ -336,6 +336,43 @@ tomberait à zéro au moment précis où il vient voir ce qui s'est passé.
 Le filtre du tableau vit désormais dans `CockpitPage`, pas dans
 `CockpitBoard` : une ligne de « Où j'en suis » doit pouvoir l'imposer.
 
+### Un extrait, UNE fonction : `extraitAuMot` (`src/lib/journalBord.ts`)
+
+Trois endroits du cockpit coupent un texte long pour l'afficher sur une ligne :
+le bandeau « depuis ton dernier passage », la citation d'une réponse du
+journal, et la ligne repliée d'un point qui attend sa décision. Il y en avait
+**trois copies privées**, et la troisième a été la fois de trop.
+
+**Mesuré le 17 sept. 2026 sur ses vraies données** : `CeQuiAttendTaDecision`
+affichait le corps ENTIER de la question sur la ligne REPLIÉE. Ses cinq points
+en attente faisaient 697, 561, 146, 110 et 86 caractères ; la carte montait à
+**924 points de haut pour quatre points repliés** — 231 par point, là où une
+ligne devrait en coûter 70 — et poussait « Où j'en suis » hors du premier
+écran. C'est la même régression que celle déjà documentée ici (« la carte
+faisait 616 points pour UN point »), dont la parade avait été de replier chaque
+point : **replier ne suffit pas si la ligne repliée porte 697 caractères.**
+Après correction, la carte fait 484 points, 161 par point.
+
+Deux choses que la fonction fait et qu'il ne faut pas défaire : couper AU MOT
+(une phrase coupée au caractère près se termine n'importe où), et écraser les
+blancs AVANT de couper (une note de session contient des retours à la ligne,
+qui feraient un extrait haut de cinq lignes pour trois mots).
+
+**Ce qu'on n'a PAS fait, et pourquoi** : plafonner le nombre de points
+affichés. Cette carte existe pour lui dire ce qui l'attend ; en cacher derrière
+un « voir les autres » la viderait de son sens. Le texte entier apparaît quand
+il OUVRE le point — c'est là qu'il en a besoin, pour répondre.
+
+**Le débordement restant vient du bandeau, et c'est mesuré.**
+`verifier-cockpit-reel.mjs` a maintenant deux mesures : avec le bandeau
+« Depuis ton dernier passage » (1102 points le 17 sept., donc rouge) et une
+fois qu'il a appuyé sur « Vu » (770, vert). Le bandeau est TRANSIENT et c'est
+la première chose sur laquelle il agit. Sans cette seconde mesure, on ne sait
+pas si le débordement se règle en un appui ou s'il faut reprendre de la place
+ailleurs. **Le premier contrôle reste rouge exprès** : le raccourcir demanderait
+de rogner le bandeau, dont le contenu a été décidé sur son retour du 6 sept.
+(« les livrés se lisent TOUS »). C'est son arbitrage, pas le nôtre.
+
 ### Les marqueurs des notes sont visibles dans l'app (`src/lib/marqueurChantier.ts`)
 
 `[À CADRER AVEC RAPHAËL]`, `[LIBRE]`, `[BLOQUÉ PAR : …]`, `[DOUBLON — …]`,

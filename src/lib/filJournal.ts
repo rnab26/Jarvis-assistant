@@ -1,7 +1,7 @@
 // Relatif avec extension : ce module est vérifié par
 // `node --experimental-strip-types scripts/verifier-fil-journal.ts`, qui ne
 // connaît pas l'alias « @/ » de Vite.
-import { courtAuteur } from "./journalBord.ts"
+import { courtAuteur, extraitAuMot } from "./journalBord.ts"
 import type { DevLogEntry } from "@/types/database"
 
 /**
@@ -78,12 +78,9 @@ const EXTRAIT_MAX = 90
  */
 export function citationDuParent(parent: DevLogEntry | null): string | null {
   if (!parent) return null
-  const propre = parent.body.replace(/\s+/g, " ").trim()
-  if (!propre) return courtAuteur(parent.author)
-  if (propre.length <= EXTRAIT_MAX) return `${courtAuteur(parent.author)} : ${propre}`
-  const coupe = propre.slice(0, EXTRAIT_MAX)
-  const espace = coupe.lastIndexOf(" ")
-  return `${courtAuteur(parent.author)} : ${espace > 30 ? coupe.slice(0, espace) : coupe}…`
+  const extrait = extraitAuMot(parent.body, EXTRAIT_MAX)
+  if (!extrait) return courtAuteur(parent.author)
+  return `${courtAuteur(parent.author)} : ${extrait}`
 }
 
 /**
