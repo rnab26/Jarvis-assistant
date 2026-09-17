@@ -27,6 +27,13 @@ import {
   completionExpiree,
   type TacheEnAttente,
 } from "@/lib/tacheDateEtCategorie"
+import { suggererSection } from "@/lib/suggestionTheme"
+import { suggererTitreChantier } from "@/lib/titreChantier"
+import {
+  clauseSuggestionChantier,
+  completionExpiree as completionExpireeChantier,
+  type ChantierEnAttente,
+} from "@/lib/chantierEnAttente"
 import {
   correctionApplicable,
   phraseDeplacement,
@@ -75,6 +82,18 @@ export type VoiceAction =
         | { verdict: "accepter" }
         | { verdict: "refuser" }
         | { verdict: "corriger"; category_id: string; category_name: string }
+    }
+  /** Valide, corrige ou refuse la suggestion de section et/ou de titre faite
+   * juste après la création d'un chantier (chantiers 9369ad72 et 1be8988d) —
+   * reconnue LOCALEMENT (commandeLocale.ts), résolue contre le dernier
+   * chantier en attente (voir chantierEnAttente.ts). */
+  | {
+      action: "complete_last_chantier"
+      verdict:
+        | { verdict: "accepter" }
+        | { verdict: "refuser" }
+        | { verdict: "corriger_section"; section_nom: string }
+        | { verdict: "illisible" }
     }
   /** « garde ça », « retiens sa réponse » : reprendre à l'écran la réponse
    * d'une IA relayée, sans le menu Partager d'Android. Reconnue LOCALEMENT
@@ -219,9 +238,12 @@ export interface TasksApi {
 
 export interface DevItemsApi {
   devItems: DevItem[]
-  // Le retour n'est pas utilisé ici (le cockpit, lui, s'en sert pour
-  // rattacher une erreur au chantier qu'elle vient d'ouvrir).
-  addDevItem: (input: DevItemInput) => Promise<unknown>
+  // `undefined` = pas encore en base (échec réel, ou noté dans la file hors
+  // ligne — useDevItems.ts ne distingue pas les deux, comme pour add_task).
+  // L'id du chantier créé sert à la fois à ErreursJarvis.tsx (rattacher une
+  // erreur au chantier qu'elle vient d'ouvrir) et à la suggestion de
+  // section/titre en attente ci-dessous (chantiers 9369ad72, 1be8988d).
+  addDevItem: (input: DevItemInput) => Promise<DevItem | undefined>
   updateDevItem: (id: string, input: Partial<DevItemInput>) => Promise<void>
   deleteDevItem: (id: string) => Promise<void>
   archiveDevItem: (id: string) => Promise<void>
@@ -533,6 +555,22 @@ export function oublierTacheEnAttente() {
   derniereTacheEnAttente = null
 }
 
+/**
+ * Le chantier qui vient d'être créé sans section dite explicitement et/ou
+ * avec un titre qui garde une amorce de dictée, tant qu'une réponse peut
+ * encore le compléter (chantiers 9369ad72 et 1be8988d). Même raison que
+ * `derniereTacheEnAttente` : en mémoire du module, pas en base.
+ */
+let derniereChantierEnAttente: ChantierEnAttente | null = null
+
+/** Exportée pour que MicButton la joigne au contexte de commandeLocale.ts. */
+export function memoireChantierEnAttente(): ChantierEnAttente | null {
+  return derniereChantierEnAttente
+}
+export function oublierChantierEnAttente() {
+  derniereChantierEnAttente = null
+}
+
 /** « vendredi 12 septembre » — lu à voix haute, pas de format ISO. */
 function formatDateCourte(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
@@ -823,23 +861,105 @@ export async function executeVoiceAction(
       const doublon = deciderDoublonVocal(action.title, action.notes, devItems)
       if (doublon.verdict === "refuser") return doublon.phrase
 
-      await addDevItem({
+      const cree = await addDevItem({
         title: action.title,
         notes: action.notes ?? null,
         status: action.status ?? "todo",
         priority: action.priority ?? "normal",
         theme: action.theme ?? null,
       })
-      // Le thème est dit à voix haute : c'est le seul moment où Raphaël peut
-      // corriger un classement qui part de travers. Et sans la deuxième
-      // phrase, il pouvait croire qu'une session allait s'en saisir tout de
-      // suite — c'est le même malentendu que corrige le bandeau permanent
-      // de la fenêtre d'envoi du cockpit.
       derniereCreation = { vers: "chantier", titre: action.title, quand: Date.now() }
-      const ajoute = `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
-      return doublon.verdict === "creer_en_avertissant"
-        ? `${doublon.phrase} ${ajoute}`
-        : ajoute
+
+      // NOTÉ, PAS ENREGISTRÉ — même honnêteté que pour les tâches (chantier
+      // 9476c7a0), trouvée en touchant ce code pour les chantiers 9369ad72 et
+      // 1be8988d : `addDevItem` ne rend rien de distinct entre un échec réel
+      // et une écriture partie dans la file hors ligne, donc les deux se
+      // traitent pareil — jamais « ajouté » à voix haute pour quelque chose
+      // qui n'est pas encore en base, et rien à proposer sur un chantier qui
+      // n'a pas d'id.
+      if (!cree) {
+        derniereChantierEnAttente = null
+        return phraseHorsLigne(action.title)
+      }
+
+      // AUCUNE SUGGESTION QUAND IL A DÉJÀ DIT LE THÈME. Réponse de Raphaël au
+      // chantier 9369ad72, 17 sept. 2026 : « Proposer, je valide » — même
+      // règle que suggestionTheme.ts pour la saisie manuelle du cockpit. Le
+      // serveur classe encore un chantier quand la consigne le lui demande
+      // explicitement ; côté appareil, on ne propose donc que ce qu'il n'a
+      // PAS dit lui-même.
+      const sectionSuggestion = action.theme
+        ? null
+        : suggererSection(`${action.title} ${action.notes ?? ""}`, devItems, sections)
+      // Même règle pour le titre (chantier 1be8988d) : un titre qui garde une
+      // amorce de dictée (« Comme quoi… ») se PROPOSE, il ne se réécrit
+      // jamais tout seul — à la différence de titreLisible() pour les tâches,
+      // appliquée en silence par une décision différente de Raphaël.
+      const titreSuggere = suggererTitreChantier(action.title)
+
+      derniereChantierEnAttente =
+        sectionSuggestion || titreSuggere
+          ? {
+              itemId: cree.id,
+              titre: action.title,
+              sectionSuggeree: sectionSuggestion?.nom ?? null,
+              titreSuggere,
+              quand: Date.now(),
+            }
+          : null
+
+      let reply = `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
+      if (doublon.verdict === "creer_en_avertissant") reply = `${doublon.phrase} ${reply}`
+      reply += clauseSuggestionChantier({
+        sectionSuggeree: sectionSuggestion?.nom ?? null,
+        titreSuggere,
+      })
+      return reply
+    }
+
+    /**
+     * Valide, corrige ou refuse la suggestion de section et/ou de titre
+     * faite juste après la création d'un chantier (chantiers 9369ad72 et
+     * 1be8988d) — reconnue localement contre `derniereChantierEnAttente`.
+     */
+    case "complete_last_chantier": {
+      const attente = derniereChantierEnAttente
+      if (!attente || completionExpireeChantier(attente, Date.now())) {
+        return "Je ne sais plus quel chantier compléter. Redis-moi lequel, et ce qu'il faut changer."
+      }
+
+      const verdict = action.verdict
+      if (verdict.verdict === "refuser") {
+        derniereChantierEnAttente = null
+        return `D'accord, "${attente.titre}" reste comme il est.`
+      }
+      if (verdict.verdict === "illisible") {
+        const noms = sections.map((s) => s.nom).join(", ")
+        return noms
+          ? `Dans quelle section je range "${attente.titre}" ? (${noms})`
+          : `Dans quelle section je range "${attente.titre}" ?`
+      }
+
+      // La correction d'une section ne vaut QUE pour la section : il a
+      // corrigé une chose précise, pas validé tout le reste en silence.
+      const changes: Partial<DevItemInput> = {}
+      const dits: string[] = []
+      if (verdict.verdict === "corriger_section") {
+        changes.theme = verdict.section_nom
+        dits.push(`rangé dans ${verdict.section_nom}`)
+      } else if (attente.sectionSuggeree) {
+        changes.theme = attente.sectionSuggeree
+        dits.push(`rangé dans ${attente.sectionSuggeree}`)
+      }
+      if (verdict.verdict === "accepter" && attente.titreSuggere) {
+        changes.title = attente.titreSuggere
+        dits.push(`renommé "${attente.titreSuggere}"`)
+      }
+
+      derniereChantierEnAttente = null
+      if (Object.keys(changes).length === 0) return `D'accord, "${attente.titre}" reste comme il est.`
+      await updateDevItem(attente.itemId, changes)
+      return `C'est noté, "${attente.titre}" est ${dits.join(" et ")}.`
     }
 
     case "update_dev_item": {

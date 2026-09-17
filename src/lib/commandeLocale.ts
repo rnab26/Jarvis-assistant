@@ -12,11 +12,16 @@ import {
   type SequenceEntrainement,
 } from "./entrainement.ts"
 import { completionExpiree, reponseCategorie, reponseDate, type TacheEnAttente } from "./tacheDateEtCategorie.ts"
+import {
+  completionExpiree as completionExpireeChantier,
+  reponseChantierEnAttente,
+  type ChantierEnAttente,
+} from "./chantierEnAttente.ts"
 import { urlDansLaPhrase } from "./documentLien.ts"
 import { porteUneSecondeDemande } from "./secondeDemande.ts"
 import { resoudreCibleParametres } from "./sectionsParametres.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
-import type { Category } from "@/types/database"
+import type { Category, DevSection } from "@/types/database"
 
 /**
  * Comprendre une commande sans appeler de modèle de langage.
@@ -69,6 +74,14 @@ export interface ContexteLocal {
    * supposée, si la réponse peut encore la compléter (voir
    * tacheDateEtCategorie.ts). Absent ou expirée = aucune réponse à chercher. */
   tacheEnAttente?: TacheEnAttente | null
+  /** Les sections déclarées, pour reconnaître une réponse qui corrige la
+   * section suggérée à la création d'un chantier. */
+  sections?: DevSection[]
+  /** Le chantier qui vient d'être créé sans section dite explicitement et/ou
+   * avec un titre qui garde une amorce de dictée, si la réponse peut encore
+   * le compléter (voir chantierEnAttente.ts). Absent ou expiré = aucune
+   * réponse à chercher. */
+  chantierEnAttente?: ChantierEnAttente | null
   /** Injecté pour que les tests ne dépendent pas du jour où ils tournent. */
   maintenant?: Date
 }
@@ -351,6 +364,33 @@ export function interpreterLocalement(
             : { verdict: r.verdict }
         return [{ action: "complete_last_task", category_verdict }]
       }
+    }
+  }
+
+  /* ---------- Valider la suggestion faite après la création d'un chantier ----------
+     Chantiers 9369ad72 (classement) et 1be8988d (titres), 17 sept. 2026,
+     répondus tous les deux « Proposer, je valide » — même mécanisme que la
+     tâche en attente ci-dessus, transposé aux chantiers (chantierEnAttente.ts). */
+  if (ctx.chantierEnAttente && !completionExpireeChantier(ctx.chantierEnAttente, maintenant.getTime())) {
+    const r = reponseChantierEnAttente(phrase, ctx.sections ?? [])
+    if (r?.verdict === "illisible") {
+      const attente = ctx.chantierEnAttente
+      const noms = (ctx.sections ?? []).map((s) => s.nom).join(", ")
+      return [
+        {
+          action: "clarify",
+          message: noms
+            ? `Dans quelle section je range "${attente.titre}" ? (${noms})`
+            : `Dans quelle section je range "${attente.titre}" ?`,
+        },
+      ]
+    }
+    if (r) {
+      const verdict =
+        r.verdict === "corriger_section"
+          ? { verdict: "corriger_section" as const, section_nom: r.sectionNom }
+          : { verdict: r.verdict }
+      return [{ action: "complete_last_chantier", verdict }]
     }
   }
 

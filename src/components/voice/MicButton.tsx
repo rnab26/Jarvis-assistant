@@ -64,6 +64,7 @@ import type { DevItem } from "@/types/database"
 import {
   type DevSectionsVoiceApi,
   executeVoiceAction,
+  memoireChantierEnAttente,
   memoireDerniereCreation,
   memoireTacheEnAttente,
   type ContactsApi,
@@ -385,6 +386,8 @@ export function MicButton({
       sequences: entrainementApi.sequences,
       categories: tasksApi.categories,
       tacheEnAttente: memoireTacheEnAttente(),
+      sections: devSectionsApi.sections,
+      chantierEnAttente: memoireChantierEnAttente(),
     })
     if (local) {
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: local.length })
