@@ -136,6 +136,10 @@ export interface DevLogEntry {
   etat?: EtatAction | null
   /** Une capture d'écran jointe, dans le bucket « cockpit ». */
   photo_chemin?: string | null
+  /** L'entrée à laquelle celle-ci répond, quand c'en est une réponse
+   * (migration 0048). Distinct d'`item_id`, qui dit seulement sur quel
+   * CHANTIER porte l'entrée : plusieurs fils vivent sur le même chantier. */
+  repond_a?: string | null
 }
 
 export interface DevItemInput {
@@ -211,7 +215,15 @@ export interface DocumentFile {
 export type SouvenirCategorie = "personne" | "dossier" | "engagement" | "preference" | "fait"
 
 /**
- * Le mot-à-mot d'un échange, gardé sept jours puis purgé côté serveur.
+ * Le mot-à-mot d'un échange.
+ *
+ * **Combien de temps il est gardé se RÈGLE** (Paramètres › Mémoire,
+ * `jarvis_memoire_retention`, « sans limite » par défaut) : `purger_echanges()`
+ * lit ce réglage, et ne supprime rien tant qu'il vaut « sans limite ». Ce
+ * commentaire a affirmé « gardé sept jours » jusqu'au 17 sept. 2026, douze
+ * jours après que la migration 0023 a sorti cette durée du code — mesuré ce
+ * jour-là : 369 échanges couvrant 14,1 jours, aucun purgé.
+ *
  * Cherchable par le sens depuis la migration 0018 : `embedding` vit en base
  * mais ne descend jamais jusqu'à l'interface — 384 nombres par ligne qui ne
  * servent qu'au serveur.

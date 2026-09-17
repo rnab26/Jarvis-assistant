@@ -469,6 +469,10 @@ function BancDuCockpit() {
     REELLES?.messages ?? (CALME ? [] : [...MESSAGES, ...DECISIONS, COMPTE_RENDU]),
   )
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
+  // Ce qui existe en base sans être chargé : 304 - 60 au 17 sept.
+  const [resteEnPlus, setResteEnPlus] = useState(244)
+  const [traceAjout, setTraceAjout] = useState("rien")
+  const [traceTraite, setTraceTraite] = useState(0)
 
   const sectionsState = {
     sections: PANNE ? [] : sections,
@@ -582,15 +586,46 @@ function BancDuCockpit() {
 
       {/* Le journal, à sa place réelle dans la page : sans lui, la mesure de
           ce qu'on voit en arrivant serait fausse de deux cents points. */}
+      {/* Le journal avec ce qu'il a signalé le 17 sept. : 304 entrées en base,
+          60 à l'écran, et une seule répondable. `resteEnPlus` simule ce qui
+          n'est pas chargé pour que « Voir les N précédentes » fasse vraiment
+          quelque chose. Les deux traces plus bas disent ce que le composant a
+          réellement appelé : répondre à une note ne doit RIEN marquer traité. */}
+      {/* Un conteneur ici ne coûte AUCUN gap : `DevLogFeed` rend toujours sa
+          carte, donc le div remplace la carte comme élément de la colonne au
+          lieu de s'y ajouter. Le piège des seize points ne vaut que pour une
+          carte qui peut ne rien rendre. Le budget de hauteur le vérifie. */}
+      <div id="journal">
       <DevLogFeed
         entries={messages}
         devItems={devItems}
+        total={messages.length + resteEnPlus}
         loading={false}
         error={null}
         onRefresh={() => {}}
-        onAdd={async () => {}}
-        onMarkAnswered={async () => {}}
+        onChargerPlus={() => {
+          const pris = Math.min(60, resteEnPlus)
+          setResteEnPlus((r) => r - pris)
+          setMessages((m) => [
+            ...m,
+            ...Array.from({ length: pris }, (_, i) => ({
+              id: `ancien-${m.length + i}`,
+              user_id: "u",
+              item_id: null,
+              author: "claude/ancienne-session",
+              kind: "info" as const,
+              body: `Note plus ancienne numero ${m.length + i}`,
+              answered_at: null,
+              created_at: "2026-09-04T08:00:00Z",
+            })),
+          ])
+        }}
+        onAdd={async (_body, kind, _itemId, repondA) => {
+          setTraceAjout(`${kind ?? "info"}|repond_a=${repondA ?? "aucun"}`)
+        }}
+        onMarkAnswered={async () => setTraceTraite((n) => n + 1)}
       />
+      </div>
       {/* SANS div d'enrobage, et c'est important : la carte se retire d'elle-même
           quand il n'y a rien à dire, mais un conteneur vide continuerait de
           consommer un `gap` de la colonne. Seize points de plus poussés sur
@@ -698,6 +733,13 @@ function BancDuCockpit() {
       </div>
       <div id="historique-panne">
         <HistoriqueChantier itemId="3" api={historiqueFactice([], "Le serveur ne répond pas.")} />
+      </div>
+
+      {/* Ce que le journal a RÉELLEMENT appelé. Sans ça, « répondre à une note
+          ne la marque pas traitée » ne se vérifie pas depuis l'écran : rien
+          n'y paraît. */}
+      <div id="journal-trace" className="text-xs">
+        ajout={traceAjout} traites={traceTraite}
       </div>
     </div>
   )

@@ -138,8 +138,7 @@ export function MemoirePage() {
 
       <p className="text-sm text-muted-foreground">
         Jarvis retient au fil de vos échanges, sans rien te demander. Voilà tout ce qu'il a gardé —
-        corrige ce qui est faux, fais-lui oublier ce qui ne sert plus. Le mot-à-mot des
-        conversations, lui, disparaît au bout de sept jours.
+        corrige ce qui est faux, fais-lui oublier ce qui ne sert plus.
       </p>
 
       {loading ? (

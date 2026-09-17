@@ -8,16 +8,34 @@ import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Textarea } from "@/components/ui/textarea"
 import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
 import { questionPourRaphael } from "@/lib/journalDestinataire"
+import {
+  citationDuParent,
+  doitMarquerTraite,
+  parentDe,
+  peutRepondre,
+  phraseDeCoupure,
+  resteACharger,
+} from "@/lib/filJournal"
+import { PAR_PAGE } from "@/hooks/useDevLog"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { DevItem, DevLogEntry, DevLogKind } from "@/types/database"
 
 interface DevLogFeedProps {
   entries: DevLogEntry[]
   devItems: DevItem[]
+  /** Combien d'entrées il y a EN TOUT, pour dire ce qu'on ne montre pas.
+   * `null` quand on ne sait pas : on se tait plutôt que d'annoncer un faux. */
+  total?: number | null
   loading: boolean
   error: string | null
   onRefresh: () => void
-  onAdd: (body: string, kind?: DevLogKind, itemId?: string | null) => Promise<void>
+  onChargerPlus?: () => void
+  onAdd: (
+    body: string,
+    kind?: DevLogKind,
+    itemId?: string | null,
+    repondA?: string | null,
+  ) => Promise<void>
   onMarkAnswered: (id: string) => Promise<void>
 }
 
@@ -28,9 +46,11 @@ interface DevLogFeedProps {
 export function DevLogFeed({
   entries,
   devItems,
+  total = null,
   loading,
   error,
   onRefresh,
+  onChargerPlus,
   onAdd,
   onMarkAnswered,
 }: DevLogFeedProps) {
@@ -39,7 +59,10 @@ export function DevLogFeed({
   const [repondreA, setRepondreA] = useState<DevLogEntry | null>(null)
 
   const titreParItem = new Map(devItems.map((i) => [i.id, i.title]))
+  const parIdentifiant = new Map(entries.map((e) => [e.id, e]))
   const enAttente = entries.filter(questionPourRaphael).length
+  const coupure = phraseDeCoupure(entries.length, total)
+  const suite = resteACharger(entries.length, total, PAR_PAGE)
 
   // Les questions qui lui sont adressées remontent en tête du fil : c'est
   // elles que le badge annonce, pas la peine de défiler pour les trouver.
@@ -58,8 +81,11 @@ export function DevLogFeed({
     setSending(true)
     try {
       if (repondreA) {
-        await onAdd(draft.trim(), "reponse", repondreA.item_id)
-        await onMarkAnswered(repondreA.id)
+        await onAdd(draft.trim(), "reponse", repondreA.item_id, repondreA.id)
+        // Marquer traité ne vaut QUE pour une question en attente : c'est ce
+        // drapeau qui la sort de « pour toi ». Répondre à une note
+        // d'information ne referme rien (`filJournal.ts`).
+        if (doitMarquerTraite(repondreA)) await onMarkAnswered(repondreA.id)
         setRepondreA(null)
       } else {
         await onAdd(draft.trim())
@@ -149,6 +175,7 @@ export function DevLogFeed({
           <div className="flex flex-col gap-3">
             {entriesTriees.map((entry) => {
               const attente = entry.kind === "question" && !entry.answered_at
+              const citation = citationDuParent(parentDe(entry, parIdentifiant))
               return (
                 <div
                   key={entry.id}
@@ -166,13 +193,30 @@ export function DevLogFeed({
                       </span>
                     )}
                   </div>
+                  {/* Ce à quoi cette entrée répond. Sans ça, une réponse à une
+                      note d'information retombe dans le flux sans que rien ne
+                      dise ce qu'elle répond — le défaut d'aujourd'hui, à
+                      l'envers. Muet quand le parent n'est pas chargé : on ne
+                      prétend pas citer ce qu'on n'a pas. */}
+                  {citation && (
+                    <p className="truncate border-l-2 pl-2 text-xs text-muted-foreground/80">
+                      en réponse à {citation}
+                    </p>
+                  )}
                   <p className="text-sm whitespace-pre-line text-muted-foreground">{entry.body}</p>
-                  {attente && (
-                    <div className="flex gap-1">
+                  <div className="flex gap-1">
+                    {/* SUR TOUTE ENTRÉE, et c'est le cœur de ce qu'il a
+                        demandé. Le 17 sept., ce bouton n'apparaissait que sur
+                        une question sans réponse : UNE entrée sur 304. Les 208
+                        notes des sessions — celles par lesquelles elles lui
+                        parlent — n'offraient aucun moyen d'enchaîner. */}
+                    {peutRepondre(entry) && (
                       <Button variant="ghost" size="sm" onClick={() => repondre(entry)}>
                         <Reply className="size-4" />
                         Répondre
                       </Button>
+                    )}
+                    {attente && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -181,11 +225,26 @@ export function DevLogFeed({
                         <Check className="size-4" />
                         Marquer traité
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )
             })}
+
+            {/* Ce que l'écran NE MONTRE PAS. Il y avait 304 entrées et on en
+                affichait 60, sans un mot — ce qui se lit exactement comme « il
+                n'y a plus rien ». Muet quand tout est affiché : un « 12 sur
+                12 » permanent est du bruit. */}
+            {coupure && (
+              <div className="flex flex-col gap-1.5 pt-1">
+                <p className="text-xs text-muted-foreground">{coupure}</p>
+                {suite > 0 && onChargerPlus && (
+                  <Button variant="outline" size="sm" className="self-start" onClick={onChargerPlus}>
+                    Voir les {suite} précédentes
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         )}
       </CardContent>

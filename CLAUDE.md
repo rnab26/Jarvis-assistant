@@ -440,6 +440,70 @@ scripts/verifier-historique-reel.mjs` couvre maintenant aussi la trace posée
 par le DELETE, son cloisonnement RLS, et la restauration qui rend le même
 titre et la même note.
 
+### Reprendre une discussion dans le journal (migration 0048)
+
+Ses mots, dictés le 17 sept. 2026 à 07 h 57 : « Dans le cockpit dev : journal
+de bord, incohérence sur la durée de consultation des conversations et
+impossibilité de reprendre la discussion ». Il l'avait déjà dicté quatre
+minutes plus tôt, en moins précis — les deux chantiers ont été fusionnés.
+
+**MESURÉ le même matin, et c'est ce qui rend sa phrase limpide** : 304 entrées
+au journal sur 14,5 jours, et **UNE SEULE** portait un bouton « Répondre ». Il
+n'apparaissait que sur une question sans réponse (`kind === "question" &&
+!answered_at`). Les 303 autres — 208 notes d'information des sessions, 18
+blocages, 42 réponses, 30 entrées écrites par lui — n'offraient aucun moyen
+d'enchaîner. Et l'écran n'en montrait que 60, **sans un mot** : 244 entrées
+coupées en silence, ce qui se lit exactement comme « il n'y a plus rien ».
+
+- `src/lib/filJournal.ts` — **pur**, vérifié par `verifier-fil-journal.ts`.
+- Migration 0047 : `dev_log.repond_a`, et le rattrapage conservateur de
+  l'existant (18 des 42 réponses, celles dont la question est certaine).
+
+**On répond à TOUT**, et la tentation à écarter est de remettre une condition
+« intelligente » : une note d'information est précisément ce à quoi il veut
+pouvoir répondre, c'est par là que les sessions lui parlent.
+
+**Mais « marquer traité » ne vaut QUE pour une question en attente** : c'est ce
+drapeau qui la sort de la colonne « pour toi ». Poser `answered_at` sur une
+note serait invisible aujourd'hui et faux le jour où quelque chose comptera les
+entrées traitées.
+
+**`repond_a` n'est pas `item_id`.** Le second dit sur quel CHANTIER porte une
+entrée — plusieurs fils vivent sur le même chantier, et une entrée peut n'en
+avoir aucun. Sans lien vers l'entrée précise, une réponse à une note retombait
+dans le flux sans que rien ne dise ce qu'elle répondait : le défaut de départ,
+à l'envers. `on delete set null` et pas `cascade` : effacer une question ne doit
+jamais emporter la réponse de Raphaël.
+
+**Et l'écran dit ce qu'il ne montre pas** (« 60 entrées affichées sur 304 » +
+« Voir les 60 précédentes »), mais **se tait quand tout est affiché** — un
+« 304 sur 304 » permanent est du bruit, et le bruit permanent cache le jour où
+il dit autre chose. Le total vient de `count: "exact"` dans la MÊME requête que
+la page : deux requêtes pourraient annoncer un total qui n'a jamais correspondu
+à ce qui est à l'écran. Total inconnu (le compte a échoué, la liste est
+arrivée) → on se tait.
+
+**Piège du banc, payé ici** : un contrôle qui DÉPLIE le journal doit le
+refermer. Déplié, il affiche le corps des entrées — dont celui d'une décision
+qu'un contrôle plus bas vérifie comme absente de l'écran une fois répondue. Un
+banc doit rendre la page dans l'état où il l'a trouvée.
+
+### La durée des conversations : ce que l'app en disait était faux
+
+Même signalement, l'autre moitié. `MemoirePage` affirmait « Le mot-à-mot des
+conversations, lui, disparaît au bout de sept jours » — **à trois lignes de la
+carte qui dit l'inverse**, « Combien de temps c'est gardé se règle dans
+Paramètres › Mémoire (sans limite par défaut) ». Les deux sous ses yeux, sur le
+même écran.
+
+La phrase était vraie jusqu'à la migration 0023 (5 sept.), qui a sorti la durée
+du code : `purger_echanges()` lit `retention_echanges(user_id)` et ne supprime
+**rien** tant que le réglage vaut « sans limite ». Vérifié le 17 sept. sur sa
+base : `retention_echanges` rend `null`, et 369 échanges couvrent 14,1 jours —
+aucun purgé. La phrase a donc été retirée (une seule affirmation, dans la carte
+qui montre les conversations), et le commentaire de `src/types/database.ts` qui
+disait la même chose corrigé.
+
 ### Un chantier porte sa conversation
 
 Les messages du journal rattachés à un chantier (`dev_log.item_id`) existaient
@@ -3029,6 +3093,7 @@ ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà 
 node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâche dictée hors réseau ne se perd pas et ne se dédouble pas, sans réseau
 node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une session autonome se retire quand il le faut, sans réseau
 node --experimental-strip-types scripts/verifier-historique-chantier.ts  # une note complétée n'est pas une note écrasée, sans réseau
+node --experimental-strip-types scripts/verifier-fil-journal.ts  # reprendre une discussion au journal, et dire ce qu'on ne montre pas, sans réseau
 ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce qu'on y a écrit : trigger, restauration tracée, RLS
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)

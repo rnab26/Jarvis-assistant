@@ -459,6 +459,13 @@ jobs:
       - name: Un chantier garde ce qu'on y a écrit
         run: node --experimental-strip-types scripts/verifier-historique-chantier.ts
 
+      # Le 17 sept. : 304 entrees au journal, UNE SEULE repondable, et 60
+      # affichees sans un mot. Ce qui se verifie ici est surtout le SILENCE —
+      # un compteur qui s'affiche quand tout est visible, ou une citation
+      # inventee a partir d'un parent absent.
+      - name: Reprendre une discussion dans le journal de bord
+        run: node --experimental-strip-types scripts/verifier-fil-journal.ts
+
       # Il dicte en voiture : le reseau coupe n'est pas le cas rare. Ce qui se
       # verifie ici peut etre FAUX EN SILENCE — un renvoi qui cree un doublon,
       # une file qui grossit sans fin, un abandon que personne ne voit — et la
