@@ -161,6 +161,7 @@ const MESSAGES: DevLogEntry[] = [
     author: "claude/voix-et-ecoute",
     kind: "question",
     body: "Tu veux que je coupe le micro après 30 s de silence, ou qu'il attende ?",
+    pourquoi: "Un micro qui reste ouvert consomme la batterie pour rien.",
     answered_at: null,
     created_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
   },

@@ -75,6 +75,13 @@ function message(p: Partial<DevLogEntry> = {}): DevLogEntry {
     body: "Une question",
     answered_at: null,
     created_at: iso(-2 * H),
+    // Une vraie question posée par une session a toujours un `pourquoi`
+    // depuis que `scripts/demander.sh` l'exige (17 sept. 2026) — sans lui,
+    // `questionMalFormee` l'écarterait comme une note technique égarée.
+    // Une entrée qui ne représente PAS une question à Raphaël (un compte
+    // rendu d'action, un message adressé à une autre session…) l'efface
+    // explicitement à l'appel.
+    pourquoi: p.kind === undefined || p.kind === "question" ? "Ça bloque l'avancement du chantier." : undefined,
     ...p,
   }
 }

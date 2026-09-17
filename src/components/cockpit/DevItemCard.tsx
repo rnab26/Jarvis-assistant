@@ -416,7 +416,7 @@ export function DevItemCard({
                 rows={2}
                 placeholder={
                   marqueur === "a_cadrer"
-                    ? "Ta décision ici : la prochaine session la lira à son démarrage"
+                    ? "Écris ta décision ici, puis appuie sur Envoyer"
                     : messages.length > 0
                       ? "Répondre à la session, ici même"
                       : "Écrire à la prochaine session qui prendra ce chantier"
@@ -424,30 +424,32 @@ export function DevItemCard({
                 aria-label={`Répondre sur ${item.title}`}
                 onChange={(e) => setReponse(e.target.value)}
               />
-              {reponse.trim() && (
-                <Button
-                  size="sm"
-                  className="self-end"
-                  disabled={envoiReponse}
-                  onClick={async () => {
-                    setEnvoiReponse(true)
-                    try {
-                      await onRepondre(item.id, reponse.trim())
-                      setReponse("")
-                    } catch {
-                      // Toast déjà affiché : la saisie reste.
-                    } finally {
-                      setEnvoiReponse(false)
-                    }
-                  }}
-                >
-                  <Send className="size-3.5" />
-                  {/* Pas « Envoyer » tout court : la fenêtre du haut porte
-                      déjà ce mot pour créer un chantier, et deux boutons de
-                      même nom sur le même écran font hésiter. */}
-                  {messages.length > 0 ? "Répondre" : "Envoyer à la session"}
-                </Button>
-              )}
+              {/* Toujours visible dès que le champ existe, seulement grisé
+                  tant qu'il n'y a rien à envoyer — un bouton absent ne dit
+                  pas qu'il va apparaître une fois qu'on a écrit (Raphaël,
+                  17 sept. 2026 : « je ne sais pas quoi faire ensuite »). */}
+              <Button
+                size="sm"
+                className="self-end"
+                disabled={envoiReponse || !reponse.trim()}
+                onClick={async () => {
+                  setEnvoiReponse(true)
+                  try {
+                    await onRepondre(item.id, reponse.trim())
+                    setReponse("")
+                  } catch {
+                    // Toast déjà affiché : la saisie reste.
+                  } finally {
+                    setEnvoiReponse(false)
+                  }
+                }}
+              >
+                <Send className="size-3.5" />
+                {/* Pas « Envoyer » tout court : la fenêtre du haut porte
+                    déjà ce mot pour créer un chantier, et deux boutons de
+                    même nom sur le même écran font hésiter. */}
+                {messages.length > 0 ? "Répondre" : "Envoyer à la session"}
+              </Button>
             </div>
           )}
         </div>
