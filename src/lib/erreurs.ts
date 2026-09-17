@@ -141,6 +141,20 @@ export function erreurDepuisEcoute(
     }
   }
 
+  if (evenement === "live_reponse_anormale") {
+    // Bug confirmé côté Google (src/lib/live/reponseIllisible.ts) : le modèle
+    // vocal natif envoie parfois des jetons de contrôle bruts (`<ctrl46>`…)
+    // au lieu de répondre. Une seule ligne, quel que soit l'échantillon
+    // exact, pour que la fréquence se lise d'un coup d'œil plutôt que d'être
+    // noyée dans autant de lignes que de jetons différents.
+    return {
+      categorie: "serveur",
+      titre: "Le mode Live a renvoyé une réponse illisible (jetons de contrôle bruts)",
+      detail: texte("echantillon"),
+      source: "live",
+    }
+  }
+
   if (evenement === "reponse" && texte("erreur")) {
     // UNE COUPURE RÉSEAU N'EST PAS UN REFUS DU SERVEUR, et le 15 sept. 2026
     // la ligne posée dans le registre disait le contraire : « Le serveur

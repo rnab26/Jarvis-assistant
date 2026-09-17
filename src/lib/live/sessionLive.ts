@@ -8,6 +8,7 @@ import { retourOuAveu } from "@/lib/retourVide"
 import { lireClotureLive } from "@/lib/livePrefs"
 import { definirLiveActifNatif } from "@/lib/live/etatLiveNatif"
 import { deciderReprise } from "@/lib/live/repriseLive"
+import { contientJetonDeControle, sansJetonsDeControle } from "@/lib/live/reponseIllisible"
 
 /**
  * Une conversation Live avec Gemini : l'audio part en continu, Google décide
@@ -101,6 +102,19 @@ const JETON_MAX_MS = 15000
 const MICRO_MAX_MS = 15000
 
 /**
+ * Bug confirmé côté Google (voir `reponseIllisible.ts`) : le modèle peut se
+ * mettre à répéter des jetons de contrôle au lieu de répondre, et ne jamais
+ * s'en sortir tout seul — le cas mesuré le 17 sept. 2026 n'a laissé NI
+ * `live_commande` NI `live_fin` dans le journal : la conversation restait
+ * « en cours » indéfiniment, sans qu'aucun autre mécanisme du projet ne
+ * puisse s'en apercevoir (`onclose`/`onerror`/`goAway` ne se déclenchent pas,
+ * Google ne ferme rien). Passé ce délai sans que le tour se termine, on
+ * ferme nous-mêmes : ça retombe dans `deciderReprise`, comme n'importe
+ * quelle autre panne du service.
+ */
+const DELAI_REPONSE_ANORMALE_MS = 8000
+
+/**
  * Ouvre une session. Rend de quoi l'arrêter ; les événements arrivent au fil
  * de l'eau. Toute panne se traduit par onEtat("fermee", raison).
  */
@@ -171,6 +185,17 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   let parRaphael = false
   let reponseEnCours = ""
   let entenduEnCours = ""
+  /** Non nul dès qu'un jeton de contrôle est vu dans le tour en cours (voir
+   * `reponseIllisible.ts`) : si `turnComplete` n'arrive pas avant
+   * `DELAI_REPONSE_ANORMALE_MS`, on ferme nous-mêmes plutôt que d'attendre un
+   * signal qui, une fois, n'est jamais venu. */
+  let minuteurAnormale: ReturnType<typeof setTimeout> | null = null
+  const annulerMinuteurAnormale = () => {
+    if (minuteurAnormale) {
+      clearTimeout(minuteurAnormale)
+      minuteurAnormale = null
+    }
+  }
   /** Vrai à partir du moment où Jarvis est réellement en écoute (micro pris,
    * `live_debut` écrit). Une fermeture d'AVANT cet instant est un échec
    * d'ouverture, et elle ne se rejoue jamais — voir `repriseLive.ts`. */
@@ -269,6 +294,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   const fermer = (raison?: string) => {
     if (fermee) return
     fermee = true
+    annulerMinuteurAnormale()
     // `capture` est encore nul si on ferme AVANT que le micro (lancé en
     // parallèle, plus haut) ait répondu : sans `rendreLeMicro`, il resterait
     // ouvert tout seul derrière nous.
@@ -320,6 +346,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       // Raphaël a coupé Jarvis : on se tait tout de suite.
       lecteur.vider()
       reponseEnCours = ""
+      annulerMinuteurAnormale()
       ev.onEtat("ecoute")
     }
     if (contenu?.inputTranscription?.text) {
@@ -329,8 +356,21 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       if (contenu.inputTranscription.finished) entenduEnCours = ""
     }
     if (contenu?.outputTranscription?.text) {
-      reponseEnCours += contenu.outputTranscription.text
-      ev.onReponse(reponseEnCours, false)
+      const brut = contenu.outputTranscription.text
+      // BUG CONNU DE GOOGLE (voir reponseIllisible.ts) : ne jamais afficher ce
+      // charabia, et ne jamais laisser le tour mourir en silence dessus.
+      if (contientJetonDeControle(brut)) {
+        noterEcoute("live_reponse_anormale", { echantillon: brut.slice(0, 80) })
+        if (!minuteurAnormale) {
+          minuteurAnormale = setTimeout(() => {
+            minuteurAnormale = null
+            fermer("Le service vocal a renvoyé une réponse illisible.")
+          }, DELAI_REPONSE_ANORMALE_MS)
+        }
+      }
+      reponseEnCours += brut
+      const propre = sansJetonsDeControle(reponseEnCours)
+      if (propre) ev.onReponse(propre, false)
     }
     for (const part of contenu?.modelTurn?.parts ?? []) {
       if (part.inlineData?.data) {
@@ -339,7 +379,11 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       }
     }
     if (contenu?.turnComplete) {
-      if (reponseEnCours) ev.onReponse(reponseEnCours, true)
+      // Le tour s'est terminé normalement : un charabia éventuel, s'il y en
+      // a eu, ne bloque plus rien.
+      annulerMinuteurAnormale()
+      const propre = sansJetonsDeControle(reponseEnCours)
+      if (propre) ev.onReponse(propre, true)
       reponseEnCours = ""
       // Ce tour est clos : ce qui a été entendu ne s'additionne pas au
       // suivant. Et si la transcription n'a jamais été marquée finie, c'est
