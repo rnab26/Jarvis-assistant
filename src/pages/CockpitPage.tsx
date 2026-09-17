@@ -75,6 +75,8 @@ export function CockpitPage() {
     archiveManyDevItems,
     deleteManyDevItems,
     restoreDevItems,
+    fusionnerDevItems,
+    annulerFusionDevItems,
     libererReservation,
     fileEnAttente,
     fileIllisible,
@@ -270,6 +272,8 @@ export function CockpitPage() {
             onArchiveMany={archiveManyDevItems}
             onDeleteMany={deleteManyDevItems}
             onRestore={restoreDevItems}
+            onFusionner={fusionnerDevItems}
+            onAnnulerFusion={annulerFusionDevItems}
             messages={devLog.entries}
             onRepondre={(itemId, body) => devLog.addEntry(body, "reponse", itemId)}
             onMarquerTraite={devLog.markAnswered}

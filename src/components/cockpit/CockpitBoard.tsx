@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   FolderCog,
+  Merge,
   Search,
   Trash2,
   X,
@@ -14,6 +15,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { DevItemCard } from "@/components/cockpit/DevItemCard"
 import { SectionsDialog } from "@/components/cockpit/SectionsDialog"
 import type { useDevSections } from "@/hooks/useDevSections"
@@ -27,7 +36,7 @@ import {
   type FiltreStatut,
   type GroupeSection,
 } from "@/lib/sections"
-import { etatDe, type EtatChantier } from "@/hooks/useDevItems"
+import { etatDe, type EtatChantier, type FusionAnnulable } from "@/hooks/useDevItems"
 import { proposerAnnulation } from "@/lib/annulation"
 import { alreadyNotified } from "@/lib/notifyError"
 import { LIBELLE_MARQUEUR, compterMarqueurs } from "@/lib/marqueurChantier"
@@ -66,6 +75,11 @@ interface CockpitBoardProps {
   onDeleteMany: (ids: string[]) => Promise<void>
   /** Le retour en arrière proposé après chaque action groupée. */
   onRestore: (etats: EtatChantier[]) => Promise<void>
+  /** Fusionner deux chantiers cochés (fonction SQL fusionner_dev_items,
+   * migration 0049) : la source est supprimée, ses notes et sa conversation
+   * rejoignent la cible. */
+  onFusionner: (source: string, cible: string) => Promise<FusionAnnulable>
+  onAnnulerFusion: (etat: FusionAnnulable) => Promise<void>
   /** Le filtre, tenu par la page : « Où j'en suis » doit pouvoir l'imposer
    * quand Raphaël appuie sur une section. Deux états séparés diraient deux
    * choses différentes du même filtre. */
@@ -106,6 +120,8 @@ export function CockpitBoard({
   onArchiveMany,
   onDeleteMany,
   onRestore,
+  onFusionner,
+  onAnnulerFusion,
   messages = [],
   onRepondre,
   onMarquerTraite,
@@ -580,6 +596,19 @@ export function CockpitBoard({
               </Button>
             )}
 
+            {/* Fusionner n'a de sens qu'à deux : ni un chantier seul, ni
+                trois à la fois — le bouton n'existe donc que pile à ce
+                moment-là, pas désactivé le reste du temps. */}
+            {choisis.length === 2 && (
+              <BoutonFusionner
+                key={[choisis[0].id, choisis[1].id].sort().join("-")}
+                chantiers={[choisis[0], choisis[1]]}
+                onFusionner={onFusionner}
+                onAnnulerFusion={onAnnulerFusion}
+                onApresFusion={() => setSelection(new Set())}
+              />
+            )}
+
             <ConfirmerAction
               titre={`Supprimer ${choisis.length} chantier${choisis.length > 1 ? "s" : ""} ?`}
               description={
@@ -711,5 +740,81 @@ function SectionPliante({
         </CardContent>
       )}
     </Card>
+  )
+}
+
+/**
+ * Le bouton « Fusionner » de la barre d'actions groupées. Le parent ne le
+ * rend que pile quand deux chantiers sont cochés (fusionner n'a de sens qu'à
+ * deux) et lui passe une `key` dérivée de la paire : remonter le composant à
+ * chaque nouvelle paire suffit à repartir d'un choix vide, sans avoir à le
+ * remettre à zéro à la main — le même piège que `cibleFusion`/
+ * `cibleSuppression` dans SectionsDialog, réglé autrement ici.
+ *
+ * Lequel des deux survit se choisit dans la MÊME fenêtre que la
+ * confirmation, comme « où vont les chantiers de cette section ? » pour
+ * supprimer_section : le choix n'est jamais présumé (pas de « le plus
+ * ancien par défaut »), il faut le faire.
+ */
+function BoutonFusionner({
+  chantiers,
+  onFusionner,
+  onAnnulerFusion,
+  onApresFusion,
+}: {
+  chantiers: [DevItem, DevItem]
+  onFusionner: (source: string, cible: string) => Promise<FusionAnnulable>
+  onAnnulerFusion: (etat: FusionAnnulable) => Promise<void>
+  onApresFusion: () => void
+}) {
+  const [cible, setCible] = useState<string>("")
+
+  return (
+    <ConfirmerAction
+      destructif={false}
+      libelleConfirmation="Fusionner"
+      titre="Fusionner ces deux chantiers ?"
+      description={
+        <>
+          Celui que tu ne gardes pas est supprimé : ses notes rejoignent l'autre à la
+          suite des siennes, sa conversation le suit, et sa priorité est reprise si elle
+          est plus haute. Comme toute action groupée, récupérable dans les huit secondes
+          qui suivent.
+        </>
+      }
+      contenu={
+        <div className="flex flex-col gap-2">
+          <Label>Lequel garder ?</Label>
+          <Select value={cible} onValueChange={setCible}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Choisir…" />
+            </SelectTrigger>
+            <SelectContent>
+              {chantiers.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      }
+      onConfirmer={async () => {
+        const gardee = chantiers.find((c) => c.id === cible)
+        const source = chantiers.find((c) => c.id !== cible)
+        if (!gardee || !source) throw new Error("Choisis lequel des deux chantiers garder.")
+        const etat = await onFusionner(source.id, gardee.id)
+        onApresFusion()
+        proposerAnnulation(`« ${source.title} » fusionné dans « ${gardee.title} »`, [etat], (etats) =>
+          onAnnulerFusion(etats[0]),
+        )
+      }}
+      trigger={
+        <Button variant="ghost" size="sm">
+          <Merge className="size-3.5" />
+          Fusionner
+        </Button>
+      }
+    />
   )
 }

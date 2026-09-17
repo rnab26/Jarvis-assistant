@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
@@ -19,6 +19,7 @@ import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
 import { FILTRE_VIDE, type FiltreCockpit } from "@/lib/sections"
+import type { FusionAnnulable } from "@/hooks/useDevItems"
 import type {
   DevItem,
   DevLogEntry,
@@ -475,6 +476,45 @@ function BancDuCockpit() {
   const [traceAjout, setTraceAjout] = useState("rien")
   const [traceTraite, setTraceTraite] = useState(0)
 
+  // Le banc n'a pas de dev_items_supprimes : cette réserve locale rejoue le
+  // même rôle pour que « Annuler » une fusion puisse recréer le chantier
+  // absorbé à l'identique, comme restaurer_chantier_supprime côté serveur.
+  const supprimesParFusion = useRef(new Map<string, DevItem>())
+
+  async function onFusionner(source: string, cible: string): Promise<FusionAnnulable> {
+    const src = devItems.find((i) => i.id === source)
+    const dst = devItems.find((i) => i.id === cible)
+    if (!src || !dst) throw new Error("Chantier introuvable")
+    supprimesParFusion.current.set(source, src)
+
+    const rang = { low: 0, normal: 1, high: 2 } as const
+    const priorite = rang[src.priority] > rang[dst.priority] ? src.priority : dst.priority
+    const cibleNotesAvant = dst.notes
+    const ciblePrioriteAvant = dst.priority
+    const notes = `${dst.notes ?? ""}${(dst.notes ?? "").trim() ? "\n\n---\n" : ""}Fusionné avec « ${src.title} » :\n${(src.notes ?? "").trim() || "(sans notes)"}`
+    const messagesSource = messages.filter((m) => m.item_id === source).map((m) => m.id)
+
+    setDevItems((items) =>
+      items.filter((i) => i.id !== source).map((i) => (i.id === cible ? { ...i, notes, priority: priorite } : i)),
+    )
+    setMessages((m) => m.map((x) => (messagesSource.includes(x.id) ? { ...x, item_id: cible } : x)))
+
+    return { source, cible, cibleNotesAvant, ciblePrioriteAvant, messages: messagesSource }
+  }
+
+  async function onAnnulerFusion(etat: FusionAnnulable) {
+    const src = supprimesParFusion.current.get(etat.source)
+    if (!src) return
+    supprimesParFusion.current.delete(etat.source)
+    setDevItems((items) => [
+      ...items.map((i) =>
+        i.id === etat.cible ? { ...i, notes: etat.cibleNotesAvant, priority: etat.ciblePrioriteAvant } : i,
+      ),
+      src,
+    ])
+    setMessages((m) => m.map((x) => (etat.messages.includes(x.id) ? { ...x, item_id: etat.source } : x)))
+  }
+
   const sectionsState = {
     sections: PANNE ? [] : sections,
     loading: false,
@@ -710,6 +750,8 @@ function BancDuCockpit() {
             }),
           )
         }}
+        onFusionner={onFusionner}
+        onAnnulerFusion={onAnnulerFusion}
       />
 
       {/* Le cas qui trompe : la base n'a pas pu être écrite. Le « Vu » ne vaut
