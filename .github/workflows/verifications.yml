@@ -362,6 +362,12 @@ jobs:
       - name: « Vas-y » après un message préparé devient un clic
         run: node --experimental-strip-types scripts/verifier-confirmation-envoi.ts
 
+      # Corriger (« remplace X par Y ») ou faire relire (« relis-le moi ») un
+      # message WhatsApp/SMS préparé, sans jamais avaler une demande d'un
+      # AUTRE domaine (tâche, chantier, rappel…) — chantier ed32cbcc.
+      - name: Corriger ou relire un message préparé, à la voix
+        run: node --experimental-strip-types scripts/verifier-correction-message.ts
+
       # La relecture vocale avant l'envoi WhatsApp (chantier ed32cbcc) :
       # décochée par défaut, et surtout un « non » suivi d'une vraie
       # correction ne doit pas être avalé par la négation.

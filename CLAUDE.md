@@ -3392,6 +3392,7 @@ node --experimental-strip-types scripts/verifier-seconde-demande.ts  # une phras
 node --experimental-strip-types scripts/verifier-reprise-dictee.ts  # redire une dictée coupée complète la même tâche au lieu d'en créer une seconde, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
+node --experimental-strip-types scripts/verifier-correction-message.ts  # corriger ou relire un message WhatsApp/SMS préparé, à la voix — et le silence sur un autre domaine (tâche, chantier…), sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
 node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau

@@ -40,9 +40,16 @@ import {
   cibleAnnoncee,
   dernierAppelTelephone,
   executerActionTelephone,
+  messagePrepareEnAttente,
   questionAppPreferee,
   type CategorieAppTelephone,
 } from "@/lib/actionsTelephoneVocales"
+import {
+  estCorrectionMessage,
+  estDemandeRelectureMessage,
+  phraseCorrectionMessage,
+  phraseRelectureMessage,
+} from "@/lib/correctionMessage"
 import {
   envoiAutoActif,
   estReponseNon,
@@ -358,6 +365,57 @@ export function MicButton({
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: confirmation.length })
       derniereLocaleRef.current = transcript
       return confirmation
+    }
+
+    // La RELECTURE d'un message WhatsApp/SMS préparé (« relis-le moi »,
+    // « qu'est-ce que t'as écrit ? ») : Jarvis dit le texte tel qu'il est,
+    // sans y toucher ni l'envoyer — chantier ed32cbcc. Même raison que les
+    // deux confirmations ci-dessus : reconnu ICI avec dernierTourRef, que le
+    // serveur ne voit jamais.
+    if (estDemandeRelectureMessage(dernierTourRef.current, transcript, Date.now())) {
+      const prepare = messagePrepareEnAttente()
+      if (prepare) {
+        const relecture: VoiceAction[] = [
+          { action: "chat", message: phraseRelectureMessage(prepare.cible, prepare.texte) },
+        ]
+        noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: relecture.length })
+        derniereLocaleRef.current = transcript
+        return relecture
+      }
+    }
+
+    // La CORRECTION d'un message WhatsApp/SMS préparé (« remplace X par Y »,
+    // « enlève la dernière phrase ») : on récrit le MÊME brouillon plutôt que
+    // d'en ouvrir un second ou de laisser l'ancien partir tel quel — chantier
+    // ed32cbcc. Seul le serveur sait récrire un texte : on lui repasse la
+    // phrase avec le contexte qu'il n'a jamais eu (même principe que la
+    // correction de la relecture AVANT ouverture, confirmationEnvoiVocale.ts).
+    if (estCorrectionMessage(dernierTourRef.current, transcript, Date.now())) {
+      const prepare = messagePrepareEnAttente()
+      if (prepare) {
+        const recrites = await resolveTranscript(
+          phraseCorrectionMessage(prepare.cible, prepare.texte, transcript, prepare.canal),
+        )
+        // Le DESTINATAIRE ne doit JAMAIS changer sur une correction — seul le
+        // texte change. On le réimpose depuis le brouillon d'origine plutôt
+        // que de laisser le modèle le redéduire d'un prompt qui ne porte que
+        // son NOM : « composer le numéro de quelqu'un d'autre est l'erreur
+        // qu'on ne rattrape pas » (chercherContact.ts).
+        const [premiere, ...reste] = recrites
+        if (premiere && premiere.action === "send_message") {
+          return [
+            {
+              ...premiere,
+              contact_id: prepare.contact_id,
+              contact_name: prepare.contact_name,
+              phone_number: prepare.phone_number,
+              message_channel: prepare.forceWhatsAppBusiness ? "whatsapp_business" : prepare.canal,
+            },
+            ...reste,
+          ]
+        }
+        return recrites
+      }
     }
 
     // D'ABORD SUR L'APPAREIL, ET SANS RIEN DEMANDER À PERSONNE.
