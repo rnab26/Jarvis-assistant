@@ -1200,6 +1200,19 @@ export function MicButton({
         if (modeLiveRef.current && (suite === "conversation" || suite === "oui")) {
           // Mode Live : le mot-clé ouvre la conversation, et ce qui a été
           // dit après lui part comme premier message.
+          //
+          // « Jarvis » seul (chantier a392a832, 17 sept.) : sa demande, mot
+          // pour mot — « on regarde pas toujours l'application […] et à
+          // partir du moment où c'est dispo, il dit oui, qu'est-ce qu'il y a
+          // […] comme une conversation humaine ». En mode classique, ce cas
+          // dit déjà « Oui ? » (voir plus bas) ; en Live, demarrerLive()
+          // ouvrait la session en silence — rien ne disait qu'elle était
+          // prête, donc rien ne l'invitait à parler s'il ne regardait pas
+          // l'écran. Même timing que le mode classique : dit PENDANT que la
+          // connexion s'ouvre, pas avant (ouvrir un jeton Live prend
+          // 1 à 4 s, cf. _shared notes sur ms_jeton — le silence aurait duré
+          // bien plus longtemps que pour le micro classique).
+          if (suite === "oui") void speak("Oui ?", voiceIndex ?? undefined)
           await derniersRef.current.demarrerLive(suite === "conversation" ? demande : undefined)
         } else if (suite === "conversation") {
           // « Jarvis, ajoute une tâche » : la demande est déjà là.

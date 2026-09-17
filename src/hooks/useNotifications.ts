@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { executerActionTelephone } from "@/lib/actionsTelephoneVocales"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
+import { attendreSilence } from "@/lib/parler"
 import { phraseAnnonce, raisonDuSilence } from "@/lib/notifications/annonceVocale"
 import { derniereParole, noterEcoute } from "@/lib/journalEcoute"
 import { readVoicePrefs } from "@/lib/voicePrefs"
@@ -200,7 +201,18 @@ export function useNotifications(
       })
       // Sans attendre, et sans faire échouer quoi que ce soit : une voix qui
       // ne part pas ne doit pas empêcher la notification de s'afficher.
-      if (phrase) void speak(phrase).catch(() => {})
+      //
+      // ATTEND LA VOIX LIBRE avant de parler (chantier 7886197f, 17 sept.
+      // 2026 — « la superposition des voix de jarvis et claude »). Sur natif,
+      // TextToSpeech.speak() est en QUEUE_FLUSH par défaut : sans cette
+      // attente, une annonce arrivée pendant que Jarvis répond à une question
+      // lui coupait la parole en plein mot au lieu d'attendre son tour.
+      if (phrase) {
+        void (async () => {
+          await attendreSilence()
+          await speak(phrase)
+        })().catch(() => {})
+      }
     }
   })
 
