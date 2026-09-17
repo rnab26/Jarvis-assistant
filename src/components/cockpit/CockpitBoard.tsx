@@ -9,7 +9,7 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -39,6 +39,7 @@ import {
 import { etatDe, type EtatChantier, type FusionAnnulable } from "@/hooks/useDevItems"
 import { proposerAnnulation } from "@/lib/annulation"
 import { alreadyNotified } from "@/lib/notifyError"
+import { adresseeAUneSession } from "@/lib/journalDestinataire"
 import { LIBELLE_MARQUEUR, compterMarqueurs } from "@/lib/marqueurChantier"
 import { cleTheme } from "@/lib/themeChantier"
 import type { DevItem, DevItemInput, DevLogEntry, DevStatus } from "@/types/database"
@@ -158,6 +159,17 @@ export function CockpitBoard({
     [archives, sections, filtre],
   )
 
+  // Naviguer vers un chantier depuis « Depuis ton dernier passage » pose une
+  // recherche (le titre du chantier) sans savoir s'il est déjà archivé — un
+  // chantier livré entre-temps resterait invisible derrière « Archivées »
+  // repliée, malgré une recherche qui le trouve. On ouvre donc tout seul
+  // quand la recherche ne trouve QUE dans les archives.
+  useEffect(() => {
+    if (filtreActif(filtre) && groupesAffiches.length === 0 && groupesArchives.length > 0) {
+      setArchivesOuvertes(true)
+    }
+  }, [filtre, groupesAffiches, groupesArchives])
+
   // Ce qui a avancé, pas seulement ce qui reste : sept jours glissants, la
   // fenêtre dans laquelle Raphaël se demande « qu'est-ce qui a bougé ? ».
   const livresRecemment = useMemo(() => {
@@ -168,10 +180,18 @@ export function CockpitBoard({
   // Les messages rangés par chantier une fois pour toutes : les répartir dans
   // chaque carte reviendrait à parcourir tout le journal autant de fois qu'il
   // y a de chantiers.
+  //
+  // Un message qu'une session adresse à une AUTRE session (« Pour la
+  // session… ») n'a rien à faire dans le fil que Raphaël lit sur un chantier
+  // — plainte du 17 sept. 2026 : un échange de coordination technique entre
+  // deux sessions s'affichait tel quel, avec en dessous un champ qui
+  // l'invitait à répondre à un sujet qui n'était pas le sien. Ces messages
+  // restent en base et lisibles par les sessions via `scripts/sql.sh` ; ils
+  // sont seulement retirés du fil affiché ici.
   const messagesParChantier = useMemo(() => {
     const parItem = new Map<string, DevLogEntry[]>()
     for (const m of messages) {
-      if (!m.item_id) continue
+      if (!m.item_id || adresseeAUneSession(m)) continue
       parItem.set(m.item_id, [...(parItem.get(m.item_id) ?? []), m])
     }
     // Le plus ancien en haut : on lit une conversation dans l'ordre où elle

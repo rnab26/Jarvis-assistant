@@ -148,6 +148,46 @@ try {
     "un mur de notes techniques recouvre ce qui a réellement bougé",
   )
 
+  // ── Ces lignes avaient l'air cliquables et ne faisaient rien (Raphaël,
+  // 17 sept. 2026) — elles mènent maintenant au chantier concerné ──
+  const ligneMessage = page.getByRole("button", { name: /💬.*coupe le micro/ }).first()
+  verifier(
+    "le message « pour lui » est un vrai bouton, pas du texte plat",
+    await ligneMessage.isVisible(),
+    "un texte souligné qui ne fait rien se voit comme un lien mort",
+  )
+  await ligneMessage.click()
+  await pause(300)
+  verifier(
+    "et cliquer dessus mène au chantier concerné (via item_id), pas au journal général",
+    (await page.getByLabel("Chercher un chantier").inputValue()) === "Réveil vocal en arrière-plan",
+    "il fallait tout re-chercher depuis le journal général",
+  )
+  verifier(
+    "le tableau ne garde que ce chantier",
+    (await dansLeTableau("Réveil vocal en arrière-plan")) &&
+      !(await dansLeTableau("Le micro se coupe en pleine phrase")),
+  )
+  // On efface la recherche pour ne pas fausser le reste du parcours, qui
+  // suppose un tableau non filtré.
+  await page.getByRole("button", { name: "Effacer la recherche" }).click()
+  await pause(200)
+
+  const ligneNotesEntreSessions = page.getByRole("button", { name: /entre sessions/ }).first()
+  verifier(
+    "« N notes entre sessions » est aussi un vrai bouton",
+    await ligneNotesEntreSessions.isVisible(),
+  )
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await ligneNotesEntreSessions.click()
+  await pause(400)
+  const boiteJournal = await page.locator("#journal").boundingBox()
+  verifier(
+    "et mène au journal général, faute d'un chantier unique à proposer",
+    boiteJournal !== null && boiteJournal.y < 200,
+    `journal à ${boiteJournal?.y} px du haut — il n'a pas défilé jusque-là`,
+  )
+
   // Le repère est PARTAGÉ entre son téléphone et le site depuis le 6 sept.
   // (chantier ae0f3a7b) : quand il n'a pas pu être enregistré, le bandeau doit
   // le dire, sinon il appuie sur « Vu » ici et le retrouve ailleurs sans
@@ -607,6 +647,15 @@ try {
     "une question de session restée sans réponse se voit sur la ligne, sans déplier",
     await tableau.getByRole("button", { name: /Réveil vocal en arrière-plan/ }).first().isVisible(),
   )
+  // Ce chantier porte trois questions en base (m1, m3, d1) mais m3 est
+  // adressée à une AUTRE session (« Pour la session… ») — le badge ne doit
+  // compter que les deux qui sont vraiment pour lui (m1, d1).
+  verifier(
+    "et un message adressé à une autre session ne gonfle pas ce compteur",
+    (await tableau.getByRole("button", { name: /Réveil vocal en arrière-plan.*2/ }).count()) === 1 &&
+      (await tableau.getByRole("button", { name: /Réveil vocal en arrière-plan.*3/ }).count()) === 0,
+    "le badge compterait aussi une question qui n'est pas pour lui",
+  )
 
   // ── Le chantier porte sa conversation ──
   await tableau.getByText("Réveil vocal en arrière-plan").first().click()
@@ -617,6 +666,14 @@ try {
     "il fallait chercher la question dans le flux général du journal",
   )
   verifier("avec la session qui l'a posée", await visible("voix-et-ecoute"))
+  // Plainte de Raphaël, 17 sept. 2026 : un échange de coordination entre deux
+  // sessions s'affichait tel quel dans ce fil, avec en dessous un champ qui
+  // l'invitait à y répondre — un sujet qui n'était pas le sien.
+  verifier(
+    "un message « Pour la session… » n'apparaît pas dans le fil qu'il lit",
+    !(await visible("tu es toujours sur ce fichier")),
+    "une coordination entre deux sessions ne le concerne pas",
+  )
 
   await page.getByLabel("Répondre sur Réveil vocal en arrière-plan").fill("Qu'il attende, oui.")
   await pause(200)
@@ -1306,6 +1363,70 @@ try {
   )
 
   await gros.close()
+
+  // ─────────── Le mode « une question à la fois » ───────────
+  // Plainte de Raphaël, 17 sept. 2026 : « faut que ce soit plus clair, plus
+  // simple, plus synthétisé, questions, réponses et on next. » Sa propre
+  // page, isolée du reste : `CeQuiAttendTaDecision` en mode `uneALaFois` est
+  // déjà ouverte et dépliée au montage, et mélangée au cockpit complet elle
+  // fausserait des comptes globaux vérifiés plus haut sur toute la page.
+  const uneALaFoisPage = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  await uneALaFoisPage.goto(`${BASE}/scripts/harness/cockpit.html?une-a-la-fois=1`)
+  await uneALaFoisPage.waitForSelector("text=Ce qui attend ta décision")
+  verifier(
+    "une seule question à la fois, numérotée",
+    await uneALaFoisPage.getByText("Question 1 sur 2").isVisible(),
+  )
+  verifier(
+    "elle est dépliée d'emblée, sans avoir à cliquer",
+    await uneALaFoisPage.getByText("Première question à trancher").isVisible(),
+    "il faudrait déplier pour voir la seule question qu'on lui montre",
+  )
+  verifier(
+    "et la seconde ne s'affiche pas en même temps",
+    !(await uneALaFoisPage.getByText("Deuxième question à trancher").isVisible()),
+  )
+  await uneALaFoisPage.getByRole("button", { name: "Suivante" }).click()
+  await pause(150)
+  verifier(
+    "« Suivante » passe à la question d'après sans y répondre",
+    await uneALaFoisPage.getByText("Deuxième question à trancher").isVisible(),
+  )
+  await uneALaFoisPage.getByRole("button", { name: "Suivante" }).click()
+  await pause(150)
+  verifier(
+    "et revient à la première une fois la dernière dépassée",
+    await uneALaFoisPage.getByText("Première question à trancher").isVisible(),
+  )
+
+  // Répondre à la première : elle sort de la file, et la suivante s'affiche
+  // TOUTE SEULE — sans bouton en plus à appuyer une fois qu'on a répondu.
+  await uneALaFoisPage.getByRole("button", { name: "Lundi", exact: true }).click()
+  await pause(150)
+  await uneALaFoisPage.getByRole("button", { name: "Répondre à :" }).click()
+  await pause(300)
+  verifier(
+    "répondre avance tout seul vers la suivante",
+    (await uneALaFoisPage.getByText("Question 1 sur 1").isVisible()) &&
+      (await uneALaFoisPage.getByText("Deuxième question à trancher").isVisible()),
+    "il faudrait aussi appuyer sur Suivante après avoir répondu",
+  )
+  verifier(
+    "et il n'y a plus de bouton Suivante avec une seule question restante",
+    (await uneALaFoisPage.getByRole("button", { name: "Suivante" }).count()) === 0,
+  )
+
+  // Répondre à la dernière : plus rien n'attend, et l'écran le DIT — un
+  // retour vide serait indiscernable d'une panne d'affichage.
+  await uneALaFoisPage.getByLabel(/Ton commentaire sur/).fill("On garde le nom.")
+  await uneALaFoisPage.getByRole("button", { name: "Répondre à :" }).click()
+  await pause(300)
+  verifier(
+    "et une fois tout traité, l'écran le dit plutôt que de rester vide",
+    await uneALaFoisPage.getByText("Rien n'attend ta décision pour l'instant.").isVisible(),
+  )
+
+  await uneALaFoisPage.close()
 
 } finally {
   if (navigateur) await navigateur.close()

@@ -26,7 +26,7 @@ export const AUTEUR_RAPHAEL = "Raphaël"
  * avec un badge qui compte ce qui ne sonne pas.
  */
 
-function adresseeAUneSession(entry: DevLogEntry): boolean {
+export function adresseeAUneSession(entry: DevLogEntry): boolean {
   return /^pour la session\b/i.test(entry.body.trim())
 }
 

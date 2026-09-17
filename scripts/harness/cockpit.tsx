@@ -153,7 +153,12 @@ const CHANTIERS = [
 ]
 
 /** Deux messages du journal rattachés au premier chantier : une question
- * restée sans réponse, et une info. */
+ * restée sans réponse, et une info. Plus un message qu'une session adresse à
+ * une AUTRE session sur ce même chantier (« Pour la session… ») : capture de
+ * Raphaël le 17 sept. 2026, un échange de coordination technique entre deux
+ * sessions s'affichait tel quel dans le fil qu'il lit, avec en dessous un
+ * champ qui l'invitait à y répondre. Il ne doit ni s'y voir, ni compter dans
+ * le badge « questions en attente » de la ligne repliée. */
 const MESSAGES: DevLogEntry[] = [
   {
     id: "m1",
@@ -175,6 +180,16 @@ const MESSAGES: DevLogEntry[] = [
     body: "En attendant je pars sur 30 s, c'est réversible.",
     answered_at: null,
     created_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  },
+  {
+    id: "m3",
+    user_id: "banc",
+    item_id: "c2",
+    author: "claude/le-telephone",
+    kind: "question",
+    body: "Pour la session voix-et-ecoute : tu es toujours sur ce fichier ? Je voudrais y toucher.",
+    answered_at: null,
+    created_at: new Date(Date.now() - 90 * 60000).toISOString(),
   },
 ]
 
@@ -448,6 +463,56 @@ function historiqueFactice(
   return { lignes, chargement, erreur, restaurer: async () => {} }
 }
 
+/**
+ * Le mode « une question à la fois » (chantier `efd162a4`, point 3) : sa
+ * propre petite base, isolée du reste du banc, pour vérifier la numérotation,
+ * l'avancée automatique une fois répondu, et l'état vide — sans dépendre de
+ * l'ordre des autres parcours qui mutent `messages` plus haut sur la page.
+ */
+function UneALaFoisDemo() {
+  const [msgs, setMsgs] = useState<DevLogEntry[]>([
+    {
+      id: "ual1",
+      user_id: "banc",
+      item_id: null,
+      author: "claude/demo",
+      kind: "question",
+      body: "Première question à trancher : on reprend lundi ou mardi ?",
+      pourquoi: "Pour caler la suite.",
+      options: [
+        { cle: "lundi", libelle: "Lundi" },
+        { cle: "mardi", libelle: "Mardi" },
+      ],
+      answered_at: null,
+      created_at: new Date(Date.now() - 3600_000).toISOString(),
+    },
+    {
+      id: "ual2",
+      user_id: "banc",
+      item_id: null,
+      author: "claude/demo",
+      kind: "question",
+      body: "Deuxième question à trancher : on garde ce nom ?",
+      pourquoi: "Un nom qui change en cours de route perd ceux qui le cherchent déjà.",
+      answered_at: null,
+      created_at: new Date(Date.now() - 1800_000).toISOString(),
+    },
+  ])
+  return (
+    <CeQuiAttendTaDecision
+      messages={msgs}
+      devItems={[]}
+      uneALaFois
+      onRepondre={async (question) => {
+        setMsgs((m) =>
+          m.map((x) => (x.id === question.id ? { ...x, answered_at: new Date().toISOString() } : x)),
+        )
+      }}
+      onEtat={async () => {}}
+    />
+  )
+}
+
 function BancDuCockpit() {
   // Lu une fois, comme le chemin rapide du vrai hook.
   const [repereInitial] = useState(lireRepereLocal)
@@ -471,6 +536,19 @@ function BancDuCockpit() {
     REELLES?.messages ?? (CALME ? [] : [...MESSAGES, ...DECISIONS, COMPTE_RENDU]),
   )
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
+  const tableauRef = useRef<HTMLDivElement>(null)
+  // Mirroir de `CockpitPage.voirChantierDuMessage` : les lignes du bandeau
+  // « Depuis ton dernier passage » avaient l'air cliquables et ne menaient
+  // nulle part (Raphaël, 17 sept. 2026).
+  function voirChantierDuMessage(itemId: string | null) {
+    const item = itemId ? devItems.find((i) => i.id === itemId) : undefined
+    if (item) {
+      setFiltre({ ...FILTRE_VIDE, recherche: item.title })
+      tableauRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    } else {
+      document.getElementById("journal")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }
   // Ce qui existe en base sans être chargé : 304 - 60 au 17 sept.
   const [resteEnPlus, setResteEnPlus] = useState(244)
   const [traceAjout, setTraceAjout] = useState("rien")
@@ -574,7 +652,12 @@ function BancDuCockpit() {
           quand la carte ne rend rien, ce qui a déjà coûté 16 points au budget
           une première fois avec la carte des doublons. On repère donc les deux
           bandeaux par leur ORDRE — celui du haut d'abord. */}
-      <DepuisTonDernierPassage devItems={devItems} messages={messages} visite={visite} />
+      <DepuisTonDernierPassage
+        devItems={devItems}
+        messages={messages}
+        visite={visite}
+        onNaviguer={voirChantierDuMessage}
+      />
       <OuJenSuis
         devItems={devItems}
         sections={sections}
@@ -691,6 +774,7 @@ function BancDuCockpit() {
           sous le résumé dont la hauteur est mesurée. Si le banc ne la montait
           pas, il mesurerait une page qui n'existe pas. */}
       <BarreActualiser seulementSiProbleme statut="en_ligne" derniereMaj={null} enCours={false} onActualiser={() => {}} />
+      <div ref={tableauRef}>
       <CockpitBoard
         devItems={devItems}
         sectionsState={sectionsState}
@@ -753,6 +837,7 @@ function BancDuCockpit() {
         onFusionner={onFusionner}
         onAnnulerFusion={onAnnulerFusion}
       />
+      </div>
 
       {/* Le cas qui trompe : la base n'a pas pu être écrite. Le « Vu » ne vaut
           alors que sur CET écran, et il doit le savoir — sinon il retrouve le
@@ -784,8 +869,18 @@ function BancDuCockpit() {
       <div id="journal-trace" className="text-xs">
         ajout={traceAjout} traites={traceTraite}
       </div>
+
     </div>
   )
 }
 
-createRoot(document.getElementById("root")!).render(<BancDuCockpit />)
+// Sa propre petite page, plutôt qu'un bloc de plus dans `BancDuCockpit` :
+// celui-ci est déjà ouvert et déplié dès le montage (forceOuvert), et
+// mélangé au reste il fausserait les comptes globaux (« chaque point porte
+// SON champ de commentaire », par exemple) que d'autres parcours vérifient
+// sur toute la page. Même précédent que `?volume=1` / `?calme=1`.
+const UNE_A_LA_FOIS = new URLSearchParams(location.search).has("une-a-la-fois")
+
+createRoot(document.getElementById("root")!).render(
+  UNE_A_LA_FOIS ? <UneALaFoisDemo /> : <BancDuCockpit />,
+)

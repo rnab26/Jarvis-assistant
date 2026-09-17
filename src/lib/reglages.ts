@@ -216,6 +216,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/Cockpit.tsx",
   },
   {
+    cle: "jarvis_cockpit_simplifie",
+    ou: "Paramètres › Le cockpit › Mode simplifié — aussi un bouton en tête du cockpit",
+    fichier: "src/components/settings/Cockpit.tsx",
+  },
+  {
     cle: "jarvis_maj_auto",
     ou: "Paramètres › L'application › Mettre à jour l'application",
     fichier: "src/pages/SettingsPage.tsx",

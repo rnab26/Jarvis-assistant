@@ -48,6 +48,12 @@ import type { DevItem, DevLogEntry } from "@/types/database"
 interface DepuisTonDernierPassageProps {
   devItems: DevItem[]
   messages: DevLogEntry[]
+  /**
+   * Mener vers le chantier d'un message (son `item_id`, ou `null` faute de
+   * chantier identifiable) — les lignes de ce bandeau avaient l'air
+   * cliquables et ne faisaient rien (Raphaël, 17 sept. 2026).
+   */
+  onNaviguer?: (itemId: string | null) => void
   /** Injectable pour le banc d'essai, qui n'a ni Supabase ni session. */
   visite?: VisiteCockpitApi
 }
@@ -71,6 +77,7 @@ function BandeauBranche(props: DepuisTonDernierPassageProps) {
 function Bandeau({
   devItems,
   messages,
+  onNaviguer,
   visite,
 }: DepuisTonDernierPassageProps & { visite: VisiteCockpitApi }) {
   const { vuLe, erreur, marquerVu } = visite
@@ -152,20 +159,34 @@ function Bandeau({
         )}
 
         {/* Ce qu'une session a écrit POUR LUI, coupé court : le bandeau dit
-            qu'il y a quelque chose, le journal le dit en entier. */}
+            qu'il y a quelque chose, le journal le dit en entier. Cliquable
+            depuis le 17 sept. 2026 : ces lignes en avaient l'air et ne
+            menaient nulle part — elles mènent maintenant au chantier
+            concerné (via `item_id`), ou au journal général faute de mieux. */}
         {bilan.messages.slice(0, 2).map((m) => (
-          <p key={m.id} className="truncate text-xs">
+          <button
+            key={m.id}
+            type="button"
+            className="truncate text-left text-xs underline decoration-dotted underline-offset-2"
+            onClick={() => onNaviguer?.(m.item_id)}
+          >
             💬 {courtAuteur(m.author)} : {extraitAuMot(m.body)}
-          </p>
+          </button>
         ))}
 
         {/* Et ce que les sessions se disent entre elles : compté, jamais
-            déballé. Deux notes de 2 000 caractères tenaient ici le 6 sept. */}
+            déballé. Deux notes de 2 000 caractères tenaient ici le 6 sept.
+            Mène au journal général : rien de plus précis à proposer sur un
+            compte agrégé qui ne porte pas un chantier unique. */}
         {bilan.notesEntreSessions > 0 && (
-          <p className="text-xs text-muted-foreground/70">
+          <button
+            type="button"
+            className="self-start text-left text-xs text-muted-foreground/70 underline decoration-dotted underline-offset-2"
+            onClick={() => onNaviguer?.(null)}
+          >
             {bilan.notesEntreSessions} note{bilan.notesEntreSessions > 1 ? "s" : ""} entre sessions,
             dans le journal de bord.
-          </p>
+          </button>
         )}
 
         {/* Le repère n'a pas pu être partagé : ça se dit, sinon il appuie sur
