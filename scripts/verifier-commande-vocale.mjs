@@ -810,6 +810,22 @@ cas.push(
       return [true]
     },
   },
+  {
+    // Chantier 4dabe586, 17 sept. 2026 : transmettre_recu, jamais confondu
+    // avec find_receipts — la distinction est justement ce qui manquait.
+    nom: "gmail : transmettre un reçu déjà retrouvé, jamais confondu avec le lister",
+    phrase: "Transmets la dernière facture d'électricité à Dan par WhatsApp.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.includes("find_receipts")) return [false, `find_receipts au lieu de transmettre : ${JSON.stringify(types)}`]
+      const a = (r.actions ?? []).find((x) => x.action === "transmettre_recu")
+      if (!a) return [false, `actions : ${JSON.stringify(types)}`]
+      if (!/electricit|électricit/i.test(a.mail_cible ?? "")) return [false, `mail_cible = ${a.mail_cible}`]
+      if (!/dan/i.test(a.contact_name ?? "")) return [false, `contact_name = ${a.contact_name}`]
+      if (a.message_channel !== "whatsapp") return [false, `message_channel = ${a.message_channel}`]
+      return [true]
+    },
+  },
 )
 
 // ── Jarvis connaît sa propre application. Ajoutés par la session « Mémoire et
