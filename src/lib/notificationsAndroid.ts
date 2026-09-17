@@ -4,6 +4,7 @@ import { noterEcoute } from "@/lib/journalEcoute"
 import {
   CLE_LECTURE_NOTIFICATIONS,
   lectureVoulue,
+  notificationsUtiles,
   phraseApplicationInconnue,
   phraseAucuneNotificationDe,
   phraseLectureCoupee,
@@ -105,7 +106,10 @@ export async function lireNotifications(nomApplication?: string): Promise<string
     return phraseServiceInactif()
   }
 
-  const notifications = r.notifications ?? []
+  // Filtré AVANT la trace : un résumé de groupe (Gmail « 3 nouveaux
+  // messages ») ne doit ni gonfler le compte ni apparaître comme une
+  // notification à part — voir notificationsUtiles().
+  const notifications = notificationsUtiles(r.notifications ?? [])
   // TRACE : quelle app, quand, combien — jamais le titre ni le texte. C'est
   // la seule façon pour Raphaël de vérifier que « seulement sur demande » est
   // respecté, sans que le registre devienne lui-même une deuxième copie du

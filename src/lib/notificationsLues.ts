@@ -19,6 +19,22 @@ export interface NotificationLue {
   titre: string
   texte: string
   quand: number
+  /** Résumé automatique qu'Android pose À CÔTÉ des notifications
+   * individuelles d'un même groupe (Gmail : 3 mails + « 3 nouveaux
+   * messages »). Absent (undefined) pour une notification qui n'en est pas
+   * une — traité comme faux. */
+  estResumeDeGroupe?: boolean
+}
+
+/**
+ * Retire les résumés de groupe avant tout comptage ou toute lecture.
+ * `getActiveNotifications()` (côté Android) rend le résumé ET les
+ * notifications individuelles du même groupe : sans ce filtre, 3 mails
+ * Gmail deviendraient « 4 notifications » (3 + le résumé), et son texte
+ * générique (« 3 nouveaux messages ») se lirait comme un vrai message.
+ */
+export function notificationsUtiles(notifications: NotificationLue[]): NotificationLue[] {
+  return notifications.filter((n) => !n.estResumeDeGroupe)
 }
 
 export const CLE_LECTURE_NOTIFICATIONS = "jarvis_lecture_notifications"
@@ -48,7 +64,8 @@ function ligneNotification(n: NotificationLue): string {
  * serait un briefing qu'on n'écoute plus, exactement le défaut déjà corrigé
  * pour le point du matin.
  */
-export function phraseNotifications(notifications: NotificationLue[]): string {
+export function phraseNotifications(brutes: NotificationLue[]): string {
+  const notifications = notificationsUtiles(brutes)
   if (notifications.length === 0) return "Tu n'as aucune notification en ce moment."
   if (notifications.length === 1) return ligneNotification(notifications[0])
 
