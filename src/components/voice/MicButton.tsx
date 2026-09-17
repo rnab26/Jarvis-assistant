@@ -1394,12 +1394,17 @@ export function MicButton({
   })
   annonceMessageRef.current = { contacts: contactsApi.contacts, speak, muted: voiceSettingApi.muted, voiceIndex }
   const derniereAnnonceMessageRef = useRef<number | null>(null)
+  // Verrou simple : `messagesAAnnoncer()` est un aller-retour réseau, et sans
+  // lui deux tours de l'intervalle pourraient s'y engager en même temps
+  // (l'un n'ayant pas encore posé `derniereAnnonceMessageRef` que l'autre
+  // aurait pu lire) — annonçant deux fois le même message.
+  const annonceEnCoursRef = useRef(false)
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
     let annule = false
 
     async function verifier() {
-      if (annule) return
+      if (annule || annonceEnCoursRef.current) return
       const courant = annonceMessageRef.current
       if (
         !peutAnnoncerMaintenant({
@@ -1412,6 +1417,15 @@ export function MicButton({
         return
       }
 
+      annonceEnCoursRef.current = true
+      try {
+        await annoncerSiDu(courant)
+      } finally {
+        annonceEnCoursRef.current = false
+      }
+    }
+
+    async function annoncerSiDu(courant: (typeof annonceMessageRef)["current"]) {
       let dus: Awaited<ReturnType<typeof messagesProgrammesApi.messagesAAnnoncer>>
       try {
         dus = await messagesProgrammesApi.messagesAAnnoncer()
@@ -1456,9 +1470,13 @@ export function MicButton({
         contact_name: prochain.contact_id ? undefined : prochain.destinataire,
         message_channel: prochain.canal ?? undefined,
       }
+      // sauterFenetre: l'annonce qu'on vient de dire EST déjà la
+      // confirmation (même principe que la relecture avant ouverture,
+      // confirmationEnvoiVocale.ts) : la fenêtre d'annulation passive
+      // redirait une seconde phrase, suivie d'un silence, pour rien.
       let reponsePreparation: string
       try {
-        reponsePreparation = await executerActionTelephone(action, courant.contacts)
+        reponsePreparation = await executerActionTelephone(action, courant.contacts, { sauterFenetre: true })
       } catch {
         reponsePreparation = "Je n'ai pas réussi à préparer ce message."
       }
