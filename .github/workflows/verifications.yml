@@ -177,6 +177,13 @@ jobs:
       - name: Ce qui finit dans le registre des erreurs, et ce qui n'y finit pas
         run: node --experimental-strip-types scripts/verifier-raison-ecoute.ts
 
+      # Chantier 6d94ab6a : comprendre après coup comment Jarvis se comporte,
+      # à la voix ET au clic. Ce qui casse en silence ici : un écran ou un
+      # dernier clic périmé qu'on continue d'afficher comme s'il expliquait
+      # encore ce qui vient de se passer.
+      - name: L'écran affiché et le dernier bouton touché, dans journal_ecoute et jarvis_erreurs
+        run: node --experimental-strip-types scripts/verifier-contexte-interaction.ts
+
       # Le cas qui compte : quand il NE répond PAS à « avec quelle
       # application ? », sa phrase suivante ne doit surtout pas être
       # enregistrée comme son application préférée — ce serait invisible et

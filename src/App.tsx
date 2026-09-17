@@ -9,6 +9,7 @@ import { AssistOverlay } from "@/lib/assistOverlayPlugin"
 import { AssistantOverlayPage } from "@/pages/AssistantOverlayPage"
 import { THEME_KEY } from "@/lib/theme"
 import { DELAI_MAX_MS, quoiRendre, type OuOnEst } from "@/lib/demarrageOverlay"
+import { useTraceInteractions } from "@/hooks/useTraceInteractions"
 
 // Chargées à la demande, pas au démarrage : chantier 7b8e68a7, 8 sept. 2026.
 // Mesuré dans journal_ecoute — 956 ms entre l'ouverture de la fenêtre
@@ -73,6 +74,12 @@ function AppRoutes() {
   const { session } = useAuth()
   const ou = useOuOnEst()
   const rendu = quoiRendre(ou)
+  // Avant les retours anticipés ci-dessous : un hook se monte dans le même
+  // ordre à chaque rendu. Alimente contexteInteraction.ts (chantier 6d94ab6a)
+  // pour que journal_ecoute et jarvis_erreurs sachent où on était et sur quoi
+  // on venait d'appuyer — dans l'app normale comme dans la fenêtre
+  // d'assistance, d'où son montage ici plutôt que dans ProtectedShell.
+  useTraceInteractions()
 
   // Rien, pas même un écran de chargement : c'est une fraction de seconde, et
   // la fenêtre d'assistance est translucide — un « Chargement… » y clignoterait
