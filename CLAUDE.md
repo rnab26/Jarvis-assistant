@@ -3117,6 +3117,63 @@ redéploie les deux fonctions — sinon Jarvis envoie Raphaël vers un bouton qu
 n'existe plus. Quatre contrôles de `verifier-commande-vocale.mjs` (« il sait
 où… ») disent si le texte arrive bien jusqu'au modèle.
 
+## Naviguer vers une section de Paramètres : la moitié « application »
+
+Chantier `aac9a0dd` (17 sept. 2026 ; `59468714` en était un doublon — même
+demande dictée deux fois, « Jarvis doit pouvoir manipuler/configurer/
+paramétrer toutes les fonctionnalités sur simple commande vocale » —, archivé
+au profit du premier). Sa demande : Jarvis doit pouvoir naviguer dans l'app
+(« emmène-moi dans les notifications ») et guider physiquement vers un réglage
+incompris.
+
+**Ce chantier livre UNIQUEMENT la moitié application.** La reconnaissance de
+la phrase elle-même (extraire « notifications » de « emmène-moi dans les
+notifications ») est le même travail que `commandeLocale.ts` — isoler la
+commande du verbe qui l'introduit — et vit dans
+`supabase/functions/voice-command/**`, `src/lib/commandeLocale.ts`,
+`MicButton.tsx` : hors du périmètre du thème « L'app elle-même », propriété du
+thème « Le téléphone ». Une question précise reste ouverte en `dev_log`
+(item_id `aac9a0dd`) pour la session qui porte la voix — ne la reproblématise
+pas, elle nomme déjà l'API prête à appeler ci-dessous.
+
+- `src/lib/sectionsParametres.ts` — **une seule source** pour le catalogue des
+  sections de Paramètres (`SECTIONS_PARAMETRES`, déplacé depuis
+  `SettingsPage.tsx` où il vivait en double emploi potentiel) et
+  `sectionCorrespond` (déplacé depuis `Section.tsx`, qui le réexporte pour ne
+  pas casser l'import existant). `resoudreCibleParametres(cible)` — **pure**,
+  `scripts/verifier-navigation-parametres.ts` — résout une cible déjà propre
+  (une clé exacte, ou un mot isolé) vers UNE section, ou `null` si rien ou
+  PLUSIEURS sections correspondent. Mesuré sur le vrai catalogue et pas
+  supposé : « google », « notification » (au singulier) et « mise à jour »
+  vivent chacun dans les mots-clés de DEUX sections à la fois et se taisent
+  donc à raison — ce n'est pas un défaut à corriger.
+- `SettingsPage.tsx` lit `?section=<cible>` dans l'URL (`useSearchParams`),
+  résout via `resoudreCibleParametres`, retient la clé trouvée en état, et
+  retire le paramètre de l'URL dans tous les cas (résolu ou pas) — le laisser
+  referait tenter la même résolution à chaque rendu.
+- `Section.tsx` reçoit `cibleNavigation` (vrai quand CETTE section est la
+  cible) : elle s'ouvre seule, défile jusqu'à elle et se met en évidence (un
+  contour, 2,5 s) — sans qu'on ait cliqué dessus. Vérifié dans un vrai
+  navigateur (`scripts/harness/reglages.tsx`, bloc `#navigation-section`, dans
+  `verifier-reglages-web.mjs`) : le composant RÉEL, pas une paraphrase.
+
+**Pourquoi une mise en évidence DOM et pas le contrôle d'écran du chantier
+3f3ad20b** (l'idée initiale de la demande, « s'appuyant sur le contrôle
+d'écran déjà livré ») : ce mécanisme (service d'accessibilité Android) existe
+pour cliquer sur l'écran d'une AUTRE application, dont notre app n'a pas le
+contrôle direct. Sur SA PROPRE interface, Jarvis a déjà le contrôle total
+(React, DOM) — y superposer un clic d'accessibilité serait plus fragile
+(dépend d'un service que Raphaël doit activer, relit l'arbre à chaque fois)
+pour un résultat que `scrollIntoView` + une classe CSS obtiennent directement
+et de façon fiable. Ne réintroduis pas cette confusion : le contrôle d'écran
+3f3ad20b reste réservé aux écrans d'AUTRES applications.
+
+**Ce qui n'est PAS encore utilisable de bout en bout, et il ne faut pas le
+présenter comme livré** : rien n'appelle encore
+`navigate("/settings?section=<cible>")` — ni une action vocale (hors
+périmètre, voir plus haut), ni un lien ailleurs dans l'app. C'est une API
+prête, pas une fonctionnalité que Raphaël peut déclencher aujourd'hui.
+
 ## Les vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
@@ -3177,6 +3234,7 @@ node scripts/verifier-autorisations-web.mjs              # l'écran des autorisa
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
 node --experimental-strip-types scripts/verifier-themes-non-declares.ts  # un thème sans section se signale, jamais tout seul, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
+node --experimental-strip-types scripts/verifier-navigation-parametres.ts  # une cible résolue vers UNE section de Paramètres, jamais une mauvaise, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie

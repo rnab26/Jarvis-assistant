@@ -517,6 +517,29 @@ try {
       !(await recherche.getByText("Voix et écoute").isVisible()),
   )
 
+  // ── Navigation externe résolue (chantier aac9a0dd) : la section visée
+  // s'ouvre SEULE, sans clic — c'est la moitié « application » de « emmène-
+  // moi dans les notifications ». ──
+  const navigationSection = page.locator("#navigation-section")
+  verifier(
+    "avant la navigation, la section cible reste fermée",
+    !(await navigationSection.getByText("Contenu navigation").isVisible()),
+    "sinon le contrôle ne prouverait rien : elle serait déjà ouverte",
+  )
+  await navigationSection.getByRole("button", { name: /Simuler/ }).click()
+  await pause(200)
+  verifier(
+    "la navigation externe ouvre la section visée toute seule",
+    await navigationSection.getByText("Contenu navigation").isVisible(),
+  )
+  verifier(
+    "et la met en évidence",
+    await navigationSection
+      .getByRole("button", { name: /Notifications \(cible d'une navigation\)/ })
+      .evaluate((el) => el.className.includes("ring-2")),
+    "sinon rien ne distingue la section visée de celle qu'il aurait ouverte lui-même",
+  )
+
   // ── Le mode Live, réglable depuis Paramètres ──
   const live = page.locator("#live")
   verifier(
