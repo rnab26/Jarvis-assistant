@@ -3,9 +3,12 @@ import { useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { etatChantier, pastilleDe } from "@/lib/etatChantier"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { derniereMajChantier } from "@/lib/derniereMajChantier"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
 import { HistoriqueChantier } from "@/components/cockpit/HistoriqueChantier"
 import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
@@ -144,6 +147,17 @@ export function DevItemCard({
   // pourtant invisible tant qu'on n'avait pas déplié la note.
   const marqueur = marqueurDe(item)
 
+  // Plainte de Raphaël, 17 sept. 2026 : un chantier déplié montrait tout le
+  // pavé historique accumulé par chaque session, et il ne comprenait plus où
+  // ça en est. `derniereMajChantier` isole la mise à jour la plus récente —
+  // c'est elle qu'on montre en premier ; le pavé complet reste disponible
+  // derrière « Voir tout l'historique », rien n'est perdu ni raccourci en
+  // base (chantier e71199d6).
+  const notesCompletes = notesSansMarqueur(item.notes)
+  const derniereMaj = derniereMajChantier(item.notes)
+  const aHistoriqueSupplementaire =
+    notesCompletes !== null && derniereMaj !== null && notesCompletes !== derniereMaj
+
   // Même densité que les tâches (option « compact » choisie par Raphaël le
   // 3 sept. 2026) : plus de cadre par chantier, un filet entre deux, les
   // étiquettes dans la ligne du titre. Deux listes qui se ressemblent doivent
@@ -266,16 +280,26 @@ export function DevItemCard({
             </p>
           )
         })()}
-        {notesSansMarqueur(item.notes) && (
-          // Trois lignes ici, contre deux pour une tâche : les notes d'un
-          // chantier portent le cadrage, et c'est ce qu'on vient y lire.
-          <p
-            className={`text-xs whitespace-pre-line text-muted-foreground ${
-              deplie ? "" : "line-clamp-2"
-            }`}
-          >
-            {renderNotes(notesSansMarqueur(item.notes)!)}
-          </p>
+        {deplie ? (
+          // Déplié : la dernière mise à jour seule, en clair — pas tout le
+          // pavé historique. C'est elle qui dit où ça en est MAINTENANT ; le
+          // reste attend derrière « Voir tout l'historique », plus bas.
+          derniereMaj && (
+            <p className="text-xs whitespace-pre-line text-muted-foreground">
+              {aHistoriqueSupplementaire && (
+                <span className="font-medium text-foreground">Dernière mise à jour : </span>
+              )}
+              {renderNotes(derniereMaj)}
+            </p>
+          )
+        ) : (
+          notesCompletes && (
+            // Trois lignes ici, contre deux pour une tâche : les notes d'un
+            // chantier portent le cadrage, et c'est ce qu'on vient y lire.
+            <p className="line-clamp-2 text-xs whitespace-pre-line text-muted-foreground">
+              {renderNotes(notesCompletes)}
+            </p>
+          )
         )}
       </button>
       {onArchive && item.status === "done" && (
@@ -331,6 +355,16 @@ export function DevItemCard({
         }
       />
       </div>
+
+      {deplie && !selectionnable && aHistoriqueSupplementaire && (
+        <CarteRepliable titre="Voir tout l'historique">
+          <CardContent>
+            <p className="whitespace-pre-line text-xs text-muted-foreground">
+              {renderNotes(notesCompletes!)}
+            </p>
+          </CardContent>
+        </CarteRepliable>
+      )}
 
       {/* Les trois choses qu'on change tout le temps — le statut, la priorité,
           la section — se changeaient jusqu'ici en ouvrant le formulaire, en

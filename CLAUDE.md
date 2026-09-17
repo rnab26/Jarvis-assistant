@@ -373,6 +373,40 @@ ailleurs. **Le premier contrôle reste rouge exprès** : le raccourcir demandera
 de rogner le bandeau, dont le contenu a été décidé sur son retour du 6 sept.
 (« les livrés se lisent TOUS »). C'est son arbitrage, pas le nôtre.
 
+### Un chantier déplié montre sa dernière mise à jour, pas tout le pavé
+
+Chantier `e71199d6`, 17 sept. 2026, captures à l'appui. Ses mots : « regarde
+le pavé que je suis obligé de lire et de faire défiler pour comprendre quel
+est le blocage […] je ne comprends même pas, donc j'avance même pas dessus. »
+Déplier un vieux chantier (fa16146d, plusieurs sessions sur plusieurs jours)
+affichait tout `notes` en entier, sans troncature — plusieurs milliers de
+caractères, jargon technique, dates, IDs de commit.
+
+**Ne JAMAIS raccourcir ni perdre le contenu réel des notes** — c'est la
+mémoire du projet (section juste au-dessus : « un chantier garde ce qu'on y a
+écrit »). Le correctif est uniquement dans l'AFFICHAGE.
+
+`src/lib/derniereMajChantier.ts` (**pur**, `verifier-derniere-maj.ts`) isole
+le DERNIER paragraphe des notes — les sessions ajoutent toujours leur mise à
+jour à la suite des précédentes, séparée par une ou plusieurs lignes vides,
+qu'elles l'introduisent par un « --- <date> », un « MISE À JOUR DU… », un
+crochet « [EN COURS, <session>, <date>] » ou rien de tout ça (aucun en-tête
+n'est systématique — mesuré sur plusieurs vraies notes avant de coder, la
+ligne vide l'est). Le marqueur et l'intro d'origine ouvrent la note : ils sont
+donc le PREMIER paragraphe, jamais pris pour la dernière mise à jour.
+
+`DevItemCard.tsx` déplié montre cette dernière mise à jour seule, en tête.
+Le pavé complet va derrière « Voir tout l'historique », qui RÉUTILISE
+`CarteRepliable` (repliée par défaut) plutôt que d'inventer un second
+accordéon — et ne s'affiche PAS DU TOUT quand il n'y a qu'une seule mise à
+jour (rien à cacher, donc rien à proposer). **Cet accordéon est un composant
+interactif : il doit rester HORS du `<button>` qui déplie la ligne**, comme
+`HistoriqueChantier` déjà — un bouton dans un bouton casse le HTML.
+
+**Mesuré avant/après sur fa16146d (vraies données, 17 sept.)** : 2050 points
+déplié avant, 512 après — l'accordéon fermé. Le marqueur, lui, reste affiché
+comme avant, inchangé.
+
 ### Les marqueurs des notes sont visibles dans l'app (`src/lib/marqueurChantier.ts`)
 
 `[À CADRER AVEC RAPHAËL]`, `[LIBRE]`, `[BLOQUÉ PAR : …]`, `[DOUBLON — …]`,
@@ -3131,6 +3165,7 @@ node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâc
 node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une session autonome se retire quand il le faut, sans réseau
 node --experimental-strip-types scripts/verifier-historique-chantier.ts  # une note complétée n'est pas une note écrasée, sans réseau
 node --experimental-strip-types scripts/verifier-fil-journal.ts  # reprendre une discussion au journal, et dire ce qu'on ne montre pas, sans réseau
+node --experimental-strip-types scripts/verifier-derniere-maj.ts  # un chantier déplié montre sa dernière mise à jour d'abord, jamais le marqueur ni une entrée du milieu, sans réseau
 ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce qu'on y a écrit : trigger, restauration tracée, RLS
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
