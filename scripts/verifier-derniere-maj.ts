@@ -115,6 +115,46 @@ const verifier = (nom: string, ok: boolean, detail = "") => {
   )
 }
 
+// --- Cas 6 : régression trouvée par Raphaël le 17 sept. 2026 (chantier
+// 4be6b04c), sur le VRAI chantier 6d94ab6a. Le dernier paragraphe
+// chronologique est un rangement de sections purement administratif, sans
+// aucun rapport avec la question du chantier — il ne doit jamais être pris
+// pour « la dernière mise à jour ».
+{
+  const notes = [
+    "[À CADRER AVEC RAPHAËL AVANT DE COMMENCER — périmètre pas assez défini pour coder sans lui : quoi enregistrer exactement, où l'afficher, et en quoi ça diffère de ce qui existe déjà (journal_ecoute, jarvis_erreurs, dev_log).]",
+    "Dans le cockpit dev sur l'enregistrement du comportement entre le telephone et ce que je fais a l'audio en vocal ainsi que mes interactions de clic sur l'application afin de comprendre reellement comment jarvis se comporte lors de mes requetes et de mes differents problemes",
+    "--- 6 sept. 2026, rangement des sections (chantier 765af020). Rattaché à « L'app elle-même » : son ancien thème (un seul chantier) n'avait pas de section déclarée, et une section pour un seul chantier éparpille au lieu de rassembler.",
+  ].join("\n\n")
+  const derniere = derniereMajChantier(notes)
+  verifier(
+    "6d94ab6a : la dernière mise à jour n'est jamais le rangement de sections",
+    derniere !== null && !derniere.includes("rangement des sections"),
+    `obtenu : ${JSON.stringify(derniere)}`,
+  )
+  verifier(
+    "6d94ab6a : la dernière mise à jour retombe sur la vraie demande d'origine",
+    derniere !== null && derniere.startsWith("Dans le cockpit dev"),
+    `obtenu : ${JSON.stringify(derniere)}`,
+  )
+}
+
+// --- Cas 7 : un paragraphe daté qui n'est PAS un rangement de sections reste
+// une vraie mise à jour — le motif administratif ne doit écarter que ce cas
+// précis, pas n'importe quel paragraphe commençant par des tirets.
+{
+  const notes = [
+    "Première mise à jour, contexte d'origine.",
+    "--- 9 sept. 2026, claude/une-session. Code déployé et vérifié bout-en-bout, 41/41.",
+  ].join("\n\n")
+  const derniere = derniereMajChantier(notes)
+  verifier(
+    "paragraphe daté ordinaire : reste la dernière mise à jour, n'est pas écarté",
+    derniere === "--- 9 sept. 2026, claude/une-session. Code déployé et vérifié bout-en-bout, 41/41.",
+    `obtenu : ${JSON.stringify(derniere)}`,
+  )
+}
+
 // --- Cas limites : notes vides ou nulles ne doivent jamais planter.
 {
   verifier("notes nulles : aucune dernière mise à jour", derniereMajChantier(null) === null)

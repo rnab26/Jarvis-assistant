@@ -1,4 +1,5 @@
 import { notesSansMarqueur } from "./marqueurChantier.ts"
+import { normaliserRecherche } from "./sections.ts"
 
 /**
  * La dernière mise à jour d'un chantier, extraite du pavé de notes.
@@ -29,9 +30,30 @@ import { notesSansMarqueur } from "./marqueurChantier.ts"
 export function derniereMajChantier(notes: string | null): string | null {
   const texte = notesSansMarqueur(notes)
   if (!texte) return null
-  const blocs = paragraphesNotes(texte)
+  const blocs = paragraphesNotes(texte).filter((p) => !estParagrapheAdministratif(p))
   if (blocs.length === 0) return null
   return blocs[blocs.length - 1]
+}
+
+/**
+ * Un paragraphe purement ADMINISTRATIF — le rangement ou la fusion de
+ * sections déplace des chantiers d'un thème à l'autre et le dit dans la
+ * note (chantier 765af020, migration 0018) — ne dit rien de la question du
+ * chantier lui-même. Affiché comme « dernière mise à jour », il la
+ * remplace par une phrase sur le CLASSEMENT du chantier (6d94ab6a, régression
+ * de ce module trouvée par Raphaël le 17 sept. 2026, chantier 4be6b04c) :
+ * « je ne sais même pas de quel contexte on parle ».
+ *
+ * MESURÉ sur les notes réelles du cockpit avant d'écrire ce motif (17 sept.
+ * 2026) : douze chantiers portent un paragraphe « --- <date> », et un seul
+ * (6d94ab6a) est de ce genre — les onze autres sont de vraies mises à jour
+ * de session. Le motif reste donc étroit et n'écarte QUE ce cas précis, pas
+ * n'importe quel paragraphe daté.
+ */
+function estParagrapheAdministratif(paragraphe: string): boolean {
+  if (!/^-{2,}/.test(paragraphe)) return false
+  const normalise = normaliserRecherche(paragraphe)
+  return /rangement des sections|fusion des sections|fusion de sections/.test(normalise)
 }
 
 /**

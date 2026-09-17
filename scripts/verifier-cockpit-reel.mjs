@@ -169,6 +169,32 @@ try {
   const debordement2 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   verifier("ni une fois toutes les lignes dépliées", debordement2 <= 0, `${debordement2} points de trop`)
 
+  // Régression trouvée par Raphaël le 17 sept. 2026 (chantier 4be6b04c) sur
+  // le VRAI chantier 6d94ab6a : « Dernière mise à jour » affichait une note
+  // administrative de rangement de sections au lieu de la vraie question à
+  // trancher. On le cherche par son titre réel, on le déplie, et on vérifie
+  // ce qu'affiche VRAIMENT le cockpit — pas une donnée inventée.
+  await page.getByLabel("Chercher un chantier").fill("enregistrement du comportement")
+  await new Promise((r) => setTimeout(r, 300))
+  const ligne6d94ab6a = page.getByRole("button", { name: /Dans le cockpit dev sur l'enregistrement/ }).first()
+  if (await ligne6d94ab6a.isVisible().catch(() => false)) {
+    await ligne6d94ab6a.click()
+    await new Promise((r) => setTimeout(r, 150))
+    const texteChantier = await ligne6d94ab6a.innerText()
+    // Le contenu réel de ce chantier bouge au fil des sessions (Raphaël y a
+    // répondu depuis le signalement du 17 sept.) : on ne fige donc pas le
+    // texte exact, seulement l'invariant que le bug visait — le rangement de
+    // sections, purement administratif, ne doit jamais être ce qui s'affiche.
+    verifier(
+      "6d94ab6a déplié ne montre jamais le rangement de sections comme dernière mise à jour",
+      !/rangement des sections/.test(texteChantier),
+      `texte affiché : ${JSON.stringify(texteChantier)}`,
+    )
+  } else {
+    console.log("      6d94ab6a introuvable dans les vraies données (archivé, ou déjà corrigé autrement) — vérification sautée")
+  }
+  await page.getByLabel("Effacer la recherche").click().catch(() => {})
+
   const texte = await page.locator("body").innerText()
   console.log("      en tête :", texte.split("\n").slice(0, 14).map((l) => l.trim()).filter(Boolean).join(" | "))
 } finally { if (nav) await nav.close(); vite.kill() }

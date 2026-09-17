@@ -17,6 +17,7 @@ import {
   A_TRIER,
   LIBELLE_MARQUEUR,
   VARIANTE_MARQUEUR,
+  detailMarqueur,
   marqueurDe,
   notesSansMarqueur,
 } from "@/lib/marqueurChantier"
@@ -147,6 +148,15 @@ export function DevItemCard({
   // pourtant invisible tant qu'on n'avait pas déplié la note.
   const marqueur = marqueurDe(item)
 
+  // Bug trouvé par Raphaël le 17 sept. 2026 (chantier 4be6b04c) : pour un
+  // chantier « à cadrer » ou « bloqué », la vraie question à trancher vit
+  // souvent dans le crochet même du marqueur (6d94ab6a), pas dans la suite
+  // chronologique des notes — et « dernière mise à jour » pouvait tomber sur
+  // un paragraphe purement administratif sans aucun rapport. `detailMarqueur`
+  // rend null quand le crochet n'est que l'étiquette : dans ce cas la phrase
+  // générique d'EXPLICATION_MARQUEUR ci-dessous suffit déjà.
+  const detail = marqueur === "a_cadrer" || marqueur === "bloque" ? detailMarqueur(item.notes) : null
+
   // Plainte de Raphaël, 17 sept. 2026 : un chantier déplié montrait tout le
   // pavé historique accumulé par chaque session, et il ne comprenait plus où
   // ça en est. `derniereMajChantier` isole la mise à jour la plus récente —
@@ -262,6 +272,12 @@ export function DevItemCard({
         )}
         {deplie && marqueur && (
           <p className="text-xs text-muted-foreground">{EXPLICATION_MARQUEUR[marqueur]}</p>
+        )}
+        {deplie && detail && (
+          <p className="text-xs font-medium whitespace-pre-line text-foreground">
+            {marqueur === "bloque" ? "Bloqué par : " : "À trancher : "}
+            {detail}
+          </p>
         )}
         {/* Deux états seulement ici : pris et laissé en plan. « Livré » n'y
             est pas — « Archivé le … » juste au-dessus le dit déjà, et le
