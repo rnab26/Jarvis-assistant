@@ -42,6 +42,7 @@ const QUOTA_BANC = resumerConsommation([
     appels: 36, reussis: 36, refus_minute: 0, refus_jour: 0,
     jetons_entree: 400000, jetons_sortie: 9000, jetons_reflexion: 3000,
     ms_median: 1200, dernier_at: "2026-09-08T20:00:00Z", rang: 0,
+    dernierQuotaId: null, dernierQuotaLimite: null, dernierQuotaAt: null,
   },
 ])
 
