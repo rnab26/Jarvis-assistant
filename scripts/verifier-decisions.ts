@@ -53,7 +53,10 @@ function entree(p: Partial<DevLogEntry> = {}): DevLogEntry {
 
 // ───────────────── Ce qui l'attend, et ce qui ne l'attend plus ─────────────────
 {
-  verifier("une question sans réponse l'attend", enAttenteDeRaphael(entree()))
+  verifier(
+    "une question sans réponse l'attend",
+    enAttenteDeRaphael(entree({ pourquoi: "Sans réponse, le chantier reste bloqué." })),
+  )
   verifier(
     "une action sans réponse aussi",
     enAttenteDeRaphael(entree({ kind: "action", pourquoi: "Sans cette clé, douze chantiers restent bloqués." })),
@@ -106,7 +109,11 @@ function entree(p: Partial<DevLogEntry> = {}): DevLogEntry {
 {
   // Les actions passent devant : une clé non déposée bloque douze chantiers,
   // une décision n'en bloque qu'un.
-  const vieilleQuestion = entree({ kind: "question", created_at: "2026-09-01T08:00:00Z" })
+  const vieilleQuestion = entree({
+    kind: "question",
+    created_at: "2026-09-01T08:00:00Z",
+    pourquoi: "Sans réponse, le chantier reste bloqué.",
+  })
   // `pourquoi` renseigné : c'est ce qui fait d'une ligne « action » une
   // demande qui l'attend, et non le compte rendu d'une session.
   const action = entree({
@@ -114,7 +121,11 @@ function entree(p: Partial<DevLogEntry> = {}): DevLogEntry {
     created_at: "2026-09-05T08:00:00Z",
     pourquoi: "Sans cette clé, les rappels de lieu ne géocodent rien.",
   })
-  const jeuneQuestion = entree({ kind: "question", created_at: "2026-09-05T09:00:00Z" })
+  const jeuneQuestion = entree({
+    kind: "question",
+    created_at: "2026-09-05T09:00:00Z",
+    pourquoi: "Sans réponse, un autre chantier reste bloqué.",
+  })
   const ordre = questionsEnAttente([jeuneQuestion, vieilleQuestion, action])
   verifier(
     "ce qu'il doit FAIRE passe avant ce qu'il doit décider",

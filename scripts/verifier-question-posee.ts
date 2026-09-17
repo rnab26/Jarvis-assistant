@@ -68,7 +68,10 @@ verifier(
 )
 
 {
-  const bloc = formaterCeQuiLAttend([point({ body: "On garde le mot-à-mot combien de temps ?" })], MAINTENANT)
+  const bloc = formaterCeQuiLAttend(
+    [point({ body: "On garde le mot-à-mot combien de temps ?", pourquoi: "Supprimer est irréversible." })],
+    MAINTENANT,
+  )
   verifier("une vraie question arrive au modèle", bloc.includes("On garde le mot-à-mot combien de temps ?"))
   verifier("   et elle est présentée comme à trancher", bloc.includes("à trancher"))
   verifier(
@@ -99,8 +102,8 @@ verifier(
 )
 
 {
-  const vieux = point({ body: "La plus ancienne", created_at: "2026-09-01T09:00:00Z" })
-  const neuf = point({ body: "La plus récente", created_at: "2026-09-07T08:00:00Z" })
+  const vieux = point({ body: "La plus ancienne", created_at: "2026-09-01T09:00:00Z", pourquoi: "x" })
+  const neuf = point({ body: "La plus récente", created_at: "2026-09-07T08:00:00Z", pourquoi: "x" })
   const bloc = formaterCeQuiLAttend([neuf, vieux], MAINTENANT)
   verifier(
     "la plus ancienne passe devant",
@@ -120,7 +123,7 @@ verifier(
 
 {
   const beaucoup = Array.from({ length: MAX_POINTS + 7 }, (_, i) =>
-    point({ body: `Point numéro ${i}`, created_at: `2026-09-0${(i % 5) + 1}T09:00:00Z` }),
+    point({ body: `Point numéro ${i}`, created_at: `2026-09-0${(i % 5) + 1}T09:00:00Z`, pourquoi: "x" }),
   )
   const lignes = formaterCeQuiLAttend(beaucoup, MAINTENANT).split("\n").filter((l) => l.startsWith("- "))
   verifier(
@@ -188,6 +191,53 @@ console.log("\n— L'app et le serveur disent la MÊME chose —")
     "   y compris qu'un « info » ne fait sonner personne",
     !estPourApp(cas[5]) && !estPourServeur(cas[5]),
     "piège de rédaction déjà rencontré : une règle en disjonction laissait passer tous les autres kinds",
+  )
+}
+
+console.log("\n— Une question mal formée n'atteint jamais sa carte —")
+
+{
+  // 17 sept. 2026 : une note technique adressée à une AUTRE session, insérée
+  // en SQL brut (donc sans le --pourquoi obligatoire de demander.sh) et sans
+  // le préfixe « Pour la session … », a atterri sur sa carte. Remesuré ce
+  // jour-là sur le journal réel : toute question sans `pourquoi` s'est avérée
+  // être un message entre sessions, plus aucune n'est une vraie question pour
+  // lui — la mesure du 7 sept. (9/14 légitimes) ne tient plus.
+  const malFormee = point({ body: "Chantier X a un besoin hors de mon périmètre, thème Y." })
+  verifier(
+    "une question sans pourquoi, sans options et non adressée à une session n'attend plus sa décision",
+    !enAttenteApp(malFormee) && !enAttenteServeur(malFormee),
+    "c'est exactement la note qui l'a fait dire « je ne comprends rien »",
+  )
+  verifier(
+    "   et ne fait pas non plus sonner son téléphone",
+    !estPourApp(malFormee) && !estPourServeur(malFormee),
+  )
+
+  const prefixee = point({ body: "Pour la session cockpit : même note technique." })
+  verifier(
+    "la même note, correctement préfixée, reste écartée (déjà le cas avant ce garde-fou)",
+    !enAttenteApp(prefixee) && !enAttenteServeur(prefixee),
+  )
+
+  const avecPourquoi = point({ pourquoi: "Sans cette réponse, cinq chantiers restent bloqués." })
+  verifier(
+    "une vraie question, posée avec son pourquoi, n'est PAS écartée par le nouveau garde-fou",
+    enAttenteApp(avecPourquoi) && enAttenteServeur(avecPourquoi),
+    "le garde-fou ne doit toucher que ce qui n'a NI pourquoi NI options NI préfixe",
+  )
+
+  const avecOptions = point({ options: [{ cle: "oui", libelle: "Oui" }] })
+  verifier(
+    "une question sans pourquoi mais avec des options n'est pas non plus écartée",
+    enAttenteApp(avecOptions) && enAttenteServeur(avecOptions),
+    "des options cliquables sont déjà la preuve d'une question posée avec soin",
+  )
+
+  const repondue = point({ ...malFormee, answered_at: "2026-09-17T10:00:00Z" })
+  verifier(
+    "une question mal formée déjà répondue n'y était de toute façon plus, et reste absente",
+    !enAttenteApp(repondue) && !enAttenteServeur(repondue),
   )
 }
 
