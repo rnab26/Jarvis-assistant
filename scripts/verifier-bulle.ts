@@ -106,5 +106,85 @@ verifier(
   ),
 )
 
+// ── Un appui ACTIVE ou DÉSACTIVE le micro, sans fenêtre (15 sept. 2026) ──
+//
+// Sa décision, mot pour mot : « Moi l'utilisateur j'appuie pour activer
+// jarvis ». Piste (a) retenue dans la note du chantier 468734ad : une
+// activity overlay invisible qui n'héberge que la WebView pendant l'écoute,
+// PAS la fenêtre d'assistance de l'appui long (AssistOverlayActivity, qui
+// reste inchangée pour son propre chemin).
+verifier(
+  "BulleEcouteActivity existe",
+  (() => {
+    try {
+      readFileSync("android/app/src/main/java/com/raphael/jarvis/BulleEcouteActivity.java", "utf8")
+      return true
+    } catch {
+      return false
+    }
+  })(),
+)
+verifier(
+  "BulleEcoutePlugin existe",
+  (() => {
+    try {
+      readFileSync("android/app/src/main/java/com/raphael/jarvis/BulleEcoutePlugin.java", "utf8")
+      return true
+    } catch {
+      return false
+    }
+  })(),
+)
+verifier(
+  "ouvrirJarvis() BASCULE : un appui pendant l'écoute l'ARRÊTE au lieu d'en ouvrir une seconde",
+  service.includes("BulleEcouteActivity.estActive()") && service.includes("arreterSiActive()"),
+  "sans ça, un second appui pendant que ça écoute empilerait une deuxième fenêtre invisible",
+)
+verifier(
+  "et l'ouverture vise BulleEcouteActivity, pas la fenêtre d'assistance de l'appui long",
+  /new Intent\(this, BulleEcouteActivity\.class\)/.test(service),
+  "AssistOverlayActivity reste le chemin de l'appui long — les deux chemins ont des décisions différentes",
+)
+verifier(
+  "la bulle montre qu'elle écoute (son icône change)",
+  service.includes("static void setEnEcoute") && service.includes("setColorFilter"),
+  "aucune fenêtre ne s'ouvrant, c'est la SEULE façon de le voir",
+)
+
+const manifesteBulle = readFileSync("android/app/src/main/AndroidManifest.xml", "utf8")
+verifier(
+  "BulleEcouteActivity est déclarée dans le manifeste",
+  /android:name="\.BulleEcouteActivity"/.test(manifesteBulle),
+)
+verifier(
+  "et elle N'EST PAS exportée : rien d'extérieur ne doit pouvoir l'ouvrir",
+  new RegExp(
+    'android:name="\\.BulleEcouteActivity"[\\s\\S]{0,300}?android:exported="false"',
+  ).test(manifesteBulle),
+  "elle n'est lancée que par notre propre BulleService, jamais par un intent externe",
+)
+
+const activiteEcoute = readFileSync(
+  "android/app/src/main/java/com/raphael/jarvis/BulleEcouteActivity.java",
+  "utf8",
+)
+verifier(
+  "elle démarre l'écoute au montage, même mécanisme que le widget",
+  activiteEcoute.includes("JarvisWidgetPlugin.demarrerEcoute = true"),
+)
+verifier(
+  "elle prévient la bulle en s'ouvrant ET en se refermant",
+  /onCreate[\s\S]*setEnEcoute\(true\)/.test(activiteEcoute) &&
+    /onDestroy[\s\S]*setEnEcoute\(false\)/.test(activiteEcoute),
+  "sinon l'icône resterait « en écoute » après la fin de l'échange, ou ne changerait jamais",
+)
+
+const bridgeSrc = readFileSync("src/lib/bulleEcoutePlugin.ts", "utf8")
+verifier(
+  "le pont JS déclare le bon nom de plugin",
+  /registerPlugin<BulleEcoutePlugin>\("BulleEcoute"\)/.test(bridgeSrc),
+  "un nom différent du @CapacitorPlugin(name=...) côté Java et l'appel échoue toujours",
+)
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

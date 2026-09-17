@@ -67,6 +67,23 @@
             </intent-filter>
         </activity>
 
+        <!-- Ce que la BULLE ouvre depuis le 15 sept. 2026 (chantier
+             468734ad) : le micro, SANS fenêtre visible — sa décision, « moi
+             l'utilisateur j'appuie pour activer jarvis ». Aucun
+             intent-filter : elle n'est lancée que par BulleService, jamais
+             depuis l'extérieur, d'où exported="false". Même famille de
+             déclaration que AssistOverlayActivity (singleInstance +
+             taskAffinity vide + excludeFromRecents), le thème translucide
+             étant réutilisé tel quel — le rétrécissement à quelques pixels
+             se pose en code (BulleEcouteActivity), pas ici. -->
+        <activity
+            android:name=".BulleEcouteActivity"
+            android:theme="@style/Theme.Jarvis.Assist"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="false" />
+
         <!-- Ce qui rend Jarvis CHOISISSABLE comme assistant du telephone
              (chantier 7b8e68a7). Le 5 sept. on avait declare une activite
              exportee repondant a ACTION_ASSIST : c'est l'une des deux

@@ -8,9 +8,13 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.PorterDuff;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
@@ -55,9 +59,15 @@ public class BulleService extends Service {
      * l'état réel plutôt que ce que le réglage prétend. */
     static boolean active = false;
 
+    /** La seule instance vivante, pour que setEnEcoute() puisse retoucher
+     * l'icône depuis BulleEcouteActivity (même processus, même genre de
+     * champ statique que BulleEcouteActivity.instance). */
+    private static volatile BulleService instance;
+
     private WindowManager fenetres;
-    private View bulle;
+    private ImageView bulle;
     private WindowManager.LayoutParams params;
+    private final Handler principal = new Handler(Looper.getMainLooper());
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -113,6 +123,7 @@ public class BulleService extends Service {
         try {
             fenetres.addView(bulle, params);
             active = true;
+            instance = this;
         } catch (Exception e) {
             stopSelf();
         }
@@ -174,7 +185,7 @@ public class BulleService extends Service {
      * sur une durée : sur un téléphone, un appui bouge toujours de quelques
      * pixels, et un seuil de zéro rendrait la bulle impossible à ouvrir.
      */
-    private View construireBulle() {
+    private ImageView construireBulle() {
         ImageView vue = new ImageView(this);
         vue.setImageResource(R.mipmap.ic_launcher_round);
         vue.setPadding(dp(2), dp(2), dp(2), dp(2));
@@ -239,19 +250,30 @@ public class BulleService extends Service {
     }
 
     /**
-     * Ce que l'appui ouvre : la fenêtre d'assistance en bas d'écran, celle de
-     * l'appui long. Si elle n'est pas disponible sur cet appareil, on retombe
-     * sur l'application elle-même en lançant l'écoute — le chemin du widget,
-     * lui, est éprouvé.
+     * SA DÉCISION, 15 sept. 2026, mot pour mot : « Moi l'utilisateur j'appuie
+     * pour activer jarvis ». Un appui ACTIVE ou DÉSACTIVE le micro de Jarvis,
+     * SANS FENÊTRE qui s'ouvre — c'est la bulle elle-même (son icône) qui
+     * montre qu'elle écoute. Ce n'est PLUS la fenêtre d'assistance de
+     * l'appui long (AssistOverlayActivity) : les deux chemins restent
+     * distincts, chacun avec sa propre décision.
+     *
+     * Bascule, pas un simple démarrage : si la fenêtre invisible d'écoute
+     * est déjà ouverte (appui précédent), cet appui-ci l'ARRÊTE plutôt que
+     * d'en ouvrir une seconde.
      */
     private void ouvrirJarvis() {
+        if (BulleEcouteActivity.estActive()) {
+            BulleEcouteActivity.arreterSiActive();
+            return;
+        }
         try {
-            Intent overlay = new Intent(this, AssistOverlayActivity.class);
-            overlay.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(overlay);
+            Intent ecoute = new Intent(this, BulleEcouteActivity.class);
+            ecoute.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(ecoute, BulleEcouteActivity.optionsSansAnimation(this));
             return;
         } catch (Exception ignore) {
-            // Fenêtre indisponible : on ouvre l'app.
+            // Fenêtre invisible indisponible : on retombe sur l'app, avec le
+            // chemin du widget, lui, éprouvé.
         }
         Intent app = new Intent(this, MainActivity.class);
         app.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -261,6 +283,27 @@ public class BulleService extends Service {
         } catch (Exception ignore) {
             // Rien à faire de plus : la bulle reste, il peut réessayer.
         }
+    }
+
+    /**
+     * Ce que la bulle montre PENDANT qu'elle écoute — sa seule façon de le
+     * dire, puisqu'aucune fenêtre ne s'ouvre. Appelée par
+     * BulleEcouteActivity (même processus), donc jamais garantie sur le
+     * thread principal : postée par précaution, une ImageView ne se retouche
+     * que depuis lui.
+     */
+    static void setEnEcoute(boolean actif) {
+        BulleService service = instance;
+        if (service == null || service.bulle == null) return;
+        service.principal.post(() -> {
+            ImageView vue = service.bulle;
+            if (vue == null) return;
+            if (actif) {
+                vue.setColorFilter(Color.argb(140, 255, 80, 80), PorterDuff.Mode.SRC_ATOP);
+            } else {
+                vue.clearColorFilter();
+            }
+        });
     }
 
     private void demarrerAuPremierPlan() {
@@ -308,6 +351,7 @@ public class BulleService extends Service {
     @Override
     public void onDestroy() {
         active = false;
+        if (instance == this) instance = null;
         if (bulle != null && fenetres != null) {
             try {
                 fenetres.removeView(bulle);

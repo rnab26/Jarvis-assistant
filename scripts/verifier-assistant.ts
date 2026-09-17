@@ -249,5 +249,31 @@ verifier(
   "la redirection est précisément ce qui montait deux micros",
 )
 
+// ── TROISIÈME FENÊTRE depuis le 15 sept. 2026 : celle de la bulle ────────
+//
+// Même risque qu'au-dessus (deux micros qui se disputent le téléphone), et
+// même parade : la sonde BulleEcoute.estBulle() part EN PARALLÈLE de
+// AssistOverlay.estOverlay(), jamais après. Sans ça, l'app normale se
+// monterait le temps que les DEUX sondes répondent l'une après l'autre.
+verifier(
+  "quoiRendre connaît la troisième fenêtre",
+  quoiRendre("bulle") === "bulle",
+)
+verifier(
+  "App.tsx sonde la bulle EN PLUS de la fenêtre d'assistance, pas à sa place",
+  app.includes("AssistOverlay.estOverlay()") && app.includes("BulleEcoute.estBulle()"),
+)
+verifier(
+  "et App.tsx la rend directement, sans passer par le routeur",
+  /if \(rendu === "bulle"\) return <BulleEcoutePage/.test(app),
+  "une redirection laisserait, le temps d'un rendu, un second micro se monter — même bug que ci-dessus",
+)
+verifier(
+  "app normale ou web : PAS de délai supplémentaire à cause de la deuxième sonde",
+  /echecs\s*>=\s*2/.test(app),
+  "si l'app attendait le rejet des DEUX sondes en série, ou le minuteur de secours à chaque fois, " +
+    "chaque démarrage normal paierait un délai qui n'existait pas avant cette troisième fenêtre",
+)
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)
