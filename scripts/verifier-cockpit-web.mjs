@@ -86,6 +86,31 @@ try {
       /* le banc ne dépend pas du stockage */
     }
   })
+  // Une fausse API de reconnaissance vocale, pilotée depuis Node
+  // (window.__dicteeTranscript / window.__dicteeErreur) : le vrai moteur de
+  // Chrome parle à un service Google, inutilisable et non déterministe en CI.
+  await page.addInitScript(() => {
+    class SpeechRecognitionSimulee {
+      start() {
+        setTimeout(() => {
+          const erreur = window.__dicteeErreur
+          if (erreur) {
+            this.onerror?.({ error: erreur })
+          } else {
+            const transcript = window.__dicteeTranscript ?? "résultat dicté"
+            this.onresult?.({ results: [[{ transcript, isFinal: true }]] })
+          }
+          this.onend?.()
+        }, 250)
+      }
+      stop() {
+        this.onend?.()
+      }
+      abort() {}
+    }
+    window.SpeechRecognition = SpeechRecognitionSimulee
+    window.webkitSpeechRecognition = SpeechRecognitionSimulee
+  })
   await page.goto(`${BASE}/scripts/harness/cockpit.html`)
   await page.waitForSelector("text=Voix et écoute")
 
@@ -387,6 +412,65 @@ try {
   verifier(
     "et propose la recommandation de la session",
     await visible("Ce qu'on te recommande"),
+  )
+
+  // ── Le micro du champ de commentaire : dicter au lieu d'écrire ──
+  // Chantier 6732dc74, 17 sept. 2026. Sa demande : répondre à une question
+  // « le plus simplement possible » — un bouton micro qui dicte DIRECTEMENT
+  // dans le texte, pas une pièce jointe audio. L'API navigateur est mockée
+  // (window.__dicteeErreur / window.__dicteeTranscript, posés côté page)
+  // pour rester déterministe : le vrai service de reconnaissance de Chrome
+  // dépend du réseau et du micro, inutilisables en CI.
+  const commentaireOuvert = page.getByLabel(/^Ton commentaire sur : On garde le mot/)
+  // L'accessible NAME du bouton change avec l'état (« Dicter… » puis « En
+  // écoute… ») : on le retrouve par sa position, pas par un libellé qui bouge.
+  const zoneCommentaire = page.locator("div.relative", { has: commentaireOuvert })
+  const micro = zoneCommentaire.getByRole("button")
+  verifier("un micro accompagne le champ de commentaire", await micro.isVisible())
+  await commentaireOuvert.fill("Avant dictée")
+  await page.evaluate(() => {
+    window.__dicteeTranscript = "et ce qui a été dit"
+    window.__dicteeErreur = null
+  })
+  await micro.click()
+  await pause(50)
+  verifier(
+    "un appui affiche l'état « en écoute »",
+    (await micro.getAttribute("aria-pressed")) === "true",
+    "sans lui, impossible de savoir si le micro écoute vraiment",
+  )
+  await pause(400)
+  verifier(
+    "le résultat dicté s'ajoute au texte déjà là, sans l'effacer",
+    (await commentaireOuvert.inputValue()) === "Avant dictée et ce qui a été dit",
+    await commentaireOuvert.inputValue(),
+  )
+  verifier("et l'écoute se referme toute seule", (await micro.getAttribute("aria-pressed")) === "false")
+
+  // Un refus de micro (ou toute autre panne du moteur) : un message clair,
+  // jamais un silence — c'est ce qu'un bouton mort ne dirait pas.
+  await page.evaluate(() => {
+    window.__dicteeErreur = "not-allowed"
+  })
+  await micro.click()
+  await pause(400)
+  verifier(
+    "un refus de micro affiche un message clair",
+    await visible("Micro refusé"),
+    "un bouton qui échoue en silence ne se distingue pas d'un bouton mort",
+  )
+
+  // Le navigateur ne connaît pas l'API : le bouton reste là (pas de contrôle
+  // qui disparaît selon le support), mais dit pourquoi il ne fait rien.
+  await page.evaluate(() => {
+    delete window.SpeechRecognition
+    delete window.webkitSpeechRecognition
+  })
+  await micro.click()
+  await pause(400)
+  verifier(
+    "sans l'API du navigateur, un message le dit — jamais un bouton mort",
+    await visible("dictée n'est pas disponible"),
   )
 
   await point("Dépose GOOGLE").click()

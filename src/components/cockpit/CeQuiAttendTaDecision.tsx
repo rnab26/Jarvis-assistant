@@ -1,5 +1,6 @@
-import { Camera, ChevronDown, ChevronRight, HelpCircle, Send, Sparkles, X } from "lucide-react"
-import { useMemo, useRef, useState } from "react"
+import { Camera, ChevronDown, ChevronRight, HelpCircle, Mic, Send, Sparkles, X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CardContent } from "@/components/ui/card"
@@ -12,6 +13,7 @@ import {
   questionsEnAttente,
   reponsePrete,
 } from "@/lib/decisions"
+import { ajouterSegmentDicte, constructeurDictee, messageErreurDictee } from "@/lib/dicteeChamp"
 import { ago, courtAuteur, extraitAuMot } from "@/lib/journalBord"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { DevItem, DevLogEntry, EtatAction, OptionDecision } from "@/types/database"
@@ -266,14 +268,22 @@ function Point({
       {/* UN champ par question, sans exception. Il l'a demandé trois fois :
           c'est dans ses commentaires que se trouve ce qui change réellement le
           travail, et un champ unique en bas de page ne dit plus à quoi il
-          répond. */}
-      <Textarea
-        rows={2}
-        value={commentaire}
-        placeholder={estAction ? "Ce qui coince, ou rien du tout." : "Ton commentaire (facultatif)"}
-        aria-label={`Ton commentaire sur : ${question.body.slice(0, 60)}`}
-        onChange={(e) => setCommentaire(e.target.value)}
-      />
+          répond. Le micro y dicte directement : le plus simple pour répondre
+          depuis un téléphone, sans manœuvre — sa demande du 17 sept. 2026. */}
+      <div className="relative">
+        <Textarea
+          rows={2}
+          value={commentaire}
+          placeholder={estAction ? "Ce qui coince, ou rien du tout." : "Ton commentaire (facultatif)"}
+          aria-label={`Ton commentaire sur : ${question.body.slice(0, 60)}`}
+          onChange={(e) => setCommentaire(e.target.value)}
+          className="pr-9"
+        />
+        <BoutonDictee
+          cible={question.body}
+          onResultat={(segment) => setCommentaire((actuel) => ajouterSegmentDicte(actuel, segment))}
+        />
+      </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
         <input
@@ -326,5 +336,89 @@ function Point({
       </>
       )}
     </div>
+  )
+}
+
+/**
+ * Le micro du champ de commentaire. Un appui, une écoute, un résultat ajouté
+ * au texte — l'API navigateur directement, en one-shot : pas le moteur
+ * d'écoute de Jarvis (veille, mot-clé, session Capacitor), démesuré pour
+ * dicter dans un champ.
+ */
+function BoutonDictee({
+  cible,
+  onResultat,
+}: {
+  cible: string
+  onResultat: (segment: string) => void
+}) {
+  const [enEcoute, setEnEcoute] = useState(false)
+  const recoRef = useRef<SpeechRecognition | null>(null)
+
+  // Coupe le micro si la question disparaît (répondue, ou la carte se
+  // referme) pendant qu'on dicte encore.
+  useEffect(() => {
+    return () => {
+      recoRef.current?.abort()
+      recoRef.current = null
+    }
+  }, [])
+
+  function demarrer() {
+    const Ctor = constructeurDictee()
+    if (!Ctor) {
+      toast.error("La dictée n'est pas disponible sur ce navigateur.", {
+        description: "Écris ton commentaire directement dans le champ.",
+      })
+      return
+    }
+    const reco = new Ctor()
+    reco.lang = "fr-FR"
+    reco.continuous = false
+    reco.interimResults = false
+    reco.maxAlternatives = 1
+
+    reco.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript
+      if (transcript) onResultat(transcript)
+    }
+    reco.onerror = (event) => {
+      const message = messageErreurDictee(event.error)
+      if (message) toast.error(message)
+    }
+    reco.onend = () => {
+      setEnEcoute(false)
+      recoRef.current = null
+    }
+
+    try {
+      reco.start()
+      recoRef.current = reco
+      setEnEcoute(true)
+    } catch {
+      toast.error("Impossible de démarrer le micro, réessaie.")
+    }
+  }
+
+  function arreter() {
+    recoRef.current?.stop()
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className="absolute right-1 top-1"
+      aria-pressed={enEcoute}
+      aria-label={
+        enEcoute
+          ? "En écoute… appuie pour arrêter"
+          : `Dicter ton commentaire sur : ${cible.slice(0, 60)}`
+      }
+      onClick={enEcoute ? arreter : demarrer}
+    >
+      <Mic className={`size-4 ${enEcoute ? "animate-pulse text-destructive" : "text-muted-foreground"}`} />
+    </Button>
   )
 }
