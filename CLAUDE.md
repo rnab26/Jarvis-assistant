@@ -3707,6 +3707,19 @@ contient `"rows": null`. Le piège est silencieux : tu croirais que la table
 est vide alors qu'elle ne l'est pas. Ne groupe donc jamais deux `select`, ni
 un `update` et son `select` de vérification, dans le même appel.
 
+**N'alias jamais une colonne `as t` (ni aucun nom qui reprend l'alias interne
+du wrapper).** Trouvé le 17 sept. 2026 en enquêtant sur 3f3ad20b/21cf48d2 :
+`exec_sql` enveloppe ta requête dans `select coalesce(jsonb_agg(t), '[]') from
+(<ta requête>) as t`. Si ta requête a elle-même une colonne nommée `t`
+(`select ... as t`), `jsonb_agg(t)` devient ambigu et Postgres résout `t` vers
+CETTE COLONNE plutôt que vers la ligne entière — silencieusement, sans erreur.
+Résultat : `"rows"` contient la valeur de cette seule colonne au lieu de
+l'objet complet, et les autres colonnes sélectionnées disparaissent sans un
+mot. Vérifié : `select 1 as t, 2 as b` rend `"rows": [1]`, pas
+`[{"t":1,"b":2}]`. Piège de la même famille que `Filesystem.mkdir` et le
+sélecteur Playwright — un résultat qui a l'air correct mais ne l'est pas.
+Utilise `horodatage`, `t_`, ou n'importe quel nom qui n'est pas `t`.
+
 Puisqu'il n'y a plus de pop-up, enchaîner les appels ne coûte plus rien :
 
 ```bash
