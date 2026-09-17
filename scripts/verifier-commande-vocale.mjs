@@ -461,9 +461,25 @@ cas.push(
   },
 )
 
+// Chantiers 9369ad72 et 1be8988d, réponse de Raphaël le 17 sept. 2026 :
+// « Proposer, je valide » — le serveur ne doit plus deviner un thème en
+// silence (même règle que category_id pour les tâches, chantier eeca8cca) :
+// c'est le téléphone qui suggère et attend sa validation. L'ancien test
+// vérifiait l'inverse (un thème deviné sur le seul sens de la phrase) —
+// remplacé par les deux cas qui comptent désormais.
 cas.push({
-  nom: "un nouveau chantier est rangé dans un thème existant",
+  nom: "un chantier SANS thème dit explicitement n'en reçoit AUCUN",
   phrase: "Ajoute un chantier : quand je chuchote, Jarvis n'entend rien du tout.",
+  controle: (r) => {
+    const a = (r.actions ?? []).find((x) => x.action === "add_dev_item")
+    if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+    if (a.theme) return [false, `thème deviné en silence : ${JSON.stringify(a.theme)}`]
+    return [true]
+  },
+})
+cas.push({
+  nom: "un chantier avec un thème NOMMÉ explicitement est bien classé",
+  phrase: "Ajoute un chantier dans la section Voix et écoute : le micro coupe trop tôt après une phrase.",
   controle: (r) => {
     const a = (r.actions ?? []).find((x) => x.action === "add_dev_item")
     if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
