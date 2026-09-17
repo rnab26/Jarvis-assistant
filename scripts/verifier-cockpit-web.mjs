@@ -152,6 +152,80 @@ try {
     (await page.getByText("Depuis ton dernier passage").count()) === 1,
   )
 
+  // ── Le journal de bord : reprendre la discussion, et savoir ce qu'on ne voit pas ──
+  // Ses mots du 17 sept. 2026 : « journal de bord, incohérence sur la durée de
+  // consultation des conversations et impossibilité de reprendre la
+  // discussion ». Mesuré le même matin : 304 entrées, UNE SEULE portait un
+  // bouton « Répondre », et l'écran en montrait 60 sans un mot.
+  const journal = page.locator("#journal")
+  await journal.getByRole("button", { name: /Journal de bord/ }).first().click()
+  await pause(250)
+
+  const notes = journal.getByText(/Note de session|Compte rendu|^Note plus ancienne/)
+  verifier(
+    "le journal s'ouvre et montre ses entrées",
+    (await journal.getByRole("button", { name: "Répondre" }).count()) > 0,
+    (await journal.innerText()).slice(0, 200),
+  )
+  verifier(
+    "TOUTE entrée porte « Répondre », pas seulement une question en attente",
+    (await journal.getByRole("button", { name: "Répondre" }).count()) ===
+      (await journal.locator("div.rounded-lg.border.p-3").count()),
+    `${await journal.getByRole("button", { name: "Répondre" }).count()} boutons pour ` +
+      `${await journal.locator("div.rounded-lg.border.p-3").count()} entrées — ` +
+      "le 17 sept. il y en avait 1 pour 304",
+  )
+
+  verifier(
+    "l'écran DIT ce qu'il ne montre pas",
+    await journal.getByText(/entrées affichées sur/).isVisible(),
+    "60 sur 304 sans un mot se lit exactement comme « il n'y a plus rien »",
+  )
+
+  const entreesAvant = await journal.locator("div.rounded-lg.border.p-3").count()
+  await journal.getByRole("button", { name: /Voir les \d+ précédentes/ }).click()
+  await pause(250)
+  verifier(
+    "et « Voir les précédentes » en charge vraiment",
+    (await journal.locator("div.rounded-lg.border.p-3").count()) > entreesAvant,
+    `${entreesAvant} avant, ${await journal.locator("div.rounded-lg.border.p-3").count()} après`,
+  )
+
+  // Répondre à une NOTE D'INFORMATION : le fil se fait, mais rien n'est
+  // marqué traité — ce drapeau ne vaut que pour une question en attente.
+  const trace = page.locator("#journal-trace")
+  const traitesAvant = (await trace.innerText()).match(/traites=(\d+)/)?.[1]
+  // Le bouton d'une ENTRÉE est le dernier de la liste ; celui qui ENVOIE est
+  // au-dessus du fil, donc le premier — et il ne s'appelle « Répondre » qu'une
+  // fois qu'on a choisi à quoi on répond (« Publier » sinon).
+  await journal.getByRole("button", { name: "Répondre" }).last().click()
+  await pause(200)
+  verifier(
+    "l'écran rappelle à QUI on répond avant d'écrire",
+    await journal.getByText(/^Réponse à /).isVisible(),
+    "sans ça, on répond au fil sans savoir à quelle entrée",
+  )
+  await journal.getByRole("textbox").fill("Bien reçu, on fait comme ça.")
+  await journal.getByRole("button", { name: "Répondre" }).first().click()
+  await pause(300)
+  verifier(
+    "répondre à une note rattache la réponse à CETTE entrée",
+    /ajout=reponse\|repond_a=(?!aucun)/.test(await trace.innerText()),
+    await trace.innerText(),
+  )
+  verifier(
+    "et ne marque RIEN comme traité",
+    (await trace.innerText()).match(/traites=(\d+)/)?.[1] === traitesAvant,
+    `${await trace.innerText()} — poser answered_at sur une note est invisible aujourd'hui et faux demain`,
+  )
+
+  // On REFERME le journal : déplié, il affiche le corps des entrées, dont
+  // celui d'une décision qu'un contrôle plus bas vérifie comme absente de
+  // l'écran une fois répondue. Un banc doit rendre la page dans l'état où il
+  // l'a trouvée.
+  await journal.getByRole("button", { name: /Journal de bord/ }).first().click()
+  await pause(200)
+
   // ── « Ce qui a changé » sur un chantier ──
   // Le CLAUDE.md du projet dit que deux notes ont été écrasées les 5 et
   // 6 sept., dont une portant un retour de Raphaël écrit nulle part ailleurs.
