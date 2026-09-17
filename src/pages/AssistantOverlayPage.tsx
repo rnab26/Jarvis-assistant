@@ -4,6 +4,7 @@ import { resumerConsommation } from "@/lib/consommationModele"
 import { useAuth } from "@/hooks/useAuth"
 import { AssistOverlay } from "@/lib/assistOverlayPlugin"
 import { geocodePlace } from "@/lib/geocodePlace"
+import { messagesProgrammesApi } from "@/lib/messagesProgrammes"
 
 /**
  * Ce que voit l'appui long : pas le tableau de bord, juste le micro, dans la
@@ -53,6 +54,7 @@ export function OverlayMicContent({ onIdle, cache = false }: { onIdle: () => voi
           ...placeRemindersState,
           geocodePlace: geofenceState.enabled ? geocodePlace : null,
         }}
+        messagesProgrammesApi={messagesProgrammesApi}
         pronunciationsApi={pronunciationsState}
         voiceSettingApi={{ muted: voiceState.muted, setMuted: voiceState.setMuted }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}

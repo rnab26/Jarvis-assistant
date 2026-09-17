@@ -63,6 +63,12 @@ function BancDuCoeur() {
       documentsApi={{ documents: [], saveTextDocument: rien, saveBinaryDocument: rien }}
       contactsApi={{ contacts: [], addContact: rien, updateContact: rien, deleteContact: rien }}
       placeRemindersApi={{ placeReminders: [], addPlaceReminder: rien, deletePlaceReminder: rien, geocodePlace: null }}
+      messagesProgrammesApi={{
+        programmerMessage: async () => null,
+        messagesAAnnoncer: async () => [],
+        marquerAnnonce: rien,
+        annulerMessage: rien,
+      }}
       pronunciationsApi={{ pronunciations: [], addPronunciation: rien, deletePronunciation: rien }}
       voiceSettingApi={{ muted: false, setMuted: () => {} }}
       widgetApi={{ config: { maxTasks: 5, urgentOnly: false, categoryId: null }, setConfig: () => {} }}

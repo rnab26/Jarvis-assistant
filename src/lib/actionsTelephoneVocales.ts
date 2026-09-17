@@ -126,6 +126,50 @@ export function dernierAppelTelephone(): { famille: "media" | "navigation" | "me
 }
 
 /**
+ * Le dernier brouillon WhatsApp/SMS PRÉPARÉ avec succès — pas seulement SA
+ * FAMILLE comme `derniereActionTelephone`, mais son CONTENU réel : texte,
+ * destinataire, canal. Chantier ed32cbcc, 17 sept. 2026 : sans le texte
+ * réel, ni « corrige-le » (correctionMessage.ts) ni « relis-le moi » ne sont
+ * possibles depuis l'appareil — le serveur, lui, ne voit jamais un tour
+ * précédent (même raison que `dernierAppelTelephone`, `dernierTourRef` de
+ * MicButton, `brouillonMailRef` pour Gmail).
+ *
+ * Même discipline que `derniereActionTelephone` : en mémoire du module,
+ * jamais relu après un redémarrage — un brouillon d'hier n'a plus de sens.
+ */
+export interface MessagePrepare {
+  texte: string
+  /** Ce qu'on lui a dit ou trouvé comme nom — ce qu'on lui relit, pas un
+   * identifiant technique. */
+  cible: string | null
+  canal: "whatsapp" | "sms"
+  forceWhatsAppBusiness: boolean
+  contact_id?: string
+  contact_name?: string
+  phone_number?: string
+  quand: number
+  /** Non vide seulement quand ce brouillon vient d'un message PROGRAMMÉ
+   * (messages_programmes) que Jarvis vient d'annoncer — sert à retrouver
+   * lequel « annule » (messageAnnonce.ts) doit annuler, et plus tard à
+   * marquer l'envoi. Absent pour un message préparé normalement. */
+  messageProgrammeId?: string
+}
+
+let dernierMessagePrepare: MessagePrepare | null = null
+
+export function messagePrepareEnAttente(): MessagePrepare | null {
+  return dernierMessagePrepare
+}
+
+/** Rattache le brouillon en cours au message programmé dont il vient — voir
+ * `MessagePrepare.messageProgrammeId`. Appelé juste après avoir préparé le
+ * brouillon d'une annonce (MicButton), jamais depuis une préparation
+ * normale. */
+export function marquerMessagePrepareCommeProgramme(id: string): void {
+  if (dernierMessagePrepare) dernierMessagePrepare = { ...dernierMessagePrepare, messageProgrammeId: id }
+}
+
+/**
  * Lequel des deux WhatsApp, quand les deux sont installés.
  *
  * Raphaël, 6 sept. 2026 : « sur WhatsApp, ça prépare le message mais il n'y a
@@ -544,6 +588,19 @@ export async function executerActionTelephone(
         // dans les 30 s, « prévenir puis refaire » (repriseDictee.ts) recompose
         // ce même brouillon plutôt que d'en ouvrir un second.
         derniereActionTelephone = { famille: "message", quand: Date.now() }
+        // Le CONTENU du brouillon, pour la correction et la relecture à la
+        // voix (chantier ed32cbcc) — `derniereActionTelephone` ci-dessus ne
+        // porte que la famille, pas le texte.
+        dernierMessagePrepare = {
+          texte: action.message_text,
+          cible: nom,
+          canal,
+          forceWhatsAppBusiness,
+          contact_id: action.contact_id,
+          contact_name: action.contact_name,
+          phone_number: numero ?? action.phone_number,
+          quand: Date.now(),
+        }
 
         const ou = canal === "sms" ? "en SMS" : forceWhatsAppBusiness ? "sur WhatsApp Business" : "sur WhatsApp"
         if (nom && numero) return `Message prêt pour ${nom} ${ou}, tu n'as plus qu'à envoyer.`

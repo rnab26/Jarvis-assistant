@@ -49,6 +49,8 @@ import {
 } from "@/lib/ouVaCetteDictee"
 import { titreLisible } from "@/lib/titreTache"
 import { SECTIONS_PARAMETRES } from "@/lib/sectionsParametres"
+import { momentLocal } from "@/lib/notifications/plan"
+import type { MessageProgramme } from "@/lib/messagesProgrammes"
 import type {
   Category,
   Contact,
@@ -233,6 +235,28 @@ export type VoiceAction =
    * réglage précis : `_shared/branchements.ts` dit déjà l'état courant à
    * chaque phrase, ça ferait double emploi. */
   | { action: "list_settings" }
+  /**
+   * Programmer l'envoi d'un message pour PLUS TARD — chantier ed32cbcc.
+   * À LA DIFFÉRENCE de `send_message` (dans `ActionTelephone`, ci-dessous),
+   * ceci n'ouvre RIEN tout de suite : ça écrit une intention dans
+   * `messages_programmes` (src/lib/messagesProgrammes.ts). Décision de
+   * Raphaël du 3 sept. 2026 : rien ne part sans qu'il valide — à l'heure
+   * dite, Jarvis annonce le message à voix haute et attend sa réponse
+   * (envoyer / modifier / reprogrammer / annuler), il ne l'envoie jamais
+   * tout seul.
+   */
+  | {
+      action: "schedule_message"
+      message_channel?: "whatsapp" | "whatsapp_business" | "sms"
+      message_text: string
+      contact_id?: string
+      contact_name?: string
+      phone_number?: string
+      /** Les deux obligatoires ici (contrairement à add_task) : un message
+       * "programmé" sans date NI heure ne veut rien dire. */
+      due_date: string
+      due_time: string
+    }
   // Actions qui sortent de Jarvis pour aller dans une autre application du
   // téléphone (ouvrir une app, préparer un message, composer un numéro,
   // poser une alarme, ouvrir un itinéraire). Leur exécution vit dans son
@@ -295,6 +319,28 @@ export interface PronunciationsApi {
   pronunciations: Pronunciation[]
   addPronunciation: (input: PronunciationInput) => Promise<void>
   deletePronunciation: (id: string) => Promise<void>
+}
+
+/**
+ * L'envoi PROGRAMMÉ d'un message — chantier ed32cbcc.
+ *
+ * `programmerMessage` est la seule que le MODÈLE déclenche (schedule_message) :
+ * il n'en lit ni n'en modifie jamais. Les trois autres servent à
+ * `messageAnnonce.ts` / MicButton, côté appareil uniquement, pour annoncer à
+ * l'heure dite et réagir à sa réponse (annuler / marquer envoyé) — jamais au
+ * modèle, qui ne voit ni ne doit voir la liste des messages en attente.
+ */
+export interface MessagesProgrammesApi {
+  programmerMessage: (entree: {
+    destinataire: string
+    texte: string
+    envoyer_a: string
+    canal?: "whatsapp" | "sms" | null
+    contact_id?: string | null
+  }) => Promise<MessageProgramme | null>
+  messagesAAnnoncer: () => Promise<MessageProgramme[]>
+  marquerAnnonce: (id: string) => Promise<void>
+  annulerMessage: (id: string) => Promise<void>
 }
 
 export interface AgendaApi {
@@ -617,6 +663,7 @@ export async function executeVoiceAction(
   entrainementApi: EntrainementApi,
   gmail: GmailApi,
   { navigateVersParametres }: NavigationApi,
+  { programmerMessage }: MessagesProgrammesApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -1344,6 +1391,44 @@ export async function executeVoiceAction(
       else if (reglage.cle === "jarvis_geofence_enabled") setGeofenceEnabled(option.stocke === "1")
       else ecrireReglage(reglage.cle, option.stocke)
       return `C'est fait : ${reglage.nom} est maintenant ${option.dit}. Tu peux aussi le voir depuis ${reglage.ou}.`
+    }
+
+    case "schedule_message": {
+      // Décision de Raphaël du 3 sept. 2026 : rien ne part sans qu'il
+      // valide. Contrairement à send_message, on n'ouvre RIEN maintenant —
+      // on écrit une intention, que le téléphone annoncera à voix haute à
+      // l'heure dite (src/lib/messagesProgrammes.ts).
+      const nom =
+        contacts.find((c) => c.id === action.contact_id)?.name ??
+        action.contact_name ??
+        action.phone_number ??
+        null
+      const moment = momentLocal(action.due_date, action.due_time)
+      if (!moment) {
+        return "Je n'ai pas compris la date ou l'heure d'envoi, dis-le-moi autrement."
+      }
+      if (moment.getTime() <= Date.now()) {
+        return "Cette heure est déjà passée, dis-moi un autre moment."
+      }
+      // "whatsapp_business" n'est pas un canal distinct dans messages_programmes
+      // (juste 'whatsapp'/'sms'/null) : le choix entre les deux WhatsApp se
+      // tranche à l'heure dite, comme pour send_message.
+      const canal: "whatsapp" | "sms" | null =
+        action.message_channel === "sms" ? "sms" : action.message_channel ? "whatsapp" : null
+      try {
+        await programmerMessage({
+          destinataire: nom ?? "ce contact",
+          texte: action.message_text,
+          envoyer_a: moment.toISOString(),
+          canal,
+          contact_id: contacts.find((c) => c.id === action.contact_id)?.id ?? null,
+        })
+      } catch {
+        return "Je n'ai pas réussi à programmer ce message, réessaie."
+      }
+      const heure = action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
+      const pour = nom ? ` pour ${nom}` : ""
+      return `C'est noté : je te proposerai ce message${pour} ${formatDateCourte(action.due_date)}${heure}.`
     }
 
     case "open_app":

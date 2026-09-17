@@ -40,9 +40,24 @@ import {
   cibleAnnoncee,
   dernierAppelTelephone,
   executerActionTelephone,
+  marquerMessagePrepareCommeProgramme,
+  messagePrepareEnAttente,
   questionAppPreferee,
+  type ActionTelephone,
   type CategorieAppTelephone,
 } from "@/lib/actionsTelephoneVocales"
+import {
+  estCorrectionMessage,
+  estDemandeRelectureMessage,
+  phraseCorrectionMessage,
+  phraseRelectureMessage,
+} from "@/lib/correctionMessage"
+import {
+  estAnnulationMessageAnnonce,
+  peutAnnoncerMaintenant,
+  phraseAnnonceMessage,
+  prochainMessageAAnnoncer,
+} from "@/lib/messageAnnonce"
 import {
   envoiAutoActif,
   estReponseNon,
@@ -73,6 +88,7 @@ import {
   type DocumentsApi,
   type EntrainementApi,
   type GmailApi,
+  type MessagesProgrammesApi,
   type PlaceRemindersApi,
   type PronunciationsApi,
   type TasksApi,
@@ -117,6 +133,7 @@ interface MicButtonProps {
   documentsApi: DocumentsApi
   contactsApi: ContactsApi
   placeRemindersApi: PlaceRemindersApi
+  messagesProgrammesApi: MessagesProgrammesApi
   pronunciationsApi: PronunciationsApi
   voiceSettingApi: VoiceSettingApi
   widgetApi: WidgetApi
@@ -208,6 +225,7 @@ export function MicButton({
   documentsApi,
   contactsApi,
   placeRemindersApi,
+  messagesProgrammesApi,
   pronunciationsApi,
   voiceSettingApi,
   widgetApi,
@@ -358,6 +376,88 @@ export function MicButton({
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: confirmation.length })
       derniereLocaleRef.current = transcript
       return confirmation
+    }
+
+    // « annule », « laisse tomber » après l'ANNONCE d'un message programmé
+    // (messageAnnonce.ts) : on annule l'envoi et on le dit — jamais un
+    // silence, jamais un second brouillon. `messageProgrammeId` n'est posé
+    // QUE par cette annonce-là (jamais par une préparation normale), donc sa
+    // seule présence suffit à distinguer ce cas de « annule » dans n'importe
+    // quel autre contexte — d'où la même fenêtre de fraîcheur (90 s) que la
+    // correction et la relecture ci-dessous, sur le même dernierTourRef.
+    {
+      const prepareAnnonce = messagePrepareEnAttente()
+      const frais = dernierTourRef.current && Date.now() - dernierTourRef.current.at <= 90_000
+      if (
+        frais &&
+        prepareAnnonce?.messageProgrammeId &&
+        estAnnulationMessageAnnonce({ id: prepareAnnonce.messageProgrammeId }, transcript)
+      ) {
+        try {
+          await messagesProgrammesApi.annulerMessage(prepareAnnonce.messageProgrammeId)
+        } catch {
+          // On le dit quand même : rien de pire ici qu'un silence après
+          // avoir déjà annoncé le message.
+        }
+        const dit = prepareAnnonce.cible
+          ? `D'accord, je n'envoie rien à ${prepareAnnonce.cible}.`
+          : "D'accord, je n'envoie rien."
+        const annulation: VoiceAction[] = [{ action: "chat", message: dit }]
+        noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: annulation.length })
+        derniereLocaleRef.current = transcript
+        return annulation
+      }
+    }
+
+    // La RELECTURE d'un message WhatsApp/SMS préparé (« relis-le moi »,
+    // « qu'est-ce que t'as écrit ? ») : Jarvis dit le texte tel qu'il est,
+    // sans y toucher ni l'envoyer — chantier ed32cbcc. Même raison que les
+    // deux confirmations ci-dessus : reconnu ICI avec dernierTourRef, que le
+    // serveur ne voit jamais.
+    if (estDemandeRelectureMessage(dernierTourRef.current, transcript, Date.now())) {
+      const prepare = messagePrepareEnAttente()
+      if (prepare) {
+        const relecture: VoiceAction[] = [
+          { action: "chat", message: phraseRelectureMessage(prepare.cible, prepare.texte) },
+        ]
+        noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: relecture.length })
+        derniereLocaleRef.current = transcript
+        return relecture
+      }
+    }
+
+    // La CORRECTION d'un message WhatsApp/SMS préparé (« remplace X par Y »,
+    // « enlève la dernière phrase ») : on récrit le MÊME brouillon plutôt que
+    // d'en ouvrir un second ou de laisser l'ancien partir tel quel — chantier
+    // ed32cbcc. Seul le serveur sait récrire un texte : on lui repasse la
+    // phrase avec le contexte qu'il n'a jamais eu (même principe que la
+    // correction de la relecture AVANT ouverture, confirmationEnvoiVocale.ts).
+    if (estCorrectionMessage(dernierTourRef.current, transcript, Date.now())) {
+      const prepare = messagePrepareEnAttente()
+      if (prepare) {
+        const recrites = await resolveTranscript(
+          phraseCorrectionMessage(prepare.cible, prepare.texte, transcript, prepare.canal),
+        )
+        // Le DESTINATAIRE ne doit JAMAIS changer sur une correction — seul le
+        // texte change. On le réimpose depuis le brouillon d'origine plutôt
+        // que de laisser le modèle le redéduire d'un prompt qui ne porte que
+        // son NOM : « composer le numéro de quelqu'un d'autre est l'erreur
+        // qu'on ne rattrape pas » (chercherContact.ts).
+        const [premiere, ...reste] = recrites
+        if (premiere && premiere.action === "send_message") {
+          return [
+            {
+              ...premiere,
+              contact_id: prepare.contact_id,
+              contact_name: prepare.contact_name,
+              phone_number: prepare.phone_number,
+              message_channel: prepare.forceWhatsAppBusiness ? "whatsapp_business" : prepare.canal,
+            },
+            ...reste,
+          ]
+        }
+        return recrites
+      }
     }
 
     // D'ABORD SUR L'APPAREIL, ET SANS RIEN DEMANDER À PERSONNE.
@@ -755,6 +855,7 @@ export function MicButton({
             entrainementApi,
             gmailVoiceApi,
             { navigateVersParametres: (cible) => navigate(`/settings?section=${cible}`) },
+            messagesProgrammesApi,
           ),
         )
         // Le capteur générique (chantier d50d5f34) : CHAQUE action exécutée par
@@ -1272,6 +1373,127 @@ export function MicButton({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [veilleActive])
+
+  // L'ANNONCE d'un message programmé (messages_programmes, chantier
+  // ed32cbcc) : Jarvis le dit de lui-même la prochaine fois qu'il a la
+  // parole. PAS une notification — sa réponse du 4 sept. à la fiche « Quand
+  // Jarvis doit te déranger » est NON à ça pour ce cas précis (voir l'en-tête
+  // de src/lib/notifications/prefs.ts) : l'annonce ne vit que dans une
+  // conversation active, app ouverte, jamais par une alerte système. La
+  // décision (quand, quoi) est dans messageAnnonce.ts, pure ; ici on ne fait
+  // que la brancher, en vérifiant périodiquement pendant que l'app tourne.
+  //
+  // MÊME REF, MÊME RAISON que derniersRef juste au-dessus : l'intervalle est
+  // monté une seule fois, ce qu'il lirait en direct serait figé au premier
+  // rendu (tâches, contacts pas encore chargés).
+  const annonceMessageRef = useRef({
+    contacts: contactsApi.contacts,
+    speak,
+    muted: voiceSettingApi.muted,
+    voiceIndex,
+  })
+  annonceMessageRef.current = { contacts: contactsApi.contacts, speak, muted: voiceSettingApi.muted, voiceIndex }
+  const derniereAnnonceMessageRef = useRef<number | null>(null)
+  // Verrou simple : `messagesAAnnoncer()` est un aller-retour réseau, et sans
+  // lui deux tours de l'intervalle pourraient s'y engager en même temps
+  // (l'un n'ayant pas encore posé `derniereAnnonceMessageRef` que l'autre
+  // aurait pu lire) — annonçant deux fois le même message.
+  const annonceEnCoursRef = useRef(false)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    let annule = false
+
+    async function verifier() {
+      if (annule || annonceEnCoursRef.current) return
+      const courant = annonceMessageRef.current
+      if (
+        !peutAnnoncerMaintenant({
+          statut: statusRef.current,
+          voixCoupee: courant.muted,
+          derniereAnnonceIlYA_ms:
+            derniereAnnonceMessageRef.current === null ? null : Date.now() - derniereAnnonceMessageRef.current,
+        })
+      ) {
+        return
+      }
+
+      annonceEnCoursRef.current = true
+      try {
+        await annoncerSiDu(courant)
+      } finally {
+        annonceEnCoursRef.current = false
+      }
+    }
+
+    async function annoncerSiDu(courant: (typeof annonceMessageRef)["current"]) {
+      let dus: Awaited<ReturnType<typeof messagesProgrammesApi.messagesAAnnoncer>>
+      try {
+        dus = await messagesProgrammesApi.messagesAAnnoncer()
+      } catch {
+        return
+      }
+      if (annule) return
+      const prochain = prochainMessageAAnnoncer(dus, new Date())
+      if (!prochain) return
+
+      derniereAnnonceMessageRef.current = Date.now()
+      try {
+        await messagesProgrammesApi.marquerAnnonce(prochain.id)
+      } catch {
+        // Sans conséquence : l'annonce a quand même lieu, et « annule »
+        // n'a besoin que du texte et du destinataire, pas de ce marquage.
+      }
+
+      const dit = phraseAnnonceMessage(prochain)
+      setLastUserText(null)
+      setLastReply(dit)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await courant.speak(dit, courant.voiceIndex ?? undefined)
+      if (annule || bargeInRef.current) {
+        if (!annule) setStatus("idle")
+        return
+      }
+
+      // Prépare VRAIMENT le brouillon (WhatsApp/SMS) — c'est ce même
+      // brouillon que « envoie-le », « remplace X par Y » et « relis-le
+      // moi » (déjà reconnus juste au-dessus pour un message préparé à
+      // l'oral) sauront retrouver, sans rien inventer de plus.
+      const action: ActionTelephone = {
+        action: "send_message",
+        message_text: prochain.texte,
+        contact_id: prochain.contact_id ?? undefined,
+        // Le contact_id n'est presque jamais connu (le carnet de Jarvis n'en
+        // tient plus, voir CLAUDE.md) : c'est `destinataire` — ce qu'il a
+        // dit à l'oral en programmant l'envoi — qui sert à le retrouver dans
+        // le répertoire du téléphone, exactement comme contact_name ailleurs.
+        contact_name: prochain.contact_id ? undefined : prochain.destinataire,
+        message_channel: prochain.canal ?? undefined,
+      }
+      // sauterFenetre: l'annonce qu'on vient de dire EST déjà la
+      // confirmation (même principe que la relecture avant ouverture,
+      // confirmationEnvoiVocale.ts) : la fenêtre d'annulation passive
+      // redirait une seconde phrase, suivie d'un silence, pour rien.
+      let reponsePreparation: string
+      try {
+        reponsePreparation = await executerActionTelephone(action, courant.contacts, { sauterFenetre: true })
+      } catch {
+        reponsePreparation = "Je n'ai pas réussi à préparer ce message."
+      }
+      marquerMessagePrepareCommeProgramme(prochain.id)
+      retenirLeTour(dit, [action], reponsePreparation)
+
+      setLastReply(reponsePreparation)
+      if (!annule) setStatus("idle")
+    }
+
+    const id = setInterval(() => void verifier(), 45_000)
+    return () => {
+      annule = true
+      clearInterval(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Ouverture avec ?mic=1 (ex: depuis un widget ou le bouton latéral
   // réassigné, Phase 3) : lance directement l'écoute sans avoir à taper
