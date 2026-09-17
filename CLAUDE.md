@@ -3106,6 +3106,7 @@ node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarv
 node --experimental-strip-types scripts/verifier-prechauffage.ts  # espacement du préchauffage de la connexion Live, sans réseau
 node --experimental-strip-types scripts/verifier-ouverture-live.ts  # l'ordre des trois étapes d'une ouverture Live : le micro en même temps que la connexion, jamais avant le jeton, sans réseau
 node --experimental-strip-types scripts/verifier-reprise-live.ts  # une fermeture Live subie rouvre la conversation, une panne installée ne boucle pas, sans réseau
+node --experimental-strip-types scripts/verifier-reponse-illisible.ts  # le mode Live ne montre jamais de charabia (<ctrl46>…) et ne reste pas bloqué dessus, sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node --experimental-strip-types scripts/verifier-nom-document.ts  # un nom de fichier hébreu ou accentué devient une clé que Storage accepte, et se relit, sans réseau
@@ -4014,6 +4015,73 @@ reprise se passe bien chez lui. La preuve sera dans son journal — un
 `live_reconnexion` avec `apres_panne: true` juste après un `live_fin` qui
 porte cette raison. C'est du `src/` : la mise à jour rapide suffit, pas besoin
 d'APK.
+
+### Le mode Live affichait du charabia et restait bloqué dessus (17 sept. 2026)
+
+Chantier `40f07c12`. Sa capture : en pleine conversation Live, il demande à
+Jarvis de créer un chantier pour un bug qu'il vient de décrire, et l'écran
+affiche « Jarvis : <ctrl46><ctrl46> » — du texte brut illisible — puis plus
+rien : la conversation reste « en cours » pour de bon.
+
+**VÉRIFIÉ DANS `journal_ecoute` AU MOMENT DES FAITS, PAS SUPPOSÉ** : aucun
+`live_commande` ni `live_fin` après sa demande. Le `live_commande` juste avant
+(« Appelle Dan Marciano sur WhatsApp ») avait fonctionné normalement. La panne
+n'avait donc laissé AUCUNE trace exploitable, et pour cause : rien dans le
+projet ne loggait jamais le texte de `outputTranscription` — ni les événements
+`live_commande` (qui ne loggent que les APPELS D'OUTIL, pas la parole libre du
+modèle) ni l'événement `reponse` (métadonnées seulement, jamais le texte). Un
+`grep` sur `journal_ecoute` pour retrouver d'autres occurrences ne pouvait
+donc structurellement rien trouver — ce n'est pas que c'était rare, c'est que
+rien ne l'aurait jamais enregistré.
+
+**LA CAUSE EST CONFIRMÉE, PAS UNE HYPOTHÈSE** — cherchée le 17 sept. sur le
+forum officiel des développeurs Gemini : un bug ouvert en janvier 2026 pour
+`gemini-2.5-flash-native-audio-preview`, **le modèle Live exact de Jarvis**,
+décrit le même symptôme mot pour mot. Le modèle envoie parfois des jetons de
+contrôle bruts (`<ctrl46>`…) à la place de l'audio, plus souvent après un
+appel d'outil (Jarvis n'en a qu'un, `commande_jarvis` — et c'est justement une
+demande de chantier qui l'a déclenché ici). Cité tel quel : « the session
+never recovers; subsequent user turns also produce only control-token
+output ». Aucun correctif ni contournement côté Google à cette date — on ne
+peut RIEN faire pour empêcher l'envoi, seulement pour ce qui suit.
+
+`src/lib/live/reponseIllisible.ts` (**pur**, vérifié par
+`scripts/verifier-reponse-illisible.ts`) porte la détection — un motif précis
+(`<ctrl\d+>`) qui ne matche jamais un mot français comme « contrôle » — et le
+nettoyage (`sansJetonsDeControle`, qui retire les jetons sans jeter le reste
+d'une réponse par ailleurs correcte). Branché dans `sessionLive.ts` :
+
+1. **Jamais affiché tel quel.** `ev.onReponse` ne reçoit plus jamais le brut
+   accumulé, seulement sa version nettoyée — vide, rien ne s'affiche du tout,
+   plutôt que le charabia.
+2. **Jamais bloqué en silence.** Le cas mesuré n'a déclenché ni `onclose`, ni
+   `onerror`, ni `goAway` : Google ne ferme rien, il se tait. Un jeton détecté
+   arme donc un minuteur de 8 s (`DELAI_REPONSE_ANORMALE_MS`) ; si le tour ne
+   se termine toujours pas, on ferme NOUS-MÊMES (`fermer("Le service vocal a
+   renvoyé une réponse illisible.")`), ce qui retombe dans `deciderReprise`
+   (`repriseLive.ts`, chantier `dde25deb`) — même famille de reprise que pour
+   « Internal error occurred », bornée à deux tentatives et honnête en
+   renonçant.
+3. **Le minuteur ne fuit pas** : désarmé à `turnComplete` (le tour s'est
+   terminé normalement, jeton isolé sans suite), à une interruption par
+   Raphaël, et dans `fermer()` lui-même (quel que soit le chemin de
+   fermeture) — sinon un minuteur resté armé se déclencherait sur une session
+   déjà close.
+
+Chaque occurrence laisse maintenant une trace : `noterEcoute("live_reponse_anormale", { echantillon })`,
+reprise dans le registre des erreurs (`src/lib/erreurs.ts`,
+`evenement === "live_reponse_anormale"`, catégorie `serveur`) — la prochaine
+occurrence n'exigera plus l'enquête à la main du 17 sept.
+
+**NON REPRODUIT NI MESURÉ AILLEURS QUE CETTE FOIS** (un seul cas dans
+`journal_ecoute`, et structurellement le seul possible avant ce correctif). Ne
+présente pas ce chantier comme « la cause d'un bug fréquent corrigée » : c'est
+un bug de Google, confirmé mais dont la fréquence chez Raphaël reste inconnue
+— seule la nouvelle trace le dira. **Non vérifiable ici** (pas d'appareil, pas
+de vraie session Google déclenchant le bug à la demande) : que la reprise se
+passe bien chez lui. La preuve sera un `live_reponse_anormale` dans le journal
+la prochaine fois que ça se produit, suivi d'une reprise normale au lieu d'un
+blocage. C'est du `src/` : la mise à jour rapide suffit, pas besoin d'APK.
 
 ### Le temps d'ouverture d'une Live : ce que ce N'EST PAS
 
