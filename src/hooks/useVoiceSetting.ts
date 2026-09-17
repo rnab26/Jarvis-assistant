@@ -11,6 +11,7 @@ import {
   VOICE_INDEX_KEY,
   VOICE_PITCH_KEY,
   VOICE_RATE_KEY,
+  writeVoiceConfirmerResultat,
   writeVoiceMuted,
   writeVoicePref,
 } from "@/lib/voicePrefs"
@@ -49,6 +50,14 @@ export function useVoiceSetting() {
     writeVoiceMuted(value)
   }
 
+  /** Coupe ou remet l'annonce du résultat d'une action (succès/échec),
+   *  indépendamment de `muted` : une question qui attend sa réponse reste
+   *  toujours dite, seul le compte-rendu final se taît. */
+  function setConfirmerResultat(value: boolean) {
+    setPrefs((p) => ({ ...p, confirmerResultat: value }))
+    writeVoiceConfirmerResultat(value)
+  }
+
   /** Remet vitesse et hauteur aux valeurs d'origine, sans toucher à la voix. */
   function resetTon() {
     setPrefs((p) => ({ ...p, rate: DEFAULT_RATE, pitch: DEFAULT_PITCH }))
@@ -61,7 +70,9 @@ export function useVoiceSetting() {
     rate: prefs.rate,
     pitch: prefs.pitch,
     muted: prefs.muted,
+    confirmerResultat: prefs.confirmerResultat,
     setMuted,
+    setConfirmerResultat,
     setVoiceIndex,
     setRate,
     setPitch,

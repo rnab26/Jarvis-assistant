@@ -128,6 +128,10 @@ interface MicButtonProps {
   setWakeWordEnabled: (v: boolean) => void
   setGeofenceEnabled: (v: boolean) => void
   voiceIndex: number | null
+  /** Annonce à voix haute le résultat (succès/échec) d'une action déjà
+   * exécutée. Ne coupe jamais une question qui attend une réponse — voir
+   * VOICE_CONFIRMER_RESULTAT_KEY dans voicePrefs.ts. */
+  confirmerResultatVoix: boolean
   /** Durée pendant laquelle le micro reste ouvert après une réponse de
    * Jarvis, pour enchaîner sans retoucher le bouton. 0 = désactivé. */
   suiteMs: number
@@ -211,6 +215,7 @@ export function MicButton({
   setWakeWordEnabled,
   setGeofenceEnabled,
   voiceIndex,
+  confirmerResultatVoix,
   suiteMs,
   onIdle,
 }: MicButtonProps) {
@@ -604,10 +609,12 @@ export function MicButton({
       if (estReponseNon(reponse)) {
         const dit = "D'accord, je n'envoie rien."
         setLastReply(dit)
-        setStatus("speaking")
-        bargeInRef.current = false
-        await speak(dit, voiceIndex ?? undefined)
-        if (bargeInRef.current) return false
+        if (confirmerResultatVoix) {
+          setStatus("speaking")
+          bargeInRef.current = false
+          await speak(dit, voiceIndex ?? undefined)
+          if (bargeInRef.current) return false
+        }
         if (suiteMs > 0) return true
         setStatus("idle")
         return false
@@ -644,10 +651,12 @@ export function MicButton({
       retenirLeTour(transcript, [messageAction], clic)
 
       setLastReply(clic)
-      setStatus("speaking")
-      bargeInRef.current = false
-      await speak(clic, voiceIndex ?? undefined)
-      if (bargeInRef.current) return false
+      if (confirmerResultatVoix) {
+        setStatus("speaking")
+        bargeInRef.current = false
+        await speak(clic, voiceIndex ?? undefined)
+        if (bargeInRef.current) return false
+      }
       if (suiteMs > 0) return true
       setStatus("idle")
       return false
@@ -658,13 +667,18 @@ export function MicButton({
     retenirLeTour(transcript, actions, reply)
 
     setLastReply(reply)
-    setStatus("speaking")
-    bargeInRef.current = false
     // La fenêtre d'annulation vient peut-être déjà de dire ces mots
     // (« J'ouvre Waze. ») pendant le décompte : ne pas les relire une
-    // seconde fois. Le texte reste affiché, seule la voix se tait ici.
-    if (!estDejaAnnoncee(reply)) await speak(reply, voiceIndex ?? undefined)
-    if (bargeInRef.current) return false
+    // seconde fois. Le texte reste affiché, seule la voix se tait ici — et
+    // se tait aussi complètement quand confirmerResultatVoix est coupé
+    // (chantier d9bc1275) : le texte reste affiché sous le cœur dans les
+    // deux cas, seule la voix change.
+    if (confirmerResultatVoix && !estDejaAnnoncee(reply)) {
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(reply, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+    }
     if (suiteMs > 0) return true
     setStatus("idle")
     return false

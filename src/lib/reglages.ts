@@ -76,6 +76,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/pages/SettingsPage.tsx",
   },
   {
+    cle: "jarvis_voice_confirmer_resultat",
+    ou: "Paramètres › Voix et écoute › Confirmer le résultat des actions à voix haute",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
     cle: "jarvis_dialogue_pause_ms",
     ou: "Paramètres › Voix et écoute › Rythme de la discussion",
     fichier: "src/pages/SettingsPage.tsx",

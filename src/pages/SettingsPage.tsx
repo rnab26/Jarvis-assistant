@@ -682,7 +682,25 @@ export function SettingsPage() {
               actif={!voiceState.muted}
               onChange={(actif) => voiceState.setMuted(!actif)}
             />
-  
+
+            <Interrupteur
+              titre="Confirmer le résultat des actions à voix haute"
+              description={
+                voiceState.confirmerResultat
+                  ? "Après chaque action (message, tâche, itinéraire…), il dit si ça a réussi ou échoué."
+                  : "Il ne le dit plus à voix haute, mais le texte reste affiché sous le cœur. Une question qui attend ta réponse reste toujours dite."
+              }
+              actif={voiceState.confirmerResultat}
+              onChange={voiceState.setConfirmerResultat}
+              disabled={voiceState.muted}
+            >
+              {voiceState.muted && (
+                <p className="text-xs text-muted-foreground">
+                  Sans effet tant que la voix est coupée ci-dessus.
+                </p>
+              )}
+            </Interrupteur>
+
             <div className="flex flex-col gap-2">
               <Select
                 value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}

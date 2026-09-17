@@ -74,6 +74,7 @@ function BancDuCoeur() {
       setGeofenceEnabled={() => {}}
       entrainementApi={{ sequences: [], addSequence: rien, rejouer: async () => "" }}
       voiceIndex={null}
+      confirmerResultatVoix={true}
       suiteMs={0}
     />
   )

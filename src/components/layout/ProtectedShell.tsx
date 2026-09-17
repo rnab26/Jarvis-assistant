@@ -55,6 +55,7 @@ function ShellContent() {
           rejouer: entrainementState.rejouer,
         }}
         voiceIndex={voiceState.voiceIndex}
+        confirmerResultatVoix={voiceState.confirmerResultat}
         suiteMs={dialogueState.suiteMs}
       />
       <Outlet />
