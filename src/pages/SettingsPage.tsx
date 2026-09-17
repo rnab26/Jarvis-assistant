@@ -803,6 +803,40 @@ export function SettingsPage() {
               actif={wakeWordState.enabled}
               onChange={wakeWordState.setEnabled}
             />
+            {/* SA DÉCISION DU 9 SEPT. 2026, mot pour mot : « il vaut mieux que
+                le micro s'arrête et qu'on réactive jarvis manuellement pour
+                reprendre une session plutôt que ça s'active de façon
+                intempestive ». Le seuil est un nombre mesuré (voir
+                REFUS_AVANT_ABANDON), donc il se règle ici plutôt que de rester
+                en dur — et « Ne jamais renoncer » rend exactement le
+                comportement d'avant, pour qu'il puisse comparer. */}
+            {wakeWordState.enabled && (
+              <div className="mt-4 flex flex-col gap-1.5">
+                <label
+                  htmlFor="veille-abandon"
+                  className="text-sm font-medium"
+                >
+                  Quand le micro est pris par autre chose
+                </label>
+                <select
+                  id="veille-abandon"
+                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                  value={String(wakeWordState.seuilAbandon)}
+                  onChange={(e) => wakeWordState.setSeuilAbandon(Number(e.target.value))}
+                >
+                  <option value="10">Renoncer vite (10 refus)</option>
+                  <option value="20">Renoncer après un moment (20 refus)</option>
+                  <option value="40">Insister longtemps (40 refus)</option>
+                  <option value="0">Ne jamais renoncer</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Chaque essai refusé rouvre le micro, et ton téléphone joue sa
+                  tonalité à chaque fois. Passé ce nombre d'essais refusés
+                  d'affilée, Jarvis arrête d'insister et te le dit sous le
+                  cœur — un appui sur le cœur le relance.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 

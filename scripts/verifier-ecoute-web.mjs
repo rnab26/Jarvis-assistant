@@ -342,6 +342,59 @@ try {
   )
   if (!reponseCoeur.includes("Tu as 2 tâches")) console.log("      page :", reponseCoeur.replace(/\s+/g, " ").slice(0, 300))
   await coeur.close()
+
+  // ── LA VEILLE RENONCE QUAND LE MICRO EST PRIS ──
+  // Mesuré le 17 sept. 2026 sur son téléphone : 229 démarrages refusés
+  // d'affilée sur 2 h 22, zéro écoute réelle, PENDANT qu'une pastille
+  // clignotante promettait « Dis "Jarvis" quand tu veux ». Ce banc-là monte
+  // le VRAI MicButton avec un moteur qui refuse toujours, et vérifie les deux
+  // moitiés : ce qu'on cesse de faire (réclamer le micro sans fin) et ce
+  // qu'on dit à la place.
+  {
+    const mort = await navigateur.newPage()
+    mort.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (veille morte):", e.message)
+    })
+    await mort.addInitScript(FAUX_MOTEUR)
+    // Avant le premier rendu : la toute première rafale doit déjà se heurter
+    // au refus, sinon le compteur repart de zéro et le seuil n'est pas atteint.
+    await mort.addInitScript("window.addEventListener('DOMContentLoaded', () => { window.__sr.refuseDeDemarrer = true })")
+    await mort.goto(`${BASE}/scripts/harness/micbutton.html?abandon=3`)
+
+    await mort
+      .waitForFunction(
+        "document.body.textContent.includes(\"j'ai arrêté d'insister\")",
+        null,
+        { timeout: 15000 },
+      )
+      .catch(() => {
+        echecs++
+        console.log("ÉCHEC veille : elle n'a jamais renoncé malgré des démarrages tous refusés")
+      })
+
+    const texteMort = (await mort.textContent("body")) ?? ""
+    verifier(
+      "elle ne promet plus « Dis « Jarvis » » pendant que le micro est pris",
+      texteMort.includes("Dis « Jarvis »"),
+      false,
+    )
+    verifier(
+      "et elle dit par où reprendre",
+      texteMort.includes("Touche le cœur pour reprendre."),
+      true,
+    )
+
+    // LA MOITIÉ QUI COMPTE VRAIMENT : on a cessé de RÉCLAMER le micro. Un
+    // message honnête au-dessus d'une boucle qui continue de faire sa
+    // tonalité toutes les quatre secondes ne corrigerait rien.
+    const avant = await mort.evaluate("window.__sr.starts")
+    await pause(2500)
+    const apres = await mort.evaluate("window.__sr.starts")
+    verifier("et elle a vraiment cessé de rouvrir le micro", apres === avant, true)
+    if (apres !== avant) console.log(`      ${avant} → ${apres} démarrages`)
+    await mort.close()
+  }
 } finally {
   await navigateur?.close()
   vite.kill()

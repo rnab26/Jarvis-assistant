@@ -77,6 +77,12 @@ function BancDuCoeur() {
       // jamais et le banc mesurerait une colonne qui n'existe pas.
       consommation={QUOTA_BANC}
       wakeWordEnabled={true}
+      // Réglable depuis l'URL (?abandon=3) et à 0 par défaut : 0 rend
+      // exactement le comportement d'avant le 17 sept. 2026, donc tous les
+      // autres contrôles de ce banc mesurent la même chose qu'hier. Un seuil
+      // bas sert au contrôle qui vérifie qu'une chaîne de refus finit par
+      // faire renoncer la veille sans attendre vingt paliers.
+      seuilAbandonVeille={Number(new URLSearchParams(window.location.search).get("abandon") ?? 0)}
       setWakeWordEnabled={() => {}}
       setGeofenceEnabled={() => {}}
       entrainementApi={{ sequences: [], addSequence: rien, rejouer: async () => "" }}

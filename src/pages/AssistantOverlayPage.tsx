@@ -59,6 +59,7 @@ export function OverlayMicContent({ onIdle, cache = false }: { onIdle: () => voi
         voiceSettingApi={{ muted: voiceState.muted, setMuted: voiceState.setMuted }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
+        seuilAbandonVeille={wakeWordState.seuilAbandon}
         consommation={
           consommationState.lignes === null ? null : resumerConsommation(consommationState.lignes)
         }

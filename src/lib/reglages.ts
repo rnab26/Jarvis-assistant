@@ -91,6 +91,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/pages/SettingsPage.tsx",
   },
   {
+    cle: "jarvis_veille_abandon_refus",
+    ou: "Paramètres › Voix et écoute › Mot-clé de réveil \"Jarvis\" › Quand le micro est pris par autre chose",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
     cle: "jarvis_service_reconnaissance",
     ou: "Paramètres › Voix et écoute › Moteur de reconnaissance vocale",
     fichier: "src/components/settings/MoteurReconnaissance.tsx",

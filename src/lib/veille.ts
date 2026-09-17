@@ -208,6 +208,56 @@ export function delaiApresOccupe(echecsConsecutifs: number): number {
 }
 
 /**
+ * Nombre de démarrages refusés CONSÉCUTIFS après lequel la veille renonce
+ * d'elle-même, au lieu de réclamer le micro toutes les quatre secondes sans
+ * fin.
+ *
+ * SA DÉCISION, écrite le 9 sept. 2026 dans le journal de bord et restée sans
+ * suite jusqu'ici, mot pour mot : « Dans ce cas il vaut mieux que le micro
+ * s'arrête et qu'on réactive jarvis manuellement pour reprendre une session
+ * plutôt que ça s'active de façon intempestive ». Chaque essai refusé est une
+ * ouverture de micro, et sur Samsung chaque ouverture joue sa tonalité : une
+ * chaîne qui ne se rétablit pas est exactement le bruit dont il se plaint
+ * depuis le 7 sept.
+ *
+ * POURQUOI 20, MESURÉ SUR SON JOURNAL ET PAS CHOISI À L'ŒIL (48 h au
+ * 17 sept. 2026, `rafale_fin` en mode veille, chaînes de refus consécutifs) :
+ *
+ *     longueur  1 : 76 chaînes      longueur 11 :  1
+ *     longueur  5 : 23              longueur 13 :  7
+ *     longueur  7 :  6              longueur 18 :  1
+ *     longueur  9 :  3              longueur 26 :  1
+ *                                   longueur 229 : 1   <- en cours, 2 h 22
+ *
+ * Tout ce qui se rétablit tout seul tient sous 26. Un seuil à 8 aurait coupé
+ * quinze chaînes qui repartaient d'elles-mêmes ; à 20, seules les deux
+ * dernières sont touchées — dont celle du 17 sept. à 14 h 27, 229 refus
+ * d'affilée sur 2 h 22 SANS UNE SEULE écoute réelle, c'est-à-dire un mot-clé
+ * mort pendant qu'à l'écran une pastille clignotait « Dis "Jarvis" quand tu
+ * veux ».
+ *
+ * L'ASYMÉTRIE JUSTIFIE DE RENONCER TÔT PLUTÔT QUE TARD, et c'est elle qu'il
+ * faut garder en tête si on touche au seuil : renoncer à tort coûte UN appui
+ * sur le cœur, et ça se voit puisqu'on l'écrit à l'écran ; renoncer trop tard
+ * coûte une tonalité toutes les quatre secondes pour toujours, et un écran
+ * qui ment.
+ */
+export const REFUS_AVANT_ABANDON = 20
+
+/**
+ * La veille doit-elle renoncer ?
+ *
+ * `seuil` à 0 (ou négatif) veut dire « ne jamais renoncer » — c'est le
+ * réglage Paramètres › Voix et écoute › Mot-clé de réveil, et c'est aussi ce
+ * que rendent les appelants qui ne savent rien de ce réglage (le banc
+ * d'essai), pour garder exactement le comportement d'avant.
+ */
+export function renonceApresRefus(echecsConsecutifs: number, seuil: number): boolean {
+  if (seuil <= 0) return false
+  return echecsConsecutifs >= seuil
+}
+
+/**
  * Délai avant la rafale suivante.
  *
  * Le service Android meurt après quelques secondes de silence, et chaque

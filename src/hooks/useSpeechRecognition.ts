@@ -780,7 +780,7 @@ export function useSpeechRecognition() {
       }
 
       function session(): Promise<void> {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           const reco = new Ctor!()
           courante.reco = reco
           recognitionRef.current = reco
@@ -830,9 +830,22 @@ export function useSpeechRecognition() {
           }
 
           // Une exception synchrone ici (moteur déjà démarré, micro refusé)
-          // rejette la promesse d'elle-même : l'appelant la reçoit, le
-          // `finally` nettoie. Vérifié par scripts/verifier-ecoute-web.mjs.
-          reco.start()
+          // rejette la promesse, l'appelant la reçoit, le `finally` nettoie.
+          // Vérifié par scripts/verifier-ecoute-web.mjs.
+          //
+          // ELLE EST RENOMMÉE EN `MOTEUR_OCCUPE`, et c'est le même fait que
+          // côté natif : là-bas, une promesse `start()` rejetée pose
+          // `demarrageRefuse` et la rafale se termine sur cette erreur-là
+          // (voir plus haut). Ici, la même chose remontait sous le message
+          // brut du navigateur — donc la veille comptait un démarrage refusé
+          // comme une rafale MUETTE, prenait le recul du silence, et ne
+          // pouvait jamais renoncer (`renonceApresRefus`) quel que soit le
+          // nombre de refus. Une seule notion, un seul nom.
+          try {
+            reco.start()
+          } catch {
+            reject(new Error(MOTEUR_OCCUPE))
+          }
         })
       }
 

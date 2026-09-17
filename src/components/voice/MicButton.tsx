@@ -19,6 +19,7 @@ import {
   delaiAvantRafaleSuivante,
   enRefroidissement,
   peutEcouterEnVeille,
+  renonceApresRefus,
   REFROIDISSEMENT_APRES_FIN_MS,
   sansAccuse,
   texteAAfficherEnVeille,
@@ -139,6 +140,10 @@ interface MicButtonProps {
   widgetApi: WidgetApi
   entrainementApi: EntrainementApi
   wakeWordEnabled: boolean
+  /** Combien de démarrages refusés d'affilée avant que la veille renonce
+   * d'elle-même — 0 = jamais. Voir `renonceApresRefus` (src/lib/veille.ts) et
+   * Paramètres › Voix et écoute › Mot-clé de réveil. */
+  seuilAbandonVeille?: number
   /** Ce que Jarvis a consommé aujourd'hui, pour la ligne sous le cœur.
    * `null` = pas encore lu, ou lecture en échec — on n'affiche alors RIEN. */
   consommation: Consommation | null
@@ -231,6 +236,7 @@ export function MicButton({
   widgetApi,
   entrainementApi,
   wakeWordEnabled,
+  seuilAbandonVeille = 0,
   consommation,
   setWakeWordEnabled,
   setGeofenceEnabled,
@@ -1153,6 +1159,12 @@ export function MicButton({
   }, [])
 
   async function handleClick() {
+    // Un appui est une reprise en main : il relance la veille qui avait
+    // renoncé. Il ne la CONDITIONNE jamais — si le micro est toujours pris,
+    // cette écoute-ci échouera et la boucle renoncera à nouveau, en le
+    // disant. Poser le drapeau ici plutôt que dans chaque branche ci-dessous :
+    // tous les chemins de cette fonction sont une prise en main.
+    setVeilleAbandonnee(false)
     if (modeLive) {
       if (liveRef.current) {
         arreterLive()
@@ -1226,6 +1238,18 @@ export function MicButton({
   // conversation, l'état n'est jamais au repos, donc la veille attend.
   const veilleActive = wakeWordEnabled && visible
 
+  // LA VEILLE A RENONCÉ : le service de reconnaissance a refusé le micro tant
+  // de fois d'affilée qu'insister ne fait plus que jouer la tonalité de
+  // Samsung toutes les quatre secondes. Sa décision du 9 sept. 2026 : « il
+  // vaut mieux que le micro s'arrête et qu'on réactive jarvis manuellement ».
+  // L'état sert à l'AFFICHAGE et à couper la boucle ; un appui sur le cœur le
+  // remet à faux, ce qui remonte la boucle (il est dans ses dépendances).
+  const [veilleAbandonnee, setVeilleAbandonnee] = useState(false)
+  // Relu à chaque tour de boucle, jamais capturé au montage : il change
+  // depuis Paramètres pendant que la veille tourne.
+  const seuilAbandonRef = useRef(seuilAbandonVeille)
+  seuilAbandonRef.current = seuilAbandonVeille
+
   // Une mise à jour qui s'installe suspend la veille (voir majEnCours.ts et
   // peutEcouterEnVeille). L'état sert à l'AFFICHAGE, la ref à la boucle —
   // qui est montée une fois et ne verrait jamais un état changé après coup.
@@ -1248,7 +1272,7 @@ export function MicButton({
   const derniersRef = useRef({ demarrerLive, conduireConversation, startListening, handleClick, resolveTranscript, executerActions })
   derniersRef.current = { demarrerLive, conduireConversation, startListening, handleClick, resolveTranscript, executerActions }
   useEffect(() => {
-    if (!veilleActive) return
+    if (!veilleActive || veilleAbandonnee) return
     let cancelled = false
 
     async function wakeLoop() {
@@ -1301,6 +1325,17 @@ export function MicButton({
         }
         if (cancelled) return
         echecsOccupeConsecutifs = echecDemarrage ? echecsOccupeConsecutifs + 1 : 0
+        if (renonceApresRefus(echecsOccupeConsecutifs, seuilAbandonRef.current)) {
+          // On s'arrête là, et on le DIT (voir plus bas, sous le cœur) :
+          // continuer reviendrait à réclamer un micro que quelque chose
+          // d'autre tient, toutes les quatre secondes, indéfiniment — mesuré
+          // le 17 sept. 2026, 229 refus d'affilée sur 2 h 22 sans une seule
+          // écoute réelle, pendant qu'à l'écran une pastille clignotante
+          // promettait « Dis "Jarvis" quand tu veux ».
+          setStatus("idle")
+          setVeilleAbandonnee(true)
+          return
+        }
         // Un démarrage refusé n'a rien écouté : il ne compte pas comme une
         // rafale silencieuse, sans quoi un vrai silence qui suit une chaîne
         // de refus hériterait à tort d'un recul déjà remonté à plusieurs
@@ -1372,7 +1407,7 @@ export function MicButton({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [veilleActive])
+  }, [veilleActive, veilleAbandonnee])
 
   // L'ANNONCE d'un message programmé (messages_programmes, chantier
   // ed32cbcc) : Jarvis le dit de lui-même la prochaine fois qu'il a la
@@ -1590,7 +1625,19 @@ export function MicButton({
           était réellement actif : un indicateur qui n'apparaît qu'une fraction
           du temps revient à ne rien indiquer. */}
       {wakeWordEnabled && (status === "wake-listening" || status === "idle") && (
-        majEnCoursEtat ? (
+        veilleAbandonnee ? (
+          // La pastille clignotante disait « Dis "Jarvis" quand tu veux »
+          // pendant que le micro était pris — mesuré le 17 sept. 2026 :
+          // 2 h 22 à le promettre sans qu'une seule écoute s'ouvre. Ce qu'on
+          // affiche ici n'accuse rien qu'on n'ait pas constaté : depuis le
+          // téléphone, on sait que le service a refusé, pas QUI le tient.
+          <p className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+            <span className="font-medium text-destructive">
+              Le micro est pris par autre chose — j'ai arrêté d'insister.
+            </span>
+            <span>Touche le cœur pour reprendre.</span>
+          </p>
+        ) : majEnCoursEtat ? (
           // Le DIRE plutôt que de rester muet : une veille suspendue sans un
           // mot se lit exactement comme un mot-clé qui ne marche pas — le
           // défaut qu'il signalait le 3 sept. (« je ne sais jamais ce qui est
