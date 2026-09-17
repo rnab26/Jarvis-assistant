@@ -118,6 +118,24 @@ function normaliserAction(
     }
   }
 
+  // 1e. transmettre_recu : le modèle pose parfois le destinataire dans un
+  //     champ "name" générique au lieu de "contact_name" — mesuré le
+  //     17 sept. 2026 sur la fonction déployée (2 échecs sur 5 essais de
+  //     `verifier-commande-vocale.mjs`, filtre "transmet"), sur une action
+  //     ajoutée le jour même donc moins renforcée que send_message/
+  //     call_contact, qui n'ont jamais montré ce défaut. Aucun champ "name"
+  //     n'existe dans le schéma de cette action : un "name" présent sans
+  //     "contact_name" ne peut désigner que le destinataire.
+  if (
+    input.action === "transmettre_recu" &&
+    !input.contact_id &&
+    !input.contact_name &&
+    typeof input.name === "string" &&
+    input.name
+  ) {
+    input = { ...input, contact_name: input.name, name: undefined }
+  }
+
   const champs = CHAMPS_MODIFIABLES[String(input.action)]
   if (!champs) return input
 
