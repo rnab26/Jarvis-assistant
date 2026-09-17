@@ -88,6 +88,16 @@ export function depuisQuand(created_at: string | null | undefined, maintenant: D
   return `depuis ${jours} jours`
 }
 
+/** Le tri et le plafond qui décident CE QUI est retenu — partagé entre le
+ * texte envoyé au modèle et le garde-fou de `decisionDesigneeClairement`,
+ * qui doivent voir exactement les mêmes points. */
+function retenirPoints(points: PointEnAttente[]): PointEnAttente[] {
+  return (points ?? [])
+    .filter(enAttenteDeRaphael)
+    .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
+    .slice(0, MAX_POINTS)
+}
+
 /**
  * Le bloc à insérer, ou "" — jamais un titre suivi de rien.
  *
@@ -97,10 +107,7 @@ export function depuisQuand(created_at: string | null | undefined, maintenant: D
  * pas réciter une section vide. Même règle que `formaterCorrections`.
  */
 export function formaterCeQuiLAttend(points: PointEnAttente[], maintenant: Date): string {
-  const retenus = (points ?? [])
-    .filter(enAttenteDeRaphael)
-    .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))
-    .slice(0, MAX_POINTS)
+  const retenus = retenirPoints(points)
   if (!retenus.length) return ""
 
   const lignes = retenus.map((p) => {
@@ -127,6 +134,83 @@ export function formaterCeQuiLAttend(points: PointEnAttente[], maintenant: Date)
     `ou n'en désigne clairement aucun, N'UTILISE PAS repondre_decision — rends clarify, rappelle en une phrase les ` +
     `sujets en attente et demande auquel il répond. Ne devine jamais au hasard entre plusieurs points.`
   )
+}
+
+/**
+ * Mots trop communs pour distinguer un point d'un autre — y compris ceux
+ * qu'une phrase de refus vague utilise ("laisse", "change", "rien") : c'est
+ * justement le cas qu'on veut voir échouer, pas gagner par accident sur un
+ * mot qui ne dit rien.
+ */
+const MOTS_VIDES_DECISION = new Set([
+  "les", "des", "une", "un", "aux", "que", "qui", "pour", "dans", "avec", "sans",
+  "sur", "par", "est", "sont", "pas", "plus", "moins", "faire", "fait", "faut",
+  "avoir", "cela", "cette", "ceux", "celle", "quand", "comme", "mais", "donc",
+  "car", "son", "sa", "ses", "mon", "ma", "mes", "leur", "leurs", "nous", "vous",
+  "tout", "tous", "toute", "toutes", "bien", "peut", "pouvoir", "doit", "devoir",
+  "quelque", "chose", "aussi", "encore", "deja", "meme", "laisse", "laisses",
+  "laisser", "change", "changer", "changes", "rien", "reste", "reponds",
+  "garde", "gardons", "gardes", "ok", "oui", "non", "cest", "c'est",
+])
+
+function motsUtilesDecision(texte: string): Set<string> {
+  const normalise = texte
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+  return new Set(
+    normalise.split(/[^a-z0-9]+/).filter((m) => m.length >= 3 && !MOTS_VIDES_DECISION.has(m)),
+  )
+}
+
+/**
+ * Le point ciblé est-il désigné SANS AMBIGUÏTÉ par la phrase, par un mot qui
+ * lui appartient et n'appartient à AUCUN autre point en attente ?
+ *
+ * Sert de filet derrière la consigne (ci-dessus), qui ne suffit pas seule.
+ * MESURÉ le 17 sept. 2026, sur la fonction déployée, avec deux points en
+ * attente et « laisse comme c'est, ne change rien » : le modèle a d'abord
+ * répondu aux DEUX à la fois (guettée par le garde-fou de comptage
+ * d'index.ts), puis — une fois rejoué — a répondu à un SEUL des deux, choisi
+ * au hasard, ce que ce garde-fou-ci attrape (leur vocabulaire ne recoupe rien
+ * de la phrase). Même leçon que le chantier 902bf94b sur le nom de catégorie
+ * refusée : la consigne seule ne l'empêche pas, ça se corrige dans le code.
+ *
+ * Avec un seul point en attente, aucune ambiguïté n'est possible : toujours
+ * vrai s'il vise bien ce point-là, même si sa phrase est vague (« S'il n'y a
+ * qu'un seul point, decision_id est forcément lui »).
+ *
+ * Aucun point retrouvé (déjà répondu entre-temps depuis le cockpit, ou
+ * lecture ratée) : jamais vrai. Un « je ne peux pas vérifier » ne doit jamais
+ * se lire comme un « c'est bon ».
+ */
+export function decisionDesigneeClairement(
+  transcript: string,
+  decisionId: string,
+  points: PointEnAttente[],
+): boolean {
+  if (points.length === 0) return false
+  if (points.length === 1) return points[0].id === decisionId
+  const cible = points.find((p) => p.id === decisionId)
+  if (!cible) return false
+
+  const motsPhrase = motsUtilesDecision(transcript)
+  if (motsPhrase.size === 0) return false
+
+  const texteDe = (p: PointEnAttente) => [p.body, ...libellesOptions(p.options)].join(" ")
+  const motsCible = motsUtilesDecision(texteDe(cible))
+  const motsAutres = new Set<string>()
+  for (const p of points) {
+    if (p.id === decisionId) continue
+    for (const m of motsUtilesDecision(texteDe(p))) motsAutres.add(m)
+  }
+
+  // Un mot de la phrase qui n'appartient QU'à la cible, pas aux autres
+  // candidats en attente — c'est ce qui manquait à « laisse comme c'est ».
+  for (const m of motsPhrase) {
+    if (motsCible.has(m) && !motsAutres.has(m)) return true
+  }
+  return false
 }
 
 /** Le client Supabase, réduit à ce qu'on utilise ici : pas d'import Deno. */
@@ -173,5 +257,32 @@ export async function rappelerCeQuiLAttend(
   } catch (err) {
     await signalerPanne(supabase, "Jarvis n'a pas pu relire ce qui attend une décision de Raphaël", err)
     return ""
+  }
+}
+
+/**
+ * Les mêmes points, mais STRUCTURÉS plutôt qu'en texte — pour
+ * `decisionDesigneeClairement` (voice-command/index.ts), qui doit voir
+ * exactement ce que le modèle a reçu ce tour-ci. Deuxième lecture de la même
+ * table, volontairement : elle n'a lieu que quand une réponse à une décision
+ * revient du modèle (rare), jamais à chaque phrase.
+ *
+ * Silencieuse en cas de panne ([] plutôt qu'une erreur) : une lecture ratée
+ * ici ne doit pas faire échouer la phrase, elle a juste moins de quoi
+ * vérifier — `rappelerCeQuiLAttend` a déjà signalé la vraie panne au registre
+ * si la base est injoignable.
+ */
+export async function pointsCeQuiLAttend(supabase: ClientLecture): Promise<PointEnAttente[]> {
+  try {
+    const { data, error } = await supabase
+      .from("dev_log")
+      .select("id, author, kind, body, answered_at, pourquoi, created_at, item_id, options")
+      .is("answered_at", null)
+      .order("created_at", { ascending: false })
+      .limit(MAX_POINTS * 6)
+    if (error || !Array.isArray(data)) return []
+    return retenirPoints(data as PointEnAttente[])
+  } catch {
+    return []
   }
 }

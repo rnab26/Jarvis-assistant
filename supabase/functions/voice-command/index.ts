@@ -6,7 +6,7 @@ import { CONSIGNE_HONNETETE } from "../_shared/honnetete.ts"
 import { CONSIGNE_QUESTION_POSEE } from "../_shared/questionPosee.ts"
 import { rappelerBranchements } from "../_shared/branchements.ts"
 import { rappelerCorrections } from "../_shared/corrections.ts"
-import { rappelerCeQuiLAttend } from "../_shared/ceQuiLAttend.ts"
+import { decisionDesigneeClairement, pointsCeQuiLAttend, rappelerCeQuiLAttend } from "../_shared/ceQuiLAttend.ts"
 import { rappelerMoteurActif } from "../_shared/moteurActif.ts"
 import { appelerModele, moteurNonConfigure, phrasePourEchec } from "../_shared/modele.ts"
 
@@ -842,16 +842,32 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${blocTacheEnAttente
     // Comme pour le nom de catégorie refusée (chantier 902bf94b), la consigne
     // seule ne l'empêche pas malgré l'instruction explicite : ça se corrige
     // dans le code, pas en insistant davantage dans le prompt.
+    const AVEU_DECISION_AMBIGUE = {
+      action: "clarify",
+      message: "Plusieurs points attendent une réponse de ta part en ce moment. Auquel réponds-tu ?",
+    }
     const reponsesDecision = actions.filter((a) => a.action === "repondre_decision")
-    const actionsSures =
-      reponsesDecision.length > 1
-        ? [
-            {
-              action: "clarify",
-              message: "Plusieurs points attendent une réponse de ta part en ce moment. Auquel réponds-tu ?",
-            },
-          ]
-        : actions
+    let actionsSures = reponsesDecision.length > 1 ? [AVEU_DECISION_AMBIGUE] : actions
+
+    // DEUXIÈME FILET, pour le cas qui reste : UN SEUL repondre_decision rendu,
+    // mais qui pourrait être un choix arbitraire parmi plusieurs points
+    // ambigus — mesuré le 17 sept. 2026, rejoué sur la fonction déployée :
+    // une première fois le modèle a répondu aux DEUX points à la fois (filet
+    // ci-dessus), une seconde fois à UN SEUL choisi au hasard. Vérifié
+    // seulement quand une réponse à une décision revient (rare) : une
+    // deuxième lecture de dev_log à chaque phrase serait du gaspillage.
+    const indexReponseDecision = actionsSures.findIndex((a) => a.action === "repondre_decision")
+    if (indexReponseDecision !== -1) {
+      const decisionId = (actionsSures[indexReponseDecision] as Record<string, unknown>).decision_id
+      const points = await pointsCeQuiLAttend(supabase)
+      if (
+        typeof decisionId !== "string" ||
+        !decisionId ||
+        !decisionDesigneeClairement(transcript, decisionId, points)
+      ) {
+        actionsSures = [AVEU_DECISION_AMBIGUE]
+      }
+    }
 
     // Mémorisation silencieuse, après coup : la réponse part sans l'attendre.
     // waitUntil garde la fonction en vie le temps de finir, sans retarder
