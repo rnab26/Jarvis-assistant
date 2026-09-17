@@ -3081,6 +3081,29 @@ texte.
 est d'exclure le compte rendu d'abord, puis d'énumérer les `kind`. Un contrôle
 garde ce cas précis.
 
+### Une question mal formée n'atteint plus sa carte (17 sept. 2026)
+
+Chantier `f397305d`. Une session a inséré en SQL brut une note TECHNIQUE
+adressée à une autre session (`kind='question'`), sans passer par
+`scripts/demander.sh` et sans préfixer « Pour la session … ». Elle a atterri
+telle quelle sur « Ce qui attend ta décision » — ses mots : « je ne comprends
+rien. En fait, il me fait un récap très bizarre, pas clair du tout. »
+
+**La mesure du 7 sept. (« 9 questions sur 14 sans `pourquoi`, toutes
+légitimes ») ne tient plus, remesuré le 17 sept. sur les 27 questions
+réelles du journal : les 10 sans `pourquoi` sont maintenant TOUTES des
+messages entre sessions, zéro question légitime.** La raison : `--pourquoi`
+est devenu obligatoire dans `demander.sh` entre-temps — toute question posée
+par le chemin canonique en porte un désormais, avec ou sans options.
+
+`questionMalFormee` (même fichier, même paire de copies que ci-dessus) exclut
+donc de `enAttenteDeRaphael`/`estPourRaphael` une question sans `pourquoi`,
+sans options, et non reconnue par `adresseeAUneSession`. **Volontairement PAS
+une liste de préfixes à élargir** (« Session X ici », « Pour les sessions… »
+existent aussi et continueraient à échapper à un motif énuméré) : puisqu'une
+vraie demande a toujours `pourquoi`, une question qui n'en a pas n'est
+structurellement plus une demande bien formée, quelle que soit sa formulation.
+
 ## Ce que Jarvis sait de sa propre application
 
 `supabase/functions/_shared/environnement.ts` — **une seule source**, importée

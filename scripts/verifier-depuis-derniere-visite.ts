@@ -48,6 +48,7 @@ const message = (
   quand: string,
   corps = "coucou",
   kind: DevLogEntry["kind"] = "info",
+  pourquoi: string | null = null,
 ): DevLogEntry => ({
   id: `m${++n}`,
   user_id: "u",
@@ -57,6 +58,7 @@ const message = (
   body: corps,
   answered_at: null,
   created_at: quand,
+  pourquoi,
 })
 
 const ITEMS = [
@@ -71,7 +73,7 @@ const MESSAGES = [
   // plus précieuses du bandeau.
   message("claude/voix", APRES, "J'ai fini le micro."),
   // Et une question qui lui est adressée, à lui : celle-là doit se lire.
-  message("claude/voix", APRES, "Tu veux qu'on coupe après 30 s ?", "question"),
+  message("claude/voix", APRES, "Tu veux qu'on coupe après 30 s ?", "question", "Sinon le mot-à-mot n'a pas de limite."),
   message("claude/voix", AVANT, "Message d'avant."),
   message("Raphaël", APRES, "Ce qu'il a écrit lui-même."),
 ]

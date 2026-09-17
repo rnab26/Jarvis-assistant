@@ -27,6 +27,7 @@ export interface EntreeJournal {
   body: string
   answered_at: string | null
   pourquoi?: string | null
+  options?: unknown
 }
 
 function adresseeAUneSession(body: string): boolean {
@@ -48,13 +49,30 @@ export function compteRenduDeSession(entry: EntreeJournal): boolean {
   return entry.pourquoi == null || entry.pourquoi.trim() === ""
 }
 
+/**
+ * Une question MAL FORMÉE : ni `pourquoi`, ni options, ni adressée à une
+ * session par la convention « Pour la session … ». Voir la copie app
+ * (`src/lib/journalDestinataire.ts`) pour la mesure du 17 sept. 2026 qui a
+ * fait ajouter ce garde-fou — même raison qu'il y a deux copies de tout le
+ * reste ici : une Edge Function ne peut pas importer `src/`.
+ */
+function questionMalFormee(entry: EntreeJournal): boolean {
+  return (
+    entry.kind === "question" &&
+    (entry.pourquoi == null || entry.pourquoi.trim() === "") &&
+    entry.options == null &&
+    !adresseeAUneSession(entry.body)
+  )
+}
+
 /** Ce qui l'attend, LUI : une question à trancher ou une action de son côté. */
 export function enAttenteDeRaphael(entry: EntreeJournal): boolean {
   return (
     (entry.kind === "question" || entry.kind === "action") &&
     !entry.answered_at &&
     !adresseeAUneSession(entry.body) &&
-    !compteRenduDeSession(entry)
+    !compteRenduDeSession(entry) &&
+    !questionMalFormee(entry)
   )
 }
 
@@ -63,5 +81,6 @@ export function estPourRaphael(entry: EntreeJournal): boolean {
   if (entry.author === AUTEUR_RAPHAEL) return false
   if (entry.answered_at || adresseeAUneSession(entry.body)) return false
   if (compteRenduDeSession(entry)) return false
+  if (questionMalFormee(entry)) return false
   return entry.kind === "question" || entry.kind === "blocage" || entry.kind === "action"
 }
