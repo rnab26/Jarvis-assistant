@@ -123,6 +123,7 @@ public class NotificationsPlugin extends Plugin {
             o.put("titre", n.titre);
             o.put("texte", n.texte);
             o.put("quand", n.quand);
+            o.put("estResumeDeGroupe", n.estResumeDeGroupe);
             liste.put(o);
         }
         JSObject reponse = new JSObject();

@@ -9,6 +9,7 @@
  */
 import {
   lectureVoulue,
+  notificationsUtiles,
   phraseAucuneNotificationDe,
   phraseLectureCoupee,
   phraseNotifications,
@@ -24,8 +25,8 @@ const verifier = (nom: string, ok: boolean, detail = "") => {
   console.log(`${ok ? "OK  " : "ÉCHEC"} ${nom}${ok ? "" : `\n      ${detail}`}`)
 }
 
-function n(app: string, titre: string, texte: string): NotificationLue {
-  return { paquet: `paquet.${app}`, application: app, titre, texte, quand: 0 }
+function n(app: string, titre: string, texte: string, estResumeDeGroupe = false): NotificationLue {
+  return { paquet: `paquet.${app}`, application: app, titre, texte, quand: 0, estResumeDeGroupe }
 }
 
 // ── L'interrupteur maître : par défaut activé, seul "0" le coupe ──
@@ -61,6 +62,36 @@ verifier(
     n("WhatsApp", "Dylan", "b"),
     n("WhatsApp", "Sarah", "c"),
   ]) === "Tu as 3 notifications. 3 de WhatsApp.",
+)
+
+// ── Les résumés de groupe (Android FLAG_GROUP_SUMMARY) : jamais comptés,
+// jamais lus — 3 mails Gmail + le résumé automatique « 3 nouveaux messages »
+// ne doivent pas devenir « 4 notifications », et son texte générique ne
+// doit jamais se lire comme un vrai message. ──
+verifier(
+  "un résumé de groupe seul est retiré : notificationsUtiles() le filtre",
+  notificationsUtiles([n("Gmail", "3 nouveaux messages", "", true)]).length === 0,
+)
+verifier(
+  "3 mails + leur résumé de groupe restent « 3 de Gmail », pas 4",
+  phraseNotifications([
+    n("Gmail", "Yoni", "a"),
+    n("Gmail", "Dylan", "b"),
+    n("Gmail", "Sarah", "c"),
+    n("Gmail", "3 nouveaux messages", "", true),
+  ]) === "Tu as 3 notifications. 3 de Gmail.",
+)
+verifier(
+  "un résumé de groupe seul, sans les individuelles : silence, pas le texte du résumé",
+  phraseNotifications([n("Gmail", "3 nouveaux messages", "", true)]) ===
+    "Tu n'as aucune notification en ce moment.",
+)
+verifier(
+  "le résumé d'une app n'empêche pas de lire une notification isolée d'une AUTRE app",
+  phraseNotifications([
+    n("WhatsApp", "Mel", "On mange à 20h ?"),
+    n("Gmail", "3 nouveaux messages", "", true),
+  ]) === "WhatsApp : Mel — On mange à 20h ?",
 )
 
 // ── Les phrases de repli ──
