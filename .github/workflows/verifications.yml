@@ -368,6 +368,12 @@ jobs:
       - name: Corriger ou relire un message préparé, à la voix
         run: node --experimental-strip-types scripts/verifier-correction-message.ts
 
+      # Quand et quoi Jarvis annonce d'un message programmé : PAS de
+      # notification (sa réponse du 4 sept.), l'annonce vit dans une
+      # conversation active — moitié du contrôle vérifie le silence.
+      - name: L'annonce d'un message programmé, et surtout son silence
+        run: node --experimental-strip-types scripts/verifier-message-annonce.ts
+
       # La relecture vocale avant l'envoi WhatsApp (chantier ed32cbcc) :
       # décochée par défaut, et surtout un « non » suivi d'une vraie
       # correction ne doit pas être avalé par la négation.

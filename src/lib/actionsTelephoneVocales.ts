@@ -148,12 +148,25 @@ export interface MessagePrepare {
   contact_name?: string
   phone_number?: string
   quand: number
+  /** Non vide seulement quand ce brouillon vient d'un message PROGRAMMÉ
+   * (messages_programmes) que Jarvis vient d'annoncer — sert à retrouver
+   * lequel « annule » (messageAnnonce.ts) doit annuler, et plus tard à
+   * marquer l'envoi. Absent pour un message préparé normalement. */
+  messageProgrammeId?: string
 }
 
 let dernierMessagePrepare: MessagePrepare | null = null
 
 export function messagePrepareEnAttente(): MessagePrepare | null {
   return dernierMessagePrepare
+}
+
+/** Rattache le brouillon en cours au message programmé dont il vient — voir
+ * `MessagePrepare.messageProgrammeId`. Appelé juste après avoir préparé le
+ * brouillon d'une annonce (MicButton), jamais depuis une préparation
+ * normale. */
+export function marquerMessagePrepareCommeProgramme(id: string): void {
+  if (dernierMessagePrepare) dernierMessagePrepare = { ...dernierMessagePrepare, messageProgrammeId: id }
 }
 
 /**

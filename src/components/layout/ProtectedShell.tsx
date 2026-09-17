@@ -7,6 +7,7 @@ import { resumerConsommation } from "@/lib/consommationModele"
 import { useAuth } from "@/hooks/useAuth"
 import { useShareReceiver } from "@/hooks/useShareReceiver"
 import { geocodePlace } from "@/lib/geocodePlace"
+import { messagesProgrammesApi } from "@/lib/messagesProgrammes"
 
 function ShellContent() {
   const {
@@ -40,6 +41,7 @@ function ShellContent() {
           ...placeRemindersState,
           geocodePlace: geofenceState.enabled ? geocodePlace : null,
         }}
+        messagesProgrammesApi={messagesProgrammesApi}
         pronunciationsApi={pronunciationsState}
         voiceSettingApi={{ muted: voiceState.muted, setMuted: voiceState.setMuted }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
