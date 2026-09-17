@@ -250,6 +250,9 @@ const CONSO_ORDINAIRE: LigneConsommation[] = [
     ms_median: 1420,
     dernier_at: new Date().toISOString(),
     rang: 0,
+    dernierQuotaId: null,
+    dernierQuotaLimite: null,
+    dernierQuotaAt: null,
   },
   {
     role: "memoire",
@@ -265,6 +268,9 @@ const CONSO_ORDINAIRE: LigneConsommation[] = [
     ms_median: 900,
     dernier_at: new Date().toISOString(),
     rang: 0,
+    dernierQuotaId: null,
+    dernierQuotaLimite: null,
+    dernierQuotaAt: null,
   },
 ]
 

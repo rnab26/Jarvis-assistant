@@ -3,7 +3,13 @@ import { useCallback, useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { resumerConsommation, type LigneConsommation } from "@/lib/consommationModele"
+import {
+  libelleRang,
+  lignesCommandeTriees,
+  plafondDeLaLigne,
+  resumerConsommation,
+  type LigneConsommation,
+} from "@/lib/consommationModele"
 import { errorMessage } from "@/lib/errorMessage"
 import { debutFenetre } from "@/lib/ouJenSuis"
 import { supabase } from "@/lib/supabase"
@@ -91,6 +97,14 @@ function jetonsLisibles(n: number): string {
   return n.toLocaleString("fr-FR")
 }
 
+/** La date ET l'heure exactes d'un refus, jamais juste « aujourd'hui » : c'est
+ * précisément ce qui manquait pour savoir si le plafond vu tient encore. */
+function dateHeureLisible(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+}
+
 export function Consommation({ api }: { api: ConsommationApi }) {
   const { lignes, erreur, enCours, rafraichir } = api
   const resume = lignes === null ? null : resumerConsommation(lignes)
@@ -163,6 +177,44 @@ export function Consommation({ api }: { api: ConsommationApi }) {
                   ` · réponse en ${(resume.msMedian / 1000).toFixed(1).replace(".", ",")} s en moyenne`}
                 .
               </p>
+            )}
+
+            {/* PAR MODÈLE, pas juste un agrégat : c'est ça qui manquait le
+                plus le 17 sept. — savoir LEQUEL des trois (principal, secours
+                1, secours 2) est à sec, avec son plafond réel et l'heure
+                exacte du dernier refus vu, plutôt qu'un vieux chiffre statique. */}
+            {lignes && lignesCommandeTriees(lignes).length > 0 && (
+              <div className="flex flex-col gap-2 rounded-md border p-2">
+                <p className="text-xs font-medium text-muted-foreground">Détail par modèle</p>
+                {lignesCommandeTriees(lignes).map((l) => {
+                  const p = plafondDeLaLigne(l)
+                  return (
+                    <div key={`${l.modele}-${l.rang ?? "inconnu"}`} className="flex flex-col gap-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant={l.rang === 0 ? "secondary" : "outline"} className="text-[10px]">
+                          {libelleRang(l.rang)}
+                        </Badge>
+                        <span className="text-xs font-mono">{l.modele}</span>
+                        {l.refus_jour > 0 && (
+                          <Badge variant="destructive" className="text-[10px]">
+                            quota du jour vide
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {l.reussis} réussi{l.reussis > 1 ? "s" : ""} sur {l.appels}
+                        {p?.parJour !== undefined &&
+                          ` · plafond du jour : ${p.parJour} (${p.frais ? "vu aujourd'hui" : "mesuré, ancien"})`}
+                        {p?.parJour === undefined &&
+                          p?.parMinute !== undefined &&
+                          ` · plafond par minute : ${p.parMinute} (${p.frais ? "vu aujourd'hui" : "mesuré, ancien"})`}
+                        {l.dernierQuotaAt &&
+                          ` · dernier refus vu le ${dateHeureLisible(l.dernierQuotaAt)}`}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
             )}
 
             {/* Le chiffre, sans le peindre en rouge : enchaîner vite les

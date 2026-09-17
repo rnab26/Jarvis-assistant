@@ -49,6 +49,21 @@ export interface LigneConsommation {
    * secours. `null` sur les lignes écrites avant la migration 0025.
    */
   rang: number | null
+  /**
+   * Le DERNIER plafond exact que Google a rendu dans le corps d'un 429 pour ce
+   * modèle, aujourd'hui — le quotaId et le quotaValue en toutes lettres (ex.
+   * « GenerateRequestsPerDayPerProjectPerModel-FreeTier » / « 20 »), avec
+   * l'heure de ce refus. `null` tant qu'aucun refus n'a encore livré de
+   * chiffre : `PLAFONDS_MESURES`, plus ancien, reste alors le seul repère.
+   *
+   * Chantier fbdf9467, 17 sept. 2026 : Raphaël ne pouvait pas savoir LEQUEL
+   * des trois modèles était à sec, ni si le plafond mesuré deux semaines plus
+   * tôt tenait encore. Ce chiffre est FRAIS et RÉEL — il l'emporte donc sur
+   * `PLAFONDS_MESURES` quand il est disponible.
+   */
+  dernierQuotaId: string | null
+  dernierQuotaLimite: string | null
+  dernierQuotaAt: string | null
 }
 
 /** Un plafond qu'on a RÉELLEMENT constaté, avec de quoi le dater. */
@@ -63,6 +78,18 @@ export interface Plafond {
   /** Un plafond journalier réellement rencontré. */
   parJour?: number
   mesureLe: string
+  /**
+   * Vrai quand ce plafond vient d'un 429 vu AUJOURD'HUI (`etat_consommation`),
+   * pas de la mesure statique de `PLAFONDS_MESURES`. Chantier fbdf9467.
+   */
+  frais?: boolean
+}
+
+/** Le dernier quota exact vu sur un modèle, tel que rendu par `etat_consommation()`. */
+export interface QuotaFrais {
+  id: string | null
+  limite: string | null
+  at: string | null
 }
 
 /**
@@ -80,6 +107,36 @@ export const PLAFONDS_MESURES: Record<string, Plafond> = {
   "gemini-3-flash-preview": { parMinute: 5, mesureLe: "2026-09-06" },
   "gemini-3.5-flash-lite": { auMoinsParJour: 20, mesureLe: "2026-09-06" },
   "gemini-3.7-flash": { parJour: 20, mesureLe: "2026-09-04" },
+}
+
+/**
+ * Le plafond à utiliser pour CE modèle : ce que Google a rendu dans le corps
+ * d'un vrai 429 AUJOURD'HUI l'emporte sur `PLAFONDS_MESURES`, vieux de deux
+ * semaines et jamais rafraîchi (chantier fbdf9467, 17 sept. 2026 — sa
+ * plainte : « c'est pas du tout precis »).
+ *
+ * On FUSIONNE plutôt que remplacer : un refus frais ne porte qu'UN seau (par
+ * minute OU par jour) — écraser tout le plafond statique avec ça perdrait par
+ * exemple le plancher journalier connu pendant qu'on ne voit qu'un refus par
+ * minute. Seul le chiffre du seau effectivement touché aujourd'hui est
+ * remplacé.
+ */
+export function plafondEffectif(modele: string, frais?: QuotaFrais | null): Plafond | null {
+  const base = PLAFONDS_MESURES[modele] ?? null
+  const limite = Number(frais?.limite)
+  if (!frais?.id || !Number.isFinite(limite) || limite <= 0) return base
+
+  const jour = /PerDay/i.test(frais.id)
+  const minute = /PerMinute/i.test(frais.id)
+  if (!jour && !minute) return base
+
+  return {
+    ...base,
+    mesureLe: frais.at ?? base?.mesureLe ?? "",
+    frais: true,
+    ...(jour ? { parJour: limite } : {}),
+    ...(minute ? { parMinute: limite } : {}),
+  }
 }
 
 export interface Alerte {
@@ -104,6 +161,8 @@ export interface Consommation {
   alerte: Alerte | null
   /** Le temps de réponse médian, en millisecondes — sa gêne la plus fréquente. */
   msMedian: number | null
+  /** Le dernier quota exact vu sur le modèle qui répond, ou `null`. */
+  quotaFrais: QuotaFrais | null
 }
 
 /** Le total des jetons d'une ligne, réflexion comprise : elle compte au plafond. */
@@ -140,6 +199,10 @@ export function resumerConsommation(lignes: LigneConsommation[]): Consommation {
   // tort sur un historique qu'on ne sait pas lire.
   const surSecours = (gagnant?.rang ?? 0) > 0
 
+  const quotaFrais: QuotaFrais | null = gagnant
+    ? { id: gagnant.dernierQuotaId, limite: gagnant.dernierQuotaLimite, at: gagnant.dernierQuotaAt }
+    : null
+
   return {
     phrases,
     jetons,
@@ -148,7 +211,8 @@ export function resumerConsommation(lignes: LigneConsommation[]): Consommation {
     refusMinute,
     refusJour,
     msMedian,
-    marge: margeDe(modele, phrases, refusJour),
+    quotaFrais,
+    marge: margeDe(modele, phrases, refusJour, quotaFrais),
     alerte: alerteDe({ modele, surSecours, refusJour, refusMinute, msMedian }),
   }
 }
@@ -165,6 +229,7 @@ export function margeDe(
   modele: string | null,
   phrases: number,
   refusJour: number,
+  quotaFrais?: QuotaFrais | null,
 ): string {
   if (!modele) return "Aucune phrase aujourd'hui."
 
@@ -172,10 +237,14 @@ export function margeDe(
     return "Le quota du jour est épuisé sur au moins un modèle : Jarvis bascule sur ses secours, et repartira à zéro demain."
   }
 
-  const p = PLAFONDS_MESURES[modele]
+  const p = plafondEffectif(modele, quotaFrais)
   if (p?.parJour) {
     const reste = Math.max(0, p.parJour - phrases)
-    return `${reste} phrase${reste > 1 ? "s" : ""} avant le plafond du jour (${p.parJour}, mesuré).`
+    // Un chiffre vu AUJOURD'HUI dans un vrai refus vaut mieux qu'une mesure
+    // statique d'il y a deux semaines — dire lequel des deux répond évite de
+    // faire passer une supposition vieillie pour une mesure fraîche.
+    const source = p.frais ? "vu aujourd'hui, pas une vieille mesure" : "mesuré"
+    return `${reste} phrase${reste > 1 ? "s" : ""} avant le plafond du jour (${p.parJour}, ${source}).`
   }
   if (p?.auMoinsParJour) {
     const plancher = Math.max(p.auMoinsParJour, phrases)
@@ -221,6 +290,43 @@ export function alerteDe(e: {
     }
   }
   return null
+}
+
+// ── Le détail PAR MODÈLE (principal / secours 1 / secours 2) ──────────────
+//
+// Chantier fbdf9467 : « il ne pouvait pas savoir LEQUEL des 3 modèles était à
+// sec ». Le résumé agrégé ci-dessus ne nomme que le modèle GAGNANT (celui qui
+// a répondu le plus) ; cette vue-ci montre chaque modèle essayé aujourd'hui,
+// avec son propre plafond effectif.
+
+/**
+ * Les lignes de la commande vocale, triées par rang (principal d'abord).
+ *
+ * La mémoire n'y figure jamais : ce n'est pas une phrase qu'il a dite (voir
+ * `resumerConsommation`). Un rang inconnu (avant la migration 0025, ou une
+ * ligne jamais notée avec ce détail) est classé APRÈS les rangs connus,
+ * jamais avant : on ne prétend pas savoir ce qu'on ne sait pas.
+ */
+export function lignesCommandeTriees(lignes: LigneConsommation[]): LigneConsommation[] {
+  return lignes
+    .filter((l) => l.role === "commande")
+    .slice()
+    .sort((a, b) => (a.rang ?? 99) - (b.rang ?? 99))
+}
+
+/** « Principal », « Secours 1 », « Secours 2 »… ou rien si le rang est inconnu. */
+export function libelleRang(rang: number | null): string {
+  if (rang === null) return "Rang inconnu"
+  return rang === 0 ? "Principal" : `Secours ${rang}`
+}
+
+/** Le plafond effectif d'une ligne, tel qu'affichable directement. */
+export function plafondDeLaLigne(l: LigneConsommation): Plafond | null {
+  return plafondEffectif(l.modele, {
+    id: l.dernierQuotaId,
+    limite: l.dernierQuotaLimite,
+    at: l.dernierQuotaAt,
+  })
 }
 
 // ── La pastille à côté du cœur ────────────────────────────────────────────
@@ -269,7 +375,7 @@ export function pastilleQuota(resume: Consommation | null): PastilleQuota | null
     return { ton: "orange", texte: `Réponses lentes — ${(resume.msMedian / 1000).toFixed(1)} s` }
   }
 
-  const p = PLAFONDS_MESURES[resume.modele]
+  const p = plafondEffectif(resume.modele, resume.quotaFrais)
   if (p?.parJour) {
     const reste = Math.max(0, p.parJour - resume.phrases)
     return { ton: "discret", texte: `${reste} phrase${reste > 1 ? "s" : ""} avant le plafond du jour` }

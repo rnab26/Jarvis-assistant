@@ -16,8 +16,12 @@ import {
   type LigneConsommation,
   PLAFONDS_MESURES,
   alerteDe,
+  libelleRang,
+  lignesCommandeTriees,
   margeDe,
   pastilleQuota,
+  plafondDeLaLigne,
+  plafondEffectif,
   resumerConsommation,
 } from "../src/lib/consommationModele.ts"
 
@@ -43,6 +47,9 @@ const ligne = (p: Partial<LigneConsommation> = {}): LigneConsommation => ({
   ms_median: 940,
   dernier_at: "2026-09-06T09:00:00Z",
   rang: 0,
+  dernierQuotaId: null,
+  dernierQuotaLimite: null,
+  dernierQuotaAt: null,
   ...p,
 })
 
@@ -215,6 +222,130 @@ const ligne = (p: Partial<LigneConsommation> = {}): LigneConsommation => ({
     "et aucune entrée n'est vide : une entrée sans mesure n'est qu'un nom",
     vides.length === 0,
     vides.map(([m]) => m).join(", "),
+  )
+}
+
+// ── Le plafond FRAIS (chantier fbdf9467) l'emporte sur PLAFONDS_MESURES ────
+//
+// Google renvoie le plafond EXACT dans le corps de chaque 429. Un chiffre vu
+// AUJOURD'HUI est plus digne de confiance qu'une mesure statique d'il y a
+// deux semaines — et c'est ce qui manquait le plus à Raphaël : il ne pouvait
+// pas savoir si le vieux plafond mesuré tenait encore.
+{
+  // gemini-3.7-flash est mesuré à parJour: 20 dans PLAFONDS_MESURES (4 sept.).
+  // Un vrai refus du jour dit maintenant 25 : le frais doit gagner.
+  const frais = {
+    id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+    limite: "25",
+    at: "2026-09-17T14:32:00Z",
+  }
+  const p = plafondEffectif("gemini-3.7-flash", frais)
+  verifier(
+    "un plafond du jour frais remplace le plafond statique",
+    p?.parJour === 25 && p.frais === true,
+    JSON.stringify(p),
+  )
+  verifier(
+    "et la marge le dit FRAIS, pas « mesuré » comme une vieille donnée",
+    margeDe("gemini-3.7-flash", 12, 0, frais).includes("vu aujourd'hui"),
+    margeDe("gemini-3.7-flash", 12, 0, frais),
+  )
+  verifier(
+    "avec le VRAI chiffre du jour (25), pas l'ancien (20)",
+    margeDe("gemini-3.7-flash", 12, 0, frais).includes("13 phrases avant"),
+    margeDe("gemini-3.7-flash", 12, 0, frais),
+  )
+
+  // Un refus « par minute » frais ne doit PAS écraser le plancher journalier
+  // statique déjà connu — les deux seaux sont distincts.
+  const fraisMinute = {
+    id: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",
+    limite: "18",
+    at: "2026-09-17T09:00:00Z",
+  }
+  const pMinute = plafondEffectif("gemini-3.1-flash-lite-preview", fraisMinute)
+  verifier(
+    "un refus par minute frais remplace SEULEMENT le seau minute",
+    pMinute?.parMinute === 18 && pMinute.auMoinsParJour === 41,
+    JSON.stringify(pMinute),
+  )
+
+  verifier(
+    "sans quota frais, on retombe sur PLAFONDS_MESURES tel quel",
+    plafondEffectif("gemini-3.7-flash", null)?.parJour === 20,
+  )
+  verifier(
+    "un quota_limite illisible (non numérique) n'écrase rien",
+    plafondEffectif("gemini-3.7-flash", { id: "PerDay", limite: "n/a", at: null })?.parJour === 20,
+  )
+  verifier(
+    "un modèle jamais mesuré ET sans refus frais n'a toujours pas de plafond",
+    plafondEffectif("un-modele-jamais-mesure", null) === null,
+  )
+  verifier(
+    "mais un refus frais suffit À LUI SEUL, même sans mesure statique",
+    plafondEffectif("un-modele-jamais-mesure", frais)?.parJour === 25,
+  )
+
+  // Le résumé complet doit transporter ce quota frais jusqu'à l'écran.
+  const r = resumerConsommation([
+    ligne({
+      modele: "gemini-3.7-flash",
+      reussis: 12,
+      dernierQuotaId: frais.id,
+      dernierQuotaLimite: frais.limite,
+      dernierQuotaAt: frais.at,
+    }),
+  ])
+  verifier(
+    "resumerConsommation transporte le quota frais du modèle gagnant",
+    r.quotaFrais?.limite === "25",
+    JSON.stringify(r.quotaFrais),
+  )
+  verifier(
+    "et sa marge en tient compte directement, sans repasser par PLAFONDS_MESURES",
+    r.marge.includes("13 phrases avant") && r.marge.includes("vu aujourd'hui"),
+    r.marge,
+  )
+}
+
+// ── Le détail PAR MODÈLE : c'est ça qui manquait le plus ──────────────────
+{
+  const lignes = [
+    ligne({ modele: "gemini-3-flash-preview", rang: 2, reussis: 0, refus_jour: 1 }),
+    ligne({ modele: PRINCIPAL, rang: 0, refus_jour: 1 }),
+    ligne({ role: "memoire", modele: "gemini-3.5-flash-lite", rang: 0 }),
+    ligne({ modele: "gemini-3.1-flash-lite-preview", rang: 1, reussis: 3 }),
+  ]
+  const triees = lignesCommandeTriees(lignes)
+  verifier(
+    "la mémoire n'apparaît jamais dans le détail par modèle",
+    triees.every((l) => l.role === "commande"),
+  )
+  verifier(
+    "trié principal d'abord, puis les secours dans l'ordre",
+    triees.map((l) => l.rang).join(",") === "0,1,2",
+    triees.map((l) => `${l.modele}(${l.rang})`).join(", "),
+  )
+  verifier("un rang inconnu passe après les rangs connus", (() => {
+    const t = lignesCommandeTriees([ligne({ modele: "vieux", rang: null }), ligne({ rang: 0 })])
+    return t[0].rang === 0 && t[1].rang === null
+  })())
+
+  verifier("le principal se nomme « Principal »", libelleRang(0) === "Principal")
+  verifier("le premier secours se nomme « Secours 1 »", libelleRang(1) === "Secours 1")
+  verifier("un rang inconnu le DIT plutôt que d'inventer un numéro", libelleRang(null) === "Rang inconnu")
+
+  const l = ligne({
+    modele: "gemini-3.7-flash",
+    dernierQuotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+    dernierQuotaLimite: "25",
+    dernierQuotaAt: "2026-09-17T14:32:00Z",
+  })
+  verifier(
+    "le plafond d'une ligne précise reprend son propre quota frais",
+    plafondDeLaLigne(l)?.parJour === 25 && plafondDeLaLigne(l)?.frais === true,
+    JSON.stringify(plafondDeLaLigne(l)),
   )
 }
 
