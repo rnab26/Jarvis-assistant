@@ -35,7 +35,12 @@ export type ActionTelephone =
   | { action: "open_app"; app_name?: string; music_query?: string }
   | {
       action: "send_message"
-      message_channel?: "whatsapp" | "sms"
+      /** "whatsapp_business" — chantier dc09476d, 17 sept. 2026 : un choix
+       * PONCTUEL dicté dans la phrase ("envoie-le sur WhatsApp Business"),
+       * qui vaut pour CE message seulement et n'écrase jamais la préférence
+       * retenue (`CLE_APP_WHATSAPP`). "whatsapp" seul continue de suivre
+       * cette préférence normalement, comme avant. */
+      message_channel?: "whatsapp" | "whatsapp_business" | "sms"
       message_text: string
       contact_id?: string
       /** Le nom prononcé, quand il ne correspond à aucun contact enregistré :
@@ -43,14 +48,33 @@ export type ActionTelephone =
       contact_name?: string
       phone_number?: string
     }
-  | { action: "call_contact"; contact_id?: string; contact_name?: string; phone_number?: string }
+  | {
+      action: "call_contact"
+      contact_id?: string
+      contact_name?: string
+      phone_number?: string
+      /** Canal PONCTUEL pour CET appel — chantier 696971dc : "appelle-le sur
+       * WhatsApp" ouvre la conversation WhatsApp (aucun texte préparé, il
+       * lance l'appel lui-même depuis là) au lieu de composer le numéro.
+       * Absent = appel téléphonique classique, comme avant. N'écrase jamais
+       * `jarvis_app_appels`. */
+      call_channel?: "whatsapp"
+    }
   | {
       action: "set_alarm"
       alarm_time?: string
       alarm_duration_seconds?: number
       alarm_label?: string | null
     }
-  | { action: "navigate_to"; destination: string }
+  | {
+      action: "navigate_to"
+      destination: string
+      /** L'application dictée dans LA MÊME phrase ("… avec Waze") — chantier
+       * dc09476d : vaut pour CET itinéraire seulement, n'écrase jamais
+       * `jarvis_app_navigation`. Absent = la préférence retenue sert, comme
+       * avant. */
+      app_name?: string
+    }
   | { action: "media_control"; media_command: CommandeMedia }
   | { action: "set_app_preference"; category: CategorieAppTelephone; app_name: string }
   | { action: "ask_ai"; question: string; app_name?: string }
@@ -85,6 +109,19 @@ export const CLES_APP: Record<"musique" | "navigation" | "ia" | "appels", string
   appels: "jarvis_app_appels",
 }
 export const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
+
+/**
+ * La dernière action « media » (musique/vidéo, `open_app` + `music_query`)
+ * ou « navigation » réellement lancée — chantier e4886791. En mémoire du
+ * module, comme `derniereCreation` dans voiceActions.ts : sert à dire
+ * « je relance » quand il redit sa phrase en l'allongeant, jamais relue
+ * après un redémarrage.
+ */
+let derniereActionTelephone: { famille: "media" | "navigation"; quand: number } | null = null
+
+export function dernierAppelTelephone(): { famille: "media" | "navigation"; quand: number } | null {
+  return derniereActionTelephone
+}
 
 /**
  * Lequel des deux WhatsApp, quand les deux sont installés.
@@ -235,27 +272,50 @@ function dureeLisible(secondes: number): string {
   return `${secondes} seconde${secondes > 1 ? "s" : ""}`
 }
 
+/** Le paquet Android de chaque WhatsApp, tel que retrouvé côté natif
+ * (voir `ActionsTelephonePlugin.WHATSAPP` / `WHATSAPP_BUSINESS`). */
+const PAQUET_WHATSAPP_BUSINESS = "com.whatsapp.w4b"
+
 /**
  * Lequel des deux WhatsApp utiliser.
  *
  * « à_choisir » n'est pas un échec : c'est la seule réponse honnête quand les
  * deux sont installés et qu'il n'a rien dit. Deviner, c'est un message écrit
  * dans une application qu'il n'ouvre jamais — et il l'a vécu.
+ *
+ * `force` — chantier dc09476d, 17 sept. 2026 : un choix PONCTUEL dicté dans
+ * LA PHRASE COURANTE ("sur WhatsApp Business"). Il vaut pour CET appel/ce
+ * message seulement, et ne touche jamais `CLE_APP_WHATSAPP` (la préférence
+ * retenue) — la prochaine fois, sans le redire, c'est elle qui sert.
  */
-async function quelWhatsApp(): Promise<
-  { etat: "ok"; paquet: string | null } | { etat: "a_choisir"; phrase: string }
+async function quelWhatsApp(force?: "whatsapp_business"): Promise<
+  | { etat: "ok"; paquet: string | null }
+  | { etat: "a_choisir"; phrase: string }
+  | { etat: "introuvable"; phrase: string }
 > {
-  const retenu = paquetWhatsAppPrefere()
-  if (retenu) return { etat: "ok", paquet: retenu }
-
   let installes: { nom: string; paquet: string }[] = []
   try {
     installes = (await ActionsTelephone.listerApplicationsWhatsApp()).applications ?? []
   } catch {
     // APK antérieure à cette méthode : on garde le comportement par défaut du
-    // plugin, qui vise le WhatsApp ordinaire.
+    // plugin, qui vise le WhatsApp ordinaire — un forçage vers Business n'a
+    // alors aucun moyen d'être vérifié, donc on le refuse plutôt que deviner.
+    if (force) {
+      return { etat: "introuvable", phrase: "Je ne peux pas vérifier quel WhatsApp tu as installé pour l'instant." }
+    }
     return { etat: "ok", paquet: null }
   }
+
+  if (force) {
+    const trouve = installes.find((a) => a.paquet === PAQUET_WHATSAPP_BUSINESS)
+    if (!trouve) {
+      return { etat: "introuvable", phrase: "Je ne trouve pas WhatsApp Business installé sur ton téléphone." }
+    }
+    return { etat: "ok", paquet: trouve.paquet }
+  }
+
+  const retenu = paquetWhatsAppPrefere()
+  if (retenu) return { etat: "ok", paquet: retenu }
 
   if (installes.length > 1) {
     return {
@@ -383,6 +443,7 @@ export async function executerActionTelephone(
           recherche: action.music_query,
         })
         if (action.music_query) {
+          derniereActionTelephone = { famille: "media", quand: Date.now() }
           // Le résultat réel part aussi dans le journal : c'est la seule
           // façon de savoir, depuis ici, ce qui se passe sur SON téléphone
           // sans avoir à le lui demander. Une APK antérieure à ce correctif
@@ -409,7 +470,14 @@ export async function executerActionTelephone(
         // retenu — MicButton l'a demandé une fois s'il n'était pas encore
         // connu. "whatsapp" reste le repli si on arrive quand même ici sans
         // rien savoir (ex. le tour de clarification a expiré).
-        const canal = action.message_channel ?? canalMessagesPrefere() ?? "whatsapp"
+        //
+        // "whatsapp_business" (chantier dc09476d) n'est PAS un troisième
+        // canal au sens SMS/WhatsApp : c'est un choix PONCTUEL de PAQUET
+        // parmi les WhatsApp installés, pour CE message. La branche
+        // SMS/WhatsApp reste binaire ; forceWhatsAppBusiness porte le reste.
+        const canalDit = action.message_channel
+        const forceWhatsAppBusiness = canalDit === "whatsapp_business"
+        const canal = (canalDit === "whatsapp_business" ? "whatsapp" : canalDit) ?? canalMessagesPrefere() ?? "whatsapp"
         let numero = numeroDe(contacts, action.contact_id, action.phone_number)
         let nom = nomDe(contacts, action.contact_id) ?? action.contact_name ?? null
 
@@ -460,8 +528,8 @@ export async function executerActionTelephone(
           // installés sans qu'il ait choisi, on DEMANDE au lieu de prendre le
           // premier : se tromper d'application, c'est un message qui n'arrive
           // jamais, sans que rien ne le dise.
-          const choix = await quelWhatsApp()
-          if (choix.etat === "a_choisir") return choix.phrase
+          const choix = await quelWhatsApp(forceWhatsAppBusiness ? "whatsapp_business" : undefined)
+          if (choix.etat === "a_choisir" || choix.etat === "introuvable") return choix.phrase
           await ActionsTelephone.preparerWhatsApp({
             texte: action.message_text,
             numero: numero ?? undefined,
@@ -469,7 +537,7 @@ export async function executerActionTelephone(
           })
         }
 
-        const ou = canal === "sms" ? "en SMS" : "sur WhatsApp"
+        const ou = canal === "sms" ? "en SMS" : forceWhatsAppBusiness ? "sur WhatsApp Business" : "sur WhatsApp"
         if (nom && numero) return `Message prêt pour ${nom} ${ou}, tu n'as plus qu'à envoyer.`
         // On prépare quand même — le texte est écrit, il peut choisir le
         // destinataire à la main —, mais on dit POURQUOI il doit le faire.
@@ -503,6 +571,22 @@ export async function executerActionTelephone(
             ? `Je n'ai pas le numéro de ${nom}. Dis-le-moi une fois et je le retiens.`
             : "Il me faut un numéro pour passer l'appel."
         }
+
+        // « appelle-le sur WhatsApp » (chantier 696971dc) : ouvrir la
+        // CONVERSATION, sans texte préparé — il lance l'appel lui-même
+        // depuis là. Aucun message n'est écrit ni envoyé, donc ce n'est PAS
+        // le sujet réservé « envoi de messages en son nom » : juste une
+        // navigation, comme open_app. Ponctuel, dicté dans CETTE phrase :
+        // ne touche jamais `jarvis_app_appels` ni la préférence WhatsApp.
+        if (action.call_channel === "whatsapp") {
+          const choix = await quelWhatsApp()
+          if (choix.etat === "a_choisir" || choix.etat === "introuvable") return choix.phrase
+          await ActionsTelephone.preparerWhatsApp({ texte: "", numero, paquet: choix.paquet ?? undefined })
+          return nom
+            ? `Je t'ouvre la conversation WhatsApp avec ${nom}, tu peux lancer l'appel depuis là.`
+            : "Je t'ouvre la conversation WhatsApp, tu peux lancer l'appel depuis là."
+        }
+
         // Première fois : on demande la permission d'appeler, pour ne pas se
         // contenter éternellement de composer alors qu'il a demandé mieux.
         await ActionsTelephone.demanderPermissionAppel().catch(() => ({ granted: false }))
@@ -552,24 +636,42 @@ export async function executerActionTelephone(
         // Maps sont installés. On vise l'application retenue si on la
         // connaît ; sinon MicButton l'a déjà demandée avant d'arriver ici.
         let paquet: string | undefined
-        const preferee = appPreferee("navigation")
-        if (preferee) {
-          paquet = trouverApplication(await appsItineraire(), preferee)?.paquet
-          // DEMANDER PUIS NE RIEN FAIRE EST PIRE QUE NE PAS DEMANDER. Sa
-          // remarque du 6 sept. : « il a une certaine logique de me demander
-          // pour un itinéraire quelle application j'utilise, mais il ne sait
-          // pas la lancer. » Avant, une préférence qui ne correspondait à
-          // aucune application installée retombait en silence sur le
-          // sélecteur d'Android, et Jarvis annonçait quand même « je t'ouvre
-          // l'itinéraire ».
-          if (!paquet) {
-            noterEcoute("app_introuvable", { categorie: "navigation", preferee })
-            return `Tu m'as dit d'utiliser ${preferee} pour les itinéraires, mais je ne la trouve pas parmi celles qui savent en ouvrir un sur ton téléphone. Choisis-en une dans Paramètres, « Tes applications par défaut ».`
+        let nomAffiche: string | null = null
+
+        if (action.app_name) {
+          // Dictée dans LA PHRASE ("… avec Waze") — chantier dc09476d,
+          // 17 sept. 2026 : PONCTUEL, vaut pour CET itinéraire seulement.
+          // N'écrit JAMAIS `jarvis_app_navigation` : la préférence retenue
+          // reste celle d'avant pour la prochaine fois, sans le redire.
+          const trouvee = trouverApplication(await appsItineraire(), action.app_name)
+          if (!trouvee) {
+            return `Je ne trouve pas d'application qui s'appelle "${action.app_name}" pour ouvrir un itinéraire sur ton téléphone.`
           }
+          paquet = trouvee.paquet
+          nomAffiche = trouvee.nom
+        } else {
+          const preferee = appPreferee("navigation")
+          if (preferee) {
+            paquet = trouverApplication(await appsItineraire(), preferee)?.paquet
+            // DEMANDER PUIS NE RIEN FAIRE EST PIRE QUE NE PAS DEMANDER. Sa
+            // remarque du 6 sept. : « il a une certaine logique de me
+            // demander pour un itinéraire quelle application j'utilise, mais
+            // il ne sait pas la lancer. » Avant, une préférence qui ne
+            // correspondait à aucune application installée retombait en
+            // silence sur le sélecteur d'Android, et Jarvis annonçait quand
+            // même « je t'ouvre l'itinéraire ».
+            if (!paquet) {
+              noterEcoute("app_introuvable", { categorie: "navigation", preferee })
+              return `Tu m'as dit d'utiliser ${preferee} pour les itinéraires, mais je ne la trouve pas parmi celles qui savent en ouvrir un sur ton téléphone. Choisis-en une dans Paramètres, « Tes applications par défaut ».`
+            }
+          }
+          nomAffiche = preferee
         }
+
         await ActionsTelephone.itineraire({ destination: action.destination, paquet })
-        return preferee
-          ? `Je t'ouvre l'itinéraire vers ${action.destination} dans ${preferee}.`
+        derniereActionTelephone = { famille: "navigation", quand: Date.now() }
+        return nomAffiche
+          ? `Je t'ouvre l'itinéraire vers ${action.destination} dans ${nomAffiche}.`
           : `Je t'ouvre l'itinéraire vers ${action.destination}.`
       }
 

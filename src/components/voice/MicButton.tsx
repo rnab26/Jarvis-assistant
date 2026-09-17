@@ -26,7 +26,7 @@ import {
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
 import { completionExpiree } from "@/lib/tacheDateEtCategorie"
-import { completerPlutotQueCreer, estUneReprise } from "@/lib/repriseDictee"
+import { completerPlutotQueCreer, estUneReprise, phraseRepriseAction } from "@/lib/repriseDictee"
 import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
@@ -38,6 +38,7 @@ import {
   appPreferee,
   canalMessagesPrefere,
   cibleAnnoncee,
+  dernierAppelTelephone,
   executerActionTelephone,
   questionAppPreferee,
   type CategorieAppTelephone,
@@ -96,7 +97,7 @@ function questionAmbigueAppTelephone(
   if (action.action === "open_app" && action.music_query && !action.app_name && !appPreferee("musique")) {
     return { message: questionAppPreferee("musique"), category: "musique" }
   }
-  if (action.action === "navigate_to" && !appPreferee("navigation")) {
+  if (action.action === "navigate_to" && !action.app_name && !appPreferee("navigation")) {
     return { message: questionAppPreferee("navigation"), category: "navigation" }
   }
   if (action.action === "send_message" && !action.message_channel && !canalMessagesPrefere()) {
@@ -533,10 +534,9 @@ export function MicButton({
     // Calculé ICI parce que c'est la seule couche qui tient la phrase
     // PRÉCÉDENTE (`dernierTourRef`) — le serveur ne la voit jamais, comme
     // pour la confirmation d'un envoi (chantier 21cf48d2).
+    const reprise = estUneReprise(dernierTourRef.current, transcript, Date.now())
     const actions =
-      (estUneReprise(dernierTourRef.current, transcript, Date.now())
-        ? completerPlutotQueCreer(brutes, memoireDerniereCreation(), Date.now())
-        : null) ?? brutes
+      (reprise ? completerPlutotQueCreer(brutes, memoireDerniereCreation(), Date.now()) : null) ?? brutes
 
     // Quand quelque chose est ambigu, la Edge Function renvoie une seule
     // action clarify : on pose la question plutôt que d'exécuter à moitié.
@@ -660,6 +660,22 @@ export function MicButton({
       if (suiteMs > 0) return true
       setStatus("idle")
       return false
+    }
+
+    // « Prévenir puis refaire » (chantier e4886791, réponse de Raphaël le
+    // 17 sept. 2026) : quand il redit sa phrase en l'allongeant APRÈS
+    // qu'une musique/vidéo est déjà lancée ou qu'un itinéraire est déjà
+    // ouvert, Jarvis le dit avant de relancer — sinon deux ouvertures
+    // d'application coup sur coup, sans un mot. `reprise` (calculé
+    // ci-dessus) garde ça hors des demandes NEUVES de la même famille.
+    const annoncePrevenir = phraseRepriseAction(reprise, actions, dernierAppelTelephone(), Date.now())
+    if (annoncePrevenir) {
+      setLastReply(annoncePrevenir)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(annoncePrevenir, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+      setStatus("processing")
     }
 
     const reply = await executerActions(actions, originalTranscript)
