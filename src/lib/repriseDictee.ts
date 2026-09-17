@@ -144,16 +144,24 @@ interface ActionAjoutTache {
  * PREMIÈRE action a déjà eu lieu (musique/vidéo lancée, itinéraire ouvert),
  * Jarvis annonce ce qu'il fait puis relance avec la phrase complète.
  *
- * Le MESSAGE reste volontairement absent d'ici : « envoi de messages en son
- * nom » est un sujet réservé (voir la note du chantier), à coder dans une
- * session où Raphaël est en ligne pour trancher, pas dans une passe sans
- * interlocuteur.
- *
  * Musique et vidéo passent toutes les deux par `open_app` + `music_query`
  * (même mécanisme, "ce qu'il faut jouer/regarder") : une seule famille
  * "media" les couvre.
+ *
+ * MESSAGE — chantier b02d70f5, suite de e4886791 : sa réponse du 17 sept.
+ * (« Prévenir puis refaire ») vaut « pour les quatre familles », message
+ * compris. Étendu ici, dans une session avec Raphaël en ligne — pas par une
+ * session autonome, pour qui « envoi de messages en son nom » reste un sujet
+ * réservé (docs/session-autonome.md). Le mécanisme est le MÊME que pour
+ * media/navigation, pas un second : `executerActionTelephone` prépare
+ * TOUJOURS un brouillon sans jamais l'envoyer (« Jarvis prépare, Raphaël
+ * valide »), donc relancer `send_message` avec le texte complet vers le
+ * MÊME destinataire recompose le même brouillon (WhatsApp/SMS affiche le
+ * texte à jour) plutôt que d'en ouvrir un second — il n'y a pas de ligne en
+ * base à transformer comme pour une tâche, `completerPlutotQueCreer` ne
+ * s'applique donc pas ici.
  */
-export type FamilleActionTelephone = "media" | "navigation"
+export type FamilleActionTelephone = "media" | "navigation" | "message"
 
 export interface DerniereActionTelephone {
   famille: FamilleActionTelephone
@@ -189,6 +197,9 @@ export function phraseRepriseAction(
   }
   if (derniere.famille === "navigation" && a.action === "navigate_to") {
     return "D'accord, je relance avec ta phrase complète."
+  }
+  if (derniere.famille === "message" && a.action === "send_message") {
+    return "D'accord, je reprends le message avec ta phrase complète."
   }
   return null
 }

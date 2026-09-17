@@ -134,7 +134,8 @@ verifier(
 )
 
 /* ---------- « PRÉVENIR PUIS REFAIRE » (chantier e4886791, réponse du
-   17 sept. 2026) : musique/vidéo et itinéraire, jamais le message. ---------- */
+   17 sept. 2026) : musique/vidéo, itinéraire et message (chantier b02d70f5,
+   étendu le 17 sept. dans une session avec Raphaël en ligne). ---------- */
 
 verifier(
   "vidéo déjà lancée + reprise → annonce avant de relancer",
@@ -186,12 +187,30 @@ verifier(
   ) === null,
 )
 verifier(
-  "le message reste un sujet réservé : aucune famille ne le couvre",
+  "message déjà préparé + reprise → annonce avant de reprendre le MÊME brouillon",
+  phraseRepriseAction(
+    true,
+    [{ action: "send_message" }],
+    { famille: "message", quand: T0 },
+    T0 + 4_600,
+  ) === "D'accord, je reprends le message avec ta phrase complète.",
+)
+verifier(
+  "musique lancée, puis un message redemandé : pas la même famille, rien à prévenir",
   phraseRepriseAction(
     true,
     [{ action: "send_message" }],
     { famille: "media", quand: T0 },
     T0 + 2_000,
+  ) === null,
+)
+verifier(
+  "message préparé, fenêtre dépassée : plus une reprise de CE message-là",
+  phraseRepriseAction(
+    true,
+    [{ action: "send_message" }],
+    { famille: "message", quand: T0 },
+    T0 + FENETRE_REPRISE_MS + 1,
   ) === null,
 )
 verifier(

@@ -111,15 +111,16 @@ export const CLES_APP: Record<"musique" | "navigation" | "ia" | "appels", string
 export const CLE_CANAL_MESSAGES = "jarvis_canal_messages"
 
 /**
- * La dernière action « media » (musique/vidéo, `open_app` + `music_query`)
- * ou « navigation » réellement lancée — chantier e4886791. En mémoire du
- * module, comme `derniereCreation` dans voiceActions.ts : sert à dire
- * « je relance » quand il redit sa phrase en l'allongeant, jamais relue
- * après un redémarrage.
+ * La dernière action « media » (musique/vidéo, `open_app` + `music_query`),
+ * « navigation » ou « message » (un brouillon PRÉPARÉ, pas encore envoyé)
+ * réellement lancée — chantier e4886791, message étendu par b02d70f5. En
+ * mémoire du module, comme `derniereCreation` dans voiceActions.ts : sert à
+ * dire « je relance/je reprends » quand il redit sa phrase en l'allongeant,
+ * jamais relue après un redémarrage.
  */
-let derniereActionTelephone: { famille: "media" | "navigation"; quand: number } | null = null
+let derniereActionTelephone: { famille: "media" | "navigation" | "message"; quand: number } | null = null
 
-export function dernierAppelTelephone(): { famille: "media" | "navigation"; quand: number } | null {
+export function dernierAppelTelephone(): { famille: "media" | "navigation" | "message"; quand: number } | null {
   return derniereActionTelephone
 }
 
@@ -536,6 +537,12 @@ export async function executerActionTelephone(
             paquet: choix.paquet ?? undefined,
           })
         }
+
+        // Un brouillon vient d'être PRÉPARÉ (jamais envoyé ici — voir le
+        // commentaire de la fonction) : s'il redit sa phrase en l'allongeant
+        // dans les 30 s, « prévenir puis refaire » (repriseDictee.ts) recompose
+        // ce même brouillon plutôt que d'en ouvrir un second.
+        derniereActionTelephone = { famille: "message", quand: Date.now() }
 
         const ou = canal === "sms" ? "en SMS" : forceWhatsAppBusiness ? "sur WhatsApp Business" : "sur WhatsApp"
         if (nom && numero) return `Message prêt pour ${nom} ${ou}, tu n'as plus qu'à envoyer.`
