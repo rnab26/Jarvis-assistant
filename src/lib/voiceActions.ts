@@ -1,6 +1,7 @@
 import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
 import { garderReponseEcran } from "@/lib/garderReponseEcran"
 import { lireDocumentLien } from "@/lib/lireDocumentLien"
+import { repondreDecisionVoix } from "@/lib/repondreDecisionVoix"
 import { phraseHorsLigne } from "@/lib/fileEnAttente"
 import type { Brouillon, MessageComplet, MessageResume, Recu } from "@/lib/googleGmail"
 import { estDernierMessage, nomExpediteur } from "@/lib/gmailVoix"
@@ -116,6 +117,16 @@ export type VoiceAction =
   | { action: "archive_dev_item"; item_id: string }
   | { action: "add_dev_section"; section_nom: string }
   | { action: "rename_dev_section"; section_id: string; section_nom: string }
+  /**
+   * Répondre à voix haute, en phrase libre, à un point de « Ce qui attend ta
+   * décision » (chantier 6044d8ad). Résolue par le SERVEUR (voice-command,
+   * via `_shared/ceQuiLAttend.ts`), comme item_id pour update_dev_item :
+   * `decision_id` est l'identifiant `dev_log` du point visé, jamais deviné
+   * côté appareil — sa règle de sûreté (plusieurs points en attente et une
+   * phrase ambiguë → clarify, jamais cette action) vit dans la consigne du
+   * serveur, au même endroit que la liste qui porte les identifiants.
+   */
+  | { action: "repondre_decision"; decision_id: string; decision_reponse: string }
   | { action: "list_documents" }
   | { action: "save_document"; filename: string; content: string }
   | {
@@ -844,6 +855,9 @@ export async function executeVoiceAction(
       await archiveDevItem(action.item_id)
       return `"${item.title}" marqué fait et archivé.`
     }
+
+    case "repondre_decision":
+      return await repondreDecisionVoix(action.decision_id, action.decision_reponse)
 
     case "add_dev_section": {
       const nom = action.section_nom?.trim()
