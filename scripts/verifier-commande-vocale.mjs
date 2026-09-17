@@ -412,6 +412,16 @@ cas.push(
       return [true]
     },
   },
+  {
+    nom: "rappel : Jarvis SEUL nommé ne touche pas l'agenda",
+    phrase: "Rappelle-moi d'appeler Yoni mardi à 14 heures, toi seul Jarvis, pas besoin de l'agenda.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (!types.includes("add_task")) return [false, `pas d'add_task : ${types}`]
+      if (types.includes("add_calendar_event")) return [false, `un événement d'agenda en trop a été créé : ${types}`]
+      return [true]
+    },
+  },
 )
 
 cas.push({
