@@ -54,6 +54,22 @@ public class AssistOverlayActivity extends BridgeActivity {
 
         fenetre.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         fenetre.setDimAmount(0.5f);
+        // Trouvé le 17 sept. 2026 (chantiers efe7e44c/7b8e68a7) en corrigeant
+        // le même défaut sur BulleEcouteActivity : une fenêtre FOCUSABLE sans
+        // FLAG_NOT_TOUCH_MODAL consomme TOUS les événements tactiles de
+        // l'écran ENTIER, pas seulement ceux dans ses propres limites (ici, le
+        // tiers d'écran du bas) — documenté par Android. Un appui dans les
+        // deux tiers HAUTS assombris (l'app en dessous, visible mais inerte)
+        // partait donc dans le vide au lieu d'atteindre soit cette fenêtre,
+        // soit l'application affichée derrière. On reste FOCUSABLE (le micro
+        // et les boutons de CETTE fenêtre continuent de fonctionner
+        // normalement) : seul le comportement modal disparaît, pour laisser
+        // un appui hors de la fenêtre atteindre l'app en dessous plutôt que
+        // de se perdre. PAS confirmé comme LA cause du « ça bug, ressort » de
+        // l'appui long (aucun appareil ici pour le vérifier) — corrigé
+        // néanmoins, comme précaution justifiée par la mécanique Android
+        // documentée, pas comme correctif aveugle.
+        fenetre.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
 
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         WindowManager.LayoutParams params = fenetre.getAttributes();

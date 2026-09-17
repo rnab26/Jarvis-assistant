@@ -198,6 +198,38 @@ verifier(
   "sans lui, la veille de la bulle ne sait jamais qu'une Live tourne dans l'autre fenêtre (chantier 2a5b7802)",
 )
 
+// ── La vraie régression du passage à 64 dip (17 sept. 2026) ──
+//
+// Sans FLAG_NOT_TOUCH_MODAL (posé automatiquement par FLAG_NOT_FOCUSABLE),
+// une fenêtre FOCUSABLE consomme TOUS les événements tactiles de l'écran
+// ENTIER tant qu'elle est ouverte, pas seulement ceux dans ses propres
+// limites (documenté par Android). À 2 dip un WebView qui échouait
+// probablement à se créer laissait cette fenêtre à peine vivante ; à 64 dip
+// elle s'ouvre pour de vrai et reste au premier plan le temps de l'écoute —
+// l'écran ENTIER devenait insensible au toucher, sans rien de visible pour
+// le deviner. Cette fenêtre n'a besoin d'aucune interaction tactile : elle
+// se referme par BulleEcoutePlugin.fermer(), appelé depuis le JS.
+verifier(
+  "la fenêtre invisible ne reçoit JAMAIS de toucher",
+  /params\.flags\s*\|=[\s\S]{0,120}FLAG_NOT_TOUCHABLE/.test(activiteEcoute),
+  "sans lui, un appui n'importe où dans son rectangle (64 dip en haut à gauche) est perdu",
+)
+verifier(
+  "et elle n'est jamais focusable — ce qui rend aussi le reste de l'écran touchable",
+  /params\.flags\s*\|=[\s\S]{0,120}FLAG_NOT_FOCUSABLE/.test(activiteEcoute),
+  "une fenêtre focusable sans FLAG_NOT_TOUCH_MODAL avale TOUS les appuis de l'écran, pas seulement les siens (doc Android) — FLAG_NOT_FOCUSABLE pose ce second drapeau automatiquement",
+)
+
+const overlaySrc = readFileSync(
+  "android/app/src/main/java/com/raphael/jarvis/AssistOverlayActivity.java",
+  "utf8",
+)
+verifier(
+  "AssistOverlayActivity ne vole pas les appuis destinés à l'app en dessous",
+  /FLAG_NOT_TOUCH_MODAL/.test(overlaySrc),
+  "même piège que la bulle : sans ce drapeau, un appui dans les deux tiers assombris (hors de son tiers d'écran) se perd au lieu d'atteindre l'app en dessous",
+)
+
 const bridgeSrc = readFileSync("src/lib/bulleEcoutePlugin.ts", "utf8")
 verifier(
   "le pont JS déclare le bon nom de plugin",

@@ -1989,6 +1989,65 @@ appui long ET bulle testés séparément et décrits précisément (rien ne se
 passe / un flash / l'app complète s'ouvre / une fenêtre s'ouvre et se
 referme).
 
+### La VRAIE régression du 64 dip : l'écran entier avalait les appuis (17 sept. 2026, suite)
+
+Sa réponse au correctif ci-dessus, dans la foulée : « La bulle fonctionne
+encore moins bien qu'avant, corrige. » — PIRE que le simple « ça saute »
+d'origine, pas juste « toujours cassé ». Ce n'était pas une supposition à
+prendre pour argent comptant : `git log` sur `BulleService.java`,
+`JarvisAccessibiliteService.java`, `demarrageOverlay.ts` et
+`EtatLivePlugin.java` depuis le commit du build 324 (`71d8a40`) confirme
+qu'AUCUNE autre session n'y a touché entre-temps — la seule variable qui a
+changé est le passage 2 dip → 64 dip lui-même.
+
+**LA CAUSE, dans les DRAPEAUX de la fenêtre, pas dans sa taille.**
+`BulleEcouteActivity` posait `width`/`height`/`gravity`/`x`/`y` mais aucun
+drapeau tactile. Documenté par Android
+(`WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL`) : une fenêtre FOCUSABLE
+(le cas par défaut d'une Activity, aucun code ici ne disait le contraire) qui
+n'a pas ce drapeau consomme **TOUS** les événements tactiles de l'écran
+**ENTIER**, pas seulement ceux dans ses propres limites. À 2 dip, un WebView
+qui échouait vraisemblablement à se créer dans une surface aussi minuscule
+laissait cette fenêtre à peine vivante — le défaut existait déjà, mais personne
+ne pouvait le voir puisque la fenêtre ne survivait jamais assez longtemps. À
+64 dip, elle s'ouvre pour de vrai et reste au premier plan le temps de
+l'écoute (plusieurs secondes) : **l'écran entier devenait insensible au
+toucher** pendant tout ce temps, sans qu'aucun élément visible ne le laisse
+deviner — exactement ce que « fonctionne encore moins bien » décrit. Le
+correctif du 2→64 dip n'était pas faux (il restait justifié), il a simplement
+rendu visible un second défaut qui dormait depuis le début.
+
+**Corrigé (`FLAG_NOT_TOUCHABLE | FLAG_NOT_FOCUSABLE`)** : cette fenêtre n'a
+besoin d'AUCUNE interaction tactile — elle se referme par
+`BulleEcoutePlugin.fermer()`, appelé depuis le JS quand `MicButton` revient au
+repos, jamais par un appui sur elle. `FLAG_NOT_FOCUSABLE` pose aussi
+`FLAG_NOT_TOUCH_MODAL` automatiquement (documenté par Android) : les deux
+ensemble laissent tout passer à l'application réellement affichée en dessous,
+comme si cette fenêtre n'existait pas pour le doigt.
+
+**Le même piège existait dans `AssistOverlayActivity`** (l'appui long),
+repéré en corrigeant le premier : focusable, sans `FLAG_NOT_TOUCH_MODAL`, elle
+avalait aussi les appuis dans les DEUX TIERS assombris du haut (l'app en
+dessous, visible mais inerte au toucher), pas seulement dans son propre tiers
+du bas. Corrigé en ajoutant `FLAG_NOT_TOUCH_MODAL` SEUL — elle reste
+focusable, son propre micro et ses propres boutons continuent de fonctionner
+normalement, seul le comportement modal disparaît. **PAS confirmé comme LA
+cause du « ça bug, ressort » de l'appui long documenté depuis le 7 sept.**
+(aucun appareil ici pour le vérifier) : corrigé comme précaution justifiée par
+la mécanique Android documentée, pas comme correctif aveugle — exactement la
+même posture que le passage à 64 dip lui-même.
+
+`verifier-bulle.ts` garde les trois drapeaux (essayés à l'envers : les
+retirer fait rougir chacun des trois contrôles correspondants).
+
+**CE QUI RESTE À CONFIRMER, sur l'APK publiée après ce commit** : que le
+premier « ça saute directement » disparaît vraiment pour les deux chemins, et
+que l'écran ne se fige plus pendant qu'un appui long ou une bulle écoute —
+Raphaël doit pouvoir continuer à taper ailleurs sur l'écran (par exemple
+essayer de fermer une autre app) sans que rien ne semble mort. NE PAS
+ARCHIVER avant cette confirmation explicite, appui long ET bulle testés
+séparément.
+
 ## Une commande mal entendue reste rattrapable, sans jamais poser de question
 
 `src/lib/actionsTelephoneFenetre.ts` (pur) + `actionsTelephoneToast.ts` (le

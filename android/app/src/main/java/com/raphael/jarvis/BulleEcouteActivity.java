@@ -114,6 +114,26 @@ public class BulleEcouteActivity extends BridgeActivity {
         params.height = taille;
         params.x = 0;
         params.y = 0;
+        // LA VRAIE RÉGRESSION DU PASSAGE À 64 DIP (17 sept. 2026, retour de
+        // Raphaël : « fonctionne encore moins bien qu'avant »), trouvée en
+        // relisant les drapeaux plutôt que la taille. Sans FLAG_NOT_TOUCH_MODAL
+        // (posé automatiquement par FLAG_NOT_FOCUSABLE ci-dessous), une fenêtre
+        // FOCUSABLE consomme TOUS les événements tactiles de l'écran ENTIER
+        // tant qu'elle est ouverte, pas seulement ceux dans ses propres limites
+        // (documenté par Android : WindowManager.LayoutParams.FLAG_NOT_TOUCH_
+        // MODAL). À 2 dip, un WebView qui échouait probablement à se créer
+        // laissait cette fenêtre à peine vivante ; à 64 dip elle s'ouvre pour
+        // de vrai et reste au premier plan le temps de l'écoute — l'écran
+        // entier devenait donc insensible au toucher pendant tout ce temps,
+        // sans qu'aucun élément visible ne le laisse deviner. Cette fenêtre
+        // n'a besoin d'AUCUNE interaction tactile : elle se referme par
+        // BulleEcoutePlugin.fermer(), appelé depuis le JS, jamais par un appui
+        // ici. FLAG_NOT_TOUCHABLE (aucun événement ne lui est même livré) et
+        // FLAG_NOT_FOCUSABLE (elle ne vole ni le clavier ni le focus — même
+        // raison que BulleService pour sa propre bulle) laissent donc tout
+        // passer à l'application réellement affichée en dessous.
+        params.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         fenetre.setAttributes(params);
     }
 
