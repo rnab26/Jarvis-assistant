@@ -12,12 +12,14 @@ import android.provider.ContactsContract;
 import android.provider.MediaStore;
 import android.view.KeyEvent;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -650,6 +652,69 @@ public class ActionsTelephonePlugin extends Plugin {
         if (paquet != null && !paquet.isEmpty()) itineraire.setPackage(paquet);
         if (lancer(itineraire, call, "Aucune application de cartes n'a répondu.")) {
             call.resolve();
+        }
+    }
+
+    /**
+     * Partage un fichier déjà écrit sur le disque — un reçu retrouvé dans
+     * Gmail, par exemple (chantier 4dabe586). `chemin` vient de
+     * `Filesystem.getUri()` côté JS (dans le cache de l'app, déclaré dans
+     * file_paths.xml) : un chemin natif, parfois préfixé "file://" selon la
+     * plateforme — les deux formes sont acceptées.
+     *
+     * MÊME RÈGLE QUE preparerWhatsApp/preparerSms : ça PRÉPARE, ça n'envoie
+     * jamais tout seul. Et il n'existe aucun intent public pour cibler UNE
+     * conversation précise avec une pièce jointe (contrairement au texte
+     * seul, qui passe par le lien wa.me) : avec un paquet visé, l'application
+     * affiche son PROPRE écran de destinataire ; sans paquet, le sélecteur
+     * Android habituel, comme un partage fait à la main.
+     */
+    @PluginMethod
+    public void partagerFichier(PluginCall call) {
+        String chemin = call.getString("chemin");
+        if (chemin == null || chemin.isEmpty()) {
+            call.reject("Je n'ai aucun fichier à partager.");
+            return;
+        }
+        String typeContenu = call.getString("typeContenu", "application/octet-stream");
+        String paquet = call.getString("paquet");
+
+        Uri brut = Uri.parse(chemin);
+        String cheminNatif = "file".equals(brut.getScheme()) && brut.getPath() != null ? brut.getPath() : chemin;
+        File fichier = new File(cheminNatif);
+        if (!fichier.exists()) {
+            call.reject("Je ne trouve plus ce fichier.");
+            return;
+        }
+
+        Uri contentUri;
+        try {
+            contentUri = FileProvider.getUriForFile(
+                getContext(), getContext().getPackageName() + ".fileprovider", fichier
+            );
+        } catch (Exception e) {
+            call.reject("Impossible de préparer ce fichier pour le partage : " + e.getMessage());
+            return;
+        }
+
+        Intent partage = new Intent(Intent.ACTION_SEND);
+        partage.setType(typeContenu);
+        partage.putExtra(Intent.EXTRA_STREAM, contentUri);
+        partage.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+        if (paquet != null && !paquet.isEmpty()) {
+            partage.setPackage(paquet);
+            if (lancer(partage, call, "Cette application n'a pas répondu.")) call.resolve();
+            return;
+        }
+
+        Intent chooser = Intent.createChooser(partage, null);
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(chooser);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Aucune application n'a pu recevoir ce fichier.");
         }
     }
 }

@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core"
+import { Directory, Filesystem } from "@capacitor/filesystem"
 import {
   ActionsTelephone,
   trouverApplication,
@@ -785,4 +786,82 @@ export async function executerActionTelephone(
     // telle quelle vaut mieux qu'un échec muet.
     return e instanceof Error ? e.message : "Cette action n'a pas abouti."
   }
+}
+
+/**
+ * Transmettre un fichier déjà récupéré (un reçu Gmail, une pièce jointe...)
+ * via le partage Android — chantier 4dabe586, seconde moitié restée hors du
+ * périmètre « Messagerie » (elle touche le contrôle du téléphone).
+ *
+ * Le contenu arrive DÉJÀ en base64 : cette fonction ne va rien chercher elle-
+ * même (Gmail, un lien...), c'est le rôle de l'appelant (voiceActions.ts,
+ * case "transmettre_recu"). Elle écrit le fichier dans le cache de l'app
+ * (`Filesystem`, comme `majWeb.ts` pour un paquet téléchargé), puis délègue
+ * l'ouverture de l'intent au plugin natif — même geste que `preparerWhatsApp`
+ * et `preparerSms` : ça PRÉPARE, ça n'envoie jamais tout seul.
+ *
+ * PAS DE CIBLAGE D'UNE CONVERSATION PRÉCISE : contrairement à un texte seul
+ * (`send_message`, qui peut ouvrir directement la bonne conversation via un
+ * lien wa.me), il n'existe aucun intent public pour pré-sélectionner UN
+ * destinataire avec une pièce jointe. L'application visée affichera son
+ * propre écran de choix — Raphaël désigne le destinataire dans sa phrase
+ * pour qu'on puisse le NOMMER dans la réponse (le seul mot qui permet de
+ * repérer une commande mal comprise, comme pour toutes les autres actions
+ * téléphone), pas pour viser techniquement sa conversation.
+ */
+export async function transmettreFichier(
+  fichier: { nom: string; typeContenu: string | null; base64: string },
+  contacts: Contact[],
+  destinataire: { contact_id?: string; contact_name?: string; phone_number?: string },
+  canalDit?: "whatsapp" | "whatsapp_business" | "sms",
+): Promise<string> {
+  if (!Capacitor.isNativePlatform()) return SUR_LE_TELEPHONE_SEULEMENT
+
+  let nom = nomDe(contacts, destinataire.contact_id) ?? destinataire.contact_name ?? null
+  if (!nom && destinataire.contact_name) {
+    const r = await numeroDepuisTelephone(destinataire.contact_name)
+    if ("nom" in r) nom = r.nom
+    // Un échec ici (répertoire refusé, personne trouvée) n'empêche pas de
+    // transmettre : on ne connaissait le nom que pour l'ANNONCER, jamais pour
+    // cibler techniquement — voir le commentaire de la fonction.
+  }
+
+  const forceWhatsAppBusiness = canalDit === "whatsapp_business"
+  const canal = (canalDit === "whatsapp_business" ? "whatsapp" : canalDit) ?? canalMessagesPrefere() ?? "whatsapp"
+
+  let paquet: string | undefined
+  let ou = ""
+  if (canal === "whatsapp") {
+    const choix = await quelWhatsApp(forceWhatsAppBusiness ? "whatsapp_business" : undefined)
+    if (choix.etat === "a_choisir" || choix.etat === "introuvable") return choix.phrase
+    paquet = choix.paquet ?? undefined
+    ou = forceWhatsAppBusiness ? " sur WhatsApp Business" : " sur WhatsApp"
+  }
+
+  const cheminRelatif = `partage/${fichier.nom}`
+  try {
+    await Filesystem.writeFile({
+      directory: Directory.Cache,
+      path: cheminRelatif,
+      data: fichier.base64,
+      recursive: true,
+    })
+  } catch {
+    return "Je n'ai pas réussi à préparer ce fichier pour le partage."
+  }
+  const { uri } = await Filesystem.getUri({ directory: Directory.Cache, path: cheminRelatif })
+
+  try {
+    await ActionsTelephone.partagerFichier({
+      chemin: uri,
+      typeContenu: fichier.typeContenu ?? "application/octet-stream",
+      paquet,
+    })
+  } catch (e) {
+    return e instanceof Error ? e.message : "Je n'ai pas réussi à ouvrir le partage."
+  }
+
+  return nom
+    ? `Je prépare ${fichier.nom} pour ${nom}${ou}, choisis-le et appuie sur envoyer.`
+    : `Je prépare ${fichier.nom}${ou}, choisis le destinataire et appuie sur envoyer.`
 }
