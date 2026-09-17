@@ -903,6 +903,95 @@ try {
     debordement <= 0,
     `${debordement} points de trop — il faudrait faire défiler latéralement`,
   )
+
+  // ── Fusionner deux chantiers (chantier e973f391) ──
+  // « Réveil vocal en arrière-plan » (Voix et écoute) et « Widget d'écran
+  // d'accueil » (Le téléphone) sont les deux seuls chantiers actifs encore
+  // intacts à ce stade du parcours (« Le micro se coupe en pleine phrase » a
+  // été supprimé par le test de la corbeille plus haut).
+  const ouvrirSection = async (nom) => {
+    const bouton = enTete(nom)
+    if ((await bouton.getAttribute("aria-expanded")) !== "true") await bouton.click()
+    await pause(150)
+  }
+
+  await page.getByRole("button", { name: "Choisir" }).first().click()
+  await pause(250)
+  await page.getByRole("checkbox", { name: /Réveil vocal en arrière-plan/ }).click()
+  await pause(150)
+  verifier(
+    "un seul chantier coché : pas de bouton Fusionner",
+    (await page.getByRole("button", { name: "Fusionner" }).count()) === 0,
+    "fusionner un chantier seul n'a pas de sens",
+  )
+  await page.getByRole("checkbox", { name: /Widget d'écran d'accueil/ }).click()
+  await pause(150)
+  verifier(
+    "exactement deux chantiers cochés : le bouton Fusionner apparaît",
+    await page.getByRole("button", { name: "Fusionner" }).isVisible(),
+  )
+  await page.getByRole("checkbox", { name: /Un chantier dicté trop vite/ }).click()
+  await pause(150)
+  verifier(
+    "trois chantiers cochés : le bouton disparaît — ni un, ni trois",
+    (await page.getByRole("button", { name: "Fusionner" }).count()) === 0,
+  )
+  await page.getByRole("checkbox", { name: /Un chantier dicté trop vite/ }).click()
+  await pause(150)
+
+  await page.getByRole("button", { name: "Fusionner" }).click()
+  await pause(300)
+  const dialogueFusion = page.getByRole("dialog")
+  verifier(
+    "la confirmation demande lequel garder, sans le présumer",
+    await dialogueFusion.getByText("Lequel garder ?").isVisible(),
+  )
+  await dialogueFusion.getByRole("combobox").click()
+  await pause(150)
+  await page.getByRole("option", { name: "Réveil vocal en arrière-plan" }).click()
+  await pause(150)
+  await dialogueFusion.getByRole("button", { name: "Fusionner", exact: true }).click()
+  await pause(700)
+
+  verifier(
+    "le chantier absorbé disparaît de la liste",
+    (await page.getByRole("checkbox", { name: /Widget d'écran d'accueil/ }).count()) === 0,
+  )
+  verifier(
+    "un toast nomme les deux et propose d'annuler, comme toute action groupée",
+    await visible("« Widget d'écran d'accueil » fusionné dans « Réveil vocal en arrière-plan »"),
+  )
+
+  await page.getByRole("button", { name: "Terminer" }).first().click()
+  await pause(250)
+  await ouvrirSection("Voix et écoute")
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(200)
+  verifier(
+    "les notes du chantier absorbé rejoignent celui qui reste",
+    await visible("Fusionné avec « Widget d'écran d'accueil »"),
+  )
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(150)
+
+  const annulerFusion = page.locator("[data-sonner-toast] button", { hasText: "Annuler" })
+  await annulerFusion.first().click()
+  await pause(500)
+  await ouvrirSection("Le téléphone")
+  verifier(
+    "annuler une fusion recrée le chantier absorbé",
+    await dansLeTableau("Widget d'écran d'accueil"),
+  )
+  await ouvrirSection("Voix et écoute")
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(200)
+  verifier(
+    "et rend à l'autre ses notes d'avant la fusion",
+    !(await visible("Fusionné avec « Widget d'écran d'accueil »")),
+  )
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(150)
+
   // ─────────── Le cockpit à sa vraie taille : 83 chantiers, 9 sections ───────────
   // Tout ce qui rend une liste lisible se vérifie sur quatre chantiers et se
   // casse sur quatre-vingts.
