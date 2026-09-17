@@ -78,6 +78,25 @@ export const FENETRE_PLAINTE_MS = 3 * 60_000
 /** Redire la même chose dans la minute, c'est que la première fois a raté. */
 export const FENETRE_REDITE_MS = 60_000
 
+/**
+ * Les familles qui ont DÉJÀ leur propre garde-fou anti-doublon, avec une
+ * phrase qui explique la redite (`deciderDoublonVocal` / `deciderDoublonTache`,
+ * dans doublonChantierALaVoix.ts). Une redite sur l'une d'elles n'est PAS un
+ * échec : c'est ce garde-fou qui vient de faire son travail.
+ *
+ * TROUVÉ EN ENQUÊTANT SUR LE CHANTIER d31a078d (17 sept. 2026), mesuré dans
+ * `echanges` : à 09:41:45 « lancer un chantier comme quoi tous les bruits
+ * extérieurs dérangent le micro » avait RÉUSSI (« Chantier "…" ajouté au
+ * cockpit »), et deux secondes plus tard la redite avait reçu « Tu as déjà
+ * "…" dans le cockpit […] je ne le recrée pas » — la réponse la plus honnête
+ * possible. `echecSignalePar` comptait pourtant ça comme « Raphaël a dû
+ * redemander la même chose », et c'est ce faux positif, répété sur un autre
+ * sujet dix jours plus tôt (même empreinte, catégorie + famille seulement),
+ * qui a ouvert ce chantier tout seul — Raphaël n'avait RIEN à redemander,
+ * les deux fois le premier essai avait marché.
+ */
+const FAMILLES_AVEC_GARDE_DOUBLON = ["add_dev_item", "add_task"]
+
 /** En dessous, deux phrases se croisent par hasard sur des mots courants. */
 export const RECOUVREMENT_REDITE = 0.8
 
@@ -258,9 +277,13 @@ export function echecSignalePar(
 
   const plainte = estUnePlainte(phrase)
   // Une redite après une QUESTION de Jarvis est un dialogue normal, pas un
-  // échec : il vient de demander une précision, on la lui donne.
+  // échec : il vient de demander une précision, on la lui donne. Une redite
+  // sur une famille qui a déjà son garde-fou anti-doublon non plus : ce
+  // garde-fou explique déjà la redite à voix haute, mieux qu'un chantier
+  // ouvert des jours plus tard ne pourrait le faire.
   const redite =
     !precedent.actions.includes("clarify") &&
+    !precedent.actions.some((a) => FAMILLES_AVEC_GARDE_DOUBLON.includes(a)) &&
     maintenant - precedent.at <= FENETRE_REDITE_MS &&
     estUneRedite(precedent.transcript, phrase)
 

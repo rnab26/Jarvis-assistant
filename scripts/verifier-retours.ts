@@ -115,6 +115,52 @@ verifier(
   "il vient de demander une précision, on la lui donne : c'est le dialogue normal",
 )
 
+// --- Le cas RÉEL du chantier d31a078d (17 sept. 2026) : une redite après un
+// add_dev_item ou un add_task réussi n'est PAS un échec — ces deux familles
+// ont déjà leur propre garde-fou anti-doublon (deciderDoublonVocal /
+// deciderDoublonTache) qui explique la redite à voix haute. Mesuré dans
+// `echanges` : 09:41:45 « lancer un chantier comme quoi tous les bruits
+// extérieurs dérangent le micro » → « Chantier "…" ajouté au cockpit » ;
+// 09:41:47, la redite quasi identique → « Tu as déjà "…" […] je ne le recrée
+// pas. » Raphaël n'avait rien à redemander : le premier essai avait marché.
+verifier(
+  "une redite juste après un add_dev_item réussi ne signale rien",
+  echecSignalePar(
+    "lancer un chantier comme quoi tous les bruits extérieurs rangeant le micro",
+    tour({
+      transcript: "lancer un chantier comme quoi tous les bruits extérieurs dérangent le micro",
+      actions: ["add_dev_item"],
+      cible: null,
+      reponse: 'Chantier "Comme quoi tous les bruits exterieurs derangent le micro" ajouté au cockpit.',
+    }),
+    T0 + 2_000,
+  ) === null,
+  "add_dev_item a déjà son garde-fou anti-doublon (deciderDoublonVocal), qui vient de répondre correctement",
+)
+verifier(
+  "même chose pour une redite après un add_task réussi",
+  echecSignalePar(
+    "ajoute une tâche : rappeler le plombier",
+    tour({
+      transcript: "ajoute une tâche : rappeler le plombier",
+      actions: ["add_task"],
+      cible: null,
+      reponse: 'Tâche "Rappeler le plombier" ajoutée.',
+    }),
+    T0 + 2_000,
+  ) === null,
+  "add_task a le même garde-fou (deciderDoublonTache)",
+)
+verifier(
+  "mais une VRAIE plainte après un add_dev_item reste détectée",
+  echecSignalePar(
+    "tu n'as pas fait ce que je t'ai demandé",
+    tour({ actions: ["add_dev_item"], cible: null, reponse: 'Chantier "…" ajouté au cockpit.' }),
+    T0 + 5_000,
+  ) !== null,
+  "exclure la redite ne doit pas faire taire une plainte explicite sur la même famille",
+)
+
 // --- L'échec de l'exemple vécu ---------------------------------------------
 {
   const e = echecSignalePar("Tu n'as pas lancé la musique que je t'ai demandée", tour(), T0 + 8_000)
