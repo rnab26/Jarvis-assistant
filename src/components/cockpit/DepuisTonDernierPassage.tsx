@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { depuisDerniereVisite, depuisQuand } from "@/lib/depuisDerniereVisite"
-import { courtAuteur } from "@/lib/journalBord"
+import { courtAuteur, extraitAuMot } from "@/lib/journalBord"
 import { useVisiteCockpit, type VisiteCockpitApi } from "@/hooks/useVisiteCockpit"
 import type { DevItem, DevLogEntry } from "@/types/database"
 
@@ -155,7 +155,7 @@ function Bandeau({
             qu'il y a quelque chose, le journal le dit en entier. */}
         {bilan.messages.slice(0, 2).map((m) => (
           <p key={m.id} className="truncate text-xs">
-            💬 {courtAuteur(m.author)} : {extraitLisible(m.body)}
+            💬 {courtAuteur(m.author)} : {extraitAuMot(m.body)}
           </p>
         ))}
 
@@ -179,21 +179,4 @@ function Bandeau({
       </CardContent>
     </Card>
   )
-}
-
-/**
- * Le début d'un message, coupé net.
- *
- * Une session écrit des comptes rendus de plusieurs milliers de caractères.
- * Les couper au CSS (`truncate`) rend une ligne, mais le navigateur doit
- * d'abord mettre en page tout le texte, et surtout : une phrase coupée au
- * pixel près se termine n'importe où. On coupe au mot, avec des points de
- * suspension, pour que le fragment reste une phrase.
- */
-function extraitLisible(corps: string, maximum = 110): string {
-  const propre = corps.replace(/\s+/g, " ").trim()
-  if (propre.length <= maximum) return propre
-  const coupe = propre.slice(0, maximum)
-  const espace = coupe.lastIndexOf(" ")
-  return `${espace > 40 ? coupe.slice(0, espace) : coupe}…`
 }

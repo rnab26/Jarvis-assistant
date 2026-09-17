@@ -23,6 +23,7 @@ import {
   phraseDeCoupure,
   resteACharger,
 } from "../src/lib/filJournal.ts"
+import { extraitAuMot } from "../src/lib/journalBord.ts"
 import type { DevLogEntry } from "../src/types/database.ts"
 
 let echecs = 0
@@ -185,6 +186,48 @@ verifier(
   "un total plus PETIT que l'affiché ne rend pas un négatif",
   resteACharger(60, 40, 60) === 0,
   "une entrée effacée entre la liste et le compte donnerait « voir les -20 précédentes »",
+)
+
+console.log("\n— L'extrait partagé par tout le cockpit —")
+
+// Trois endroits s'en servent : le bandeau « depuis ton dernier passage », la
+// citation ci-dessus, et la ligne repliée d'un point qui l'attend. Il y en
+// avait trois copies privées ; la troisième a été la fois de trop — mesuré le
+// 17 sept., « Ce qui attend ta décision » affichait le corps ENTIER et montait
+// à 924 points de haut pour quatre points repliés.
+verifier(
+  "un texte court passe tel quel",
+  extraitAuMot("Trois mots.") === "Trois mots.",
+)
+verifier(
+  "les retours à la ligne sont écrasés AVANT de couper",
+  extraitAuMot("Un\n\ndeux\n\ntrois") === "Un deux trois",
+  "sinon un extrait de trois mots ferait cinq lignes de haut",
+)
+{
+  // Un des vrais points en attente du 17 sept. : 697 caractères sur la ligne
+  // repliée, soit une quinzaine de lignes sur un écran de téléphone.
+  const LONG =
+    "Chantier aac9a0dd : Jarvis navigation, guidage et contrôle total du téléphone. " +
+    "Le périmètre n'est pas tranché — faut-il qu'il puisse appuyer sur l'écran de " +
+    "n'importe quelle application, ou seulement de celles que tu as désignées ?"
+  const court = extraitAuMot(LONG)
+  verifier("un long texte est coupé", court.endsWith("…") && court.length < 130, `${court.length} caractères`)
+  const garde = court.replace(/…$/, "")
+  verifier(
+    "et coupé AU MOT",
+    LONG.startsWith(garde) && LONG[garde.length] === " ",
+    `coupé sur « ${LONG.slice(Math.max(0, garde.length - 12), garde.length + 8)} »`,
+  )
+}
+verifier(
+  "un texte sans espace est coupé net plutôt que rendu entier",
+  extraitAuMot("x".repeat(400)).length < 130,
+  "une URL collée rendrait tout le texte en croyant l'avoir coupé",
+)
+verifier(
+  "un texte vide reste vide",
+  extraitAuMot("   \n  ") === "",
 )
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
