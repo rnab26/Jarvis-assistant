@@ -415,6 +415,24 @@ const CALME = new URLSearchParams(location.search).has("calme")
  * chargés. Ce que le cockpit dit alors compte autant que ce qu'il dit quand
  * tout va bien — une panne muette se lit comme une absence. */
 const PANNE = new URLSearchParams(location.search).has("panne")
+/** `?cible=1` ou `?cible=archive` : un lien direct (notification, message —
+ * chantiers 04d2fa9e/332d87fd/f613211c). `?cible=1` vise `c3` (« Widget
+ * d'écran d'accueil », section « Le téléphone », PAS la même section que les
+ * deux premiers chantiers, « Voix et écoute ») : prouve que c'est bien SA
+ * section qui s'ouvre, pas seulement la première. `?cible=archive` vise `c4`
+ * (« Le badge de version, livré », déjà ARCHIVÉ) — le cas le plus fréquent en
+ * pratique pour une notification « chantier livré » : le bloc « Archivées »,
+ * repliée par défaut, doit s'ouvrir tout seul. `d2` (une décision SANS
+ * chantier) prouve, dans les deux cas, la mise en évidence côté « Ce qui
+ * attend ta décision » quand `?chantier=` ne s'applique pas.
+ *
+ * `CockpitPage` (pas testé ici, hors de portée de ce banc — il lit l'URL via
+ * `useSearchParams`, qui a besoin d'un Router) résout ces deux props depuis
+ * `?chantier=`/`?entree=` exactement de la même façon ; ce banc vérifie ce
+ * que ces props FONT une fois reçues. */
+const CIBLE_PARAM = new URLSearchParams(location.search).get("cible")
+const CIBLE = CIBLE_PARAM === "1"
+const CIBLE_ARCHIVE = CIBLE_PARAM === "archive"
 const REEL = VOLUME ? volumeReel() : null
 
 /** Un historique de chantier comme il s'en écrit vraiment : une note complétée,
@@ -674,6 +692,7 @@ function BancDuCockpit() {
       <CeQuiAttendTaDecision
         messages={messages}
         devItems={devItems}
+        entreeCible={CIBLE || CIBLE_ARCHIVE ? "d2" : null}
         onRepondre={async (question, option, commentaire) => {
           setMessages((m) => [
             ...m.map((x) =>
@@ -780,6 +799,7 @@ function BancDuCockpit() {
         sectionsState={sectionsState}
         filtre={filtre}
         onFiltre={setFiltre}
+        chantierCible={CIBLE ? "c3" : CIBLE_ARCHIVE ? "c4" : null}
         onUpdate={async (id, patch) => {
           setDevItems((items) => items.map((i) => (i.id === id ? { ...i, ...patch } : i)))
         }}

@@ -32,6 +32,7 @@ import {
   filtreActif,
   filtrerChantiers,
   grouperParSection,
+  sectionDe,
   type FiltreCockpit,
   type FiltreStatut,
   type GroupeSection,
@@ -86,6 +87,12 @@ interface CockpitBoardProps {
    * choses différentes du même filtre. */
   filtre: FiltreCockpit
   onFiltre: (filtre: FiltreCockpit) => void
+  /** Lien direct depuis une notification ou un message (`?chantier=<id>`,
+   * chantiers 04d2fa9e/332d87fd/f613211c) : ce chantier précis s'ouvre tout
+   * seul — sa section se déplie, les archivées aussi s'il y est, et la carte
+   * elle-même se déplie et se met en évidence — sans passer par une
+   * recherche sur le titre, qui peut désigner plusieurs chantiers. */
+  chantierCible?: string | null
   /** Le journal de bord, pour que chaque chantier porte ses messages. */
   messages?: DevLogEntry[]
   onRepondre?: (itemId: string, body: string) => Promise<void>
@@ -113,6 +120,7 @@ export function CockpitBoard({
   sectionsState,
   filtre,
   onFiltre,
+  chantierCible = null,
   onUpdate,
   onDelete,
   onArchive,
@@ -138,6 +146,18 @@ export function CockpitBoard({
   const themes = themesDe(devItems)
   const actifs = useMemo(() => devItems.filter((i) => !i.archived_at), [devItems])
   const archives = useMemo(() => devItems.filter((i) => i.archived_at), [devItems])
+
+  // Le chantier visé par un lien direct : cherché dans TOUT `devItems`, pas
+  // seulement ce que le filtre laisse voir — un lien vers un chantier
+  // archivé doit l'ouvrir même si « Archivées » est repliée et que rien
+  // n'est filtré.
+  const itemCible = useMemo(
+    () => (chantierCible ? devItems.find((i) => i.id === chantierCible) : undefined),
+    [devItems, chantierCible],
+  )
+  useEffect(() => {
+    if (itemCible?.archived_at) setArchivesOuvertes(true)
+  }, [itemCible])
 
   // Les compteurs du résumé portent sur TOUT, pas sur ce que le filtre laisse
   // passer : sinon « 0 restant » voudrait dire « rien ne correspond », ce qui
@@ -211,7 +231,16 @@ export function CockpitBoard({
 
   // En mode sélection, tout est déplié : on ne peut pas cocher ce qu'on ne
   // voit pas, et « tout ce qui est affiché » doit vouloir dire ce qu'il dit.
-  const estOuverte = (nom: string) => cherche || selection !== null || ouvertes.has(cleTheme(nom))
+  // Le chantier visé par un lien direct force aussi l'ouverture de SA
+  // section, active ou pas — sans quoi il faudrait encore la déplier à la
+  // main pour voir ce qu'on est venu chercher.
+  const estOuverte = (nom: string) =>
+    cherche ||
+    selection !== null ||
+    ouvertes.has(cleTheme(nom)) ||
+    (itemCible !== undefined &&
+      !itemCible.archived_at &&
+      cleTheme(sectionDe(itemCible)) === cleTheme(nom))
   const basculer = (nom: string) =>
     setOuvertes((set) => {
       const suivant = new Set(set)
@@ -497,6 +526,7 @@ export function CockpitBoard({
                 selectionnable={enSelection}
                 selectionne={selection?.has(item.id) ?? false}
                 onSelectionner={basculerSelection}
+                misEnEvidence={item.id === chantierCible}
               />
             ))}
           </SectionPliante>
@@ -557,6 +587,7 @@ export function CockpitBoard({
                             selectionnable={enSelection}
                             selectionne={selection?.has(item.id) ?? false}
                             onSelectionner={basculerSelection}
+                            misEnEvidence={item.id === chantierCible}
                           />
                         ))}
                     </div>

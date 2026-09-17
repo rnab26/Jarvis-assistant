@@ -1364,6 +1364,75 @@ try {
 
   await gros.close()
 
+  // ─────────── Lien direct depuis une notification (?chantier=/?entree=) ───────────
+  // Chantiers 04d2fa9e/332d87fd/f613211c : une notification (chantier livré,
+  // session bloquée, question posée) ou un lien envoyé par une session doit
+  // amener directement sur ce qu'elle concerne, déjà déplié — pas juste
+  // ouvrir le cockpit à sa page d'accueil. `CockpitPage` résout
+  // `?chantier=`/`?entree=` en deux props (`chantierCible`, `entreeCible`)
+  // transmises telles quelles à `CockpitBoard`/`CeQuiAttendTaDecision` ; ce
+  // banc les fixe directement (`?cible=1`, pas de Router ici — `CockpitPage`
+  // et son `useSearchParams` en ont besoin, ce banc-ci vérifie ce que les
+  // props FONT une fois reçues, pas la lecture de l'URL elle-même).
+  const cible = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  cible.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (cible):", e.message)
+  })
+  await cible.goto(`${BASE}/scripts/harness/cockpit.html?cible=1`)
+  await cible.waitForSelector('[aria-label="Chantiers"]')
+  await pause(400)
+
+  verifier(
+    "un chantier visé par un lien direct est visible sans avoir cherché ni cliqué",
+    await cible.getByText("Widget d'écran d'accueil").isVisible(),
+    "sa section (« Le téléphone ») doit s'ouvrir toute seule",
+  )
+  const boutonWidget = cible.getByRole("button", { name: /Widget d'écran d'accueil/ })
+  verifier(
+    "il est déjà déplié, sans avoir appuyé sur la ligne",
+    (await boutonWidget.getAttribute("aria-expanded")) === "true",
+    "sinon il faudrait encore cliquer pour voir ce qu'on est venu chercher",
+  )
+  verifier(
+    "et SEULE sa section s'est ouverte — pas toutes",
+    !(await cible.getByText("Le micro se coupe en pleine phrase").isVisible()),
+    "« Voix et écoute » n'est pas la section visée, elle doit rester repliée",
+  )
+  verifier(
+    "une question sans chantier visée par un lien direct est déjà dépliée",
+    await cible.getByRole("button", { name: "Ça bloque" }).isVisible(),
+    "« Dépose GOOGLE_GEOCODING_API_KEY… » (chantier 332d87fd) doit s'ouvrir sans clic",
+  )
+  verifier(
+    "et une autre question, non visée, reste repliée",
+    !(await cible.getByRole("button", { name: "Sans limite" }).isVisible()),
+    "seule la question ciblée doit s'ouvrir, pas toutes",
+  )
+
+  await cible.close()
+
+  // Le cas le plus fréquent en pratique pour une notification « chantier
+  // livré » : la cible est déjà ARCHIVÉE. Le bloc « Archivées », repliée par
+  // défaut, doit s'ouvrir tout seul — sinon le lien direct amène sur un
+  // tableau où le chantier visé reste caché derrière un bandeau replié.
+  const cibleArchive = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  cibleArchive.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (cible archivée):", e.message)
+  })
+  await cibleArchive.goto(`${BASE}/scripts/harness/cockpit.html?cible=archive`)
+  await cibleArchive.waitForSelector('[aria-label="Chantiers"]')
+  await pause(400)
+
+  verifier(
+    "un chantier ARCHIVÉ visé par un lien direct s'affiche : « Archivées » s'ouvre tout seul",
+    await cibleArchive.getByText("Le badge de version, livré").isVisible(),
+    "sinon il reste caché derrière le bandeau « Archivées », replié par défaut",
+  )
+
+  await cibleArchive.close()
+
   // ─────────── Le mode « une question à la fois » ───────────
   // Plainte de Raphaël, 17 sept. 2026 : « faut que ce soit plus clair, plus
   // simple, plus synthétisé, questions, réponses et on next. » Sa propre
