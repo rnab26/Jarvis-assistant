@@ -67,6 +67,15 @@ interface CeQuiAttendTaDecisionProps {
     photo: File | null,
   ) => Promise<void>
   onEtat: (id: string, etat: EtatAction) => Promise<void>
+  /**
+   * Mode simplifié (Paramètres › Le cockpit › Mode simplifié, ou le bouton en
+   * tête du cockpit) : une question à la fois, dépliée d'emblée, avec un
+   * bouton pour passer à la suivante. Plainte de Raphaël, 17 sept. 2026 :
+   * « faut que ce soit plus clair, plus simple, plus synthétisé, questions,
+   * réponses et on next ». Même carte, même `Point`, même `onRepondre` — pas
+   * un second écran qui finirait par diverger.
+   */
+  uneALaFois?: boolean
 }
 
 export function CeQuiAttendTaDecision({
@@ -74,35 +83,86 @@ export function CeQuiAttendTaDecision({
   devItems,
   onRepondre,
   onEtat,
+  uneALaFois = false,
 }: CeQuiAttendTaDecisionProps) {
   const enAttente = useMemo(() => questionsEnAttente(messages), [messages])
   const titreParItem = useMemo(
     () => new Map(devItems.map((i) => [i.id, i.title])),
     [devItems],
   )
+  // Répondre à la question courante la fait sortir d'`enAttente` : l'indice
+  // reste valide en le ramenant dans les bornes plutôt qu'en pointant dans le
+  // vide — c'est ce qui fait avancer tout seul vers la suivante une fois
+  // répondu, sans bouton à appuyer en plus.
+  const [indice, setIndice] = useState(0)
 
-  // Rien en attente : la carte n'existe pas. Un titre suivi de « rien à
-  // décider » occupe une place en haut du cockpit pour ne rien dire.
-  if (enAttente.length === 0) return null
+  const titre = (
+    <>
+      <HelpCircle className="mr-1.5 inline size-4 align-[-2px] text-muted-foreground" />
+      Ce qui attend ta décision
+    </>
+  )
+
+  if (enAttente.length === 0) {
+    // En mode simplifié, cette carte est TOUT ce qu'il voit : un retour
+    // silencieux (comme en mode normal) laisserait un écran vide, sans dire
+    // qu'il n'y a justement plus rien à faire.
+    if (!uneALaFois) return null
+    return (
+      <CarteRepliable ouverteParDefaut titre={titre}>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            Rien n'attend ta décision pour l'instant.
+          </p>
+        </CardContent>
+      </CarteRepliable>
+    )
+  }
 
   const actions = enAttente.filter((e) => e.kind === "action").length
+  const badge = (
+    <Badge variant="destructive" className="shrink-0">
+      {enAttente.length}
+      {actions > 0 ? ` dont ${actions} à faire` : ""}
+    </Badge>
+  )
+
+  if (uneALaFois) {
+    const i = Math.min(indice, enAttente.length - 1)
+    const question = enAttente[i]
+    return (
+      <CarteRepliable ouverteParDefaut titre={titre} badge={badge}>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Question {i + 1} sur {enAttente.length}
+            </span>
+            {enAttente.length > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIndice((n) => (n + 1) % enAttente.length)}
+              >
+                Suivante
+                <ChevronRight className="size-3.5" />
+              </Button>
+            )}
+          </div>
+          <Point
+            key={question.id}
+            question={question}
+            chantier={question.item_id ? titreParItem.get(question.item_id) : undefined}
+            onRepondre={onRepondre}
+            onEtat={onEtat}
+            forceOuvert
+          />
+        </CardContent>
+      </CarteRepliable>
+    )
+  }
 
   return (
-    <CarteRepliable
-      ouverteParDefaut
-      titre={
-        <>
-          <HelpCircle className="mr-1.5 inline size-4 align-[-2px] text-muted-foreground" />
-          Ce qui attend ta décision
-        </>
-      }
-      badge={
-        <Badge variant="destructive" className="shrink-0">
-          {enAttente.length}
-          {actions > 0 ? ` dont ${actions} à faire` : ""}
-        </Badge>
-      }
-    >
+    <CarteRepliable ouverteParDefaut titre={titre} badge={badge}>
       <CardContent className="flex flex-col gap-3">
         {enAttente.map((question) => (
           <Point
@@ -123,14 +183,19 @@ function Point({
   chantier,
   onRepondre,
   onEtat,
+  forceOuvert = false,
 }: {
   question: DevLogEntry
   chantier: string | undefined
   onRepondre: CeQuiAttendTaDecisionProps["onRepondre"]
   onEtat: CeQuiAttendTaDecisionProps["onEtat"]
+  /** Mode « une question à la fois » : la seule montrée, pas la peine de la
+   * déplier au clic — elle l'est déjà. */
+  forceOuvert?: boolean
 }) {
   const options = useMemo(() => optionsDe(question), [question])
-  const [ouvert, setOuvert] = useState(false)
+  const [ouvertState, setOuvert] = useState(false)
+  const ouvert = forceOuvert || ouvertState
   const [choisie, setChoisie] = useState<OptionDecision | null>(null)
   const [commentaire, setCommentaire] = useState("")
   const [photo, setPhoto] = useState<File | null>(null)
@@ -155,46 +220,62 @@ function Point({
     }
   }
 
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border p-2.5">
-      <button
-        type="button"
-        aria-expanded={ouvert}
-        aria-label={`Répondre : ${question.body.slice(0, 60)}`}
-        onClick={() => setOuvert(!ouvert)}
-        className="flex flex-col gap-1 text-left"
-      >
-        <span className="flex flex-wrap items-center gap-1.5">
-          {ouvert ? (
+  const enTete = (
+    <>
+      <span className="flex flex-wrap items-center gap-1.5">
+        {!forceOuvert &&
+          (ouvert ? (
             <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
           ) : (
             <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-          )}
-          <Badge variant={estAction ? "destructive" : "default"} className="shrink-0">
-            {estAction ? "À faire par toi" : "Tu décides"}
-          </Badge>
-          <span className="text-xs text-muted-foreground">
-            {courtAuteur(question.author)} · {ago(question.created_at)}
-          </span>
-          {estAction && question.etat && (
-            <Badge variant="outline" className="shrink-0">
-              {ETATS_ACTION.find((e) => e.valeur === question.etat)?.libelle}
-            </Badge>
-          )}
-          {chantier && (
-            <span className="min-w-0 truncate text-xs text-muted-foreground">— {chantier}</span>
-          )}
+          ))}
+        <Badge variant={estAction ? "destructive" : "default"} className="shrink-0">
+          {estAction ? "À faire par toi" : "Tu décides"}
+        </Badge>
+        <span className="text-xs text-muted-foreground">
+          {courtAuteur(question.author)} · {ago(question.created_at)}
         </span>
-        {/* La question reste lisible sans ouvrir : c'est elle qui lui dit
-            lequel ouvrir. COUPÉE, en revanche — mesuré le 17 sept. 2026 : ses
-            cinq points en attente faisaient 697, 561, 146, 110 et 86
-            caractères, et la carte montait à 924 points de haut pour QUATRE
-            points repliés, poussant « Où j'en suis » hors du premier écran.
-            Replier ne suffit pas si la ligne repliée porte 697 caractères. Le
-            texte entier est deux lignes plus bas, une fois ouvert : c'est là
-            qu'il en a besoin, pour répondre. */}
-        <span className="text-sm">{ouvert ? question.body : extraitAuMot(question.body)}</span>
-      </button>
+        {estAction && question.etat && (
+          <Badge variant="outline" className="shrink-0">
+            {ETATS_ACTION.find((e) => e.valeur === question.etat)?.libelle}
+          </Badge>
+        )}
+        {chantier && (
+          <span className="min-w-0 truncate text-xs text-muted-foreground">— {chantier}</span>
+        )}
+      </span>
+      {/* La question reste lisible sans ouvrir : c'est elle qui lui dit
+          lequel ouvrir. COUPÉE, en revanche — mesuré le 17 sept. 2026 : ses
+          cinq points en attente faisaient 697, 561, 146, 110 et 86
+          caractères, et la carte montait à 924 points de haut pour QUATRE
+          points repliés, poussant « Où j'en suis » hors du premier écran.
+          Replier ne suffit pas si la ligne repliée porte 697 caractères. Le
+          texte entier est deux lignes plus bas, une fois ouvert : c'est là
+          qu'il en a besoin, pour répondre. */}
+      <span className="text-sm">{ouvert ? question.body : extraitAuMot(question.body)}</span>
+    </>
+  )
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-2.5">
+      {/* En mode « une question à la fois », elle est déjà ouverte et seule à
+          l'écran : un bouton qui a l'air de replier quelque chose sans rien
+          faire serait exactement le défaut corrigé ailleurs dans ce cockpit
+          (Raphaël, 17 sept. 2026 — des lignes qui ont l'air cliquables et ne
+          mènent nulle part). */}
+      {forceOuvert ? (
+        <div className="flex flex-col gap-1 text-left">{enTete}</div>
+      ) : (
+        <button
+          type="button"
+          aria-expanded={ouvert}
+          aria-label={`Répondre : ${question.body.slice(0, 60)}`}
+          onClick={() => setOuvert(!ouvert)}
+          className="flex flex-col gap-1 text-left"
+        >
+          {enTete}
+        </button>
+      )}
 
       {ouvert && (
       <>
