@@ -2,6 +2,7 @@
 // `node --experimental-strip-types`, qui ne connaît pas l'alias « @/ » de Vite.
 import { motsUtiles } from "./suggestionTheme.ts"
 import { normaliserRecherche } from "./sections.ts"
+import { extraitAuMot } from "./journalBord.ts"
 
 /**
  * Jarvis constate ses propres échecs (chantier 25a58902).
@@ -308,5 +309,75 @@ export function echecSignalePar(
     // plus sur ce qu'il fallait faire. Seule une VRAIE plainte peut porter
     // une instruction.
     correctionSuggeree: plainte ? correctionDite(phrase) : null,
+  }
+}
+
+/**
+ * Le QUATRIÈME signal (chantier 519e8fff, 18 sept. 2026) : un signalement
+ * EXPLICITE, dicté en direct — Raphaël demande à Jarvis de noter ou signaler
+ * un problème de SON PROPRE comportement, hors des trois cas ci-dessus (rien
+ * n'a levé, ce n'est ni une redite ni une plainte au format `PLAINTES`).
+ *
+ * AUCUN TOUR PRÉCÉDENT REQUIS, contrairement à `echecSignalePar` : ce genre de
+ * signalement porte souvent sur un comportement qui dure depuis un moment,
+ * pas sur la toute dernière commande.
+ *
+ * MESURÉ le 18 sept. 2026 sur son vrai journal (`echanges`), pas supposé.
+ * Recherché sur l'historique complet : une seule vraie occurrence, le 6 sept.
+ * à 12h24 — « non non non tu vas noter tout de suite ce problème de
+ * comportement de Jarvis quand je lui dis de reprendre quelque chose il
+ * n'écoute pas […] » —, et elle n'avait laissé AUCUNE trace ni dans
+ * `jarvis_erreurs` ni dans `journal_ecoute` : le modèle a dû répondre en
+ * simple conversation, sans rien écrire nulle part. Les trois signaux
+ * existants ne pouvaient pas la voir : rien n'avait levé, ce n'était pas une
+ * redite, et ça ne matche aucune tournure de `PLAINTES` (qui suppose un
+ * reproche direct, « tu n'as pas… », pas une demande de NOTER un problème).
+ *
+ * VOCABULAIRE FERMÉ ET ÉTROIT, à dessein — même discipline que `PLAINTES` :
+ * il faut À LA FOIS un verbe de signalement explicite (noter/signaler/
+ * enregistrer/retenir) ET la mention d'un problème ET une référence au
+ * COMPORTEMENT OU À LA COMPRÉHENSION DE JARVIS LUI-MÊME. Sans ce dernier
+ * critère, « Signaler un problème : impossible de répondre aux chantiers
+ * classés par catégorie… » (une vraie phrase dictée le 18 sept., déjà bien
+ * comprise aujourd'hui comme une demande de chantier — `add_dev_item`) se
+ * retrouverait DOUBLÉE dans le registre des erreurs, pour un défaut d'écran
+ * qui n'a rien à voir avec l'écoute ou la compréhension de Jarvis.
+ */
+const VERBES_SIGNALEMENT = /\b(?:note|noter|signale|signaler|enregistre|enregistrer|retiens|retenir)\b/
+const OBJETS_PROBLEME = /\b(?:probleme|bug|souci|dysfonctionnement)\b/
+const QUALIFIE_COMPORTEMENT_JARVIS = /\b(?:comportement|comprehension)\b|\bavec (?:toi|jarvis)\b|\bchez toi\b|\bde jarvis\b/
+
+/** Vrai si la phrase demande explicitement à Jarvis de noter un problème de
+ * SON PROPRE comportement — voir la documentation de `signalementDicte`. */
+export function estUnSignalementExplicite(phrase: string): boolean {
+  const plat = aplatir(phrase)
+  return (
+    VERBES_SIGNALEMENT.test(plat) &&
+    OBJETS_PROBLEME.test(plat) &&
+    QUALIFIE_COMPORTEMENT_JARVIS.test(plat)
+  )
+}
+
+/**
+ * L'échec construit à partir d'un signalement explicite, ou `null` s'il n'y
+ * en a pas — ou si la phrase n'a pas assez de contenu pour valoir la peine
+ * d'être gardée (même seuil que `correctionDite`).
+ */
+export function signalementDicte(phrase: string): Echec | null {
+  if (!estUnSignalementExplicite(phrase)) return null
+  if (motsUtiles(phrase).length < MOTS_MINIMUM + MOTS_SUPPLEMENTAIRES_MIN) return null
+
+  const propre = phrase.replace(/\s+/g, " ").trim()
+  return {
+    categorie: "comprehension",
+    titre: `Signalement dicté par Raphaël : ${extraitAuMot(propre, 90)}`,
+    detail: "Signalé directement à voix haute, pas un échec détecté automatiquement.",
+    contexte: propre,
+    theme: "Voix et écoute",
+    // Le texte dicté EST la description du problème, comme pour une vraie
+    // plainte détaillée (`correctionDite`) : il n'y a rien d'autre à en tirer,
+    // et une session (ou Raphaël depuis le cockpit) le complète ensuite avec
+    // une vraie `correction` si besoin.
+    correctionSuggeree: propre,
   }
 }

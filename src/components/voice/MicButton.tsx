@@ -33,7 +33,7 @@ import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
 import { signalerErreur } from "@/lib/erreurs"
-import { cibleDeLAction, echecDeLAction, echecSignalePar, type TourJarvis } from "@/lib/retours"
+import { cibleDeLAction, echecDeLAction, echecSignalePar, signalementDicte, type TourJarvis } from "@/lib/retours"
 import { delaiAvantAction } from "@/lib/enchainementActions"
 import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
@@ -331,6 +331,19 @@ export function MicButton({
 
   /** Ce que la phrase courante dit du tour précédent — le plus souvent rien. */
   function constaterEchec(phrase: string, source: "voix" | "live") {
+    // Un signalement EXPLICITE (« note ce problème de comportement… »,
+    // chantier 519e8fff) ne dépend d'AUCUN tour précédent — indépendant du
+    // reste de cette fonction, il se vérifie sur la phrase seule.
+    const signalement = signalementDicte(phrase)
+    if (signalement) {
+      signalerErreur(signalement.categorie, signalement.titre, {
+        detail: signalement.detail,
+        contexte: signalement.contexte,
+        source,
+        correctionSuggeree: signalement.correctionSuggeree,
+      })
+    }
+
     const echec = echecSignalePar(phrase, dernierTourRef.current, Date.now())
     if (!echec) return
     // Une fois signalé, on oublie le tour : sinon deux reproches d'affilée sur
