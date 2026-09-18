@@ -6,7 +6,7 @@ import { JarvisCore } from "@/components/JarvisCore"
 import { pastilleQuota, type Consommation } from "@/lib/consommationModele"
 import { cn } from "@/lib/utils"
 import { themesDe } from "@/components/cockpit/CockpitBoard"
-import { microEncoreOuvert, MOTEUR_OCCUPE, useSpeechRecognition } from "@/hooks/useSpeechRecognition"
+import { MOTEUR_OCCUPE, useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { messageErreurServeurVocal } from "@/lib/erreurServeurVocal"
 import { supabase } from "@/lib/supabase"
@@ -1433,23 +1433,21 @@ export function MicButton({
           // rien du tout, sinon on doublerait le volume de `journal_ecoute`
           // pour la situation normale.
           if (echecDemarrage) {
-            // QUI TIENT LE MICRO ? C'est la seule question encore ouverte
-            // sur ce chantier. Si notre PROPRE plugin répond encore
-            // « j'écoute » juste après un démarrage refusé, c'est une session
-            // à nous qui n'a jamais été relâchée — donc un défaut qu'on peut
-            // corriger. Sinon c'est une autre application du téléphone, et il
-            // n'y a rien à chercher de ce côté-ci. Android n'expose pas le
-            // nom du détenteur ; ce booléen est le seul moyen de trancher.
-            //
-            // L'attente est ici SANS COÛT en usage normal : on n'est dans ce
-            // bloc que pendant une chaîne de refus, où le prochain essai
-            // attend déjà de 700 à 4000 ms.
+            // NE REMETS PAS ICI UNE SONDE `isListening()` DU PLUGIN pour
+            // savoir qui tient le micro. Essayé le 18 sept. 2026 au matin,
+            // et c'était un CONTRÔLE MORT : `onError` du plugin appelle
+            // `stopListening()`, qui met son drapeau `listening` à faux — au
+            // moment où on lirait la sonde, juste après un démarrage refusé,
+            // elle vaut donc faux PAR CONSTRUCTION. Mesuré : 69 refus, 69
+            // fois `false`, ce qui se lit comme « ce n'est pas nous » alors
+            // que ça ne dit rien du tout. Trancher demande de savoir si le
+            // micro BRUT est libre (une tentative d'`AudioRecord` côté
+            // natif) — donc une vraie APK, et un cadrage avec Raphaël.
             noterEcoute("veille_recul", {
               echecs: echecsOccupeRef.current,
               muettes: rafalesMuettes,
               delai_ms: delai,
               seuil: seuilAbandonRef.current,
-              encore_ouvert: await microEncoreOuvert(),
             })
           }
           await new Promise((r) => setTimeout(r, delai))

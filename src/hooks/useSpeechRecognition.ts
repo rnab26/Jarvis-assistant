@@ -125,15 +125,13 @@ const ATTENTE_FINAL_MS = 1000
 /** Le service a-t-il lâché sans rien dire ? Borné : un plugin muet n'est
  * pas un service vivant.
  *
- * EXPORTÉ depuis le 18 sept. 2026 pour une raison de MESURE, pas de
- * comportement : quand le service refuse d'ouvrir le micro (code 8,
- * ERROR_RECOGNIZER_BUSY), on ne sait pas QUI le tient. Si notre propre plugin
- * répond encore « j'écoute » à cet instant, c'est nous — une session
- * précédente qui n'a jamais été relâchée. Sinon, c'est une autre application
- * du téléphone, et il n'y a rien à corriger de ce côté-ci. La veille appelle
- * donc ceci UNIQUEMENT pendant une chaîne de refus (voir `veille_recul` dans
- * MicButton) : en usage normal, pas un aller-retour de plus. */
-export async function microEncoreOuvert(): Promise<boolean> {
+ * ELLE NE DIT PAS QUI TIENT LE MICRO, et c'est une erreur qui a été faite le
+ * 18 sept. 2026 : exportée ce matin-là pour trancher entre « c'est nous » et
+ * « c'est une autre application » pendant une chaîne de refus, elle vaut faux
+ * PAR CONSTRUCTION à cet instant — `onError` appelle `stopListening()`, qui
+ * remet le drapeau à faux avant qu'on puisse le lire. 69 refus mesurés, 69
+ * fois `false`, et ça ne prouvait rien. Remise en privé. */
+async function microEncoreOuvert(): Promise<boolean> {
   try {
     const r = await borner(NativeSpeechRecognition.isListening(), 400)
     return r?.listening === true
