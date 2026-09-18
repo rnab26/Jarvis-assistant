@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
+import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { BUILD_NUMBER, COMMIT_SHA } from "@/lib/version"
 
 export type UpdateStatus = "checking" | "up-to-date" | "update-available" | "unknown"
@@ -30,6 +31,25 @@ const NOM_BUNDLE = "web-bundle.zip"
 
 const REPO = "rnab26/Jarvis-assistant"
 const RELEASE_TAG = "latest-debug"
+
+/**
+ * Cadence du sondage automatique en arrière-plan.
+ *
+ * Sa demande du 18 sept. 2026 : « je suis obligé de cliquer sur revérifier,
+ * ça ne s'affiche pas automatiquement. » Avant, `check()` ne tournait qu'une
+ * fois, au montage — c'est-à-dire à l'ouverture de l'app. Toute mise à jour
+ * publiée APRÈS ce moment restait invisible jusqu'au prochain redémarrage ou
+ * jusqu'à un appui manuel sur « Revérifier ».
+ *
+ * 30 minutes : assez rare pour rester loin de la limite de l'API GitHub non
+ * authentifiée (60 requêtes/heure/IP — un appareil seul ne l'approche même
+ * pas), assez fréquent pour qu'une session ouverte toute la journée découvre
+ * une nouvelle version en cours de route plutôt qu'au prochain lancement.
+ * S'ajoute, sans le remplacer, au sondage déclenché par `useRefreshOnForeground`
+ * (retour au premier plan) : les deux mécanismes existent déjà ailleurs dans
+ * ce fichier de hooks, on ne les réinvente pas ici.
+ */
+const INTERVALLE_SONDAGE_MS = 30 * 60_000
 
 /** Le workflow Android écrit ces lignes dans le corps de la release
  * (cf. .github/workflows/android-build.yml). On les relit ici : c'est la
@@ -133,6 +153,20 @@ export function useUpdateCheck() {
 
   useEffect(() => {
     void check()
+  }, [check])
+
+  // Retour au premier plan : l'app a pu passer un moment en arrière-plan,
+  // pendant lequel une nouvelle version a très bien pu être publiée.
+  useRefreshOnForeground(check)
+
+  // Et tant que l'app reste ouverte au premier plan, sans qu'il ait besoin de
+  // la quitter puis d'y revenir : voir INTERVALLE_SONDAGE_MS ci-dessus.
+  useEffect(() => {
+    if (COMMIT_SHA === "dev") return
+    const id = window.setInterval(() => {
+      void check()
+    }, INTERVALLE_SONDAGE_MS)
+    return () => window.clearInterval(id)
   }, [check])
 
   return { status, published, verifieA, recheck: check }

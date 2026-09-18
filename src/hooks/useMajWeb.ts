@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import type { PublishedBuild, UpdateStatus } from "@/hooks/useUpdateCheck"
 import type { ProgressionTelechargement } from "@/lib/apkDownloader"
@@ -19,9 +20,25 @@ import { ID_MAJ_APP } from "@/lib/notifications/plan"
 import { notifierMaintenant } from "@/lib/notifications/service"
 
 /** L'instant du démarrage de l'interface. Une mise à jour ne s'applique
- * toute seule que dans la première minute : redémarrer l'app au retour au
- * premier plan, en plein milieu d'une dictée, serait pire que le retard
- * qu'on corrige. */
+ * toute seule que dans la minute qui suit un instant "sûr" : redémarrer
+ * l'app en plein milieu d'une dictée serait pire que le retard qu'on
+ * corrige.
+ *
+ * Deux instants comptent comme sûrs, et c'est volontaire (chantier du
+ * 18 sept. 2026, "les paquets ne s'installent pas automatiquement, je suis
+ * toujours obligé de cliquer sur installer") : le démarrage de l'app
+ * (ci-dessous), ET chaque retour au premier plan (voir dernierPremierPlanRef
+ * plus bas). Avant, seul le démarrage comptait — or `useUpdateCheck` ne
+ * sondait qu'une fois, à ce même instant. Une fois le sondage rendu
+ * périodique (voir useUpdateCheck.ts), une mise à jour détectée en cours de
+ * session ne tombait plus JAMAIS dans cette fenêtre : elle attendait
+ * indéfiniment un clic manuel sur "Mettre à jour", exactement le symptôme
+ * signalé. Le retour au premier plan est un instant aussi sûr que le
+ * démarrage : il vient de rouvrir l'app, il n'a pas encore commencé à
+ * dicter. Une session qui reste des heures d'affilée au premier plan, elle,
+ * ne voit jamais cette fenêtre se rouvrir toute seule — c'est voulu, elle
+ * retombe sur la notification (ci-dessous) plutôt que sur un redémarrage
+ * surprise en pleine conversation. */
 const DEMARRAGE = Date.now()
 const FENETRE_AUTO_MS = 60_000
 
@@ -95,6 +112,16 @@ export function useMajWeb(
 
   useRelireApresRestauration(() => setAutoState(lireMajAuto()))
 
+  // Le dernier retour au premier plan, initialisé au démarrage (le tout
+  // premier "retour" est l'ouverture elle-même). Voir FENETRE_AUTO_MS
+  // ci-dessus : c'est le second instant "sûr" pour appliquer sans le dire.
+  const dernierPremierPlanRef = useRef(DEMARRAGE)
+  useRefreshOnForeground(
+    useCallback(() => {
+      dernierPremierPlanRef.current = Date.now()
+    }, []),
+  )
+
   const rafraichir = useCallback(async () => {
     await demarrageMajWeb()
     setEtat(await lireEtatMajWeb())
@@ -167,7 +194,10 @@ export function useMajWeb(
     if (traiteRef.current === published.buildNumber) return
     traiteRef.current = published.buildNumber
 
-    if (verdict.possible && auto && Date.now() - DEMARRAGE < FENETRE_AUTO_MS) {
+    const instantSur =
+      Date.now() - DEMARRAGE < FENETRE_AUTO_MS ||
+      Date.now() - dernierPremierPlanRef.current < FENETRE_AUTO_MS
+    if (verdict.possible && auto && instantSur) {
       // .catch() et pas void : appliquer() relance l'erreur après l'avoir
       // mise à l'écran, et une promesse rejetée que personne n'attrape
       // remonte en erreur non gérée — de quoi casser la page pour une mise à
