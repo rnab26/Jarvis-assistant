@@ -20,6 +20,7 @@ import {
 import {
   apresRafale,
   delaiApresOccupe,
+  focusPerduPendantEcoute,
   renonceApresRefus,
   REFUS_AVANT_ABANDON,
   delaiAvantRafaleSuivante,
@@ -225,6 +226,24 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
   // le réglage de Paramètres ne changerait rien.
   verifier("réglé serré (10), une chaîne de 13 fait renoncer", renonceApresRefus(13, 10), true)
   verifier("réglé large (40), la même chaîne de 13 n'y fait rien", renonceApresRefus(13, 40), false)
+}
+
+// 11 quater. Coupure PROACTIVE d'un conflit de micro (chantier 7a6e75c4,
+//            18 sept. 2026) : perdre le premier plan PENDANT que le mot-clé
+//            écoutait activement, ex. l'utilisateur ouvre WhatsApp pour une
+//            note vocale. Ce n'est PAS un conflit si la veille était au repos
+//            (entre deux rafales, aucun micro ouvert) au moment de la perte.
+{
+  verifier("le micro était ouvert ET l'app est cachée : conflit détecté",
+    focusPerduPendantEcoute("wake-listening", true), true)
+  verifier("le micro était ouvert mais l'app reste affichée (ex. mot-clé désactivé) : pas un conflit",
+    focusPerduPendantEcoute("wake-listening", false), false)
+  verifier("l'app est cachée mais la veille était au repos entre deux rafales : rien à couper",
+    focusPerduPendantEcoute("idle", true), false)
+  verifier("aucun des deux signaux : rien à couper",
+    focusPerduPendantEcoute("idle", false), false)
+  verifier("une vraie commande en cours (pas la veille) : hors du périmètre de cette détection",
+    focusPerduPendantEcoute("listening", true), false)
 }
 
 // 12. Le « Oui ? » de Jarvis, dit pendant que le micro s'ouvre, ne doit pas

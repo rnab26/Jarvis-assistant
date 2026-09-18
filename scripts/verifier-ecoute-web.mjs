@@ -439,6 +439,60 @@ try {
     verifier("le compteur de refus survit au remontage de la boucle", renonce, true)
     await fond.close()
   }
+
+  // ── COUPURE PROACTIVE : L'APP PERD LE PREMIER PLAN PENDANT QUE LE MICRO
+  //    ÉCOUTE (chantier 7a6e75c4, 18 sept. 2026) ──
+  // Sa demande : « j'ouvre WhatsApp et je lance une note vocale » ne doit pas
+  // laisser la veille insister. Ici le moteur accepte de démarrer normalement
+  // (pas de refus) : le micro est réellement ouvert, la veille attend le
+  // mot-clé — exactement le moment où une autre application prend le premier
+  // plan. La coupure doit être IMMÉDIATE, pas après vingt refus comme dans
+  // le banc précédent, et la veille ne doit PAS reprendre toute seule au
+  // retour : Touche le cœur pour reprendre.
+  {
+    const conflit = await navigateur.newPage()
+    conflit.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (conflit micro) :", e.message)
+    })
+    await conflit.addInitScript(FAUX_MOTEUR)
+    await conflit.goto(`${BASE}/scripts/harness/micbutton.html`)
+    await conflit.waitForFunction("window.__actifs() === 1", null, { timeout: 10000 })
+
+    const avantConflit = Date.now()
+    await conflit.evaluate(`
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" })
+      document.dispatchEvent(new Event("visibilitychange"))
+    `)
+    await conflit
+      .waitForFunction("document.body.textContent.includes(\"j'ai arrêté d'insister\")", null, { timeout: 3000 })
+      .catch(() => {
+        echecs++
+        console.log("ÉCHEC conflit micro : la veille n'a pas coupé quand l'app a perdu le premier plan")
+      })
+    verifier(
+      "conflit micro : coupée tout de suite, pas après vingt refus",
+      Date.now() - avantConflit < 1500,
+      true,
+    )
+    verifier("conflit micro : le micro est bien relâché", await conflit.evaluate("window.__actifs()"), 0)
+
+    // Retour au premier plan : elle ne doit PAS reprendre toute seule.
+    const departsAvant = await conflit.evaluate("window.__sr.starts")
+    await conflit.evaluate(`
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" })
+      document.dispatchEvent(new Event("visibilitychange"))
+    `)
+    await pause(1000)
+    const departsApres = await conflit.evaluate("window.__sr.starts")
+    verifier("conflit micro : retour au premier plan → pas de reprise automatique", departsApres, departsAvant)
+    verifier(
+      "conflit micro : elle attend toujours un appui sur le cœur",
+      (await conflit.textContent("body"))?.includes("Touche le cœur pour reprendre.") ?? false,
+      true,
+    )
+    await conflit.close()
+  }
 } finally {
   await navigateur?.close()
   vite.kill()

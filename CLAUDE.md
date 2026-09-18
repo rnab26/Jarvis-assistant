@@ -2064,6 +2064,69 @@ quelques secondes. Seules les actions qui SORTENT vers une autre application y
 passent ; `media_control` et `set_alarm` non, sans quoi Jarvis serait lent
 partout. Le délai est un réglage, et « Immédiat » est disponible en un appui.
 
+## Le conflit de micro avec une autre application : couper avant d'insister
+
+Chantier `7a6e75c4-e639-40dd-97de-ffb4448e606e`, 18 sept. 2026. Son intitulé :
+« gérer le conflit d'utilisation du microphone entre Jarvis et d'autres
+applications (ex. WhatsApp pour les notes vocales), en permettant la coupure
+automatique du micro de Jarvis et sa réactivation manuelle, pour réduire les
+manipulations ».
+
+**Ce qui existait déjà, et qu'il ne fallait pas refaire.** La veille
+(`src/lib/veille.ts`) coupe déjà le micro TOUT DE SUITE dès que l'app perd le
+premier plan (`visible` passe à faux, l'effet qui porte la boucle se démonte
+et rend le micro sans attendre la fin de la rafale) — aucun bruit, aucune
+insistance dans ce cas précis. Et `REFUS_AVANT_ABANDON` (9 sept., mesuré le
+17 sept. sur 229 refus consécutifs) coupe déjà quand le service refuse
+d'ouvrir le micro plusieurs fois d'affilée, en exigeant un appui sur le cœur
+pour reprendre. Ce qui manquait entre les deux : quand l'app perd le premier
+plan **PENDANT que le mot-clé écoutait activement** (le micro était réellement
+ouvert), le retour au premier plan relançait la veille TOUTE SEULE — sans
+qu'aucun appui ne soit nécessaire, contrairement au cas des refus répétés.
+
+`focusPerduPendantEcoute(statut, documentCache)` (`src/lib/veille.ts`, pure,
+vérifiée par `verifier-dialogue.ts`) répond à une seule question : le micro
+était-il réellement ouvert (`statut === "wake-listening"`) au moment où l'app
+a perdu le premier plan ? Si oui, c'est traité EXACTEMENT comme
+`REFUS_AVANT_ABANDON` — même état (`veilleAbandonnee`), même message
+(« Le micro est pris par autre chose — j'ai arrêté d'insister. Touche le cœur
+pour reprendre. »), même réactivation par le cœur (`handleClick` remet les
+deux à zéro). Les deux mécanismes sont complémentaires, pas redondants :
+celui-ci coupe en une fraction de seconde sur un signal net (le micro était
+ouvert, la reprise du premier plan par une autre app est un fait qu'Android
+donne gratuitement) ; `REFUS_AVANT_ABANDON` reste le filet pour les cas où
+l'app garde le premier plan (voir plus bas) et où rien ne dit qu'un conflit
+est en cours avant d'avoir essayé — et échoué — plusieurs fois.
+
+**Perdre le premier plan alors que la veille était simplement AU REPOS**
+(entre deux rafales, aucun micro ouvert) n'est PAS traité comme un conflit :
+rien n'a été interrompu, donc rien à couper, et la veille reprend toute seule
+au retour — exactement comme avant ce chantier. Sans cette distinction, le
+moindre coup d'œil à une notification pendant un silence de la veille aurait
+obligé à retoucher le cœur en revenant, ce qui va à l'encontre de l'objectif
+même du chantier (réduire les manipulations, pas en ajouter).
+
+**LIMITE CONNUE, à ne pas présenter comme couverte** : cette détection ne voit
+que la perte du premier plan de LA FENÊTRE de Jarvis (document.visibilityState).
+Elle ne peut rien pour un conflit qui survient alors que Jarvis reste
+visible — l'écran partagé d'Android (multi-fenêtres), ou la fenêtre de
+l'appui long / la bulle flottante ouverte PAR-DESSUS une autre application
+encore au premier plan en dessous (`AssistantOverlayPage`, `BulleEcoutePage` :
+deux `BridgeActivity` distinctes, dont le `document.visibilityState` propre
+reste « visible » tant que CETTE fenêtre-là est à l'écran, quoi qu'il se passe
+dans l'application affichée dessous). Deviner qui tient le micro dans ces
+cas-là n'est pas possible depuis ici — Android ne l'expose pas — et ce n'est
+pas ce que ce chantier a tenté : `REFUS_AVANT_ABANDON` reste la seule
+protection pour eux, non mesurée comme suffisante pour autant. Non vérifié
+sur un vrai téléphone (aucun appareil ici) : c'est du `src/`, la mise à jour
+rapide suffit, pas besoin d'APK.
+
+Vérifié par un cas ajouté à `scripts/verifier-dialogue.ts` (la fonction pure)
+et un banc de bout en bout ajouté à `scripts/verifier-ecoute-web.mjs` (le vrai
+`MicButton`, moteur qui accepte de démarrer normalement, premier plan perdu
+pendant l'écoute) : la coupure est mesurée à moins de 1,5 s, contre plusieurs
+secondes à plusieurs minutes pour atteindre le seuil de vingt refus.
+
 ## Supprimer demande toujours, partout dans l'app
 
 `src/components/ConfirmerAction.tsx` : la fenêtre qui pose la question avant

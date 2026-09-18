@@ -18,6 +18,7 @@ import {
   delaiApresOccupe,
   delaiAvantRafaleSuivante,
   enRefroidissement,
+  focusPerduPendantEcoute,
   peutEcouterEnVeille,
   renonceApresRefus,
   REFROIDISSEMENT_APRES_FIN_MS,
@@ -1355,6 +1356,7 @@ export function MicButton({
           noterEcoute("veille_abandon", {
             echecs: echecsOccupeRef.current,
             seuil: seuilAbandonRef.current,
+            raison: "refus_repetes",
           })
           setStatus("idle")
           setVeilleAbandonnee(true)
@@ -1463,6 +1465,18 @@ export function MicButton({
       if (statusRef.current === "wake-listening") {
         stopListening()
         setStatus("idle")
+        // Le micro était réellement ouvert au moment où l'app a perdu le
+        // premier plan (document.visibilityState, lu en direct plutôt que
+        // via `visible` : cette fermeture peut aussi venir d'ailleurs, par
+        // exemple le mot-clé désactivé depuis Paramètres pendant que l'app
+        // reste affichée, et ce cas-là n'a rien d'un conflit). Voir
+        // focusPerduPendantEcoute dans veille.ts pour le détail du
+        // raisonnement et sa limite connue (l'écran partagé, une fenêtre
+        // d'assistance par-dessus une autre app, ne se voient pas d'ici).
+        if (focusPerduPendantEcoute(statusRef.current, document.visibilityState === "hidden")) {
+          setVeilleAbandonnee(true)
+          noterEcoute("veille_abandon", { raison: "focus_perdu" })
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
