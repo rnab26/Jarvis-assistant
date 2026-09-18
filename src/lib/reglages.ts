@@ -191,6 +191,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/ControleEcran.tsx",
   },
   {
+    cle: "jarvis_delegation_tasker",
+    ou: "Paramètres › Ce que Jarvis utilise › Déléguer le clic à Tasker + AutoInput",
+    fichier: "src/components/settings/DelegationTasker.tsx",
+  },
+  {
     cle: "jarvis_delai_annulation",
     ou: "Paramètres › Ce que Jarvis utilise › Le temps de l'arrêter",
     fichier: "src/components/settings/FenetreAnnulation.tsx",
