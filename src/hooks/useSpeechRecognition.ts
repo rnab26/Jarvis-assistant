@@ -123,11 +123,31 @@ const GRACE_DEMARRAGE_MS = 1500
 const ATTENTE_FINAL_MS = 1000
 
 /** Le service a-t-il lâché sans rien dire ? Borné : un plugin muet n'est
- * pas un service vivant. */
-async function serviceEncoreVivant(): Promise<boolean> {
-  const r = await borner(NativeSpeechRecognition.isListening(), 400)
-  return r?.listening === true
+ * pas un service vivant.
+ *
+ * EXPORTÉ depuis le 18 sept. 2026 pour une raison de MESURE, pas de
+ * comportement : quand le service refuse d'ouvrir le micro (code 8,
+ * ERROR_RECOGNIZER_BUSY), on ne sait pas QUI le tient. Si notre propre plugin
+ * répond encore « j'écoute » à cet instant, c'est nous — une session
+ * précédente qui n'a jamais été relâchée. Sinon, c'est une autre application
+ * du téléphone, et il n'y a rien à corriger de ce côté-ci. La veille appelle
+ * donc ceci UNIQUEMENT pendant une chaîne de refus (voir `veille_recul` dans
+ * MicButton) : en usage normal, pas un aller-retour de plus. */
+export async function microEncoreOuvert(): Promise<boolean> {
+  try {
+    const r = await borner(NativeSpeechRecognition.isListening(), 400)
+    return r?.listening === true
+  } catch {
+    // Hors de l'app native (le banc d'essai, le site dans un navigateur), le
+    // plugin peut lever AVANT de rendre une promesse — `borner` n'aurait alors
+    // rien à attraper. Une mesure ne doit jamais faire échouer ce qu'elle
+    // observe : ici, ce serait la boucle de veille elle-même.
+    return false
+  }
 }
+
+/** Nom historique, gardé pour les appels internes du moteur d'écoute. */
+const serviceEncoreVivant = microEncoreOuvert
 
 /** Marge du filet de dernier recours, au-delà de la durée max d'un tour. */
 const PLAFOND_MARGE_MS = 15000

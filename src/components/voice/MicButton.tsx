@@ -6,7 +6,7 @@ import { JarvisCore } from "@/components/JarvisCore"
 import { pastilleQuota, type Consommation } from "@/lib/consommationModele"
 import { cn } from "@/lib/utils"
 import { themesDe } from "@/components/cockpit/CockpitBoard"
-import { MOTEUR_OCCUPE, useSpeechRecognition } from "@/hooks/useSpeechRecognition"
+import { microEncoreOuvert, MOTEUR_OCCUPE, useSpeechRecognition } from "@/hooks/useSpeechRecognition"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
 import { messageErreurServeurVocal } from "@/lib/erreurServeurVocal"
 import { supabase } from "@/lib/supabase"
@@ -1431,11 +1431,23 @@ export function MicButton({
           // rien du tout, sinon on doublerait le volume de `journal_ecoute`
           // pour la situation normale.
           if (echecDemarrage) {
+            // QUI TIENT LE MICRO ? C'est la seule question encore ouverte
+            // sur ce chantier. Si notre PROPRE plugin répond encore
+            // « j'écoute » juste après un démarrage refusé, c'est une session
+            // à nous qui n'a jamais été relâchée — donc un défaut qu'on peut
+            // corriger. Sinon c'est une autre application du téléphone, et il
+            // n'y a rien à chercher de ce côté-ci. Android n'expose pas le
+            // nom du détenteur ; ce booléen est le seul moyen de trancher.
+            //
+            // L'attente est ici SANS COÛT en usage normal : on n'est dans ce
+            // bloc que pendant une chaîne de refus, où le prochain essai
+            // attend déjà de 700 à 4000 ms.
             noterEcoute("veille_recul", {
               echecs: echecsOccupeRef.current,
               muettes: rafalesMuettes,
               delai_ms: delai,
               seuil: seuilAbandonRef.current,
+              encore_ouvert: await microEncoreOuvert(),
             })
           }
           await new Promise((r) => setTimeout(r, delai))
