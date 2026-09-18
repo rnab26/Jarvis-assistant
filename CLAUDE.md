@@ -3625,6 +3625,7 @@ node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru d
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
 node scripts/verifier-notes-web.mjs                      # l'onglet Notes : créer/modifier/supprimer avec confirmation/chercher, vrai navigateur
+node scripts/verifier-programmes-web.mjs                 # l'écran Programmé : voir tout, modifier, annuler avec confirmation, vrai navigateur
 node scripts/verifier-documents-web.mjs                  # l'onglet Docs : un nom hébreu ou accentué s'affiche et tient sur un écran de téléphone, vrai navigateur
 node scripts/verifier-ios-web.mjs                        # le site dans un vrai moteur WEBKIT à la taille d'un iPhone : rendu, zones tactiles, contrat « sur l'écran d'accueil »
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
@@ -3749,6 +3750,45 @@ du 3 sept., on reste sur le téléphone et rien ne part sans qu'il appuie. D'où
 a présenté sans réponse ne doit pas disparaître de sa liste comme s'il était
 parti. `canal` reste `null` tant qu'il n'a pas dit WhatsApp ou SMS.
 Client : `src/lib/messagesProgrammes.ts`.
+
+### L'écran « Programmé » : voir et modifier à la main (chantier 0c0193e3, 18 sept. 2026)
+
+Sa demande, mot pour mot, le jour où il a accepté que les messages programmés
+partent désormais tout seuls sans validation vocale au moment de l'envoi
+(voir la note du chantier `ed32cbcc` pour cette décision-là, hors périmètre
+ici) : « le top du top, ça serait qu'il y ait une section
+programmation/automatisation dans Jarvis même, comme ça je peux voir tout ce
+qui est programmé, et si nécessaire je peux le modifier à la main. »
+
+Nouvel onglet **Programmé** (`src/pages/ProgrammesPage.tsx`,
+`useMessagesProgrammesListe`), qui **AFFICHE ET MODIFIE les données, il
+n'exécute rien** — ni clic, ni ouverture de WhatsApp : c'est le rôle du
+chantier `ed32cbcc`, pas de celui-ci. TOUS les statuts s'affichent (prévu,
+annoncé, envoyé, annulé), triés par heure prévue — à la différence de
+`listerMessagesProgrammes()` appelée sans argument par la voix, qui ne veut
+que ce qui reste à traiter (d'où `TOUS_LES_STATUTS`, exporté pour cet écran
+précisément).
+
+**Modifier remet TOUJOURS le message à « prévu »**, y compris depuis
+« annoncé » : `modifierMessage()` (nouvelle fonction générique dans
+`messagesProgrammes.ts`, dont `reprogrammerMessage`/`modifierTexte` ne sont
+plus que de fins wrappers — même logique, pas dupliquée) efface l'annonce en
+même temps. Ce que Jarvis annoncerait a changé sous ses pieds ; une ancienne
+annonce ne veut plus rien dire. **Un message déjà « envoyé » ou « annulé » ne
+propose ni modifier ni annuler** : ce sont des états définitifs, pas
+rattrapables à la main.
+
+Annuler passe par `ConfirmerAction`, comme partout dans l'app, en nommant le
+destinataire et l'heure. Réutilise le même mécanisme temps réel que
+tasks/notes/dev_items : migration `0052_realtime_messages_programmes.sql`
+(REPLICA IDENTITY FULL + publication) — `messages_programmes` existait depuis
+la migration 0017 mais n'avait jamais été ajoutée au canal Realtime, personne
+n'ayant eu besoin jusqu'ici de la regarder en direct depuis un écran.
+
+Vérifié dans un vrai navigateur, écran de téléphone :
+`node scripts/verifier-programmes-web.mjs` (banc `scripts/harness/programmes.tsx`,
+qui recopie le balisage de `ProgrammesPage.tsx` avec un état local — toute
+retouche de l'un va dans l'autre).
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 

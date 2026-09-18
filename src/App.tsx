@@ -29,6 +29,9 @@ const DocumentsPage = lazy(() => import("@/pages/DocumentsPage").then((m) => ({ 
 const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })))
 const MemoirePage = lazy(() => import("@/pages/MemoirePage").then((m) => ({ default: m.MemoirePage })))
 const NotesPage = lazy(() => import("@/pages/NotesPage").then((m) => ({ default: m.NotesPage })))
+const ProgrammesPage = lazy(() =>
+  import("@/pages/ProgrammesPage").then((m) => ({ default: m.ProgrammesPage })),
+)
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })))
 
 /**
@@ -130,6 +133,7 @@ function AppRoutes() {
           <Route path="/cockpit" element={<CockpitPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/programme" element={<ProgrammesPage />} />
           <Route path="/memoire" element={<MemoirePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
