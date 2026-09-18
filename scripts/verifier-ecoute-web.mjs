@@ -395,6 +395,50 @@ try {
     if (apres !== avant) console.log(`      ${avant} → ${apres} démarrages`)
     await mort.close()
   }
+
+  // ── ET ELLE RENONCE MÊME SI L'APP PASSE EN ARRIÈRE-PLAN ENTRE-TEMPS ──
+  // C'EST LE CONTRÔLE QUI MANQUAIT LE 17 SEPT., et son absence a coûté un
+  // correctif entier : livré, mergé, arrivé sur son téléphone (version b326),
+  // et sans le moindre effet. Le compteur de refus était une variable LOCALE
+  // de la boucle de veille ; l'effet qui la porte se remonte dès que l'app
+  // passe en arrière-plan, donc le compteur repartait de zéro toutes les 5 à
+  // 13 rafales et le seuil n'était jamais atteint. Mesuré sur son journal le
+  // 18 sept. : UNE chaîne de 159 refus d'affilée, zéro abandon.
+  {
+    const fond = await navigateur.newPage()
+    fond.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (arrière-plan):", e.message)
+    })
+    await fond.addInitScript(FAUX_MOTEUR)
+    await fond.addInitScript("window.addEventListener('DOMContentLoaded', () => { window.__sr.refuseDeDemarrer = true })")
+    await fond.goto(`${BASE}/scripts/harness/micbutton.html?abandon=6`)
+
+    // On remonte la boucle toutes les deux secondes, comme le fait Android
+    // quand l'écran s'éteint ou qu'il change d'application. Un compteur local
+    // ne dépasse jamais deux ou trois dans une fenêtre aussi courte (le
+    // palier montant impose 700 ms, puis 1400) ; seul un compteur qui SURVIT
+    // au remontage peut atteindre six.
+    const cycle = setInterval(() => {
+      fond
+        .evaluate(`
+          const cache = document.visibilityState === "visible"
+          Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (cache ? "hidden" : "visible") })
+          document.dispatchEvent(new Event("visibilitychange"))
+        `)
+        .catch(() => {})
+    }, 2000)
+
+    let renonce = true
+    await fond
+      .waitForFunction("document.body.textContent.includes(\"j'ai arrêté d'insister\")", null, { timeout: 30000 })
+      .catch(() => {
+        renonce = false
+      })
+    clearInterval(cycle)
+    verifier("le compteur de refus survit au remontage de la boucle", renonce, true)
+    await fond.close()
+  }
 } finally {
   await navigateur?.close()
   vite.kill()

@@ -1165,6 +1165,10 @@ export function MicButton({
     // disant. Poser le drapeau ici plutôt que dans chaque branche ci-dessous :
     // tous les chemins de cette fonction sont une prise en main.
     setVeilleAbandonnee(false)
+    // Et le compteur repart de zéro : sans ça, la boucle relancée renoncerait
+    // au premier refus suivant, puisque la ref survit maintenant au
+    // remontage de l'effet.
+    echecsOccupeRef.current = 0
     if (modeLive) {
       if (liveRef.current) {
         arreterLive()
@@ -1249,6 +1253,23 @@ export function MicButton({
   // depuis Paramètres pendant que la veille tourne.
   const seuilAbandonRef = useRef(seuilAbandonVeille)
   seuilAbandonRef.current = seuilAbandonVeille
+  // LE COMPTEUR DE REFUS VIT HORS DE LA BOUCLE, et c'est tout ce qui fait
+  // marcher `renonceApresRefus`. Mesuré le 18 sept. 2026 sur son journal :
+  // `rafale_fin` portait UNE chaîne ininterrompue de 159 refus « occupe » sur
+  // six heures — micro mort — pendant que la cadence repartait de 700 ms
+  // toutes les 5 à 13 rafales. Le compteur était une variable LOCALE de
+  // `wakeLoop`, et l'effet qui porte la boucle se remonte dès que
+  // `veilleActive` change (l'app passe en arrière-plan, l'écran s'éteint, il
+  // change de fenêtre). Chaque remontage le remettait à zéro : le seuil de 20
+  // n'était jamais atteint, et la veille n'a pas renoncé une seule fois.
+  //
+  // La ref compte donc EXACTEMENT ce que le journal compte — des rafales
+  // consécutives toutes refusées, sans limite de temps entre elles, puisque
+  // c'est sur cette mesure-là que le seuil a été calibré (la plus longue
+  // chaîne qui se rétablit toute seule fait 26). Une rafale qui N'EST PAS un
+  // refus la remet à zéro : une pièce calme rend « silence », donc le
+  // compteur ne monte jamais quand tout va bien.
+  const echecsOccupeRef = useRef(0)
 
   // Une mise à jour qui s'installe suspend la veille (voir majEnCours.ts et
   // peutEcouterEnVeille). L'état sert à l'AFFICHAGE, la ref à la boucle —
@@ -1284,7 +1305,6 @@ export function MicButton({
       // calme qui suit une chaîne de refus n'a pas à hériter d'un recul de
       // 8 s), ni se contenter du recul fixe qui les a mesurément laissés se
       // répéter en chaîne — voir delaiApresOccupe dans src/lib/veille.ts.
-      let echecsOccupeConsecutifs = 0
       while (!cancelled) {
         if (
           !peutEcouterEnVeille({
@@ -1324,14 +1344,18 @@ export function MicButton({
           echecDemarrage = err instanceof Error && err.message === MOTEUR_OCCUPE
         }
         if (cancelled) return
-        echecsOccupeConsecutifs = echecDemarrage ? echecsOccupeConsecutifs + 1 : 0
-        if (renonceApresRefus(echecsOccupeConsecutifs, seuilAbandonRef.current)) {
+        echecsOccupeRef.current = echecDemarrage ? echecsOccupeRef.current + 1 : 0
+        if (renonceApresRefus(echecsOccupeRef.current, seuilAbandonRef.current)) {
           // On s'arrête là, et on le DIT (voir plus bas, sous le cœur) :
           // continuer reviendrait à réclamer un micro que quelque chose
           // d'autre tient, toutes les quatre secondes, indéfiniment — mesuré
           // le 17 sept. 2026, 229 refus d'affilée sur 2 h 22 sans une seule
           // écoute réelle, pendant qu'à l'écran une pastille clignotante
           // promettait « Dis "Jarvis" quand tu veux ».
+          noterEcoute("veille_abandon", {
+            echecs: echecsOccupeRef.current,
+            seuil: seuilAbandonRef.current,
+          })
           setStatus("idle")
           setVeilleAbandonnee(true)
           return
@@ -1389,8 +1413,31 @@ export function MicButton({
         }
         if (!cancelled) {
           const delai = echecDemarrage
-            ? delaiApresOccupe(echecsOccupeConsecutifs)
+            ? delaiApresOccupe(echecsOccupeRef.current)
             : delaiAvantRafaleSuivante(false, rafalesMuettes)
+          // CE QUE LA BOUCLE PENSE, pas ce que le journal déduit. Mesuré le
+          // 18 sept. 2026 : `rafale_fin` montrait UNE chaîne ininterrompue de
+          // 159 refus « occupe » sur six heures, et pourtant la cadence
+          // repartait de 700 ms toutes les 5 à 13 rafales — donc
+          // le compteur de refus retombait à zéro, et le seuil de 20
+          // (`renonceApresRefus`) n'était JAMAIS atteint. Impossible de dire
+          // POURQUOI depuis la base : `echecDemarrage` et le compteur ne sont
+          // écrits nulle part, on ne pouvait que les déduire des écarts entre
+          // deux rafales — et un écart porte aussi le temps de la relève.
+          // Même méthode que `ms_ouverture`/`ms_premier_mot` (15 sept.) : on
+          // mesure d'abord, on recode ensuite.
+          //
+          // SEULEMENT PENDANT UNE CHAÎNE DE REFUS : une pièce calme n'écrit
+          // rien du tout, sinon on doublerait le volume de `journal_ecoute`
+          // pour la situation normale.
+          if (echecDemarrage) {
+            noterEcoute("veille_recul", {
+              echecs: echecsOccupeRef.current,
+              muettes: rafalesMuettes,
+              delai_ms: delai,
+              seuil: seuilAbandonRef.current,
+            })
+          }
           await new Promise((r) => setTimeout(r, delai))
         }
       }
