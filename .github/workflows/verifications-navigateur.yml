@@ -86,6 +86,9 @@ jobs:
       - name: L'onglet Notes, sur un écran de téléphone
         run: node scripts/verifier-notes-web.mjs
 
+      - name: L'écran Programmé, sur un écran de téléphone
+        run: node scripts/verifier-programmes-web.mjs
+
       # Un nom hébreu s'écrit de droite à gauche : le module pur prouve qu'il
       # revient intact, seul un vrai moteur de rendu dit s'il TIENT dans une
       # ligne tronquée à côté de deux boutons, sur un écran de téléphone.

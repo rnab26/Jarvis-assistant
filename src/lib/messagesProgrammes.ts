@@ -19,6 +19,26 @@ import { supabase } from "@/lib/supabase"
 
 export type StatutMessage = "prevu" | "annonce" | "envoye" | "annule"
 
+/** Tous les statuts — pour l'écran « Programmé » (chantier 0c0193e3), qui
+ * doit TOUT montrer, à la différence de `listerMessagesProgrammes()` appelée
+ * sans argument (« qu'ai-je en attente ? »), qui ne veut que ce qui reste à
+ * traiter. */
+export const TOUS_LES_STATUTS: StatutMessage[] = ["prevu", "annonce", "envoye", "annule"]
+
+/** Ce que l'écran affiche pour chaque statut. */
+export function libelleStatut(statut: StatutMessage): string {
+  switch (statut) {
+    case "prevu":
+      return "Prévu"
+    case "annonce":
+      return "Annoncé"
+    case "envoye":
+      return "Envoyé"
+    case "annule":
+      return "Annulé"
+  }
+}
+
 export type MessageProgramme = {
   id: string
   canal: "whatsapp" | "sms" | null
@@ -123,22 +143,36 @@ export async function annulerMessage(id: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-/** « Finalement envoie-le plutôt à 14h. » Repasse en « prévu » : un message
- * reprogrammé n'a plus été annoncé. */
-export async function reprogrammerMessage(id: string, envoyerA: string): Promise<void> {
+export type ModificationMessage = Partial<{
+  destinataire: string
+  contact_id: string | null
+  canal: "whatsapp" | "sms" | null
+  texte: string
+  envoyer_a: string
+}>
+
+/**
+ * Une modification manuelle — que ce soit l'heure, le texte ou le
+ * destinataire — remet le message à « prévu » et efface son annonce : ce que
+ * Jarvis annoncerait a changé sous ses pieds, une ancienne annonce ne vaut
+ * plus rien. Source unique pour les trois champs modifiables séparément
+ * ci-dessous ET pour l'écran « Programmé », qui les modifie tous à la fois.
+ */
+export async function modifierMessage(id: string, champs: ModificationMessage): Promise<void> {
   const { error } = await supabase
     .from("messages_programmes")
-    .update({ envoyer_a: envoyerA, statut: "prevu", annonce_a: null })
+    .update({ ...champs, statut: "prevu", annonce_a: null })
     .eq("id", id)
   if (error) throw new Error(error.message)
 }
 
+/** « Finalement envoie-le plutôt à 14h. » */
+export async function reprogrammerMessage(id: string, envoyerA: string): Promise<void> {
+  await modifierMessage(id, { envoyer_a: envoyerA })
+}
+
 export async function modifierTexte(id: string, texte: string): Promise<void> {
-  const { error } = await supabase
-    .from("messages_programmes")
-    .update({ texte, statut: "prevu", annonce_a: null })
-    .eq("id", id)
-  if (error) throw new Error(error.message)
+  await modifierMessage(id, { texte })
 }
 
 /** Les messages programmés tels qu'on les injecte dans l'exécuteur vocal. */
@@ -151,4 +185,5 @@ export const messagesProgrammesApi = {
   annulerMessage,
   reprogrammerMessage,
   modifierTexte,
+  modifierMessage,
 }
