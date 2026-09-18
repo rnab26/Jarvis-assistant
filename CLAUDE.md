@@ -89,6 +89,27 @@ que tu es interrompu, ou que Raphaël change de sujet : écris où tu en es dans
 les notes du chantier ou dans `dev_log` avant de lâcher. Une session qui se
 termine sans avoir écrit son état fait perdre des heures à la suivante.
 
+**Un chantier livré mais pas encore constaté par Raphaël : change le CROCHET
+D'EN-TÊTE, pas seulement le corps de la note.** Trouvé le 18 sept. 2026 sur une
+vraie capture de son cockpit (chantiers 21cf48d2, efe7e44c, b1b6172d, ed32cbcc,
+4dabe586) : plusieurs livrés réels (mergés, CI verte) gardaient encore
+`[LIBRE]` en tête de note parce que la règle « n'écrase jamais, ajoute en bas »
+avait été suivie à la lettre, sans que personne ne retouche ENSUITE le
+crochet du haut. Or `src/lib/marqueurChantier.ts` — la seule chose que l'app
+lit pour l'étiquette de la ligne — ignore tout ce qui suit les deux premiers
+crochets. Le chantier restait donc affiché « libre » : une prochaine session
+le reprenait comme neuf, et Raphaël ne savait jamais qu'il devait l'essayer.
+C'était la cause directe de sa plainte répétée « toujours les mêmes
+chantiers ». Donc : une fois le travail réellement livré et en attente de son
+essai sur le téléphone, remplace le crochet d'ouverture par
+`[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]` — À LA MAIN, jamais par une
+regex automatique (un crochet peut en contenir un autre, ex. `[LIBRE — ...
+(voir [CADRE] ...)]`, et une regex naïve tronque au mauvais endroit — vécu et
+réparé à la main ce jour-là). `SUPABASE_SERVICE_ROLE_KEY=... node
+scripts/verifier-cockpit-marqueurs.mjs` audite tout le cockpit et liste les
+chantiers où le corps dit « livré » mais le crochet dit autre chose — lance-le
+avant de dire à Raphaël que le cockpit est propre.
+
 **Et si c'est du travail à faire, ça devient un CHANTIER — pas une note.**
 Consigne explicite de Raphaël le 3 sept. 2026 : tout ce que tu n'as pas pu
 avancer, tout ce qui attend une décision de lui, et tout bug que tu découvres
@@ -3582,6 +3603,7 @@ node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis chois
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
+SUPABASE_SERVICE_ROLE_KEY=... node scripts/verifier-cockpit-marqueurs.mjs  # un chantier livré dont le crochet d'en-tête dit encore [LIBRE] : à relancer avant de dire à Raphaël que le cockpit est propre
 node --experimental-strip-types scripts/verifier-themes-non-declares.ts  # un thème sans section se signale, jamais tout seul, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-navigation-parametres.ts  # une cible résolue vers UNE section de Paramètres, jamais une mauvaise, sans réseau
