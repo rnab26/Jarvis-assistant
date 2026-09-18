@@ -91,8 +91,16 @@ export const SECTIONS_PARAMETRES = {
     cle: "apps",
     titre: "Ce que Jarvis utilise",
     resume: "Applications par défaut, appui long sur le bouton",
+    // Cette section réunit huit cartes (AssistantTelephone, BulleFlottante,
+    // AppsParDefaut, ConnecteursIA, ControleEcran, Entrainement,
+    // LectureNotifications, FenetreAnnulation) : les mots-clés doivent
+    // couvrir chacune, pas seulement les premières écrites. Trouvé le
+    // 18 sept. 2026 (chantier 9d245a99) : « appuyer sur l'écran à ta place »
+    // (ControleEcran) ne remontait pas, faute du moindre mot de son titre ou
+    // de sa carte ici. Entrainement et LectureNotifications avaient le même
+    // trou, corrigé dans le même travail.
     motsCles:
-      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android bulle flottante pastille par-dessus superposition délai annuler arrêter avant d'agir mal entendu",
+      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android bulle flottante pastille par-dessus superposition délai annuler arrêter avant d'agir mal entendu appuyer sur l'écran à ta place contrôle d'écran controle ecran agir à ta place cliquer clic accessibilité service liste noire n'appuie jamais bloquer interdire défiler descends lance la deuxième vidéo entraînement entrainement ce que jarvis a retenu séquence rejoue refais clics montre-lui lire tes notifications lecture prononcer lues historique",
   },
   consommation: {
     cle: "consommation",
