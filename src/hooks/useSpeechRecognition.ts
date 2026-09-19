@@ -12,6 +12,7 @@ import {
   type OptionsTour,
 } from "@/lib/dialogueTour"
 import { extraitEntendu, noterEcoute } from "@/lib/journalEcoute"
+import { lireEtatMajWeb } from "@/lib/majWeb"
 import { serviceReconnaissanceSouhaite } from "@/lib/reconnaissanceVocale"
 import { estUnePanne, raisonDepuisCode, type RaisonEcoute } from "@/lib/raisonEcoute"
 import { RESPIRATION_MS } from "@/lib/veille"
@@ -300,7 +301,30 @@ export function useSpeechRecognition() {
     microPretRef.current = true
 
     const service = await borner(serviceUtilise.serviceUtilise?.() ?? Promise.resolve(null), 400)
-    if (service) noterEcoute("service_reconnaissance", { nom: service.nom, disponibles: service.disponibles })
+    if (service) {
+      // L'APK INSTALLÉE PART AVEC LA MESURE, et ce n'est pas du confort.
+      // Deux sessions (17 et 18 sept. 2026, chantiers 3b78eef0 et 3840996e)
+      // ont mesuré des milliers de rafales sans pouvoir dire si le téléphone
+      // portait déjà le correctif natif qu'elles jugeaient : rien dans
+      // journal_ecoute ne disait quelle coquille Android tournait, et une
+      // mise à jour rapide laisse l'interface à jour au-dessus d'une APK qui
+      // ne l'est pas — ce qui donne toutes les raisons de croire l'inverse.
+      // On relève donc l'identité de l'APK, pas celle du paquet web :
+      // `BUILD_NUMBER`/`NATIVE_EMPREINTE` décrivent le paquet dès qu'un
+      // paquet est appliqué, `identiteApk` décrit la coquille (voir
+      // majWeb.ts). Posé ICI parce que `preparerNatif` ne s'exécute qu'une
+      // fois par démarrage d'app : c'est la bonne cadence pour une identité,
+      // et l'ajouter à chaque rafale noierait le journal.
+      const apk = (await borner(lireEtatMajWeb(), 400))?.identiteApk ?? null
+      noterEcoute("service_reconnaissance", {
+        nom: service.nom,
+        disponibles: service.disponibles,
+        // `null` et pas `0` quand on ne sait pas : sur le web il n'y a pas
+        // d'APK du tout, et un zéro se lirait comme un vrai numéro de build.
+        apk_build: apk?.build ?? null,
+        apk_empreinte: apk?.empreinte ?? null,
+      })
+    }
   }, [])
 
   /**

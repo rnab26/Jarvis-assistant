@@ -192,5 +192,39 @@ for (const { fichier, fonction, fin } of RAPPELS) {
   )
 }
 
+// UNE MESURE QUI NE DIT PAS QUEL CODE TOURNAIT N'EST PAS UNE MESURE.
+// Les 17 et 18 sept. 2026, deux sessions ont compté des milliers de rafales
+// de micro pour juger un correctif NATIF sans pouvoir établir si le téléphone
+// le portait déjà : rien dans journal_ecoute ne disait quelle coquille
+// Android tournait. La mise à jour rapide rend le piège muet — l'interface
+// est à jour au-dessus d'une APK qui ne l'est pas, ce qui donne toutes les
+// raisons de croire l'inverse. L'identité part donc avec l'ouverture du
+// micro, et ces contrôles visent l'APPEL, pas la présence du mot.
+{
+  const code = lire("src/hooks/useSpeechRecognition.ts")
+  const sansCommentaires = code.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "")
+  const appel = sansCommentaires.match(
+    /noterEcoute\(\s*"service_reconnaissance"\s*,\s*\{[\s\S]*?\}\s*\)/,
+  )?.[0]
+  verifier(
+    "l'ouverture du micro dit sur quelle APK elle a été mesurée",
+    !!appel && appel.includes("apk_build") && appel.includes("apk_empreinte"),
+    "sans ça, une session qui mesure le micro ne peut pas dire quel code natif tournait",
+  )
+  // LA MOITIÉ QUI COMPTE. BUILD_NUMBER et NATIVE_EMPREINTE décrivent le
+  // PAQUET WEB dès qu'un paquet est appliqué, plus la coquille installée
+  // (majWeb.ts le dit en toutes lettres). Les prendre pour l'identité de
+  // l'APK serait plus faux que ne rien relever : on affirmerait une version
+  // native qu'on n'a pas lue, et c'est précisément la question qu'on veut
+  // pouvoir trancher.
+  verifier(
+    "et il la lit sur l'APK, jamais sur le paquet web",
+    sansCommentaires.includes("lireEtatMajWeb()") &&
+      !/apk_build:\s*(BUILD_NUMBER|Number\(BUILD_NUMBER)/.test(sansCommentaires) &&
+      !/apk_empreinte:\s*NATIVE_EMPREINTE/.test(sansCommentaires),
+    "BUILD_NUMBER décrit le paquet une fois une mise à jour rapide appliquée, pas la coquille",
+  )
+}
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)
