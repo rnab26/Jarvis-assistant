@@ -68,6 +68,13 @@ jobs:
       - name: Ce qu'on dit d'une liste qui devrait se mettre à jour toute seule
         run: node --experimental-strip-types scripts/verifier-etat-direct.ts
 
+      # Le micro s'ouvre en moins de 50 ms (mesuré), mais Android met 1 à 3 s
+      # à rendre le premier mot : la moitié de ces contrôles vérifie qu'on ne
+      # dit RIEN pendant qu'il transcrit vite, l'autre qu'on le rassure quand
+      # il tarde — sans jamais lui demander d'attendre, ses mots étant déjà pris.
+      - name: Ce que l'écran dit pendant qu'il parle
+        run: node --experimental-strip-types scripts/verifier-attente-transcription.ts
+
       # Le bouton « Appeler » d'un rappel. Ce qui casse en silence ici : un
       # bouton proposé sur « rappelle-moi de sortir les poubelles », ou pire,
       # sur une commande mal entendue — « appelle mail » a réellement composé

@@ -70,6 +70,12 @@ import {
 import { agirSurEcran } from "@/lib/controleEcran"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
+import {
+  attenteActive,
+  CLE_ATTENTE_TRANSCRIPTION,
+  lireAttente,
+  phraseEcoute,
+} from "@/lib/attenteTranscription"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
 import { liveActifQuelquePart } from "@/lib/live/etatLiveNatif"
 import { prechaufferConnexionLive } from "@/lib/live/prechauffage"
@@ -268,6 +274,34 @@ export function MicButton({
     prechaufferConnexionLive()
   }, [])
   const [lastUserText, setLastUserText] = useState<string | null>(null)
+  // L'ÉCRAN FIGÉ PENDANT QU'IL PARLE (chantier 53d99720). Le micro est ouvert
+  // en moins de 50 ms (mesuré), mais le premier mot d'Android met 1 à 3 s à
+  // arriver : entre les deux, rien ne bouge, et un écran figé pendant qu'on
+  // parle se lit comme un micro qui n'écoute pas. Ce drapeau dit seulement
+  // « le délai est passé sans un mot » ; la phrase, elle, vit dans le module
+  // pur `attenteTranscription.ts`.
+  const [attenteDepassee, setAttenteDepassee] = useState(false)
+  useEffect(() => {
+    // Le délai est relu À CHAQUE écoute, pas une fois au montage : ce
+    // composant reste monté d'un écran à l'autre, et une valeur lue une seule
+    // fois ne bougerait plus tant qu'il n'a pas redémarré l'app — le réglage
+    // de Paramètres n'aurait servi à rien jusque-là.
+    if (status !== "listening" || !micReady || lastUserText) {
+      setAttenteDepassee(false)
+      return
+    }
+    let brut: string | null = null
+    try {
+      brut = localStorage.getItem(CLE_ATTENTE_TRANSCRIPTION)
+    } catch {
+      // Stockage refusé (navigation privée, données bloquées) : on garde le
+      // défaut plutôt que d'éteindre la phrase sans le dire.
+    }
+    const delai = lireAttente(brut)
+    if (!attenteActive(delai)) return
+    const minuteur = setTimeout(() => setAttenteDepassee(true), delai)
+    return () => clearTimeout(minuteur)
+  }, [status, micReady, lastUserText])
   const [lastReply, setLastReply] = useState<string | null>(null)
   /**
    * La phrase qui n'a pas abouti, gardée pour pouvoir la renvoyer TELLE QUELLE.
@@ -1083,6 +1117,10 @@ export function MicButton({
       setPhraseARejouer(null)
       if (!enchainer) return
 
+      // Même raison qu'au premier appui : la phrase d'avant ne doit pas
+      // rester sous « Toi : » pendant qu'il dit la suivante. Sa réponse à
+      // Jarvis, elle, reste affichée — c'est elle qui donne le contexte.
+      setLastUserText(null)
       setStatus("listening")
       try {
         transcript = await listen("command", {
@@ -1109,6 +1147,12 @@ export function MicButton({
   async function startListening(nettoyer: (t: string) => string = (t) => t) {
     priseRef.current++
     try {
+      // LE TEXTE DU TOUR PRÉCÉDENT NE SURVIT PAS À UN NOUVEL APPUI. Sans ça,
+      // « Toi : <sa phrase d'avant> » restait affiché pendant la seconde à
+      // trois secondes que met Android à rendre son premier mot : il relisait
+      // son ancienne phrase en croyant voir la nouvelle, et ne pouvait pas
+      // savoir si celle qu'il était en train de dire était prise.
+      setLastUserText(null)
       setStatus("listening")
       const transcript = nettoyer(await listen("command", { onTexte: setLastUserText }))
       await conduireConversation(transcript)
@@ -1657,7 +1701,7 @@ export function MicButton({
       </button>
       {status === "listening" && !liveRef.current && (
         <p className="text-sm text-muted-foreground">
-          {micReady ? "Je t'écoute — touche le cœur quand tu as fini." : "Préparation du micro..."}
+          {phraseEcoute({ pret: micReady, aDuTexte: !!lastUserText, attenteDepassee })}
         </p>
       )}
       {liveRef.current && (status === "listening" || status === "speaking") && (

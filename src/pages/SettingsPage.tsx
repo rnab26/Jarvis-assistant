@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core"
 import { Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { CLE_ATTENTE_TRANSCRIPTION, lireAttente } from "@/lib/attenteTranscription"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Deconnexion } from "@/components/settings/Deconnexion"
@@ -414,6 +415,17 @@ export function SettingsPage() {
   // équivaut ».
   // Ce que Jarvis a appris de ses propres notifications (chantier 05241cc7).
   const apprentissageState = useApprentissageNotifications()
+  // Le délai au bout duquel Jarvis dit que ses mots arrivent avec du retard
+  // (chantier 53d99720). Lu une fois ici pour afficher le contrôle ; c'est
+  // `MicButton` qui le relit à chaque écoute, pour qu'un changement fait ici
+  // s'applique sans redémarrer l'app.
+  const [attenteMs, setAttenteMs] = useState(() => {
+    try {
+      return lireAttente(localStorage.getItem(CLE_ATTENTE_TRANSCRIPTION))
+    } catch {
+      return lireAttente(null)
+    }
+  })
   const {
     wakeWordState,
     dialogueState,
@@ -775,6 +787,32 @@ export function SettingsPage() {
               format={(v) => (v === 0 ? "Non" : `${Math.round(v / 1000)} s`)}
               aide="Pour enchaîner sans retoucher le micro. Passe à « Non » pour revenir à un micro qu'on rouvre à chaque phrase."
             />
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="attente-transcription" className="text-sm font-medium">
+                Quand tes mots tardent à s'afficher
+              </label>
+              <select
+                id="attente-transcription"
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={String(attenteMs)}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setAttenteMs(v)
+                  ecrireReglage(CLE_ATTENTE_TRANSCRIPTION, String(v))
+                }}
+              >
+                <option value="600">Au bout d'un demi-mot (0,6 s)</option>
+                <option value="1500">Au bout d'un temps (1,5 s)</option>
+                <option value="0">Ne rien dire</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Ton micro s'ouvre en moins de 50 millisecondes, mais Android met
+                1 à 3 secondes à rendre ton premier mot : pendant ce temps
+                l'écran ne bouge pas, alors que tu es déjà entendu. Passé ce
+                délai, Jarvis te le dit sous le cœur au lieu de te laisser
+                croire qu'il n'écoute pas encore.
+              </p>
+            </div>
             <Button
               variant="ghost"
               size="sm"

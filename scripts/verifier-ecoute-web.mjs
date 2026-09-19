@@ -343,6 +343,108 @@ try {
   if (!reponseCoeur.includes("Tu as 2 tâches")) console.log("      page :", reponseCoeur.replace(/\s+/g, " ").slice(0, 300))
   await coeur.close()
 
+  // ── L'ÉCRAN FIGÉ PENDANT QU'IL PARLE (chantier 53d99720) ──
+  //
+  // MESURÉ sur ses quatre vrais tours du 18/09 : le micro s'ouvre en 23 à
+  // 46 ms, mais Android met 1135 à 2826 ms à rendre son premier mot. Entre
+  // les deux, l'écran ne bougeait pas — et un écran figé pendant qu'on parle
+  // se lit comme un micro qui n'écoute pas encore. C'est ce qu'il décrivait
+  // par « je parle dans le vide le temps que ça s'initialise ».
+  //
+  // Le faux moteur reproduit exactement ça : il démarre (donc `ready`), et on
+  // ne lui fait rien « dire » pendant une seconde. Un module pur prouve la
+  // phrase ; seul ce banc-ci prouve qu'elle atteint VRAIMENT l'écran, depuis
+  // le vrai MicButton et son minuteur.
+  {
+    const lent = await navigateur.newPage()
+    lent.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (transcription lente):", e.message)
+    })
+    await lent.addInitScript(FAUX_MOTEUR)
+    await lent.goto(`${BASE}/scripts/harness/micbutton.html`)
+    await lent.waitForFunction("window.__sr && window.__sr.starts >= 1", null, { timeout: 10000 })
+
+    // On appuie sur le cœur : écoute de commande, moteur démarré, rien de dit.
+    await lent.click("button[aria-label='Commande vocale'], button[aria-label='J\\'ai fini de parler']").catch(async () => {
+      await lent.locator("button").first().click()
+    })
+
+    // AVANT le délai, l'écran ne doit RIEN dire de plus. Un message qui
+    // clignoterait à chaque prise de parole serait du bruit, et le bruit
+    // permanent finit par cacher le jour où il dit autre chose.
+    await pause(200)
+    const tot = (await lent.textContent("body")) ?? ""
+    verifier(
+      "transcription lente : rien de plus tant que le délai n'est pas passé",
+      !tot.includes("temps de retard"),
+      true,
+    )
+
+    // APRÈS le délai (600 ms par défaut), il doit être rassuré — et invité à
+    // CONTINUER, pas à attendre : ses mots sont déjà captés.
+    await pause(900)
+    const apres = (await lent.textContent("body")) ?? ""
+    verifier(
+      "transcription lente : l'écran dit que ses mots arrivent en retard",
+      apres.includes("temps de retard"),
+      true,
+    )
+    verifier(
+      "transcription lente : on lui dit de continuer, pas d'attendre",
+      /continue/i.test(apres) && !/patiente/i.test(apres),
+      true,
+    )
+    if (!apres.includes("temps de retard")) {
+      console.log("      page :", apres.replace(/\s+/g, " ").slice(0, 300))
+    }
+
+    // Et dès qu'un mot arrive, la phrase de réassurance s'efface : elle n'a
+    // plus rien à rassurer, la transcription défile sous ses yeux.
+    await lent.evaluate("window.__derniere().dire('bonjour Jarvis', false)")
+    await pause(300)
+    const avecTexte = (await lent.textContent("body")) ?? ""
+    verifier(
+      "transcription lente : la phrase s'efface dès le premier mot affiché",
+      !avecTexte.includes("temps de retard"),
+      true,
+    )
+
+    // ── ET LE TEXTE DU TOUR PRÉCÉDENT NE SURVIT PAS AU SUIVANT ──
+    //
+    // Défaut trouvé en faisant ce chantier : `startListening` n'effaçait pas
+    // `lastUserText`. Au second appui, « Toi : <sa phrase d'avant> » restait
+    // donc affiché pendant la seconde à trois secondes que met Android à
+    // rendre le premier mot du NOUVEAU tour. Il relisait son ancienne phrase
+    // en croyant voir la nouvelle — ce qui aggrave exactement le doute que
+    // tout ce chantier cherche à lever.
+    await lent.locator("button").first().click() // « j'ai fini » : clôt le tour
+    await lent
+      .waitForFunction("document.body.textContent.includes('Jarvis :')", null, { timeout: 8000 })
+      .catch(() => {
+        echecs++
+        console.log("ÉCHEC le tour ne s'est pas clos")
+      })
+    const avantSecondAppui = (await lent.textContent("body")) ?? ""
+    verifier(
+      "le tour clos affiche bien ce qui a été entendu",
+      avantSecondAppui.includes("Toi :"),
+      true,
+    )
+    await lent.locator("button").first().click() // second appui : nouveau tour
+    await pause(250)
+    const secondTour = (await lent.textContent("body")) ?? ""
+    verifier(
+      "second appui : la phrase du tour précédent a disparu",
+      !secondTour.includes("Toi :"),
+      true,
+    )
+    if (secondTour.includes("Toi :")) {
+      console.log("      page :", secondTour.replace(/\s+/g, " ").slice(0, 300))
+    }
+    await lent.close()
+  }
+
   // ── LA VEILLE RENONCE QUAND LE MICRO EST PRIS ──
   // Mesuré le 17 sept. 2026 sur son téléphone : 229 démarrages refusés
   // d'affilée sur 2 h 22, zéro écoute réelle, PENDANT qu'une pastille
