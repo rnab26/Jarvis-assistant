@@ -33,6 +33,28 @@ let voixEnCache: SpeechSynthesisVoice[] | null = null
  * la fois dans toute l'app : un module-level suffit, il n'y a qu'une voix. */
 let pendingStop: (() => void) | null = null
 
+/**
+ * La lecture EN COURS, pour qu'un appelant qui n'est PAS la conversation
+ * (une annonce de notification, `useNotifications.ts`) attende son tour au
+ * lieu de parler par-dessus (chantier 7886197f, 17 sept. 2026 — « la
+ * superposition des voix de jarvis et claude »).
+ *
+ * Sur natif, `TextToSpeech.speak()` de la bibliothèque est en QUEUE_FLUSH par
+ * défaut (vérifié dans son code Java, pas supposé) : un second appel COUPE le
+ * premier, il ne se met pas en file. Sans ce module, une annonce arrivée
+ * pendant que Jarvis répond à une question l'interrompait net, en plein mot.
+ *
+ * `null` quand personne ne parle. N'attends JAMAIS ceci depuis `parler()`
+ * lui-même : la conversation avec Raphaël garde toujours la priorité, elle
+ * n'a pas à céder le pas à une annonce en arrière-plan.
+ */
+let lectureEnCours: Promise<void> | null = null
+
+/** Attend que la voix se libère, immédiatement si personne ne parle. */
+export async function attendreSilence(): Promise<void> {
+  await lectureEnCours
+}
+
 export function synthesePriseEnCharge(): boolean {
   return isNative || "speechSynthesis" in window
 }
@@ -71,13 +93,14 @@ export async function parler(text: string, options: OptionsParler = {}): Promise
   if (index !== undefined && voixEnCache === null) await voixDisponibles()
   const voix = index === undefined ? undefined : voixEnCache?.[index]
 
-  await new Promise<void>((resolve) => {
+  const lecture = new Promise<void>((resolve) => {
     let done = false
     const finish = () => {
       if (done) return
       done = true
       onSpeakingChange?.(false)
       pendingStop = null
+      if (lectureEnCours === lecture) lectureEnCours = null
       resolve()
     }
     pendingStop = finish
@@ -114,6 +137,8 @@ export async function parler(text: string, options: OptionsParler = {}): Promise
     }
     window.speechSynthesis.speak(utterance)
   })
+  lectureEnCours = lecture
+  await lecture
 }
 
 /** Coupe la voix en cours (interruption / "barge-in"). */

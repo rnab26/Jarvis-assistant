@@ -13,6 +13,7 @@ import {
   type ReglagesListeNoire,
 } from "@/lib/listeNoire"
 import { noterEcoute } from "@/lib/journalEcoute"
+import { delegationActive, delegationVoulue, etatDelegationTasker } from "@/lib/delegationTasker"
 
 /**
  * Le pont vers le service d'accessibilité, et l'enchaînement complet d'une
@@ -48,7 +49,7 @@ interface AccessibilitePlugin {
     application?: string
     elements?: ElementEcran[]
   }>
-  cliquer(options: { index: number; libelle: string }): Promise<{
+  cliquer(options: { index: number; libelle: string; viaTasker?: boolean }): Promise<{
     resultat: "fait" | "ecran_change" | "refus" | "pas_de_vue" | "service_inactif"
   }>
   defiler(options: { bas: boolean }): Promise<{ ok: boolean }>
@@ -224,9 +225,18 @@ export async function agirSurEcran(
     return { message: phraseEcran({ fait: "echec", cause: choix, lecture }), ok: false }
   }
 
+  // Le RÉGLAGE et la DISPONIBILITÉ réelle de Tasker+AutoInput sont décidés
+  // ici, jamais côté natif : cliquer() n'a rien à lire d'un réglage, il
+  // exécute ce qu'on lui transmet. Un aller-retour de plus au système
+  // seulement quand le réglage est effectivement activé.
+  const voulue = delegationVoulue()
+  const etatTasker = voulue ? await etatDelegationTasker() : null
+  const viaTasker = delegationActive(etatTasker, voulue)
+
   const r = await Accessibilite.cliquer({
     index: choix.element.index,
     libelle: choix.element.libelle,
+    viaTasker,
   })
   noterEcoute("ecran_action", {
     commande,
@@ -235,6 +245,7 @@ export async function agirSurEcran(
     element: choix.element.libelle,
     paquet: lecture.paquet,
     application: lecture.application ?? null,
+    viaTasker,
   })
 
   if (r.resultat === "fait") {

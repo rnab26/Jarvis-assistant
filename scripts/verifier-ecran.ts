@@ -39,6 +39,15 @@ import {
   listeEffective,
 } from "../src/lib/listeNoire.ts"
 import { erreurDepuisEcoute } from "../src/lib/erreurs.ts"
+import {
+  NOM_TACHE_TASKER,
+  NOM_VARIABLE_CIBLE_TASKER,
+  delegationActive,
+  delegationDisponible,
+  phraseDelegationTasker,
+  situationDelegationTasker,
+  type EtatDelegationTasker,
+} from "../src/lib/delegationTasker.ts"
 
 let echecs = 0
 const verifier = (nom: string, ok: boolean, detail = "") => {
@@ -458,6 +467,121 @@ verifier(
     application: "WhatsApp",
   }) === null,
   "seul « endormi » est une panne ; « pas autorisé » est une permission qu'il n'a pas donnée",
+)
+
+// ---------------------------------------------------------------------------
+// Déléguer le clic à Tasker + AutoInput (chantier d9ffb735, 18 sept. 2026)
+// ---------------------------------------------------------------------------
+
+const dispo: EtatDelegationTasker = { taskerInstalle: true, autoInputInstalle: true }
+const seulTasker: EtatDelegationTasker = { taskerInstalle: true, autoInputInstalle: false }
+const aucun: EtatDelegationTasker = { taskerInstalle: false, autoInputInstalle: false }
+
+verifier(
+  "les DEUX applications sont nécessaires : Tasker seul ne suffit pas",
+  delegationDisponible(seulTasker) === false && delegationDisponible(dispo) === true,
+  "AutoInput seul n'est pas déclenchable par intent, Tasker seul n'a pas la vue de l'écran",
+)
+verifier(
+  "le réglage éteint ne délègue jamais, même si tout est installé",
+  delegationActive(dispo, false) === false,
+  "une capacité nouvelle ne s'active pas toute seule",
+)
+verifier(
+  "un réglage allumé sans les deux apps ne délègue pas non plus",
+  delegationActive(aucun, true) === false && delegationActive(seulTasker, true) === false,
+  "un réglage resté activé après une désinstallation ne doit jamais faire croire que ça marche encore",
+)
+verifier(
+  "réglage allumé + les deux apps présentes : ça délègue",
+  delegationActive(dispo, true) === true,
+)
+verifier(
+  "les quatre situations sont bien distinctes",
+  new Set([
+    situationDelegationTasker(false, null, true),
+    situationDelegationTasker(true, aucun, true),
+    situationDelegationTasker(true, dispo, false),
+    situationDelegationTasker(true, dispo, true),
+  ]).size === 4,
+)
+verifier(
+  "« pas installé » nomme ce qui manque",
+  phraseDelegationTasker("non_installe", seulTasker).includes("AutoInput") &&
+    !phraseDelegationTasker("non_installe", seulTasker).includes("et Tasker"),
+  "seul ce qui manque vraiment doit être cité — ici Tasker est déjà là",
+)
+verifier(
+  "la phrase active dit le repli, jamais un mensonge sur ce qui a réellement cliqué",
+  phraseDelegationTasker("active", dispo).includes("revient") &&
+    !/j'ai appuyé/i.test(phraseDelegationTasker("active", dispo)),
+)
+
+const delegationJava = readFileSync(
+  "android/app/src/main/java/com/raphael/jarvis/TaskerDelegation.java",
+  "utf8",
+)
+const accessibiliteJava = readFileSync(
+  "android/app/src/main/java/com/raphael/jarvis/AccessibilitePlugin.java",
+  "utf8",
+)
+const manifesteRacine = readFileSync("android/app/src/main/AndroidManifest.xml", "utf8")
+
+verifier(
+  "le nom de la tâche Tasker est IDENTIQUE entre TypeScript et Java — une seule source, deux langages",
+  delegationJava.includes(`"${NOM_TACHE_TASKER}"`),
+  "sinon la recette affichée dans Paramètres ne déclenche jamais la vraie tâche",
+)
+verifier(
+  "la variable transmise à Tasker aussi",
+  delegationJava.includes(NOM_VARIABLE_CIBLE_TASKER),
+)
+verifier(
+  "la correspondance du nom de tâche est LITTÉRALE, jamais approximative",
+  delegationJava.includes("PatternMatcher.PATTERN_LITERAL"),
+  "un nom de tâche proche mais différent ne doit jamais répondre à la place de la bonne",
+)
+// PIÈGE DÉJÀ PAYÉ DANS CE DÉPÔT (sélecteur Playwright, Filesystem.mkdir,
+// com.google.android.as…) : chercher les DEUX mots n'importe où dans le
+// fichier reste vert même si le repli n'est plus câblé, parce que
+// `cliquerNatif` est de toute façon appelé ailleurs (le chemin sans Tasker).
+// On isole donc le corps de cliquer() et on compte ses VRAIS appels.
+const corpsCliquerPlugin = accessibiliteJava.slice(
+  accessibiliteJava.indexOf("public void cliquer(PluginCall call)"),
+  accessibiliteJava.indexOf("private void cliquerNatif"),
+)
+const appelsCliquerNatif = (corpsCliquerPlugin.match(/cliquerNatif\(call, index, libelle\)/g) ?? []).length
+verifier(
+  "le repli est INCONDITIONNEL : cliquer() retombe sur le service natif dès que Tasker ne rend pas un succès",
+  appelsCliquerNatif === 2 && /else\s*\{\s*cliquerNatif\(call, index, libelle\)/.test(corpsCliquerPlugin),
+  "absent, pas configuré, timeout, échec : dans tous les cas, rien ne doit casser — essayé à l'envers, ce contrôle rougit si la branche `else` est retirée",
+)
+verifier(
+  "TaskerDelegation ne DÉCIDE jamais elle-même de déléguer : elle exécute ce que cliquer() lui demande",
+  /public\s+void\s+cliquer\(PluginCall call\)[\s\S]*?boolean viaTasker = Boolean\.TRUE\.equals\(call\.getBoolean\("viaTasker", false\)\)/.test(
+    accessibiliteJava,
+  ),
+  "le choix vit côté TypeScript (réglage + état réel), jamais dans un réglage relu côté natif",
+)
+verifier(
+  "le BACK n'est PAS délégué à Tasker : risque documenté d'aggravation sur Samsung One UI 7",
+  !/retour[\s\S]{0,400}TaskerDelegation/i.test(accessibiliteJava) &&
+    !/TaskerDelegation[\s\S]{0,400}retour\(\)/i.test(accessibiliteJava),
+  "le rapport de recherche 77051ba6 cite le forum officiel Tasker : AutoInput casse Retour/Accueil/Récents",
+)
+verifier(
+  "la permission qu'exige Tasker pour être déclenché par intent est déclarée",
+  manifesteRacine.includes("net.dinglisch.android.tasker.PERMISSION_RUN_TASKS"),
+  "vérifiée dans tasker.joaoapps.com/invoketasks.html, pas devinée",
+)
+verifier(
+  "Tasker et AutoInput sont déclarés dans <queries>, sinon invisibles depuis Android 11",
+  manifesteRacine.includes('android:name="net.dinglisch.android.taskerm"') &&
+    manifesteRacine.includes('android:name="com.joaomgcd.autoinput"'),
+)
+verifier(
+  "le plugin d'état est enregistré : sans ça, Paramètres ne peut jamais savoir si Tasker est installé",
+  /registerPlugin\(DelegationTaskerPlugin\.class\)/.test(activite),
 )
 
 console.log("")

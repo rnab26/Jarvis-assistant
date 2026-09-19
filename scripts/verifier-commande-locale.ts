@@ -494,5 +494,60 @@ doitDonner(
   { action: "open_app", app_name: "Whatsapp" },
 )
 
+console.log("\n— Naviguer vers une section de Paramètres (chantier aac9a0dd) —")
+
+doitDonner("emmène-moi dans les notifications", {
+  action: "navigate_settings",
+  cible: "notifications",
+})
+doitDonner("emmène-moi dans les réglages de la voix", {
+  action: "navigate_settings",
+  cible: "voix",
+})
+doitDonner("va dans les paramètres de mémoire", {
+  action: "navigate_settings",
+  cible: "memoire",
+})
+doitDonner("va voir les réglages du cockpit", {
+  action: "navigate_settings",
+  cible: "cockpit",
+})
+doitDonner("montre-moi les réglages de notifications", {
+  action: "navigate_settings",
+  cible: "notifications",
+})
+doitDonner("ouvre les paramètres d'apparence", {
+  action: "navigate_settings",
+  cible: "apparence",
+})
+doitDonner("Jarvis, emmène-moi dans les paramètres des tâches", {
+  action: "navigate_settings",
+  cible: "taches",
+})
+doitDonner(
+  "emmène-moi à la villa Dan",
+  // « à » reste le connecteur de l'itinéraire GPS (navigate_to), jamais de
+  // la navigation dans Paramètres : sinon "emmène-moi à la villa Dan"
+  // essaierait de résoudre "la villa dan" comme une section.
+  { action: "navigate_to", destination: "La villa dan" },
+)
+doitDonner(
+  "emmène-moi vers Waze",
+  // « vers » aussi : même garde-fou, sinon on volerait la phrase à l'itinéraire.
+  { action: "navigate_to", destination: "Waze" },
+)
+doitLaisserPasser(
+  "montre-moi les notifications",
+  "sans le mot réglages/paramètres, « montre-moi » pourrait aussi vouloir dire lire ses notifications reçues : on ne devine pas",
+)
+doitLaisserPasser(
+  "montre-moi les paramètres de google",
+  "« google » vit dans le vocabulaire de deux sections à la fois (voix ET comptes) : on se tait plutôt que d'ouvrir la mauvaise",
+)
+doitLaisserPasser(
+  "ouvre les réglages de l'application",
+  "« application » vit dans le vocabulaire de deux sections à la fois (app ET apps) : on se tait",
+)
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

@@ -19,16 +19,25 @@
  *
  * D'où cette décision, sortie du composant pour être vérifiable sans
  * navigateur : on n'affiche RIEN tant qu'on ne sait pas où on est.
+ *
+ * TROISIÈME FENÊTRE depuis le 15 sept. 2026 (chantier 468734ad) : celle
+ * ouverte par un appui sur la bulle flottante, détectée par
+ * BulleEcoute.estBulle() exactement comme "overlay" l'est par
+ * AssistOverlay.estOverlay() — même risque de course (l'appel est
+ * asynchrone), même parade (on n'affiche rien tant que les DEUX n'ont pas
+ * répondu ou que le filet n'a pas tranché).
  */
 
-export type OuOnEst = "inconnu" | "overlay" | "normal"
+export type OuOnEst = "inconnu" | "overlay" | "bulle" | "normal"
 
 /** Ce qu'il faut rendre, selon ce qu'on sait. */
-export type QuoiRendre = "attendre" | "overlay" | "normal"
+export type QuoiRendre = "attendre" | "overlay" | "bulle" | "normal"
 
 export function quoiRendre(ou: OuOnEst): QuoiRendre {
   if (ou === "inconnu") return "attendre"
-  return ou === "overlay" ? "overlay" : "normal"
+  if (ou === "overlay") return "overlay"
+  if (ou === "bulle") return "bulle"
+  return "normal"
 }
 
 /**

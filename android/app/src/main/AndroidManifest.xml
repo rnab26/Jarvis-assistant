@@ -67,6 +67,23 @@
             </intent-filter>
         </activity>
 
+        <!-- Ce que la BULLE ouvre depuis le 15 sept. 2026 (chantier
+             468734ad) : le micro, SANS fenêtre visible — sa décision, « moi
+             l'utilisateur j'appuie pour activer jarvis ». Aucun
+             intent-filter : elle n'est lancée que par BulleService, jamais
+             depuis l'extérieur, d'où exported="false". Même famille de
+             déclaration que AssistOverlayActivity (singleInstance +
+             taskAffinity vide + excludeFromRecents), le thème translucide
+             étant réutilisé tel quel — le rétrécissement à quelques pixels
+             se pose en code (BulleEcouteActivity), pas ici. -->
+        <activity
+            android:name=".BulleEcouteActivity"
+            android:theme="@style/Theme.Jarvis.Assist"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="false" />
+
         <!-- Ce qui rend Jarvis CHOISISSABLE comme assistant du telephone
              (chantier 7b8e68a7). Le 5 sept. on avait declare une activite
              exportee repondant a ACTION_ASSIST : c'est l'une des deux
@@ -266,6 +283,14 @@
          journal_ecoute (chantier 21cf48d2, 7 sept. 2026). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Déclencher une tâche Tasker par intent (chantier d9ffb735, délégation
+         du clic à Tasker + AutoInput). Vérifiée dans la documentation
+         officielle (tasker.joaoapps.com/invoketasks.html) : « Your app
+         requires the Manifest permission
+         net.dinglisch.android.tasker.PERMISSION_RUN_TASKS ». Permission
+         normale (déclarée par Tasker lui-même), aucune fenêtre système. -->
+    <uses-permission android:name="net.dinglisch.android.tasker.PERMISSION_RUN_TASKS" />
+
     <!-- Poser une alarme ou un minuteur sans ouvrir l'app d'horloge. Seule
          permission demandée par les actions dans les autres applications :
          composer un numéro (ACTION_DIAL) et pré-remplir un message
@@ -353,5 +378,11 @@
              est installee, donc pas la proposer au choix — et c'est elle qui
              recevait ses messages le 6 sept. 2026. -->
         <package android:name="com.whatsapp.w4b" />
+        <!-- Chantier d9ffb735 : sans ces deux lignes, PackageManager ne peut
+             pas savoir que Tasker et son greffon AutoInput sont installés
+             (Android 11+), donc jamais proposer la délégation dans
+             Paramètres. -->
+        <package android:name="net.dinglisch.android.taskerm" />
+        <package android:name="com.joaomgcd.autoinput" />
     </queries>
 </manifest>

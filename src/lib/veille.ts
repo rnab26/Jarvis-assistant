@@ -168,6 +168,51 @@ export function texteAAfficherEnVeille(partiel: string): string | null {
   return trouve ? reste : null
 }
 
+/**
+ * L'app vient de perdre le premier plan PENDANT que le mot-clé écoutait
+ * activement (le micro était réellement ouvert) : c'est le signal qu'une
+ * autre application vient de prendre le premier plan ET le micro en même
+ * temps — le cas décrit par Raphaël (chantier 7a6e75c4, 18 sept. 2026),
+ * « j'ouvre WhatsApp et je lance une note vocale ».
+ *
+ * La veille s'arrête déjà d'elle-même dans ce cas : dès que l'app perd le
+ * premier plan, l'effet qui la porte est démonté et rend le micro tout de
+ * suite, sans attendre la fin de la rafale (voir MicButton). Ce que cette
+ * fonction décide EN PLUS, c'est qu'au retour elle ne doit pas reprendre
+ * TOUTE SEULE — sa demande du 9 sept. 2026 pour REFUS_AVANT_ABANDON
+ * s'applique à l'identique ici, mot pour mot : « il vaut mieux que le
+ * micro s'arrête et qu'on réactive jarvis manuellement pour reprendre une
+ * session plutôt que ça s'active de façon intempestive ». Une réactivation
+ * manuelle (le cœur) remet `veilleAbandonnee` à faux, exactement comme
+ * pour REFUS_AVANT_ABANDON — même mécanisme, complémentaire : celui-ci
+ * coupe tout de suite sur un signal net (le micro était ouvert), l'autre
+ * reste le filet pour les cas où l'app garde le premier plan (l'écran
+ * partagé, une fenêtre d'assistance ouverte par-dessus une autre
+ * application) et où rien ne dit qu'un conflit est en cours avant d'avoir
+ * essayé — et échoué — plusieurs fois.
+ *
+ * Perdre le premier plan alors que la veille était simplement AU REPOS
+ * (entre deux rafales, aucun micro ouvert) n'est PAS un conflit : rien
+ * n'a été interrompu, il n'y a rien à couper. Elle continue de reprendre
+ * toute seule dans ce cas, comme avant — sans quoi le moindre coup d'œil à
+ * une notification obligerait à retoucher le cœur en revenant, ce qui
+ * n'est jamais arrivé et ce qui irait à l'encontre de ce que ce chantier
+ * doit réduire : les manipulations.
+ *
+ * LIMITE CONNUE, à ne pas présenter comme couverte : cette détection ne
+ * voit QUE la perte du premier plan de CETTE fenêtre. Elle ne peut rien
+ * pour un conflit qui survient alors que Jarvis reste visible — écran
+ * partagé (Android multi-fenêtres), ou la fenêtre de l'appui long /
+ * la bulle ouverte PAR-DESSUS une autre application encore au premier
+ * plan en dessous. Deviner qui tient le micro dans ces cas-là n'est pas
+ * possible depuis ici (Android ne l'expose pas) ; REFUS_AVANT_ABANDON
+ * reste la seule protection pour eux, non mesurée comme suffisante pour
+ * autant.
+ */
+export function focusPerduPendantEcoute(statut: StatutVoix, documentCache: boolean): boolean {
+  return statut === "wake-listening" && documentCache
+}
+
 /** Plafond du recul entre deux rafales muettes. Au-delà, « Jarvis » dit
  * dans le trou serait raté trop souvent. */
 export const RECUL_MAX_MS = 8000
@@ -205,6 +250,56 @@ export const RECUL_OCCUPE_MAX_MS = 4000
 export function delaiApresOccupe(echecsConsecutifs: number): number {
   if (echecsConsecutifs <= 1) return RECUL_APRES_ECHEC_MS
   return Math.min(RECUL_OCCUPE_MAX_MS, RECUL_APRES_ECHEC_MS * 2 ** (echecsConsecutifs - 1))
+}
+
+/**
+ * Nombre de démarrages refusés CONSÉCUTIFS après lequel la veille renonce
+ * d'elle-même, au lieu de réclamer le micro toutes les quatre secondes sans
+ * fin.
+ *
+ * SA DÉCISION, écrite le 9 sept. 2026 dans le journal de bord et restée sans
+ * suite jusqu'ici, mot pour mot : « Dans ce cas il vaut mieux que le micro
+ * s'arrête et qu'on réactive jarvis manuellement pour reprendre une session
+ * plutôt que ça s'active de façon intempestive ». Chaque essai refusé est une
+ * ouverture de micro, et sur Samsung chaque ouverture joue sa tonalité : une
+ * chaîne qui ne se rétablit pas est exactement le bruit dont il se plaint
+ * depuis le 7 sept.
+ *
+ * POURQUOI 20, MESURÉ SUR SON JOURNAL ET PAS CHOISI À L'ŒIL (48 h au
+ * 17 sept. 2026, `rafale_fin` en mode veille, chaînes de refus consécutifs) :
+ *
+ *     longueur  1 : 76 chaînes      longueur 11 :  1
+ *     longueur  5 : 23              longueur 13 :  7
+ *     longueur  7 :  6              longueur 18 :  1
+ *     longueur  9 :  3              longueur 26 :  1
+ *                                   longueur 229 : 1   <- en cours, 2 h 22
+ *
+ * Tout ce qui se rétablit tout seul tient sous 26. Un seuil à 8 aurait coupé
+ * quinze chaînes qui repartaient d'elles-mêmes ; à 20, seules les deux
+ * dernières sont touchées — dont celle du 17 sept. à 14 h 27, 229 refus
+ * d'affilée sur 2 h 22 SANS UNE SEULE écoute réelle, c'est-à-dire un mot-clé
+ * mort pendant qu'à l'écran une pastille clignotait « Dis "Jarvis" quand tu
+ * veux ».
+ *
+ * L'ASYMÉTRIE JUSTIFIE DE RENONCER TÔT PLUTÔT QUE TARD, et c'est elle qu'il
+ * faut garder en tête si on touche au seuil : renoncer à tort coûte UN appui
+ * sur le cœur, et ça se voit puisqu'on l'écrit à l'écran ; renoncer trop tard
+ * coûte une tonalité toutes les quatre secondes pour toujours, et un écran
+ * qui ment.
+ */
+export const REFUS_AVANT_ABANDON = 20
+
+/**
+ * La veille doit-elle renoncer ?
+ *
+ * `seuil` à 0 (ou négatif) veut dire « ne jamais renoncer » — c'est le
+ * réglage Paramètres › Voix et écoute › Mot-clé de réveil, et c'est aussi ce
+ * que rendent les appelants qui ne savent rien de ce réglage (le banc
+ * d'essai), pour garder exactement le comportement d'avant.
+ */
+export function renonceApresRefus(echecsConsecutifs: number, seuil: number): boolean {
+  if (seuil <= 0) return false
+  return echecsConsecutifs >= seuil
 }
 
 /**

@@ -106,5 +106,136 @@ verifier(
   ),
 )
 
+// ── Un appui ACTIVE ou DÉSACTIVE le micro, sans fenêtre (15 sept. 2026) ──
+//
+// Sa décision, mot pour mot : « Moi l'utilisateur j'appuie pour activer
+// jarvis ». Piste (a) retenue dans la note du chantier 468734ad : une
+// activity overlay invisible qui n'héberge que la WebView pendant l'écoute,
+// PAS la fenêtre d'assistance de l'appui long (AssistOverlayActivity, qui
+// reste inchangée pour son propre chemin).
+verifier(
+  "BulleEcouteActivity existe",
+  (() => {
+    try {
+      readFileSync("android/app/src/main/java/com/raphael/jarvis/BulleEcouteActivity.java", "utf8")
+      return true
+    } catch {
+      return false
+    }
+  })(),
+)
+verifier(
+  "BulleEcoutePlugin existe",
+  (() => {
+    try {
+      readFileSync("android/app/src/main/java/com/raphael/jarvis/BulleEcoutePlugin.java", "utf8")
+      return true
+    } catch {
+      return false
+    }
+  })(),
+)
+verifier(
+  "ouvrirJarvis() BASCULE : un appui pendant l'écoute l'ARRÊTE au lieu d'en ouvrir une seconde",
+  service.includes("BulleEcouteActivity.estActive()") && service.includes("arreterSiActive()"),
+  "sans ça, un second appui pendant que ça écoute empilerait une deuxième fenêtre invisible",
+)
+verifier(
+  "et l'ouverture vise BulleEcouteActivity, pas la fenêtre d'assistance de l'appui long",
+  /new Intent\(this, BulleEcouteActivity\.class\)/.test(service),
+  "AssistOverlayActivity reste le chemin de l'appui long — les deux chemins ont des décisions différentes",
+)
+verifier(
+  "la bulle montre qu'elle écoute (son icône change)",
+  service.includes("static void setEnEcoute") && service.includes("setColorFilter"),
+  "aucune fenêtre ne s'ouvrant, c'est la SEULE façon de le voir",
+)
+
+const manifesteBulle = readFileSync("android/app/src/main/AndroidManifest.xml", "utf8")
+verifier(
+  "BulleEcouteActivity est déclarée dans le manifeste",
+  /android:name="\.BulleEcouteActivity"/.test(manifesteBulle),
+)
+verifier(
+  "et elle N'EST PAS exportée : rien d'extérieur ne doit pouvoir l'ouvrir",
+  new RegExp(
+    'android:name="\\.BulleEcouteActivity"[\\s\\S]{0,300}?android:exported="false"',
+  ).test(manifesteBulle),
+  "elle n'est lancée que par notre propre BulleService, jamais par un intent externe",
+)
+
+const activiteEcoute = readFileSync(
+  "android/app/src/main/java/com/raphael/jarvis/BulleEcouteActivity.java",
+  "utf8",
+)
+verifier(
+  "elle démarre l'écoute au montage, même mécanisme que le widget",
+  activiteEcoute.includes("JarvisWidgetPlugin.demarrerEcoute = true"),
+)
+verifier(
+  "elle prévient la bulle en s'ouvrant ET en se refermant",
+  /onCreate[\s\S]*setEnEcoute\(true\)/.test(activiteEcoute) &&
+    /onDestroy[\s\S]*setEnEcoute\(false\)/.test(activiteEcoute),
+  "sinon l'icône resterait « en écoute » après la fin de l'échange, ou ne changerait jamais",
+)
+// Chantier efe7e44c, 17 sept. 2026 : la première version posait 2 dip
+// (quelques pixels réels), jamais essayée sur un vrai téléphone — un WebView
+// créé dans une surface aussi petite est un cas limite connu (rendu qui
+// échoue selon l'appareil). L'invisibilité vient de la classe CSS `sr-only`
+// posée par OverlayMicContent, PAS de la taille de la fenêtre Android :
+// rien n'empêche de lui laisser une taille ordinaire.
+verifier(
+  "la fenêtre invisible a une taille de WebView ordinaire, pas quelques pixels",
+  (() => {
+    const m = activiteEcoute.match(/int taille = Math\.round\((\d+) \* metrics\.density\)/)
+    return m !== null && Number(m[1]) >= 40
+  })(),
+  "un WebView de 2 dip n'a jamais été essayé sur un vrai téléphone ; l'invisibilité ne dépend pas de sa taille",
+)
+verifier(
+  "elle enregistre EtatLivePlugin, comme AssistOverlayActivity",
+  /registerPlugin\(EtatLivePlugin\.class\)/.test(activiteEcoute),
+  "sans lui, la veille de la bulle ne sait jamais qu'une Live tourne dans l'autre fenêtre (chantier 2a5b7802)",
+)
+
+// ── La vraie régression du passage à 64 dip (17 sept. 2026) ──
+//
+// Sans FLAG_NOT_TOUCH_MODAL (posé automatiquement par FLAG_NOT_FOCUSABLE),
+// une fenêtre FOCUSABLE consomme TOUS les événements tactiles de l'écran
+// ENTIER tant qu'elle est ouverte, pas seulement ceux dans ses propres
+// limites (documenté par Android). À 2 dip un WebView qui échouait
+// probablement à se créer laissait cette fenêtre à peine vivante ; à 64 dip
+// elle s'ouvre pour de vrai et reste au premier plan le temps de l'écoute —
+// l'écran ENTIER devenait insensible au toucher, sans rien de visible pour
+// le deviner. Cette fenêtre n'a besoin d'aucune interaction tactile : elle
+// se referme par BulleEcoutePlugin.fermer(), appelé depuis le JS.
+verifier(
+  "la fenêtre invisible ne reçoit JAMAIS de toucher",
+  /params\.flags\s*\|=[\s\S]{0,120}FLAG_NOT_TOUCHABLE/.test(activiteEcoute),
+  "sans lui, un appui n'importe où dans son rectangle (64 dip en haut à gauche) est perdu",
+)
+verifier(
+  "et elle n'est jamais focusable — ce qui rend aussi le reste de l'écran touchable",
+  /params\.flags\s*\|=[\s\S]{0,120}FLAG_NOT_FOCUSABLE/.test(activiteEcoute),
+  "une fenêtre focusable sans FLAG_NOT_TOUCH_MODAL avale TOUS les appuis de l'écran, pas seulement les siens (doc Android) — FLAG_NOT_FOCUSABLE pose ce second drapeau automatiquement",
+)
+
+const overlaySrc = readFileSync(
+  "android/app/src/main/java/com/raphael/jarvis/AssistOverlayActivity.java",
+  "utf8",
+)
+verifier(
+  "AssistOverlayActivity ne vole pas les appuis destinés à l'app en dessous",
+  /FLAG_NOT_TOUCH_MODAL/.test(overlaySrc),
+  "même piège que la bulle : sans ce drapeau, un appui dans les deux tiers assombris (hors de son tiers d'écran) se perd au lieu d'atteindre l'app en dessous",
+)
+
+const bridgeSrc = readFileSync("src/lib/bulleEcoutePlugin.ts", "utf8")
+verifier(
+  "le pont JS déclare le bon nom de plugin",
+  /registerPlugin<BulleEcoutePlugin>\("BulleEcoute"\)/.test(bridgeSrc),
+  "un nom différent du @CapacitorPlugin(name=...) côté Java et l'appel échoue toujours",
+)
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

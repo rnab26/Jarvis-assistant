@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core"
 import { useEffect, useRef, useState } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { JarvisCore } from "@/components/JarvisCore"
 import { pastilleQuota, type Consommation } from "@/lib/consommationModele"
@@ -18,7 +18,9 @@ import {
   delaiApresOccupe,
   delaiAvantRafaleSuivante,
   enRefroidissement,
+  focusPerduPendantEcoute,
   peutEcouterEnVeille,
+  renonceApresRefus,
   REFROIDISSEMENT_APRES_FIN_MS,
   sansAccuse,
   texteAAfficherEnVeille,
@@ -26,22 +28,38 @@ import {
 import { chercherMotCle } from "@/lib/motCle"
 import { interpreterLocalement } from "@/lib/commandeLocale"
 import { completionExpiree } from "@/lib/tacheDateEtCategorie"
-import { completerPlutotQueCreer, estUneReprise } from "@/lib/repriseDictee"
+import { completerPlutotQueCreer, estUneReprise, phraseRepriseAction } from "@/lib/repriseDictee"
 import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
 import { signalerErreur } from "@/lib/erreurs"
-import { cibleDeLAction, echecDeLAction, echecSignalePar, type TourJarvis } from "@/lib/retours"
+import { cibleDeLAction, echecDeLAction, echecSignalePar, signalementDicte, type TourJarvis } from "@/lib/retours"
 import { delaiAvantAction } from "@/lib/enchainementActions"
 import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
   appPreferee,
   canalMessagesPrefere,
   cibleAnnoncee,
+  dernierAppelTelephone,
   executerActionTelephone,
+  marquerMessagePrepareCommeProgramme,
+  messagePrepareEnAttente,
   questionAppPreferee,
+  type ActionTelephone,
   type CategorieAppTelephone,
 } from "@/lib/actionsTelephoneVocales"
+import {
+  estCorrectionMessage,
+  estDemandeRelectureMessage,
+  phraseCorrectionMessage,
+  phraseRelectureMessage,
+} from "@/lib/correctionMessage"
+import {
+  estAnnulationMessageAnnonce,
+  peutAnnoncerMaintenant,
+  phraseAnnonceMessage,
+  prochainMessageAAnnoncer,
+} from "@/lib/messageAnnonce"
 import {
   envoiAutoActif,
   estReponseNon,
@@ -52,6 +70,12 @@ import {
 import { agirSurEcran } from "@/lib/controleEcran"
 import { withTimeout } from "@/lib/withTimeout"
 import { noterEcoute } from "@/lib/journalEcoute"
+import {
+  attenteActive,
+  CLE_ATTENTE_TRANSCRIPTION,
+  lireAttente,
+  phraseEcoute,
+} from "@/lib/attenteTranscription"
 import { maintenirSessionLive, type SessionLive } from "@/lib/live/sessionLive"
 import { liveActifQuelquePart } from "@/lib/live/etatLiveNatif"
 import { prechaufferConnexionLive } from "@/lib/live/prechauffage"
@@ -64,6 +88,7 @@ import type { DevItem } from "@/types/database"
 import {
   type DevSectionsVoiceApi,
   executeVoiceAction,
+  memoireChantierEnAttente,
   memoireDerniereCreation,
   memoireTacheEnAttente,
   type ContactsApi,
@@ -71,6 +96,7 @@ import {
   type DocumentsApi,
   type EntrainementApi,
   type GmailApi,
+  type MessagesProgrammesApi,
   type PlaceRemindersApi,
   type PronunciationsApi,
   type TasksApi,
@@ -96,7 +122,7 @@ function questionAmbigueAppTelephone(
   if (action.action === "open_app" && action.music_query && !action.app_name && !appPreferee("musique")) {
     return { message: questionAppPreferee("musique"), category: "musique" }
   }
-  if (action.action === "navigate_to" && !appPreferee("navigation")) {
+  if (action.action === "navigate_to" && !action.app_name && !appPreferee("navigation")) {
     return { message: questionAppPreferee("navigation"), category: "navigation" }
   }
   if (action.action === "send_message" && !action.message_channel && !canalMessagesPrefere()) {
@@ -115,11 +141,16 @@ interface MicButtonProps {
   documentsApi: DocumentsApi
   contactsApi: ContactsApi
   placeRemindersApi: PlaceRemindersApi
+  messagesProgrammesApi: MessagesProgrammesApi
   pronunciationsApi: PronunciationsApi
   voiceSettingApi: VoiceSettingApi
   widgetApi: WidgetApi
   entrainementApi: EntrainementApi
   wakeWordEnabled: boolean
+  /** Combien de démarrages refusés d'affilée avant que la veille renonce
+   * d'elle-même — 0 = jamais. Voir `renonceApresRefus` (src/lib/veille.ts) et
+   * Paramètres › Voix et écoute › Mot-clé de réveil. */
+  seuilAbandonVeille?: number
   /** Ce que Jarvis a consommé aujourd'hui, pour la ligne sous le cœur.
    * `null` = pas encore lu, ou lecture en échec — on n'affiche alors RIEN. */
   consommation: Consommation | null
@@ -128,6 +159,10 @@ interface MicButtonProps {
   setWakeWordEnabled: (v: boolean) => void
   setGeofenceEnabled: (v: boolean) => void
   voiceIndex: number | null
+  /** Annonce à voix haute le résultat (succès/échec) d'une action déjà
+   * exécutée. Ne coupe jamais une question qui attend une réponse — voir
+   * VOICE_CONFIRMER_RESULTAT_KEY dans voicePrefs.ts. */
+  confirmerResultatVoix: boolean
   /** Durée pendant laquelle le micro reste ouvert après une réponse de
    * Jarvis, pour enchaîner sans retoucher le bouton. 0 = désactivé. */
   suiteMs: number
@@ -202,20 +237,24 @@ export function MicButton({
   documentsApi,
   contactsApi,
   placeRemindersApi,
+  messagesProgrammesApi,
   pronunciationsApi,
   voiceSettingApi,
   widgetApi,
   entrainementApi,
   wakeWordEnabled,
+  seuilAbandonVeille = 0,
   consommation,
   setWakeWordEnabled,
   setGeofenceEnabled,
   voiceIndex,
+  confirmerResultatVoix,
   suiteMs,
   onIdle,
 }: MicButtonProps) {
   const { listen, stop: stopListening, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
+  const navigate = useNavigate()
   const [status, setStatus] = useState<Status>("idle")
   // Ne prévenir qu'un vrai retour au repos APRÈS un échange, jamais le repos
   // initial du montage — sinon la fenêtre de l'appui long se refermerait
@@ -235,6 +274,34 @@ export function MicButton({
     prechaufferConnexionLive()
   }, [])
   const [lastUserText, setLastUserText] = useState<string | null>(null)
+  // L'ÉCRAN FIGÉ PENDANT QU'IL PARLE (chantier 53d99720). Le micro est ouvert
+  // en moins de 50 ms (mesuré), mais le premier mot d'Android met 1 à 3 s à
+  // arriver : entre les deux, rien ne bouge, et un écran figé pendant qu'on
+  // parle se lit comme un micro qui n'écoute pas. Ce drapeau dit seulement
+  // « le délai est passé sans un mot » ; la phrase, elle, vit dans le module
+  // pur `attenteTranscription.ts`.
+  const [attenteDepassee, setAttenteDepassee] = useState(false)
+  useEffect(() => {
+    // Le délai est relu À CHAQUE écoute, pas une fois au montage : ce
+    // composant reste monté d'un écran à l'autre, et une valeur lue une seule
+    // fois ne bougerait plus tant qu'il n'a pas redémarré l'app — le réglage
+    // de Paramètres n'aurait servi à rien jusque-là.
+    if (status !== "listening" || !micReady || lastUserText) {
+      setAttenteDepassee(false)
+      return
+    }
+    let brut: string | null = null
+    try {
+      brut = localStorage.getItem(CLE_ATTENTE_TRANSCRIPTION)
+    } catch {
+      // Stockage refusé (navigation privée, données bloquées) : on garde le
+      // défaut plutôt que d'éteindre la phrase sans le dire.
+    }
+    const delai = lireAttente(brut)
+    if (!attenteActive(delai)) return
+    const minuteur = setTimeout(() => setAttenteDepassee(true), delai)
+    return () => clearTimeout(minuteur)
+  }, [status, micReady, lastUserText])
   const [lastReply, setLastReply] = useState<string | null>(null)
   /**
    * La phrase qui n'a pas abouti, gardée pour pouvoir la renvoyer TELLE QUELLE.
@@ -298,6 +365,19 @@ export function MicButton({
 
   /** Ce que la phrase courante dit du tour précédent — le plus souvent rien. */
   function constaterEchec(phrase: string, source: "voix" | "live") {
+    // Un signalement EXPLICITE (« note ce problème de comportement… »,
+    // chantier 519e8fff) ne dépend d'AUCUN tour précédent — indépendant du
+    // reste de cette fonction, il se vérifie sur la phrase seule.
+    const signalement = signalementDicte(phrase)
+    if (signalement) {
+      signalerErreur(signalement.categorie, signalement.titre, {
+        detail: signalement.detail,
+        contexte: signalement.contexte,
+        source,
+        correctionSuggeree: signalement.correctionSuggeree,
+      })
+    }
+
     const echec = echecSignalePar(phrase, dernierTourRef.current, Date.now())
     if (!echec) return
     // Une fois signalé, on oublie le tour : sinon deux reproches d'affilée sur
@@ -352,6 +432,88 @@ export function MicButton({
       return confirmation
     }
 
+    // « annule », « laisse tomber » après l'ANNONCE d'un message programmé
+    // (messageAnnonce.ts) : on annule l'envoi et on le dit — jamais un
+    // silence, jamais un second brouillon. `messageProgrammeId` n'est posé
+    // QUE par cette annonce-là (jamais par une préparation normale), donc sa
+    // seule présence suffit à distinguer ce cas de « annule » dans n'importe
+    // quel autre contexte — d'où la même fenêtre de fraîcheur (90 s) que la
+    // correction et la relecture ci-dessous, sur le même dernierTourRef.
+    {
+      const prepareAnnonce = messagePrepareEnAttente()
+      const frais = dernierTourRef.current && Date.now() - dernierTourRef.current.at <= 90_000
+      if (
+        frais &&
+        prepareAnnonce?.messageProgrammeId &&
+        estAnnulationMessageAnnonce({ id: prepareAnnonce.messageProgrammeId }, transcript)
+      ) {
+        try {
+          await messagesProgrammesApi.annulerMessage(prepareAnnonce.messageProgrammeId)
+        } catch {
+          // On le dit quand même : rien de pire ici qu'un silence après
+          // avoir déjà annoncé le message.
+        }
+        const dit = prepareAnnonce.cible
+          ? `D'accord, je n'envoie rien à ${prepareAnnonce.cible}.`
+          : "D'accord, je n'envoie rien."
+        const annulation: VoiceAction[] = [{ action: "chat", message: dit }]
+        noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: annulation.length })
+        derniereLocaleRef.current = transcript
+        return annulation
+      }
+    }
+
+    // La RELECTURE d'un message WhatsApp/SMS préparé (« relis-le moi »,
+    // « qu'est-ce que t'as écrit ? ») : Jarvis dit le texte tel qu'il est,
+    // sans y toucher ni l'envoyer — chantier ed32cbcc. Même raison que les
+    // deux confirmations ci-dessus : reconnu ICI avec dernierTourRef, que le
+    // serveur ne voit jamais.
+    if (estDemandeRelectureMessage(dernierTourRef.current, transcript, Date.now())) {
+      const prepare = messagePrepareEnAttente()
+      if (prepare) {
+        const relecture: VoiceAction[] = [
+          { action: "chat", message: phraseRelectureMessage(prepare.cible, prepare.texte) },
+        ]
+        noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: relecture.length })
+        derniereLocaleRef.current = transcript
+        return relecture
+      }
+    }
+
+    // La CORRECTION d'un message WhatsApp/SMS préparé (« remplace X par Y »,
+    // « enlève la dernière phrase ») : on récrit le MÊME brouillon plutôt que
+    // d'en ouvrir un second ou de laisser l'ancien partir tel quel — chantier
+    // ed32cbcc. Seul le serveur sait récrire un texte : on lui repasse la
+    // phrase avec le contexte qu'il n'a jamais eu (même principe que la
+    // correction de la relecture AVANT ouverture, confirmationEnvoiVocale.ts).
+    if (estCorrectionMessage(dernierTourRef.current, transcript, Date.now())) {
+      const prepare = messagePrepareEnAttente()
+      if (prepare) {
+        const recrites = await resolveTranscript(
+          phraseCorrectionMessage(prepare.cible, prepare.texte, transcript, prepare.canal),
+        )
+        // Le DESTINATAIRE ne doit JAMAIS changer sur une correction — seul le
+        // texte change. On le réimpose depuis le brouillon d'origine plutôt
+        // que de laisser le modèle le redéduire d'un prompt qui ne porte que
+        // son NOM : « composer le numéro de quelqu'un d'autre est l'erreur
+        // qu'on ne rattrape pas » (chercherContact.ts).
+        const [premiere, ...reste] = recrites
+        if (premiere && premiere.action === "send_message") {
+          return [
+            {
+              ...premiere,
+              contact_id: prepare.contact_id,
+              contact_name: prepare.contact_name,
+              phone_number: prepare.phone_number,
+              message_channel: prepare.forceWhatsAppBusiness ? "whatsapp_business" : prepare.canal,
+            },
+            ...reste,
+          ]
+        }
+        return recrites
+      }
+    }
+
     // D'ABORD SUR L'APPAREIL, ET SANS RIEN DEMANDER À PERSONNE.
     //
     // « Ce n'est pas vraiment de l'IA, c'est plus un assistant qui va faire
@@ -379,6 +541,8 @@ export function MicButton({
       sequences: entrainementApi.sequences,
       categories: tasksApi.categories,
       tacheEnAttente: memoireTacheEnAttente(),
+      sections: devSectionsApi.sections,
+      chantierEnAttente: memoireChantierEnAttente(),
     })
     if (local) {
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: local.length })
@@ -528,10 +692,9 @@ export function MicButton({
     // Calculé ICI parce que c'est la seule couche qui tient la phrase
     // PRÉCÉDENTE (`dernierTourRef`) — le serveur ne la voit jamais, comme
     // pour la confirmation d'un envoi (chantier 21cf48d2).
+    const reprise = estUneReprise(dernierTourRef.current, transcript, Date.now())
     const actions =
-      (estUneReprise(dernierTourRef.current, transcript, Date.now())
-        ? completerPlutotQueCreer(brutes, memoireDerniereCreation(), Date.now())
-        : null) ?? brutes
+      (reprise ? completerPlutotQueCreer(brutes, memoireDerniereCreation(), Date.now()) : null) ?? brutes
 
     // Quand quelque chose est ambigu, la Edge Function renvoie une seule
     // action clarify : on pose la question plutôt que d'exécuter à moitié.
@@ -604,10 +767,12 @@ export function MicButton({
       if (estReponseNon(reponse)) {
         const dit = "D'accord, je n'envoie rien."
         setLastReply(dit)
-        setStatus("speaking")
-        bargeInRef.current = false
-        await speak(dit, voiceIndex ?? undefined)
-        if (bargeInRef.current) return false
+        if (confirmerResultatVoix) {
+          setStatus("speaking")
+          bargeInRef.current = false
+          await speak(dit, voiceIndex ?? undefined)
+          if (bargeInRef.current) return false
+        }
         if (suiteMs > 0) return true
         setStatus("idle")
         return false
@@ -644,13 +809,31 @@ export function MicButton({
       retenirLeTour(transcript, [messageAction], clic)
 
       setLastReply(clic)
-      setStatus("speaking")
-      bargeInRef.current = false
-      await speak(clic, voiceIndex ?? undefined)
-      if (bargeInRef.current) return false
+      if (confirmerResultatVoix) {
+        setStatus("speaking")
+        bargeInRef.current = false
+        await speak(clic, voiceIndex ?? undefined)
+        if (bargeInRef.current) return false
+      }
       if (suiteMs > 0) return true
       setStatus("idle")
       return false
+    }
+
+    // « Prévenir puis refaire » (chantier e4886791, réponse de Raphaël le
+    // 17 sept. 2026) : quand il redit sa phrase en l'allongeant APRÈS
+    // qu'une musique/vidéo est déjà lancée ou qu'un itinéraire est déjà
+    // ouvert, Jarvis le dit avant de relancer — sinon deux ouvertures
+    // d'application coup sur coup, sans un mot. `reprise` (calculé
+    // ci-dessus) garde ça hors des demandes NEUVES de la même famille.
+    const annoncePrevenir = phraseRepriseAction(reprise, actions, dernierAppelTelephone(), Date.now())
+    if (annoncePrevenir) {
+      setLastReply(annoncePrevenir)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(annoncePrevenir, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+      setStatus("processing")
     }
 
     const reply = await executerActions(actions, originalTranscript)
@@ -658,13 +841,18 @@ export function MicButton({
     retenirLeTour(transcript, actions, reply)
 
     setLastReply(reply)
-    setStatus("speaking")
-    bargeInRef.current = false
     // La fenêtre d'annulation vient peut-être déjà de dire ces mots
     // (« J'ouvre Waze. ») pendant le décompte : ne pas les relire une
-    // seconde fois. Le texte reste affiché, seule la voix se tait ici.
-    if (!estDejaAnnoncee(reply)) await speak(reply, voiceIndex ?? undefined)
-    if (bargeInRef.current) return false
+    // seconde fois. Le texte reste affiché, seule la voix se tait ici — et
+    // se tait aussi complètement quand confirmerResultatVoix est coupé
+    // (chantier d9bc1275) : le texte reste affiché sous le cœur dans les
+    // deux cas, seule la voix change.
+    if (confirmerResultatVoix && !estDejaAnnoncee(reply)) {
+      setStatus("speaking")
+      bargeInRef.current = false
+      await speak(reply, voiceIndex ?? undefined)
+      if (bargeInRef.current) return false
+    }
     if (suiteMs > 0) return true
     setStatus("idle")
     return false
@@ -720,6 +908,8 @@ export function MicButton({
             { setWakeWordEnabled, setGeofenceEnabled },
             entrainementApi,
             gmailVoiceApi,
+            { navigateVersParametres: (cible) => navigate(`/settings?section=${cible}`) },
+            messagesProgrammesApi,
           ),
         )
         // Le capteur générique (chantier d50d5f34) : CHAQUE action exécutée par
@@ -927,6 +1117,10 @@ export function MicButton({
       setPhraseARejouer(null)
       if (!enchainer) return
 
+      // Même raison qu'au premier appui : la phrase d'avant ne doit pas
+      // rester sous « Toi : » pendant qu'il dit la suivante. Sa réponse à
+      // Jarvis, elle, reste affichée — c'est elle qui donne le contexte.
+      setLastUserText(null)
       setStatus("listening")
       try {
         transcript = await listen("command", {
@@ -953,6 +1147,12 @@ export function MicButton({
   async function startListening(nettoyer: (t: string) => string = (t) => t) {
     priseRef.current++
     try {
+      // LE TEXTE DU TOUR PRÉCÉDENT NE SURVIT PAS À UN NOUVEL APPUI. Sans ça,
+      // « Toi : <sa phrase d'avant> » restait affiché pendant la seconde à
+      // trois secondes que met Android à rendre son premier mot : il relisait
+      // son ancienne phrase en croyant voir la nouvelle, et ne pouvait pas
+      // savoir si celle qu'il était en train de dire était prise.
+      setLastUserText(null)
       setStatus("listening")
       const transcript = nettoyer(await listen("command", { onTexte: setLastUserText }))
       await conduireConversation(transcript)
@@ -1017,6 +1217,16 @@ export function MicButton({
   }, [])
 
   async function handleClick() {
+    // Un appui est une reprise en main : il relance la veille qui avait
+    // renoncé. Il ne la CONDITIONNE jamais — si le micro est toujours pris,
+    // cette écoute-ci échouera et la boucle renoncera à nouveau, en le
+    // disant. Poser le drapeau ici plutôt que dans chaque branche ci-dessous :
+    // tous les chemins de cette fonction sont une prise en main.
+    setVeilleAbandonnee(false)
+    // Et le compteur repart de zéro : sans ça, la boucle relancée renoncerait
+    // au premier refus suivant, puisque la ref survit maintenant au
+    // remontage de l'effet.
+    echecsOccupeRef.current = 0
     if (modeLive) {
       if (liveRef.current) {
         arreterLive()
@@ -1090,6 +1300,35 @@ export function MicButton({
   // conversation, l'état n'est jamais au repos, donc la veille attend.
   const veilleActive = wakeWordEnabled && visible
 
+  // LA VEILLE A RENONCÉ : le service de reconnaissance a refusé le micro tant
+  // de fois d'affilée qu'insister ne fait plus que jouer la tonalité de
+  // Samsung toutes les quatre secondes. Sa décision du 9 sept. 2026 : « il
+  // vaut mieux que le micro s'arrête et qu'on réactive jarvis manuellement ».
+  // L'état sert à l'AFFICHAGE et à couper la boucle ; un appui sur le cœur le
+  // remet à faux, ce qui remonte la boucle (il est dans ses dépendances).
+  const [veilleAbandonnee, setVeilleAbandonnee] = useState(false)
+  // Relu à chaque tour de boucle, jamais capturé au montage : il change
+  // depuis Paramètres pendant que la veille tourne.
+  const seuilAbandonRef = useRef(seuilAbandonVeille)
+  seuilAbandonRef.current = seuilAbandonVeille
+  // LE COMPTEUR DE REFUS VIT HORS DE LA BOUCLE, et c'est tout ce qui fait
+  // marcher `renonceApresRefus`. Mesuré le 18 sept. 2026 sur son journal :
+  // `rafale_fin` portait UNE chaîne ininterrompue de 159 refus « occupe » sur
+  // six heures — micro mort — pendant que la cadence repartait de 700 ms
+  // toutes les 5 à 13 rafales. Le compteur était une variable LOCALE de
+  // `wakeLoop`, et l'effet qui porte la boucle se remonte dès que
+  // `veilleActive` change (l'app passe en arrière-plan, l'écran s'éteint, il
+  // change de fenêtre). Chaque remontage le remettait à zéro : le seuil de 20
+  // n'était jamais atteint, et la veille n'a pas renoncé une seule fois.
+  //
+  // La ref compte donc EXACTEMENT ce que le journal compte — des rafales
+  // consécutives toutes refusées, sans limite de temps entre elles, puisque
+  // c'est sur cette mesure-là que le seuil a été calibré (la plus longue
+  // chaîne qui se rétablit toute seule fait 26). Une rafale qui N'EST PAS un
+  // refus la remet à zéro : une pièce calme rend « silence », donc le
+  // compteur ne monte jamais quand tout va bien.
+  const echecsOccupeRef = useRef(0)
+
   // Une mise à jour qui s'installe suspend la veille (voir majEnCours.ts et
   // peutEcouterEnVeille). L'état sert à l'AFFICHAGE, la ref à la boucle —
   // qui est montée une fois et ne verrait jamais un état changé après coup.
@@ -1112,7 +1351,7 @@ export function MicButton({
   const derniersRef = useRef({ demarrerLive, conduireConversation, startListening, handleClick, resolveTranscript, executerActions })
   derniersRef.current = { demarrerLive, conduireConversation, startListening, handleClick, resolveTranscript, executerActions }
   useEffect(() => {
-    if (!veilleActive) return
+    if (!veilleActive || veilleAbandonnee) return
     let cancelled = false
 
     async function wakeLoop() {
@@ -1124,7 +1363,6 @@ export function MicButton({
       // calme qui suit une chaîne de refus n'a pas à hériter d'un recul de
       // 8 s), ni se contenter du recul fixe qui les a mesurément laissés se
       // répéter en chaîne — voir delaiApresOccupe dans src/lib/veille.ts.
-      let echecsOccupeConsecutifs = 0
       while (!cancelled) {
         if (
           !peutEcouterEnVeille({
@@ -1164,7 +1402,23 @@ export function MicButton({
           echecDemarrage = err instanceof Error && err.message === MOTEUR_OCCUPE
         }
         if (cancelled) return
-        echecsOccupeConsecutifs = echecDemarrage ? echecsOccupeConsecutifs + 1 : 0
+        echecsOccupeRef.current = echecDemarrage ? echecsOccupeRef.current + 1 : 0
+        if (renonceApresRefus(echecsOccupeRef.current, seuilAbandonRef.current)) {
+          // On s'arrête là, et on le DIT (voir plus bas, sous le cœur) :
+          // continuer reviendrait à réclamer un micro que quelque chose
+          // d'autre tient, toutes les quatre secondes, indéfiniment — mesuré
+          // le 17 sept. 2026, 229 refus d'affilée sur 2 h 22 sans une seule
+          // écoute réelle, pendant qu'à l'écran une pastille clignotante
+          // promettait « Dis "Jarvis" quand tu veux ».
+          noterEcoute("veille_abandon", {
+            echecs: echecsOccupeRef.current,
+            seuil: seuilAbandonRef.current,
+            raison: "refus_repetes",
+          })
+          setStatus("idle")
+          setVeilleAbandonnee(true)
+          return
+        }
         // Un démarrage refusé n'a rien écouté : il ne compte pas comme une
         // rafale silencieuse, sans quoi un vrai silence qui suit une chaîne
         // de refus hériterait à tort d'un recul déjà remonté à plusieurs
@@ -1186,6 +1440,19 @@ export function MicButton({
         if (modeLiveRef.current && (suite === "conversation" || suite === "oui")) {
           // Mode Live : le mot-clé ouvre la conversation, et ce qui a été
           // dit après lui part comme premier message.
+          //
+          // « Jarvis » seul (chantier a392a832, 17 sept.) : sa demande, mot
+          // pour mot — « on regarde pas toujours l'application […] et à
+          // partir du moment où c'est dispo, il dit oui, qu'est-ce qu'il y a
+          // […] comme une conversation humaine ». En mode classique, ce cas
+          // dit déjà « Oui ? » (voir plus bas) ; en Live, demarrerLive()
+          // ouvrait la session en silence — rien ne disait qu'elle était
+          // prête, donc rien ne l'invitait à parler s'il ne regardait pas
+          // l'écran. Même timing que le mode classique : dit PENDANT que la
+          // connexion s'ouvre, pas avant (ouvrir un jeton Live prend
+          // 1 à 4 s, cf. _shared notes sur ms_jeton — le silence aurait duré
+          // bien plus longtemps que pour le micro classique).
+          if (suite === "oui") void speak("Oui ?", voiceIndex ?? undefined)
           await derniersRef.current.demarrerLive(suite === "conversation" ? demande : undefined)
         } else if (suite === "conversation") {
           // « Jarvis, ajoute une tâche » : la demande est déjà là.
@@ -1205,8 +1472,41 @@ export function MicButton({
         }
         if (!cancelled) {
           const delai = echecDemarrage
-            ? delaiApresOccupe(echecsOccupeConsecutifs)
+            ? delaiApresOccupe(echecsOccupeRef.current)
             : delaiAvantRafaleSuivante(false, rafalesMuettes)
+          // CE QUE LA BOUCLE PENSE, pas ce que le journal déduit. Mesuré le
+          // 18 sept. 2026 : `rafale_fin` montrait UNE chaîne ininterrompue de
+          // 159 refus « occupe » sur six heures, et pourtant la cadence
+          // repartait de 700 ms toutes les 5 à 13 rafales — donc
+          // le compteur de refus retombait à zéro, et le seuil de 20
+          // (`renonceApresRefus`) n'était JAMAIS atteint. Impossible de dire
+          // POURQUOI depuis la base : `echecDemarrage` et le compteur ne sont
+          // écrits nulle part, on ne pouvait que les déduire des écarts entre
+          // deux rafales — et un écart porte aussi le temps de la relève.
+          // Même méthode que `ms_ouverture`/`ms_premier_mot` (15 sept.) : on
+          // mesure d'abord, on recode ensuite.
+          //
+          // SEULEMENT PENDANT UNE CHAÎNE DE REFUS : une pièce calme n'écrit
+          // rien du tout, sinon on doublerait le volume de `journal_ecoute`
+          // pour la situation normale.
+          if (echecDemarrage) {
+            // NE REMETS PAS ICI UNE SONDE `isListening()` DU PLUGIN pour
+            // savoir qui tient le micro. Essayé le 18 sept. 2026 au matin,
+            // et c'était un CONTRÔLE MORT : `onError` du plugin appelle
+            // `stopListening()`, qui met son drapeau `listening` à faux — au
+            // moment où on lirait la sonde, juste après un démarrage refusé,
+            // elle vaut donc faux PAR CONSTRUCTION. Mesuré : 69 refus, 69
+            // fois `false`, ce qui se lit comme « ce n'est pas nous » alors
+            // que ça ne dit rien du tout. Trancher demande de savoir si le
+            // micro BRUT est libre (une tentative d'`AudioRecord` côté
+            // natif) — donc une vraie APK, et un cadrage avec Raphaël.
+            noterEcoute("veille_recul", {
+              echecs: echecsOccupeRef.current,
+              muettes: rafalesMuettes,
+              delai_ms: delai,
+              seuil: seuilAbandonRef.current,
+            })
+          }
           await new Promise((r) => setTimeout(r, delai))
         }
       }
@@ -1220,10 +1520,143 @@ export function MicButton({
       if (statusRef.current === "wake-listening") {
         stopListening()
         setStatus("idle")
+        // Le micro était réellement ouvert au moment où l'app a perdu le
+        // premier plan (document.visibilityState, lu en direct plutôt que
+        // via `visible` : cette fermeture peut aussi venir d'ailleurs, par
+        // exemple le mot-clé désactivé depuis Paramètres pendant que l'app
+        // reste affichée, et ce cas-là n'a rien d'un conflit). Voir
+        // focusPerduPendantEcoute dans veille.ts pour le détail du
+        // raisonnement et sa limite connue (l'écran partagé, une fenêtre
+        // d'assistance par-dessus une autre app, ne se voient pas d'ici).
+        if (focusPerduPendantEcoute(statusRef.current, document.visibilityState === "hidden")) {
+          setVeilleAbandonnee(true)
+          noterEcoute("veille_abandon", { raison: "focus_perdu" })
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [veilleActive])
+  }, [veilleActive, veilleAbandonnee])
+
+  // L'ANNONCE d'un message programmé (messages_programmes, chantier
+  // ed32cbcc) : Jarvis le dit de lui-même la prochaine fois qu'il a la
+  // parole. PAS une notification — sa réponse du 4 sept. à la fiche « Quand
+  // Jarvis doit te déranger » est NON à ça pour ce cas précis (voir l'en-tête
+  // de src/lib/notifications/prefs.ts) : l'annonce ne vit que dans une
+  // conversation active, app ouverte, jamais par une alerte système. La
+  // décision (quand, quoi) est dans messageAnnonce.ts, pure ; ici on ne fait
+  // que la brancher, en vérifiant périodiquement pendant que l'app tourne.
+  //
+  // MÊME REF, MÊME RAISON que derniersRef juste au-dessus : l'intervalle est
+  // monté une seule fois, ce qu'il lirait en direct serait figé au premier
+  // rendu (tâches, contacts pas encore chargés).
+  const annonceMessageRef = useRef({
+    contacts: contactsApi.contacts,
+    speak,
+    muted: voiceSettingApi.muted,
+    voiceIndex,
+  })
+  annonceMessageRef.current = { contacts: contactsApi.contacts, speak, muted: voiceSettingApi.muted, voiceIndex }
+  const derniereAnnonceMessageRef = useRef<number | null>(null)
+  // Verrou simple : `messagesAAnnoncer()` est un aller-retour réseau, et sans
+  // lui deux tours de l'intervalle pourraient s'y engager en même temps
+  // (l'un n'ayant pas encore posé `derniereAnnonceMessageRef` que l'autre
+  // aurait pu lire) — annonçant deux fois le même message.
+  const annonceEnCoursRef = useRef(false)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    let annule = false
+
+    async function verifier() {
+      if (annule || annonceEnCoursRef.current) return
+      const courant = annonceMessageRef.current
+      if (
+        !peutAnnoncerMaintenant({
+          statut: statusRef.current,
+          voixCoupee: courant.muted,
+          derniereAnnonceIlYA_ms:
+            derniereAnnonceMessageRef.current === null ? null : Date.now() - derniereAnnonceMessageRef.current,
+        })
+      ) {
+        return
+      }
+
+      annonceEnCoursRef.current = true
+      try {
+        await annoncerSiDu(courant)
+      } finally {
+        annonceEnCoursRef.current = false
+      }
+    }
+
+    async function annoncerSiDu(courant: (typeof annonceMessageRef)["current"]) {
+      let dus: Awaited<ReturnType<typeof messagesProgrammesApi.messagesAAnnoncer>>
+      try {
+        dus = await messagesProgrammesApi.messagesAAnnoncer()
+      } catch {
+        return
+      }
+      if (annule) return
+      const prochain = prochainMessageAAnnoncer(dus, new Date())
+      if (!prochain) return
+
+      derniereAnnonceMessageRef.current = Date.now()
+      try {
+        await messagesProgrammesApi.marquerAnnonce(prochain.id)
+      } catch {
+        // Sans conséquence : l'annonce a quand même lieu, et « annule »
+        // n'a besoin que du texte et du destinataire, pas de ce marquage.
+      }
+
+      const dit = phraseAnnonceMessage(prochain)
+      setLastUserText(null)
+      setLastReply(dit)
+      setStatus("speaking")
+      bargeInRef.current = false
+      await courant.speak(dit, courant.voiceIndex ?? undefined)
+      if (annule || bargeInRef.current) {
+        if (!annule) setStatus("idle")
+        return
+      }
+
+      // Prépare VRAIMENT le brouillon (WhatsApp/SMS) — c'est ce même
+      // brouillon que « envoie-le », « remplace X par Y » et « relis-le
+      // moi » (déjà reconnus juste au-dessus pour un message préparé à
+      // l'oral) sauront retrouver, sans rien inventer de plus.
+      const action: ActionTelephone = {
+        action: "send_message",
+        message_text: prochain.texte,
+        contact_id: prochain.contact_id ?? undefined,
+        // Le contact_id n'est presque jamais connu (le carnet de Jarvis n'en
+        // tient plus, voir CLAUDE.md) : c'est `destinataire` — ce qu'il a
+        // dit à l'oral en programmant l'envoi — qui sert à le retrouver dans
+        // le répertoire du téléphone, exactement comme contact_name ailleurs.
+        contact_name: prochain.contact_id ? undefined : prochain.destinataire,
+        message_channel: prochain.canal ?? undefined,
+      }
+      // sauterFenetre: l'annonce qu'on vient de dire EST déjà la
+      // confirmation (même principe que la relecture avant ouverture,
+      // confirmationEnvoiVocale.ts) : la fenêtre d'annulation passive
+      // redirait une seconde phrase, suivie d'un silence, pour rien.
+      let reponsePreparation: string
+      try {
+        reponsePreparation = await executerActionTelephone(action, courant.contacts, { sauterFenetre: true })
+      } catch {
+        reponsePreparation = "Je n'ai pas réussi à préparer ce message."
+      }
+      marquerMessagePrepareCommeProgramme(prochain.id)
+      retenirLeTour(dit, [action], reponsePreparation)
+
+      setLastReply(reponsePreparation)
+      if (!annule) setStatus("idle")
+    }
+
+    const id = setInterval(() => void verifier(), 45_000)
+    return () => {
+      annule = true
+      clearInterval(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Ouverture avec ?mic=1 (ex: depuis un widget ou le bouton latéral
   // réassigné, Phase 3) : lance directement l'écoute sans avoir à taper
@@ -1268,7 +1701,7 @@ export function MicButton({
       </button>
       {status === "listening" && !liveRef.current && (
         <p className="text-sm text-muted-foreground">
-          {micReady ? "Je t'écoute — touche le cœur quand tu as fini." : "Préparation du micro..."}
+          {phraseEcoute({ pret: micReady, aDuTexte: !!lastUserText, attenteDepassee })}
         </p>
       )}
       {liveRef.current && (status === "listening" || status === "speaking") && (
@@ -1320,7 +1753,19 @@ export function MicButton({
           était réellement actif : un indicateur qui n'apparaît qu'une fraction
           du temps revient à ne rien indiquer. */}
       {wakeWordEnabled && (status === "wake-listening" || status === "idle") && (
-        majEnCoursEtat ? (
+        veilleAbandonnee ? (
+          // La pastille clignotante disait « Dis "Jarvis" quand tu veux »
+          // pendant que le micro était pris — mesuré le 17 sept. 2026 :
+          // 2 h 22 à le promettre sans qu'une seule écoute s'ouvre. Ce qu'on
+          // affiche ici n'accuse rien qu'on n'ait pas constaté : depuis le
+          // téléphone, on sait que le service a refusé, pas QUI le tient.
+          <p className="flex flex-col items-center gap-1 text-xs text-muted-foreground">
+            <span className="font-medium text-destructive">
+              Le micro est pris par autre chose — j'ai arrêté d'insister.
+            </span>
+            <span>Touche le cœur pour reprendre.</span>
+          </p>
+        ) : majEnCoursEtat ? (
           // Le DIRE plutôt que de rester muet : une veille suspendue sans un
           // mot se lit exactement comme un mot-clé qui ne marche pas — le
           // défaut qu'il signalait le 3 sept. (« je ne sais jamais ce qui est

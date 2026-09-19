@@ -20,6 +20,9 @@ import {
 import {
   apresRafale,
   delaiApresOccupe,
+  focusPerduPendantEcoute,
+  renonceApresRefus,
+  REFUS_AVANT_ABANDON,
   delaiAvantRafaleSuivante,
   enRefroidissement,
   peutEcouterEnVeille,
@@ -192,6 +195,55 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
   verifier("le plafond des refus reste sous celui du silence pur",
     RECUL_OCCUPE_MAX_MS < RECUL_MAX_MS, true)
   verifier("zéro refus se comporte comme un seul (jamais un délai nul)", delaiApresOccupe(0), RECUL_APRES_ECHEC_MS)
+}
+
+// 11 ter. Et quand la chaîne de refus ne se rétablit JAMAIS, la veille
+//         renonce — sa décision du 9 sept. 2026. Mesuré le 17 sept. sur son
+//         journal : 229 refus d'affilée sur 2 h 22, zéro écoute réelle.
+{
+  verifier("un refus isolé ne fait renoncer personne", renonceApresRefus(1, REFUS_AVANT_ABANDON), false)
+
+  // LA MOITIÉ QUI COMPTE : le seuil doit laisser passer ce qui se rétablit
+  // tout seul. Mesuré sur 48 h de son journal, la plus longue chaîne qui est
+  // repartie d'elle-même fait 26 refus... mais elles sont rarissimes : 13 est
+  // la plus longue COURANTE (7 occurrences). Un seuil qui couperait à 13
+  // tuerait la veille plusieurs fois par jour pour rien.
+  verifier("une chaîne de 13, la plus longue courante, ne fait pas renoncer",
+    renonceApresRefus(13, REFUS_AVANT_ABANDON), false)
+  verifier("la chaîne morte du 17 sept. (229 refus), elle, fait renoncer",
+    renonceApresRefus(229, REFUS_AVANT_ABANDON), true)
+  verifier("pile au seuil, on renonce", renonceApresRefus(REFUS_AVANT_ABANDON, REFUS_AVANT_ABANDON), true)
+  verifier("juste en dessous, non", renonceApresRefus(REFUS_AVANT_ABANDON - 1, REFUS_AVANT_ABANDON), false)
+
+  // « Ne jamais renoncer » (le réglage) rend EXACTEMENT le comportement
+  // d'avant : c'est ce qui lui permet de comparer les deux.
+  verifier("seuil 0 : on n'abandonne jamais, même après 229 refus",
+    renonceApresRefus(229, 0), false)
+  verifier("un seuil négatif se lit comme « jamais », pas comme « tout de suite »",
+    renonceApresRefus(1, -5), false)
+
+  // Le seuil se règle : un seuil BAS doit vraiment renoncer plus tôt, sinon
+  // le réglage de Paramètres ne changerait rien.
+  verifier("réglé serré (10), une chaîne de 13 fait renoncer", renonceApresRefus(13, 10), true)
+  verifier("réglé large (40), la même chaîne de 13 n'y fait rien", renonceApresRefus(13, 40), false)
+}
+
+// 11 quater. Coupure PROACTIVE d'un conflit de micro (chantier 7a6e75c4,
+//            18 sept. 2026) : perdre le premier plan PENDANT que le mot-clé
+//            écoutait activement, ex. l'utilisateur ouvre WhatsApp pour une
+//            note vocale. Ce n'est PAS un conflit si la veille était au repos
+//            (entre deux rafales, aucun micro ouvert) au moment de la perte.
+{
+  verifier("le micro était ouvert ET l'app est cachée : conflit détecté",
+    focusPerduPendantEcoute("wake-listening", true), true)
+  verifier("le micro était ouvert mais l'app reste affichée (ex. mot-clé désactivé) : pas un conflit",
+    focusPerduPendantEcoute("wake-listening", false), false)
+  verifier("l'app est cachée mais la veille était au repos entre deux rafales : rien à couper",
+    focusPerduPendantEcoute("idle", true), false)
+  verifier("aucun des deux signaux : rien à couper",
+    focusPerduPendantEcoute("idle", false), false)
+  verifier("une vraie commande en cours (pas la veille) : hors du périmètre de cette détection",
+    focusPerduPendantEcoute("listening", true), false)
 }
 
 // 12. Le « Oui ? » de Jarvis, dit pendant que le micro s'ouvre, ne doit pas

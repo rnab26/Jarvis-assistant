@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
 // La vraie feuille de style de l'app : sans elle, le contrôle de largeur sur
 // un écran de téléphone ne voudrait rien dire.
@@ -19,6 +19,7 @@ import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
 import { FILTRE_VIDE, type FiltreCockpit } from "@/lib/sections"
+import type { FusionAnnulable } from "@/hooks/useDevItems"
 import type {
   DevItem,
   DevLogEntry,
@@ -152,7 +153,12 @@ const CHANTIERS = [
 ]
 
 /** Deux messages du journal rattachés au premier chantier : une question
- * restée sans réponse, et une info. */
+ * restée sans réponse, et une info. Plus un message qu'une session adresse à
+ * une AUTRE session sur ce même chantier (« Pour la session… ») : capture de
+ * Raphaël le 17 sept. 2026, un échange de coordination technique entre deux
+ * sessions s'affichait tel quel dans le fil qu'il lit, avec en dessous un
+ * champ qui l'invitait à y répondre. Il ne doit ni s'y voir, ni compter dans
+ * le badge « questions en attente » de la ligne repliée. */
 const MESSAGES: DevLogEntry[] = [
   {
     id: "m1",
@@ -161,6 +167,7 @@ const MESSAGES: DevLogEntry[] = [
     author: "claude/voix-et-ecoute",
     kind: "question",
     body: "Tu veux que je coupe le micro après 30 s de silence, ou qu'il attende ?",
+    pourquoi: "Un micro qui reste ouvert consomme la batterie pour rien.",
     answered_at: null,
     created_at: new Date(Date.now() - 3 * 3600_000).toISOString(),
   },
@@ -173,6 +180,16 @@ const MESSAGES: DevLogEntry[] = [
     body: "En attendant je pars sur 30 s, c'est réversible.",
     answered_at: null,
     created_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
+  },
+  {
+    id: "m3",
+    user_id: "banc",
+    item_id: "c2",
+    author: "claude/le-telephone",
+    kind: "question",
+    body: "Pour la session voix-et-ecoute : tu es toujours sur ce fichier ? Je voudrais y toucher.",
+    answered_at: null,
+    created_at: new Date(Date.now() - 90 * 60000).toISOString(),
   },
 ]
 
@@ -398,6 +415,24 @@ const CALME = new URLSearchParams(location.search).has("calme")
  * chargés. Ce que le cockpit dit alors compte autant que ce qu'il dit quand
  * tout va bien — une panne muette se lit comme une absence. */
 const PANNE = new URLSearchParams(location.search).has("panne")
+/** `?cible=1` ou `?cible=archive` : un lien direct (notification, message —
+ * chantiers 04d2fa9e/332d87fd/f613211c). `?cible=1` vise `c3` (« Widget
+ * d'écran d'accueil », section « Le téléphone », PAS la même section que les
+ * deux premiers chantiers, « Voix et écoute ») : prouve que c'est bien SA
+ * section qui s'ouvre, pas seulement la première. `?cible=archive` vise `c4`
+ * (« Le badge de version, livré », déjà ARCHIVÉ) — le cas le plus fréquent en
+ * pratique pour une notification « chantier livré » : le bloc « Archivées »,
+ * repliée par défaut, doit s'ouvrir tout seul. `d2` (une décision SANS
+ * chantier) prouve, dans les deux cas, la mise en évidence côté « Ce qui
+ * attend ta décision » quand `?chantier=` ne s'applique pas.
+ *
+ * `CockpitPage` (pas testé ici, hors de portée de ce banc — il lit l'URL via
+ * `useSearchParams`, qui a besoin d'un Router) résout ces deux props depuis
+ * `?chantier=`/`?entree=` exactement de la même façon ; ce banc vérifie ce
+ * que ces props FONT une fois reçues. */
+const CIBLE_PARAM = new URLSearchParams(location.search).get("cible")
+const CIBLE = CIBLE_PARAM === "1"
+const CIBLE_ARCHIVE = CIBLE_PARAM === "archive"
 const REEL = VOLUME ? volumeReel() : null
 
 /** Un historique de chantier comme il s'en écrit vraiment : une note complétée,
@@ -446,6 +481,56 @@ function historiqueFactice(
   return { lignes, chargement, erreur, restaurer: async () => {} }
 }
 
+/**
+ * Le mode « une question à la fois » (chantier `efd162a4`, point 3) : sa
+ * propre petite base, isolée du reste du banc, pour vérifier la numérotation,
+ * l'avancée automatique une fois répondu, et l'état vide — sans dépendre de
+ * l'ordre des autres parcours qui mutent `messages` plus haut sur la page.
+ */
+function UneALaFoisDemo() {
+  const [msgs, setMsgs] = useState<DevLogEntry[]>([
+    {
+      id: "ual1",
+      user_id: "banc",
+      item_id: null,
+      author: "claude/demo",
+      kind: "question",
+      body: "Première question à trancher : on reprend lundi ou mardi ?",
+      pourquoi: "Pour caler la suite.",
+      options: [
+        { cle: "lundi", libelle: "Lundi" },
+        { cle: "mardi", libelle: "Mardi" },
+      ],
+      answered_at: null,
+      created_at: new Date(Date.now() - 3600_000).toISOString(),
+    },
+    {
+      id: "ual2",
+      user_id: "banc",
+      item_id: null,
+      author: "claude/demo",
+      kind: "question",
+      body: "Deuxième question à trancher : on garde ce nom ?",
+      pourquoi: "Un nom qui change en cours de route perd ceux qui le cherchent déjà.",
+      answered_at: null,
+      created_at: new Date(Date.now() - 1800_000).toISOString(),
+    },
+  ])
+  return (
+    <CeQuiAttendTaDecision
+      messages={msgs}
+      devItems={[]}
+      uneALaFois
+      onRepondre={async (question) => {
+        setMsgs((m) =>
+          m.map((x) => (x.id === question.id ? { ...x, answered_at: new Date().toISOString() } : x)),
+        )
+      }}
+      onEtat={async () => {}}
+    />
+  )
+}
+
 function BancDuCockpit() {
   // Lu une fois, comme le chemin rapide du vrai hook.
   const [repereInitial] = useState(lireRepereLocal)
@@ -469,6 +554,62 @@ function BancDuCockpit() {
     REELLES?.messages ?? (CALME ? [] : [...MESSAGES, ...DECISIONS, COMPTE_RENDU]),
   )
   const [filtre, setFiltre] = useState<FiltreCockpit>(FILTRE_VIDE)
+  const tableauRef = useRef<HTMLDivElement>(null)
+  // Mirroir de `CockpitPage.voirChantierDuMessage` : les lignes du bandeau
+  // « Depuis ton dernier passage » avaient l'air cliquables et ne menaient
+  // nulle part (Raphaël, 17 sept. 2026).
+  function voirChantierDuMessage(itemId: string | null) {
+    const item = itemId ? devItems.find((i) => i.id === itemId) : undefined
+    if (item) {
+      setFiltre({ ...FILTRE_VIDE, recherche: item.title })
+      tableauRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    } else {
+      document.getElementById("journal")?.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }
+  // Ce qui existe en base sans être chargé : 304 - 60 au 17 sept.
+  const [resteEnPlus, setResteEnPlus] = useState(244)
+  const [traceAjout, setTraceAjout] = useState("rien")
+  const [traceTraite, setTraceTraite] = useState(0)
+
+  // Le banc n'a pas de dev_items_supprimes : cette réserve locale rejoue le
+  // même rôle pour que « Annuler » une fusion puisse recréer le chantier
+  // absorbé à l'identique, comme restaurer_chantier_supprime côté serveur.
+  const supprimesParFusion = useRef(new Map<string, DevItem>())
+
+  async function onFusionner(source: string, cible: string): Promise<FusionAnnulable> {
+    const src = devItems.find((i) => i.id === source)
+    const dst = devItems.find((i) => i.id === cible)
+    if (!src || !dst) throw new Error("Chantier introuvable")
+    supprimesParFusion.current.set(source, src)
+
+    const rang = { low: 0, normal: 1, high: 2 } as const
+    const priorite = rang[src.priority] > rang[dst.priority] ? src.priority : dst.priority
+    const cibleNotesAvant = dst.notes
+    const ciblePrioriteAvant = dst.priority
+    const notes = `${dst.notes ?? ""}${(dst.notes ?? "").trim() ? "\n\n---\n" : ""}Fusionné avec « ${src.title} » :\n${(src.notes ?? "").trim() || "(sans notes)"}`
+    const messagesSource = messages.filter((m) => m.item_id === source).map((m) => m.id)
+
+    setDevItems((items) =>
+      items.filter((i) => i.id !== source).map((i) => (i.id === cible ? { ...i, notes, priority: priorite } : i)),
+    )
+    setMessages((m) => m.map((x) => (messagesSource.includes(x.id) ? { ...x, item_id: cible } : x)))
+
+    return { source, cible, cibleNotesAvant, ciblePrioriteAvant, messages: messagesSource }
+  }
+
+  async function onAnnulerFusion(etat: FusionAnnulable) {
+    const src = supprimesParFusion.current.get(etat.source)
+    if (!src) return
+    supprimesParFusion.current.delete(etat.source)
+    setDevItems((items) => [
+      ...items.map((i) =>
+        i.id === etat.cible ? { ...i, notes: etat.cibleNotesAvant, priority: etat.ciblePrioriteAvant } : i,
+      ),
+      src,
+    ])
+    setMessages((m) => m.map((x) => (etat.messages.includes(x.id) ? { ...x, item_id: etat.source } : x)))
+  }
 
   const sectionsState = {
     sections: PANNE ? [] : sections,
@@ -529,7 +670,12 @@ function BancDuCockpit() {
           quand la carte ne rend rien, ce qui a déjà coûté 16 points au budget
           une première fois avec la carte des doublons. On repère donc les deux
           bandeaux par leur ORDRE — celui du haut d'abord. */}
-      <DepuisTonDernierPassage devItems={devItems} messages={messages} visite={visite} />
+      <DepuisTonDernierPassage
+        devItems={devItems}
+        messages={messages}
+        visite={visite}
+        onNaviguer={voirChantierDuMessage}
+      />
       <OuJenSuis
         devItems={devItems}
         sections={sections}
@@ -546,6 +692,7 @@ function BancDuCockpit() {
       <CeQuiAttendTaDecision
         messages={messages}
         devItems={devItems}
+        entreeCible={CIBLE || CIBLE_ARCHIVE ? "d2" : null}
         onRepondre={async (question, option, commentaire) => {
           setMessages((m) => [
             ...m.map((x) =>
@@ -582,15 +729,46 @@ function BancDuCockpit() {
 
       {/* Le journal, à sa place réelle dans la page : sans lui, la mesure de
           ce qu'on voit en arrivant serait fausse de deux cents points. */}
+      {/* Le journal avec ce qu'il a signalé le 17 sept. : 304 entrées en base,
+          60 à l'écran, et une seule répondable. `resteEnPlus` simule ce qui
+          n'est pas chargé pour que « Voir les N précédentes » fasse vraiment
+          quelque chose. Les deux traces plus bas disent ce que le composant a
+          réellement appelé : répondre à une note ne doit RIEN marquer traité. */}
+      {/* Un conteneur ici ne coûte AUCUN gap : `DevLogFeed` rend toujours sa
+          carte, donc le div remplace la carte comme élément de la colonne au
+          lieu de s'y ajouter. Le piège des seize points ne vaut que pour une
+          carte qui peut ne rien rendre. Le budget de hauteur le vérifie. */}
+      <div id="journal">
       <DevLogFeed
         entries={messages}
         devItems={devItems}
+        total={messages.length + resteEnPlus}
         loading={false}
         error={null}
         onRefresh={() => {}}
-        onAdd={async () => {}}
-        onMarkAnswered={async () => {}}
+        onChargerPlus={() => {
+          const pris = Math.min(60, resteEnPlus)
+          setResteEnPlus((r) => r - pris)
+          setMessages((m) => [
+            ...m,
+            ...Array.from({ length: pris }, (_, i) => ({
+              id: `ancien-${m.length + i}`,
+              user_id: "u",
+              item_id: null,
+              author: "claude/ancienne-session",
+              kind: "info" as const,
+              body: `Note plus ancienne numero ${m.length + i}`,
+              answered_at: null,
+              created_at: "2026-09-04T08:00:00Z",
+            })),
+          ])
+        }}
+        onAdd={async (_body, kind, _itemId, repondA) => {
+          setTraceAjout(`${kind ?? "info"}|repond_a=${repondA ?? "aucun"}`)
+        }}
+        onMarkAnswered={async () => setTraceTraite((n) => n + 1)}
       />
+      </div>
       {/* SANS div d'enrobage, et c'est important : la carte se retire d'elle-même
           quand il n'y a rien à dire, mais un conteneur vide continuerait de
           consommer un `gap` de la colonne. Seize points de plus poussés sur
@@ -615,11 +793,13 @@ function BancDuCockpit() {
           sous le résumé dont la hauteur est mesurée. Si le banc ne la montait
           pas, il mesurerait une page qui n'existe pas. */}
       <BarreActualiser seulementSiProbleme statut="en_ligne" derniereMaj={null} enCours={false} onActualiser={() => {}} />
+      <div ref={tableauRef}>
       <CockpitBoard
         devItems={devItems}
         sectionsState={sectionsState}
         filtre={filtre}
         onFiltre={setFiltre}
+        chantierCible={CIBLE ? "c3" : CIBLE_ARCHIVE ? "c4" : null}
         onUpdate={async (id, patch) => {
           setDevItems((items) => items.map((i) => (i.id === id ? { ...i, ...patch } : i)))
         }}
@@ -674,7 +854,10 @@ function BancDuCockpit() {
             }),
           )
         }}
+        onFusionner={onFusionner}
+        onAnnulerFusion={onAnnulerFusion}
       />
+      </div>
 
       {/* Le cas qui trompe : la base n'a pas pu être écrite. Le « Vu » ne vaut
           alors que sur CET écran, et il doit le savoir — sinon il retrouve le
@@ -699,8 +882,25 @@ function BancDuCockpit() {
       <div id="historique-panne">
         <HistoriqueChantier itemId="3" api={historiqueFactice([], "Le serveur ne répond pas.")} />
       </div>
+
+      {/* Ce que le journal a RÉELLEMENT appelé. Sans ça, « répondre à une note
+          ne la marque pas traitée » ne se vérifie pas depuis l'écran : rien
+          n'y paraît. */}
+      <div id="journal-trace" className="text-xs">
+        ajout={traceAjout} traites={traceTraite}
+      </div>
+
     </div>
   )
 }
 
-createRoot(document.getElementById("root")!).render(<BancDuCockpit />)
+// Sa propre petite page, plutôt qu'un bloc de plus dans `BancDuCockpit` :
+// celui-ci est déjà ouvert et déplié dès le montage (forceOuvert), et
+// mélangé au reste il fausserait les comptes globaux (« chaque point porte
+// SON champ de commentaire », par exemple) que d'autres parcours vérifient
+// sur toute la page. Même précédent que `?volume=1` / `?calme=1`.
+const UNE_A_LA_FOIS = new URLSearchParams(location.search).has("une-a-la-fois")
+
+createRoot(document.getElementById("root")!).render(
+  UNE_A_LA_FOIS ? <UneALaFoisDemo /> : <BancDuCockpit />,
+)

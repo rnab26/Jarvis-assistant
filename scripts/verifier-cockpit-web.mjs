@@ -86,6 +86,31 @@ try {
       /* le banc ne dépend pas du stockage */
     }
   })
+  // Une fausse API de reconnaissance vocale, pilotée depuis Node
+  // (window.__dicteeTranscript / window.__dicteeErreur) : le vrai moteur de
+  // Chrome parle à un service Google, inutilisable et non déterministe en CI.
+  await page.addInitScript(() => {
+    class SpeechRecognitionSimulee {
+      start() {
+        setTimeout(() => {
+          const erreur = window.__dicteeErreur
+          if (erreur) {
+            this.onerror?.({ error: erreur })
+          } else {
+            const transcript = window.__dicteeTranscript ?? "résultat dicté"
+            this.onresult?.({ results: [[{ transcript, isFinal: true }]] })
+          }
+          this.onend?.()
+        }, 250)
+      }
+      stop() {
+        this.onend?.()
+      }
+      abort() {}
+    }
+    window.SpeechRecognition = SpeechRecognitionSimulee
+    window.webkitSpeechRecognition = SpeechRecognitionSimulee
+  })
   await page.goto(`${BASE}/scripts/harness/cockpit.html`)
   await page.waitForSelector("text=Voix et écoute")
 
@@ -123,6 +148,46 @@ try {
     "un mur de notes techniques recouvre ce qui a réellement bougé",
   )
 
+  // ── Ces lignes avaient l'air cliquables et ne faisaient rien (Raphaël,
+  // 17 sept. 2026) — elles mènent maintenant au chantier concerné ──
+  const ligneMessage = page.getByRole("button", { name: /💬.*coupe le micro/ }).first()
+  verifier(
+    "le message « pour lui » est un vrai bouton, pas du texte plat",
+    await ligneMessage.isVisible(),
+    "un texte souligné qui ne fait rien se voit comme un lien mort",
+  )
+  await ligneMessage.click()
+  await pause(300)
+  verifier(
+    "et cliquer dessus mène au chantier concerné (via item_id), pas au journal général",
+    (await page.getByLabel("Chercher un chantier").inputValue()) === "Réveil vocal en arrière-plan",
+    "il fallait tout re-chercher depuis le journal général",
+  )
+  verifier(
+    "le tableau ne garde que ce chantier",
+    (await dansLeTableau("Réveil vocal en arrière-plan")) &&
+      !(await dansLeTableau("Le micro se coupe en pleine phrase")),
+  )
+  // On efface la recherche pour ne pas fausser le reste du parcours, qui
+  // suppose un tableau non filtré.
+  await page.getByRole("button", { name: "Effacer la recherche" }).click()
+  await pause(200)
+
+  const ligneNotesEntreSessions = page.getByRole("button", { name: /entre sessions/ }).first()
+  verifier(
+    "« N notes entre sessions » est aussi un vrai bouton",
+    await ligneNotesEntreSessions.isVisible(),
+  )
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await ligneNotesEntreSessions.click()
+  await pause(400)
+  const boiteJournal = await page.locator("#journal").boundingBox()
+  verifier(
+    "et mène au journal général, faute d'un chantier unique à proposer",
+    boiteJournal !== null && boiteJournal.y < 200,
+    `journal à ${boiteJournal?.y} px du haut — il n'a pas défilé jusque-là`,
+  )
+
   // Le repère est PARTAGÉ entre son téléphone et le site depuis le 6 sept.
   // (chantier ae0f3a7b) : quand il n'a pas pu être enregistré, le bandeau doit
   // le dire, sinon il appuie sur « Vu » ici et le retrouve ailleurs sans
@@ -151,6 +216,80 @@ try {
     "« Vu » le referme, et il ne réapparaîtra pas au prochain passage",
     (await page.getByText("Depuis ton dernier passage").count()) === 1,
   )
+
+  // ── Le journal de bord : reprendre la discussion, et savoir ce qu'on ne voit pas ──
+  // Ses mots du 17 sept. 2026 : « journal de bord, incohérence sur la durée de
+  // consultation des conversations et impossibilité de reprendre la
+  // discussion ». Mesuré le même matin : 304 entrées, UNE SEULE portait un
+  // bouton « Répondre », et l'écran en montrait 60 sans un mot.
+  const journal = page.locator("#journal")
+  await journal.getByRole("button", { name: /Journal de bord/ }).first().click()
+  await pause(250)
+
+  const notes = journal.getByText(/Note de session|Compte rendu|^Note plus ancienne/)
+  verifier(
+    "le journal s'ouvre et montre ses entrées",
+    (await journal.getByRole("button", { name: "Répondre" }).count()) > 0,
+    (await journal.innerText()).slice(0, 200),
+  )
+  verifier(
+    "TOUTE entrée porte « Répondre », pas seulement une question en attente",
+    (await journal.getByRole("button", { name: "Répondre" }).count()) ===
+      (await journal.locator("div.rounded-lg.border.p-3").count()),
+    `${await journal.getByRole("button", { name: "Répondre" }).count()} boutons pour ` +
+      `${await journal.locator("div.rounded-lg.border.p-3").count()} entrées — ` +
+      "le 17 sept. il y en avait 1 pour 304",
+  )
+
+  verifier(
+    "l'écran DIT ce qu'il ne montre pas",
+    await journal.getByText(/entrées affichées sur/).isVisible(),
+    "60 sur 304 sans un mot se lit exactement comme « il n'y a plus rien »",
+  )
+
+  const entreesAvant = await journal.locator("div.rounded-lg.border.p-3").count()
+  await journal.getByRole("button", { name: /Voir les \d+ précédentes/ }).click()
+  await pause(250)
+  verifier(
+    "et « Voir les précédentes » en charge vraiment",
+    (await journal.locator("div.rounded-lg.border.p-3").count()) > entreesAvant,
+    `${entreesAvant} avant, ${await journal.locator("div.rounded-lg.border.p-3").count()} après`,
+  )
+
+  // Répondre à une NOTE D'INFORMATION : le fil se fait, mais rien n'est
+  // marqué traité — ce drapeau ne vaut que pour une question en attente.
+  const trace = page.locator("#journal-trace")
+  const traitesAvant = (await trace.innerText()).match(/traites=(\d+)/)?.[1]
+  // Le bouton d'une ENTRÉE est le dernier de la liste ; celui qui ENVOIE est
+  // au-dessus du fil, donc le premier — et il ne s'appelle « Répondre » qu'une
+  // fois qu'on a choisi à quoi on répond (« Publier » sinon).
+  await journal.getByRole("button", { name: "Répondre" }).last().click()
+  await pause(200)
+  verifier(
+    "l'écran rappelle à QUI on répond avant d'écrire",
+    await journal.getByText(/^Réponse à /).isVisible(),
+    "sans ça, on répond au fil sans savoir à quelle entrée",
+  )
+  await journal.getByRole("textbox").fill("Bien reçu, on fait comme ça.")
+  await journal.getByRole("button", { name: "Répondre" }).first().click()
+  await pause(300)
+  verifier(
+    "répondre à une note rattache la réponse à CETTE entrée",
+    /ajout=reponse\|repond_a=(?!aucun)/.test(await trace.innerText()),
+    await trace.innerText(),
+  )
+  verifier(
+    "et ne marque RIEN comme traité",
+    (await trace.innerText()).match(/traites=(\d+)/)?.[1] === traitesAvant,
+    `${await trace.innerText()} — poser answered_at sur une note est invisible aujourd'hui et faux demain`,
+  )
+
+  // On REFERME le journal : déplié, il affiche le corps des entrées, dont
+  // celui d'une décision qu'un contrôle plus bas vérifie comme absente de
+  // l'écran une fois répondue. Un banc doit rendre la page dans l'état où il
+  // l'a trouvée.
+  await journal.getByRole("button", { name: /Journal de bord/ }).first().click()
+  await pause(200)
 
   // ── « Ce qui a changé » sur un chantier ──
   // Le CLAUDE.md du projet dit que deux notes ont été écrasées les 5 et
@@ -315,6 +454,65 @@ try {
     await visible("Ce qu'on te recommande"),
   )
 
+  // ── Le micro du champ de commentaire : dicter au lieu d'écrire ──
+  // Chantier 6732dc74, 17 sept. 2026. Sa demande : répondre à une question
+  // « le plus simplement possible » — un bouton micro qui dicte DIRECTEMENT
+  // dans le texte, pas une pièce jointe audio. L'API navigateur est mockée
+  // (window.__dicteeErreur / window.__dicteeTranscript, posés côté page)
+  // pour rester déterministe : le vrai service de reconnaissance de Chrome
+  // dépend du réseau et du micro, inutilisables en CI.
+  const commentaireOuvert = page.getByLabel(/^Ton commentaire sur : On garde le mot/)
+  // L'accessible NAME du bouton change avec l'état (« Dicter… » puis « En
+  // écoute… ») : on le retrouve par sa position, pas par un libellé qui bouge.
+  const zoneCommentaire = page.locator("div.relative", { has: commentaireOuvert })
+  const micro = zoneCommentaire.getByRole("button")
+  verifier("un micro accompagne le champ de commentaire", await micro.isVisible())
+  await commentaireOuvert.fill("Avant dictée")
+  await page.evaluate(() => {
+    window.__dicteeTranscript = "et ce qui a été dit"
+    window.__dicteeErreur = null
+  })
+  await micro.click()
+  await pause(50)
+  verifier(
+    "un appui affiche l'état « en écoute »",
+    (await micro.getAttribute("aria-pressed")) === "true",
+    "sans lui, impossible de savoir si le micro écoute vraiment",
+  )
+  await pause(400)
+  verifier(
+    "le résultat dicté s'ajoute au texte déjà là, sans l'effacer",
+    (await commentaireOuvert.inputValue()) === "Avant dictée et ce qui a été dit",
+    await commentaireOuvert.inputValue(),
+  )
+  verifier("et l'écoute se referme toute seule", (await micro.getAttribute("aria-pressed")) === "false")
+
+  // Un refus de micro (ou toute autre panne du moteur) : un message clair,
+  // jamais un silence — c'est ce qu'un bouton mort ne dirait pas.
+  await page.evaluate(() => {
+    window.__dicteeErreur = "not-allowed"
+  })
+  await micro.click()
+  await pause(400)
+  verifier(
+    "un refus de micro affiche un message clair",
+    await visible("Micro refusé"),
+    "un bouton qui échoue en silence ne se distingue pas d'un bouton mort",
+  )
+
+  // Le navigateur ne connaît pas l'API : le bouton reste là (pas de contrôle
+  // qui disparaît selon le support), mais dit pourquoi il ne fait rien.
+  await page.evaluate(() => {
+    delete window.SpeechRecognition
+    delete window.webkitSpeechRecognition
+  })
+  await micro.click()
+  await pause(400)
+  verifier(
+    "sans l'API du navigateur, un message le dit — jamais un bouton mort",
+    await visible("dictée n'est pas disponible"),
+  )
+
   await point("Dépose GOOGLE").click()
   await point("Tu veux que je coupe le micro").click()
   await pause(300)
@@ -449,6 +647,15 @@ try {
     "une question de session restée sans réponse se voit sur la ligne, sans déplier",
     await tableau.getByRole("button", { name: /Réveil vocal en arrière-plan/ }).first().isVisible(),
   )
+  // Ce chantier porte trois questions en base (m1, m3, d1) mais m3 est
+  // adressée à une AUTRE session (« Pour la session… ») — le badge ne doit
+  // compter que les deux qui sont vraiment pour lui (m1, d1).
+  verifier(
+    "et un message adressé à une autre session ne gonfle pas ce compteur",
+    (await tableau.getByRole("button", { name: /Réveil vocal en arrière-plan.*2/ }).count()) === 1 &&
+      (await tableau.getByRole("button", { name: /Réveil vocal en arrière-plan.*3/ }).count()) === 0,
+    "le badge compterait aussi une question qui n'est pas pour lui",
+  )
 
   // ── Le chantier porte sa conversation ──
   await tableau.getByText("Réveil vocal en arrière-plan").first().click()
@@ -459,6 +666,14 @@ try {
     "il fallait chercher la question dans le flux général du journal",
   )
   verifier("avec la session qui l'a posée", await visible("voix-et-ecoute"))
+  // Plainte de Raphaël, 17 sept. 2026 : un échange de coordination entre deux
+  // sessions s'affichait tel quel dans ce fil, avec en dessous un champ qui
+  // l'invitait à y répondre — un sujet qui n'était pas le sien.
+  verifier(
+    "un message « Pour la session… » n'apparaît pas dans le fil qu'il lit",
+    !(await visible("tu es toujours sur ce fichier")),
+    "une coordination entre deux sessions ne le concerne pas",
+  )
 
   await page.getByLabel("Répondre sur Réveil vocal en arrière-plan").fill("Qu'il attende, oui.")
   await pause(200)
@@ -745,6 +960,95 @@ try {
     debordement <= 0,
     `${debordement} points de trop — il faudrait faire défiler latéralement`,
   )
+
+  // ── Fusionner deux chantiers (chantier e973f391) ──
+  // « Réveil vocal en arrière-plan » (Voix et écoute) et « Widget d'écran
+  // d'accueil » (Le téléphone) sont les deux seuls chantiers actifs encore
+  // intacts à ce stade du parcours (« Le micro se coupe en pleine phrase » a
+  // été supprimé par le test de la corbeille plus haut).
+  const ouvrirSection = async (nom) => {
+    const bouton = enTete(nom)
+    if ((await bouton.getAttribute("aria-expanded")) !== "true") await bouton.click()
+    await pause(150)
+  }
+
+  await page.getByRole("button", { name: "Choisir" }).first().click()
+  await pause(250)
+  await page.getByRole("checkbox", { name: /Réveil vocal en arrière-plan/ }).click()
+  await pause(150)
+  verifier(
+    "un seul chantier coché : pas de bouton Fusionner",
+    (await page.getByRole("button", { name: "Fusionner" }).count()) === 0,
+    "fusionner un chantier seul n'a pas de sens",
+  )
+  await page.getByRole("checkbox", { name: /Widget d'écran d'accueil/ }).click()
+  await pause(150)
+  verifier(
+    "exactement deux chantiers cochés : le bouton Fusionner apparaît",
+    await page.getByRole("button", { name: "Fusionner" }).isVisible(),
+  )
+  await page.getByRole("checkbox", { name: /Un chantier dicté trop vite/ }).click()
+  await pause(150)
+  verifier(
+    "trois chantiers cochés : le bouton disparaît — ni un, ni trois",
+    (await page.getByRole("button", { name: "Fusionner" }).count()) === 0,
+  )
+  await page.getByRole("checkbox", { name: /Un chantier dicté trop vite/ }).click()
+  await pause(150)
+
+  await page.getByRole("button", { name: "Fusionner" }).click()
+  await pause(300)
+  const dialogueFusion = page.getByRole("dialog")
+  verifier(
+    "la confirmation demande lequel garder, sans le présumer",
+    await dialogueFusion.getByText("Lequel garder ?").isVisible(),
+  )
+  await dialogueFusion.getByRole("combobox").click()
+  await pause(150)
+  await page.getByRole("option", { name: "Réveil vocal en arrière-plan" }).click()
+  await pause(150)
+  await dialogueFusion.getByRole("button", { name: "Fusionner", exact: true }).click()
+  await pause(700)
+
+  verifier(
+    "le chantier absorbé disparaît de la liste",
+    (await page.getByRole("checkbox", { name: /Widget d'écran d'accueil/ }).count()) === 0,
+  )
+  verifier(
+    "un toast nomme les deux et propose d'annuler, comme toute action groupée",
+    await visible("« Widget d'écran d'accueil » fusionné dans « Réveil vocal en arrière-plan »"),
+  )
+
+  await page.getByRole("button", { name: "Terminer" }).first().click()
+  await pause(250)
+  await ouvrirSection("Voix et écoute")
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(200)
+  verifier(
+    "les notes du chantier absorbé rejoignent celui qui reste",
+    await visible("Fusionné avec « Widget d'écran d'accueil »"),
+  )
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(150)
+
+  const annulerFusion = page.locator("[data-sonner-toast] button", { hasText: "Annuler" })
+  await annulerFusion.first().click()
+  await pause(500)
+  await ouvrirSection("Le téléphone")
+  verifier(
+    "annuler une fusion recrée le chantier absorbé",
+    await dansLeTableau("Widget d'écran d'accueil"),
+  )
+  await ouvrirSection("Voix et écoute")
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(200)
+  verifier(
+    "et rend à l'autre ses notes d'avant la fusion",
+    !(await visible("Fusionné avec « Widget d'écran d'accueil »")),
+  )
+  await tableau.getByText("Réveil vocal en arrière-plan").first().click()
+  await pause(150)
+
   // ─────────── Le cockpit à sa vraie taille : 83 chantiers, 9 sections ───────────
   // Tout ce qui rend une liste lisible se vérifie sur quatre chantiers et se
   // casse sur quatre-vingts.
@@ -1059,6 +1363,139 @@ try {
   )
 
   await gros.close()
+
+  // ─────────── Lien direct depuis une notification (?chantier=/?entree=) ───────────
+  // Chantiers 04d2fa9e/332d87fd/f613211c : une notification (chantier livré,
+  // session bloquée, question posée) ou un lien envoyé par une session doit
+  // amener directement sur ce qu'elle concerne, déjà déplié — pas juste
+  // ouvrir le cockpit à sa page d'accueil. `CockpitPage` résout
+  // `?chantier=`/`?entree=` en deux props (`chantierCible`, `entreeCible`)
+  // transmises telles quelles à `CockpitBoard`/`CeQuiAttendTaDecision` ; ce
+  // banc les fixe directement (`?cible=1`, pas de Router ici — `CockpitPage`
+  // et son `useSearchParams` en ont besoin, ce banc-ci vérifie ce que les
+  // props FONT une fois reçues, pas la lecture de l'URL elle-même).
+  const cible = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  cible.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (cible):", e.message)
+  })
+  await cible.goto(`${BASE}/scripts/harness/cockpit.html?cible=1`)
+  await cible.waitForSelector('[aria-label="Chantiers"]')
+  await pause(400)
+
+  verifier(
+    "un chantier visé par un lien direct est visible sans avoir cherché ni cliqué",
+    await cible.getByText("Widget d'écran d'accueil").isVisible(),
+    "sa section (« Le téléphone ») doit s'ouvrir toute seule",
+  )
+  const boutonWidget = cible.getByRole("button", { name: /Widget d'écran d'accueil/ })
+  verifier(
+    "il est déjà déplié, sans avoir appuyé sur la ligne",
+    (await boutonWidget.getAttribute("aria-expanded")) === "true",
+    "sinon il faudrait encore cliquer pour voir ce qu'on est venu chercher",
+  )
+  verifier(
+    "et SEULE sa section s'est ouverte — pas toutes",
+    !(await cible.getByText("Le micro se coupe en pleine phrase").isVisible()),
+    "« Voix et écoute » n'est pas la section visée, elle doit rester repliée",
+  )
+  verifier(
+    "une question sans chantier visée par un lien direct est déjà dépliée",
+    await cible.getByRole("button", { name: "Ça bloque" }).isVisible(),
+    "« Dépose GOOGLE_GEOCODING_API_KEY… » (chantier 332d87fd) doit s'ouvrir sans clic",
+  )
+  verifier(
+    "et une autre question, non visée, reste repliée",
+    !(await cible.getByRole("button", { name: "Sans limite" }).isVisible()),
+    "seule la question ciblée doit s'ouvrir, pas toutes",
+  )
+
+  await cible.close()
+
+  // Le cas le plus fréquent en pratique pour une notification « chantier
+  // livré » : la cible est déjà ARCHIVÉE. Le bloc « Archivées », repliée par
+  // défaut, doit s'ouvrir tout seul — sinon le lien direct amène sur un
+  // tableau où le chantier visé reste caché derrière un bandeau replié.
+  const cibleArchive = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  cibleArchive.on("pageerror", (e) => {
+    echecs++
+    console.log("ERREUR DE PAGE (cible archivée):", e.message)
+  })
+  await cibleArchive.goto(`${BASE}/scripts/harness/cockpit.html?cible=archive`)
+  await cibleArchive.waitForSelector('[aria-label="Chantiers"]')
+  await pause(400)
+
+  verifier(
+    "un chantier ARCHIVÉ visé par un lien direct s'affiche : « Archivées » s'ouvre tout seul",
+    await cibleArchive.getByText("Le badge de version, livré").isVisible(),
+    "sinon il reste caché derrière le bandeau « Archivées », replié par défaut",
+  )
+
+  await cibleArchive.close()
+
+  // ─────────── Le mode « une question à la fois » ───────────
+  // Plainte de Raphaël, 17 sept. 2026 : « faut que ce soit plus clair, plus
+  // simple, plus synthétisé, questions, réponses et on next. » Sa propre
+  // page, isolée du reste : `CeQuiAttendTaDecision` en mode `uneALaFois` est
+  // déjà ouverte et dépliée au montage, et mélangée au cockpit complet elle
+  // fausserait des comptes globaux vérifiés plus haut sur toute la page.
+  const uneALaFoisPage = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  await uneALaFoisPage.goto(`${BASE}/scripts/harness/cockpit.html?une-a-la-fois=1`)
+  await uneALaFoisPage.waitForSelector("text=Ce qui attend ta décision")
+  verifier(
+    "une seule question à la fois, numérotée",
+    await uneALaFoisPage.getByText("Question 1 sur 2").isVisible(),
+  )
+  verifier(
+    "elle est dépliée d'emblée, sans avoir à cliquer",
+    await uneALaFoisPage.getByText("Première question à trancher").isVisible(),
+    "il faudrait déplier pour voir la seule question qu'on lui montre",
+  )
+  verifier(
+    "et la seconde ne s'affiche pas en même temps",
+    !(await uneALaFoisPage.getByText("Deuxième question à trancher").isVisible()),
+  )
+  await uneALaFoisPage.getByRole("button", { name: "Suivante" }).click()
+  await pause(150)
+  verifier(
+    "« Suivante » passe à la question d'après sans y répondre",
+    await uneALaFoisPage.getByText("Deuxième question à trancher").isVisible(),
+  )
+  await uneALaFoisPage.getByRole("button", { name: "Suivante" }).click()
+  await pause(150)
+  verifier(
+    "et revient à la première une fois la dernière dépassée",
+    await uneALaFoisPage.getByText("Première question à trancher").isVisible(),
+  )
+
+  // Répondre à la première : elle sort de la file, et la suivante s'affiche
+  // TOUTE SEULE — sans bouton en plus à appuyer une fois qu'on a répondu.
+  await uneALaFoisPage.getByRole("button", { name: "Lundi", exact: true }).click()
+  await pause(150)
+  await uneALaFoisPage.getByRole("button", { name: "Répondre à :" }).click()
+  await pause(300)
+  verifier(
+    "répondre avance tout seul vers la suivante",
+    (await uneALaFoisPage.getByText("Question 1 sur 1").isVisible()) &&
+      (await uneALaFoisPage.getByText("Deuxième question à trancher").isVisible()),
+    "il faudrait aussi appuyer sur Suivante après avoir répondu",
+  )
+  verifier(
+    "et il n'y a plus de bouton Suivante avec une seule question restante",
+    (await uneALaFoisPage.getByRole("button", { name: "Suivante" }).count()) === 0,
+  )
+
+  // Répondre à la dernière : plus rien n'attend, et l'écran le DIT — un
+  // retour vide serait indiscernable d'une panne d'affichage.
+  await uneALaFoisPage.getByLabel(/Ton commentaire sur/).fill("On garde le nom.")
+  await uneALaFoisPage.getByRole("button", { name: "Répondre à :" }).click()
+  await pause(300)
+  verifier(
+    "et une fois tout traité, l'écran le dit plutôt que de rester vide",
+    await uneALaFoisPage.getByText("Rien n'attend ta décision pour l'instant.").isVisible(),
+  )
+
+  await uneALaFoisPage.close()
 
 } finally {
   if (navigateur) await navigateur.close()

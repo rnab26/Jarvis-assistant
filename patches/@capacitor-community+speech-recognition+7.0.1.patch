@@ -1,5 +1,5 @@
 diff --git a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
-index a99ea69..96e7fac 100644
+index a99ea69..7af5bfc 100644
 --- a/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 +++ b/node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java
 @@ -2,10 +2,17 @@ package com.getcapacitor.community.speechrecognition;
@@ -296,7 +296,7 @@ index a99ea69..96e7fac 100644
      @ActivityCallback
      private void listeningResult(PluginCall call, ActivityResult result) {
          if (call == null) {
-@@ -151,6 +396,103 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -151,6 +396,124 @@ public class SpeechRecognition extends Plugin implements Constants {
          this.listening = value;
      }
  
@@ -372,40 +372,125 @@ index a99ea69..96e7fac 100644
 +    }
 +
 +    /**
-+     * Cree le recognizer en respectant d'abord le choix explicite de
-+     * Raphael (Parametres > Voix et ecoute > Moteur de reconnaissance
-+     * vocale) ; a defaut, vise Google quand il est present, pour eviter la
-+     * tonalite et les coupures du service par defaut.
++     * Le service qui SERAIT choisi maintenant (le choix explicite de
++     * Raphael, sinon Google si present, sinon "defaut"), SANS rien
++     * instancier -- comparee a `serviceChoisi` (ce a quoi le recognizer
++     * actuel est deja lie), elle dit si une vraie recreation est necessaire.
++     * Voir instancierRecognizer() et la piste native de beginListening().
 +     */
-+    private SpeechRecognizer creerRecognizer() {
++    private String resoudreCible() {
 +        if (serviceSouhaite != null) {
 +            ComponentName demande = ComponentName.unflattenFromString(serviceSouhaite);
 +            // Choisi mais desinstalle depuis (ou plus jamais trouve) : on
 +            // retombe sur l'auto plutot que de laisser Android refuser
 +            // silencieusement de demarrer avec un composant fantome.
 +            if (demande != null && composantDisponible(demande)) {
-+                serviceChoisi = demande.flattenToShortString();
-+                return SpeechRecognizer.createSpeechRecognizer(bridge.getActivity(), demande);
++                return demande.flattenToShortString();
 +            }
 +        }
 +        ComponentName google = trouverServiceGoogle();
-+        if (google != null) {
-+            serviceChoisi = google.flattenToShortString();
-+            return SpeechRecognizer.createSpeechRecognizer(bridge.getActivity(), google);
++        return google != null ? google.flattenToShortString() : "defaut";
++    }
++
++    /** Instancie un SpeechRecognizer lie a la cible resolue par
++     * resoudreCible(), et pose serviceChoisi en consequence. */
++    private SpeechRecognizer instancierRecognizer(String cible) {
++        serviceChoisi = cible;
++        if (!"defaut".equals(cible)) {
++            ComponentName composant = ComponentName.unflattenFromString(cible);
++            return SpeechRecognizer.createSpeechRecognizer(bridge.getActivity(), composant);
 +        }
-+        serviceChoisi = "defaut";
 +        return SpeechRecognizer.createSpeechRecognizer(bridge.getActivity());
++    }
++
++    /**
++     * Cree le recognizer en respectant d'abord le choix explicite de
++     * Raphael (Parametres > Voix et ecoute > Moteur de reconnaissance
++     * vocale) ; a defaut, vise Google quand il est present, pour eviter la
++     * tonalite et les coupures du service par defaut.
++     *
++     * Utilisee uniquement pour la toute premiere instanciation (load()) : le
++     * cycle d'ecoute normal passe par beginListening(), qui REUTILISE ce
++     * recognizer d'une rafale a l'autre plutot que d'en recreer un a chaque
++     * fois (piste native, voir plus bas).
++     */
++    private SpeechRecognizer creerRecognizer() {
++        return instancierRecognizer(resoudreCible());
 +    }
 +
      private void beginListening(
          String language,
          int maxResults,
-@@ -188,11 +530,22 @@ public class SpeechRecognition extends Plugin implements Constants {
-                             speechRecognizer = null;
+@@ -182,17 +545,82 @@ public class SpeechRecognition extends Plugin implements Constants {
+                     try {
+                         SpeechRecognition.this.lock.lock();
+ 
+-                        if (speechRecognizer != null) {
+-                            speechRecognizer.cancel();
+-                            speechRecognizer.destroy();
+-                            speechRecognizer = null;
++                        // PISTE NATIVE (chantier 3840996e, approuvee par
++                        // Raphael le 17 sept. 2026 : "Oui, lance la piste
++                        // native"). MESURE SUR SON TELEPHONE : un
++                        // destroy()/createSpeechRecognizer() a CHAQUE rafale
++                        // (le mot-cle toutes les 1-8s, et chaque relance dans
++                        // un tour de commande) force Android a rompre puis
++                        // rebinder la connexion au service de reconnaissance
++                        // -- et com.google.android.as n'a souvent pas fini de
++                        // relacher l'ancienne connexion quand la nouvelle
++                        // arrive : ERROR_RECOGNIZER_BUSY (8) et
++                        // ERROR_SERVER_DISCONNECTED (11) en alternance serree
++                        // juste apres chaque rafale (jusqu'a 97% de collision
++                        // immediate apres une vraie ecoute de ~10s, mesure le
++                        // 17 sept.). En gardant le MEME recognizer d'une
++                        // rafale a l'autre -- cancel() plutot que
++                        // destroy()+create() -- la connexion au service reste
++                        // vivante : startListening() n'a plus a la
++                        // reconstruire a chaque fois. On ne recree vraiment
++                        // que si le service VISE a change (reglage
++                        // Parametres modifie en cours de route).
++                        String cible = SpeechRecognition.this.resoudreCible();
++                        boolean recreer = speechRecognizer == null || !cible.equals(SpeechRecognition.this.serviceChoisi);
++
++                        if (recreer) {
++                            if (speechRecognizer != null) {
++                                // Meme filet que la branche de reutilisation
++                                // juste en dessous : si cancel()/destroy() leve
++                                // ici (changement de service en cours de route),
++                                // ne PAS laisser `speechRecognizer` sur son
++                                // ancienne reference -- `serviceChoisi` ne
++                                // serait alors jamais mis a jour, `recreer`
++                                // resterait vrai indefiniment, et chaque rafale
++                                // suivante retenterait cancel() sur la MEME
++                                // instance cassee, en echec permanent jusqu'au
++                                // redemarrage de l'app.
++                                try {
++                                    speechRecognizer.cancel();
++                                    speechRecognizer.destroy();
++                                } catch (Exception etatCasse) {
++                                    // Rien de plus a liberer : on abandonne
++                                    // cette instance et on repart d'une neuve.
++                                }
++                                speechRecognizer = null;
++                            }
++                            speechRecognizer = SpeechRecognition.this.instancierRecognizer(cible);
++                        } else {
++                            try {
++                                speechRecognizer.cancel();
++                            } catch (Exception etatCasse) {
++                                // Rare, mais l'ancien code recreait TOUJOURS
++                                // et se remettait donc d'aplomb sans le
++                                // savoir a chaque rafale. En reutilisant
++                                // l'instance on perd ce filet : le restituer
++                                // ici pour ne pas transformer un accroc
++                                // ponctuel en silence permanent jusqu'au
++                                // redemarrage de l'app.
++                                speechRecognizer.destroy();
++                                speechRecognizer = SpeechRecognition.this.instancierRecognizer(cible);
++                            }
                          }
  
 -                        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(bridge.getActivity());
-+                        speechRecognizer = creerRecognizer();
                          SpeechRecognitionListener listener = new SpeechRecognitionListener();
                          listener.setCall(call);
                          listener.setPartialResults(partialResults);
@@ -424,7 +509,7 @@ index a99ea69..96e7fac 100644
                          speechRecognizer.startListening(intent);
                          SpeechRecognition.this.listening(true);
                          if (partialResults) {
-@@ -208,6 +561,12 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -208,6 +636,12 @@ public class SpeechRecognition extends Plugin implements Constants {
      }
  
      private void stopListening() {
@@ -437,7 +522,7 @@ index a99ea69..96e7fac 100644
          bridge
              .getWebView()
              .post(() -> {
-@@ -217,7 +576,10 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -217,7 +651,10 @@ public class SpeechRecognition extends Plugin implements Constants {
                          speechRecognizer.stopListening();
                          SpeechRecognition.this.listening(false);
                      }
@@ -448,7 +533,7 @@ index a99ea69..96e7fac 100644
                      throw ex;
                  } finally {
                      SpeechRecognition.this.lock.unlock();
-@@ -245,6 +607,13 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -245,6 +682,13 @@ public class SpeechRecognition extends Plugin implements Constants {
          public void onBeginningOfSpeech() {
              try {
                  SpeechRecognition.this.lock.lock();
@@ -462,7 +547,7 @@ index a99ea69..96e7fac 100644
                  // Notify listeners that recording has started
                  JSObject ret = new JSObject();
                  ret.put("status", "started");
-@@ -268,6 +637,7 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -268,6 +712,7 @@ public class SpeechRecognition extends Plugin implements Constants {
                      try {
                          SpeechRecognition.this.lock.lock();
                          SpeechRecognition.this.listening(false);
@@ -470,7 +555,7 @@ index a99ea69..96e7fac 100644
  
                          JSObject ret = new JSObject();
                          ret.put("status", "stopped");
-@@ -281,8 +651,24 @@ public class SpeechRecognition extends Plugin implements Constants {
+@@ -281,8 +726,24 @@ public class SpeechRecognition extends Plugin implements Constants {
          @Override
          public void onError(int error) {
              SpeechRecognition.this.stopListening();

@@ -11,6 +11,17 @@ import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
 import type { DevItem, DevItemInput, DevPriority, DevStatus } from "@/types/database"
 
+/** Ce qu'il faut retenir avant une fusion pour pouvoir l'« Annuler » :
+ * l'état de la cible qu'on s'apprête à réécrire, et les messages du journal
+ * qui étaient ceux de la source — jamais ceux qui suivront la cible depuis. */
+export interface FusionAnnulable {
+  source: string
+  cible: string
+  cibleNotesAvant: string | null
+  ciblePrioriteAvant: DevPriority
+  messages: string[]
+}
+
 /** Ce qu'il faut retenir d'un chantier pour pouvoir le remettre comme il
  * était : les quatre champs que les actions groupées touchent. */
 export interface EtatChantier {
@@ -251,6 +262,95 @@ export function useDevItems(userId: string | undefined) {
   }
 
   /**
+   * Fusionne deux chantiers (fonction SQL fusionner_dev_items, migration
+   * 0049) : la source est supprimée, ses notes et sa conversation rejoignent
+   * la cible.
+   *
+   * L'état de la cible et la liste des messages qui vont être déplacés sont
+   * capturés ICI, juste avant l'appel — une vraie lecture de `dev_log`, pas
+   * les 60 dernières entrées chargées à l'écran (`useDevLog` est paginé) :
+   * c'est ce qui permet à `annulerFusionDevItems` de redéplacer exactement
+   * ce que la fusion a déplacé, jamais « tout ce qui porte item_id = cible »
+   * au moment d'annuler, qui engloutirait aussi ce qui serait arrivé sur la
+   * cible depuis.
+   */
+  async function fusionnerDevItems(source: string, cible: string): Promise<FusionAnnulable> {
+    return await withErrorToast("Impossible de fusionner les chantiers", async () => {
+      const cibleAvant = devItems.find((i) => i.id === cible)
+      if (!cibleAvant) throw new Error("Chantier cible introuvable")
+
+      const { data: messagesSource, error: erreurMessages } = await supabase
+        .from("dev_log")
+        .select("id")
+        .eq("item_id", source)
+      if (erreurMessages) throw erreurMessages
+
+      const { error } = await supabase.rpc("fusionner_dev_items", {
+        p_source: source,
+        p_cible: cible,
+      })
+      if (error) throw error
+      await refresh()
+      return {
+        source,
+        cible,
+        cibleNotesAvant: cibleAvant.notes,
+        ciblePrioriteAvant: cibleAvant.priority,
+        messages: (messagesSource ?? []).map((m) => m.id as string),
+      }
+    })
+  }
+
+  /**
+   * « Annuler » une fusion. La source supprimée par `fusionner_dev_items`
+   * reste tracée (`dev_items_supprimes`, migration 0038, comme n'importe
+   * quel autre DELETE du cockpit) : on la recrée à l'identique par
+   * `restaurer_chantier_supprime`, on redéplace UNIQUEMENT les messages
+   * capturés avant la fusion vers ce nouveau chantier, et on rend à la
+   * cible ses notes et sa priorité d'avant — jamais en touchant aux
+   * messages arrivés sur la cible depuis.
+   */
+  async function annulerFusionDevItems(etat: FusionAnnulable) {
+    await withErrorToast("Impossible d'annuler la fusion", async () => {
+      const { data: trace, error: erreurTrace } = await supabase
+        .from("dev_items_supprimes")
+        .select("id")
+        .eq("item_id", etat.source)
+        .order("supprime_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (erreurTrace) throw erreurTrace
+      if (!trace) throw new Error("Le chantier fusionné n'a plus de trace à restaurer.")
+
+      const { data: nouvelId, error: erreurRestaure } = await supabase.rpc(
+        "restaurer_chantier_supprime",
+        { p_id: trace.id },
+      )
+      if (erreurRestaure) throw erreurRestaure
+
+      const { error: erreurCible } = await supabase
+        .from("dev_items")
+        .update({
+          notes: etat.cibleNotesAvant,
+          priority: etat.ciblePrioriteAvant,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", etat.cible)
+      if (erreurCible) throw erreurCible
+
+      if (etat.messages.length > 0) {
+        const { error: erreurMessages } = await supabase
+          .from("dev_log")
+          .update({ item_id: nouvelId as string })
+          .in("id", etat.messages)
+        if (erreurMessages) throw erreurMessages
+      }
+
+      await refresh()
+    })
+  }
+
+  /**
    * Libère la réservation d'un chantier qu'une session a laissée derrière
    * elle. Une session interrompue ne libère rien : sa réservation expire, mais
    * le chantier continue d'afficher « Prise par … » jusqu'à la date, et on
@@ -325,6 +425,9 @@ export function useDevItems(userId: string | undefined) {
     statutDirect: statut,
     actualisationEnCours: enCours,
     actualiser,
+    /** Le canal brut, pour le cockpit qui le combine avec celui du journal
+     * dans une seule barre — voir `CockpitPage`. */
+    canalDirect: canal,
     loading,
     error,
     refresh,
@@ -338,5 +441,7 @@ export function useDevItems(userId: string | undefined) {
     archiveManyDevItems,
     deleteManyDevItems,
     restoreDevItems,
+    fusionnerDevItems,
+    annulerFusionDevItems,
   }
 }

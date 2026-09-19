@@ -36,6 +36,13 @@ const TABS = [
   // du téléphone, il sait tout. » Les numéros viennent du répertoire
   // (READ_CONTACTS), ce qu'il dit des gens va dans la mémoire.
   { to: "/memoire", label: "Mémoire", end: false },
+  // Chantier 0c0193e3, 18 sept. 2026, ses mots : « le top du top, ça serait
+  // qu'il y ait une section programmation/automatisation dans Jarvis même,
+  // comme ça je peux voir tout ce qui est programmé, et si nécessaire je
+  // peux le modifier à la main. » Écran de visualisation/édition uniquement
+  // (messages_programmes) : le mécanisme d'envoi lui-même est un autre
+  // chantier (ed32cbcc), pas celui-ci.
+  { to: "/programme", label: "Programmé", end: false },
 ]
 
 export function DashboardLayout({ children }: { children: ReactNode }) {

@@ -127,6 +127,30 @@ try {
       : `ils se terminent à ${basDecisions} points sur 844`,
   )
 
+  // ET LE MÊME ÉCRAN UNE FOIS LE BANDEAU REFERMÉ. « Depuis ton dernier
+  // passage » est TRANSIENT : il disparaît dès qu'il appuie sur « Vu », et
+  // c'est la première chose sur laquelle il agit. Sans cette seconde mesure,
+  // on ne sait pas si le débordement vient du bandeau (auquel cas il se règle
+  // tout seul en un appui) ou des cartes elles-mêmes (auquel cas il faut
+  // reprendre de la place). Mesuré le 17 sept. : 1102 avec, 770 sans.
+  const bandeauVu = page.getByRole("button", { name: "Vu" }).first()
+  if (await bandeauVu.isVisible().catch(() => false)) {
+    await bandeauVu.click()
+    await new Promise((r) => setTimeout(r, 300))
+    const basApresVu = await page.evaluate(() => {
+      const cartes = [...document.querySelectorAll('[data-slot="card"]')]
+      const c = cartes.find((e) => /Ce qui attend ta décision/.test(e.textContent ?? ""))
+      const t = [...document.querySelectorAll("p")].find((p) => p.textContent?.trim() === "Où j'en suis")
+      const ou = t?.closest('[data-slot="card"]')
+      return Math.round((c ?? ou)?.getBoundingClientRect().bottom ?? 9999)
+    })
+    verifier(
+      "et une fois le bandeau « Vu » refermé, ils tiennent vraiment",
+      basApresVu <= 844,
+      `${basApresVu} points sur 844 — le débordement ne vient donc pas que du bandeau`,
+    )
+  }
+
   const cartes = await page.evaluate(() => {
     const racine = document.getElementById("root").firstElementChild
     return [...racine.children].map((el) => ({
@@ -144,6 +168,32 @@ try {
   }
   const debordement2 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   verifier("ni une fois toutes les lignes dépliées", debordement2 <= 0, `${debordement2} points de trop`)
+
+  // Régression trouvée par Raphaël le 17 sept. 2026 (chantier 4be6b04c) sur
+  // le VRAI chantier 6d94ab6a : « Dernière mise à jour » affichait une note
+  // administrative de rangement de sections au lieu de la vraie question à
+  // trancher. On le cherche par son titre réel, on le déplie, et on vérifie
+  // ce qu'affiche VRAIMENT le cockpit — pas une donnée inventée.
+  await page.getByLabel("Chercher un chantier").fill("enregistrement du comportement")
+  await new Promise((r) => setTimeout(r, 300))
+  const ligne6d94ab6a = page.getByRole("button", { name: /Dans le cockpit dev sur l'enregistrement/ }).first()
+  if (await ligne6d94ab6a.isVisible().catch(() => false)) {
+    await ligne6d94ab6a.click()
+    await new Promise((r) => setTimeout(r, 150))
+    const texteChantier = await ligne6d94ab6a.innerText()
+    // Le contenu réel de ce chantier bouge au fil des sessions (Raphaël y a
+    // répondu depuis le signalement du 17 sept.) : on ne fige donc pas le
+    // texte exact, seulement l'invariant que le bug visait — le rangement de
+    // sections, purement administratif, ne doit jamais être ce qui s'affiche.
+    verifier(
+      "6d94ab6a déplié ne montre jamais le rangement de sections comme dernière mise à jour",
+      !/rangement des sections/.test(texteChantier),
+      `texte affiché : ${JSON.stringify(texteChantier)}`,
+    )
+  } else {
+    console.log("      6d94ab6a introuvable dans les vraies données (archivé, ou déjà corrigé autrement) — vérification sautée")
+  }
+  await page.getByLabel("Effacer la recherche").click().catch(() => {})
 
   const texte = await page.locator("body").innerText()
   console.log("      en tête :", texte.split("\n").slice(0, 14).map((l) => l.trim()).filter(Boolean).join(" | "))

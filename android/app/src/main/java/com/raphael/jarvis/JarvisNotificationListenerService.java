@@ -135,13 +135,27 @@ public class JarvisNotificationListenerService extends NotificationListenerServi
         public final String titre;
         public final String texte;
         public final long quand;
+        /** Résumé automatique qu'Android pose À CÔTÉ des notifications
+         * individuelles d'un même groupe (Gmail : 3 mails + « 3 nouveaux
+         * messages »). getActiveNotifications() rend les deux ; le tri
+         * (l'exclure) vit côté TypeScript, comme le reste des décisions —
+         * voir notificationsLues.ts#notificationsUtiles. */
+        public final boolean estResumeDeGroupe;
 
-        NotificationLue(String paquet, String application, String titre, String texte, long quand) {
+        NotificationLue(
+            String paquet,
+            String application,
+            String titre,
+            String texte,
+            long quand,
+            boolean estResumeDeGroupe
+        ) {
             this.paquet = paquet;
             this.application = application;
             this.titre = titre;
             this.texte = texte;
             this.quand = quand;
+            this.estResumeDeGroupe = estResumeDeGroupe;
         }
     }
 
@@ -189,12 +203,15 @@ public class JarvisNotificationListenerService extends NotificationListenerServi
                 // Le nom du paquet suffit si l'app a disparu depuis.
             }
 
+            boolean estResumeDeGroupe = (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
+
             resultat.add(new NotificationLue(
                 pkg,
                 nomApplication,
                 titre == null ? "" : titre.toString(),
                 texte == null ? "" : texte.toString(),
-                sbn.getPostTime()
+                sbn.getPostTime(),
+                estResumeDeGroupe
             ));
         }
         return resultat;

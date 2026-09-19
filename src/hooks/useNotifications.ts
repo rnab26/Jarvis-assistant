@@ -6,6 +6,7 @@ import { toast } from "sonner"
 import { executerActionTelephone } from "@/lib/actionsTelephoneVocales"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { useSpeechSynthesis } from "@/hooks/useSpeechSynthesis"
+import { attendreSilence } from "@/lib/parler"
 import { phraseAnnonce, raisonDuSilence } from "@/lib/notifications/annonceVocale"
 import { derniereParole, noterEcoute } from "@/lib/journalEcoute"
 import { readVoicePrefs } from "@/lib/voicePrefs"
@@ -200,7 +201,18 @@ export function useNotifications(
       })
       // Sans attendre, et sans faire échouer quoi que ce soit : une voix qui
       // ne part pas ne doit pas empêcher la notification de s'afficher.
-      if (phrase) void speak(phrase).catch(() => {})
+      //
+      // ATTEND LA VOIX LIBRE avant de parler (chantier 7886197f, 17 sept.
+      // 2026 — « la superposition des voix de jarvis et claude »). Sur natif,
+      // TextToSpeech.speak() est en QUEUE_FLUSH par défaut : sans cette
+      // attente, une annonce arrivée pendant que Jarvis répond à une question
+      // lui coupait la parole en plein mot au lieu d'attendre son tour.
+      if (phrase) {
+        void (async () => {
+          await attendreSilence()
+          await speak(phrase)
+        })().catch(() => {})
+      }
     }
   })
 
@@ -284,7 +296,7 @@ export function useNotifications(
 
   // Chantiers livrés par une session pendant que l'app tourne.
   const dejaArchivesRef = useRef<Set<string> | null>(null)
-  const enAttenteRef = useRef<string[]>([])
+  const enAttenteRef = useRef<{ id: string; titre: string }[]>([])
   const timerLivraisonRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     const archives = new Set(devItems.filter((i) => i.archived_at).map((i) => i.id))
@@ -296,14 +308,14 @@ export function useNotifications(
 
     const nouveaux = devItems.filter((i) => i.archived_at && !connus.has(i.id))
     if (nouveaux.length === 0) return
-    enAttenteRef.current.push(...nouveaux.map((i) => i.title))
+    enAttenteRef.current.push(...nouveaux.map((i) => ({ id: i.id, titre: i.title })))
 
     if (timerLivraisonRef.current) clearTimeout(timerLivraisonRef.current)
     timerLivraisonRef.current = setTimeout(() => {
-      const titres = enAttenteRef.current
+      const lot = enAttenteRef.current
       enAttenteRef.current = []
       timerLivraisonRef.current = null
-      if (titres.length === 0) return
+      if (lot.length === 0) return
       // .catch() et pas void : une notification qui ne peut pas partir
       // (permission retirée entre-temps) laisserait sinon une promesse
       // rejetée non gérée, qui casse la page pour une information
@@ -311,12 +323,15 @@ export function useNotifications(
       notifierMaintenant({
         id: ID_CHANTIERS_LIVRES,
         titre:
-          titres.length === 1
+          lot.length === 1
             ? "Un chantier livré"
-            : `${titres.length} chantiers livrés`,
-        corps: corpsChantiersLivres(titres),
+            : `${lot.length} chantiers livrés`,
+        corps: corpsChantiersLivres(lot.map((l) => l.titre)),
         canal: "livraisons",
-        route: "/cockpit",
+        // Un seul chantier : on amène directement dessus, déjà déplié
+        // (chantier 04d2fa9e). Plusieurs d'un coup : pas UN endroit précis à
+        // proposer, on retombe sur le cockpit tout court.
+        route: lot.length === 1 ? `/cockpit?chantier=${lot[0].id}` : "/cockpit",
       }).catch(() => {})
     }, FENETRE_GROUPEMENT_MS)
   }, [devItems, prefs.livre])
@@ -352,7 +367,12 @@ export function useNotifications(
                   : "Une session te pose une question",
               corps: entree.body.slice(0, 240),
               canal: "blocages",
-              route: "/cockpit",
+              // Rattachée à un chantier : on y amène directement — sa carte
+              // montre déjà la question (chantier 332d87fd). Sinon : la
+              // carte « Ce qui attend ta décision », sur cette entrée précise.
+              route: entree.item_id
+                ? `/cockpit?chantier=${entree.item_id}`
+                : `/cockpit?entree=${entree.id}`,
             }).catch(() => {})
           },
         )

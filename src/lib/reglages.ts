@@ -76,6 +76,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/pages/SettingsPage.tsx",
   },
   {
+    cle: "jarvis_voice_confirmer_resultat",
+    ou: "Paramètres › Voix et écoute › Confirmer le résultat des actions à voix haute",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
     cle: "jarvis_dialogue_pause_ms",
     ou: "Paramètres › Voix et écoute › Rythme de la discussion",
     fichier: "src/pages/SettingsPage.tsx",
@@ -83,6 +88,16 @@ export const REGLAGES: ReglageDeclare[] = [
   {
     cle: "jarvis_dialogue_suite_ms",
     ou: "Paramètres › Voix et écoute › Rythme de la discussion",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_ecoute_attente_ms",
+    ou: "Paramètres › Voix et écoute › Rythme de la discussion › Quand tes mots tardent à s'afficher",
+    fichier: "src/pages/SettingsPage.tsx",
+  },
+  {
+    cle: "jarvis_veille_abandon_refus",
+    ou: "Paramètres › Voix et écoute › Mot-clé de réveil \"Jarvis\" › Quand le micro est pris par autre chose",
     fichier: "src/pages/SettingsPage.tsx",
   },
   {
@@ -181,6 +196,11 @@ export const REGLAGES: ReglageDeclare[] = [
     fichier: "src/components/settings/ControleEcran.tsx",
   },
   {
+    cle: "jarvis_delegation_tasker",
+    ou: "Paramètres › Ce que Jarvis utilise › Déléguer le clic à Tasker + AutoInput",
+    fichier: "src/components/settings/DelegationTasker.tsx",
+  },
+  {
     cle: "jarvis_delai_annulation",
     ou: "Paramètres › Ce que Jarvis utilise › Le temps de l'arrêter",
     fichier: "src/components/settings/FenetreAnnulation.tsx",
@@ -208,6 +228,11 @@ export const REGLAGES: ReglageDeclare[] = [
   {
     cle: "jarvis_cockpit_fenetre",
     ou: "Paramètres › Le cockpit › Ce qui compte comme « livré »",
+    fichier: "src/components/settings/Cockpit.tsx",
+  },
+  {
+    cle: "jarvis_cockpit_simplifie",
+    ou: "Paramètres › Le cockpit › Mode simplifié — aussi un bouton en tête du cockpit",
     fichier: "src/components/settings/Cockpit.tsx",
   },
   {

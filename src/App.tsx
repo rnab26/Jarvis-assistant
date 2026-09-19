@@ -7,8 +7,11 @@ import { ProtectedShell } from "@/components/layout/ProtectedShell"
 import { useAuth } from "@/hooks/useAuth"
 import { AssistOverlay } from "@/lib/assistOverlayPlugin"
 import { AssistantOverlayPage } from "@/pages/AssistantOverlayPage"
+import { BulleEcoute } from "@/lib/bulleEcoutePlugin"
+import { BulleEcoutePage } from "@/pages/BulleEcoutePage"
 import { THEME_KEY } from "@/lib/theme"
 import { DELAI_MAX_MS, quoiRendre, type OuOnEst } from "@/lib/demarrageOverlay"
+import { useTraceInteractions } from "@/hooks/useTraceInteractions"
 
 // Chargées à la demande, pas au démarrage : chantier 7b8e68a7, 8 sept. 2026.
 // Mesuré dans journal_ecoute — 956 ms entre l'ouverture de la fenêtre
@@ -26,6 +29,9 @@ const DocumentsPage = lazy(() => import("@/pages/DocumentsPage").then((m) => ({ 
 const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })))
 const MemoirePage = lazy(() => import("@/pages/MemoirePage").then((m) => ({ default: m.MemoirePage })))
 const NotesPage = lazy(() => import("@/pages/NotesPage").then((m) => ({ default: m.NotesPage })))
+const ProgrammesPage = lazy(() =>
+  import("@/pages/ProgrammesPage").then((m) => ({ default: m.ProgrammesPage })),
+)
 const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ default: m.SettingsPage })))
 
 /**
@@ -45,6 +51,12 @@ const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((m) => ({ de
  * téléphone. Sur son écran : « Dis Jarvis pour lancer la conversation » au
  * lieu d'une écoute, et rien qui aboutit. Le journal montrait les deux
  * rafales à 40 ms d'intervalle.
+ *
+ * TROISIÈME FENÊTRE depuis le 15 sept. 2026 : celle de la bulle
+ * (BulleEcoute.estOverlay — jamais, voir bulleEcoutePlugin.ts —
+ * BulleEcoute.estBulle()). Même parade : les DEUX sondes partent en
+ * parallèle, et seule celle qui répond conclut — jamais de redirection
+ * après coup, pour la même raison que ci-dessus.
  */
 function useOuOnEst(): OuOnEst {
   const [ou, setOu] = useState<OuOnEst>("inconnu")
@@ -58,9 +70,21 @@ function useOuOnEst(): OuOnEst {
     // Le filet : une app qui s'affiche vaut mieux qu'une app qui attend un
     // pont qui ne répondra jamais.
     const minuteur = setTimeout(() => conclure("normal"), DELAI_MAX_MS)
+    // Les DEUX sondes échouent dans l'app normale et sur le web (aucun des
+    // deux plugins n'y est enregistré) : sans compter les deux échecs, on
+    // attendrait le minuteur de 1,5 s à CHAQUE démarrage ordinaire, ce que
+    // le filet ci-dessus n'a jamais eu à faire avant cette troisième fenêtre.
+    let echecs = 0
+    const echec = () => {
+      echecs++
+      if (echecs >= 2) conclure("normal")
+    }
     AssistOverlay.estOverlay()
       .then(() => conclure("overlay"))
-      .catch(() => conclure("normal"))
+      .catch(echec)
+    BulleEcoute.estBulle()
+      .then(() => conclure("bulle"))
+      .catch(echec)
     return () => {
       fini = true
       clearTimeout(minuteur)
@@ -73,6 +97,12 @@ function AppRoutes() {
   const { session } = useAuth()
   const ou = useOuOnEst()
   const rendu = quoiRendre(ou)
+  // Avant les retours anticipés ci-dessous : un hook se monte dans le même
+  // ordre à chaque rendu. Alimente contexteInteraction.ts (chantier 6d94ab6a)
+  // pour que journal_ecoute et jarvis_erreurs sachent où on était et sur quoi
+  // on venait d'appuyer — dans l'app normale comme dans la fenêtre
+  // d'assistance, d'où son montage ici plutôt que dans ProtectedShell.
+  useTraceInteractions()
 
   // Rien, pas même un écran de chargement : c'est une fraction de seconde, et
   // la fenêtre d'assistance est translucide — un « Chargement… » y clignoterait
@@ -83,6 +113,9 @@ function AppRoutes() {
   // routeur : une redirection laisserait, le temps d'un rendu, la coquille de
   // l'app normale se monter — c'est exactement le bug qu'on corrige.
   if (rendu === "overlay") return <AssistantOverlayPage />
+
+  // Même raison, même remède, pour la fenêtre invisible de la bulle.
+  if (rendu === "bulle") return <BulleEcoutePage />
 
   return (
     // Même règle que « rendu === attendre » plus haut : rien plutôt qu'un
@@ -100,6 +133,7 @@ function AppRoutes() {
           <Route path="/cockpit" element={<CockpitPage />} />
           <Route path="/documents" element={<DocumentsPage />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/programme" element={<ProgrammesPage />} />
           <Route path="/memoire" element={<MemoirePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>

@@ -42,6 +42,7 @@ const QUOTA_BANC = resumerConsommation([
     appels: 36, reussis: 36, refus_minute: 0, refus_jour: 0,
     jetons_entree: 400000, jetons_sortie: 9000, jetons_reflexion: 3000,
     ms_median: 1200, dernier_at: "2026-09-08T20:00:00Z", rang: 0,
+    dernierQuotaId: null, dernierQuotaLimite: null, dernierQuotaAt: null,
   },
 ])
 
@@ -57,11 +58,17 @@ function BancDuCoeur() {
   return (
     <MicButton
       tasksApi={{ tasks, categories: [], addTask: async () => undefined, updateTask: rien, deleteTask: rien }}
-      devItemsApi={{ devItems: [], addDevItem: rien, updateDevItem: rien, deleteDevItem: rien, archiveDevItem: rien }}
+      devItemsApi={{ devItems: [], addDevItem: async () => undefined, updateDevItem: rien, deleteDevItem: rien, archiveDevItem: rien }}
       devSectionsApi={{ sections: [], addSection: async () => {}, renameSection: async () => 0 }}
       documentsApi={{ documents: [], saveTextDocument: rien, saveBinaryDocument: rien }}
       contactsApi={{ contacts: [], addContact: rien, updateContact: rien, deleteContact: rien }}
       placeRemindersApi={{ placeReminders: [], addPlaceReminder: rien, deletePlaceReminder: rien, geocodePlace: null }}
+      messagesProgrammesApi={{
+        programmerMessage: async () => null,
+        messagesAAnnoncer: async () => [],
+        marquerAnnonce: rien,
+        annulerMessage: rien,
+      }}
       pronunciationsApi={{ pronunciations: [], addPronunciation: rien, deletePronunciation: rien }}
       voiceSettingApi={{ muted: false, setMuted: () => {} }}
       widgetApi={{ config: { maxTasks: 5, urgentOnly: false, categoryId: null }, setConfig: () => {} }}
@@ -70,10 +77,17 @@ function BancDuCoeur() {
       // jamais et le banc mesurerait une colonne qui n'existe pas.
       consommation={QUOTA_BANC}
       wakeWordEnabled={true}
+      // Réglable depuis l'URL (?abandon=3) et à 0 par défaut : 0 rend
+      // exactement le comportement d'avant le 17 sept. 2026, donc tous les
+      // autres contrôles de ce banc mesurent la même chose qu'hier. Un seuil
+      // bas sert au contrôle qui vérifie qu'une chaîne de refus finit par
+      // faire renoncer la veille sans attendre vingt paliers.
+      seuilAbandonVeille={Number(new URLSearchParams(window.location.search).get("abandon") ?? 0)}
       setWakeWordEnabled={() => {}}
       setGeofenceEnabled={() => {}}
       entrainementApi={{ sequences: [], addSequence: rien, rejouer: async () => "" }}
       voiceIndex={null}
+      confirmerResultatVoix={true}
       suiteMs={0}
     />
   )

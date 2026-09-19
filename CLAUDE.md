@@ -89,6 +89,27 @@ que tu es interrompu, ou que Raphaël change de sujet : écris où tu en es dans
 les notes du chantier ou dans `dev_log` avant de lâcher. Une session qui se
 termine sans avoir écrit son état fait perdre des heures à la suivante.
 
+**Un chantier livré mais pas encore constaté par Raphaël : change le CROCHET
+D'EN-TÊTE, pas seulement le corps de la note.** Trouvé le 18 sept. 2026 sur une
+vraie capture de son cockpit (chantiers 21cf48d2, efe7e44c, b1b6172d, ed32cbcc,
+4dabe586) : plusieurs livrés réels (mergés, CI verte) gardaient encore
+`[LIBRE]` en tête de note parce que la règle « n'écrase jamais, ajoute en bas »
+avait été suivie à la lettre, sans que personne ne retouche ENSUITE le
+crochet du haut. Or `src/lib/marqueurChantier.ts` — la seule chose que l'app
+lit pour l'étiquette de la ligne — ignore tout ce qui suit les deux premiers
+crochets. Le chantier restait donc affiché « libre » : une prochaine session
+le reprenait comme neuf, et Raphaël ne savait jamais qu'il devait l'essayer.
+C'était la cause directe de sa plainte répétée « toujours les mêmes
+chantiers ». Donc : une fois le travail réellement livré et en attente de son
+essai sur le téléphone, remplace le crochet d'ouverture par
+`[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]` — À LA MAIN, jamais par une
+regex automatique (un crochet peut en contenir un autre, ex. `[LIBRE — ...
+(voir [CADRE] ...)]`, et une regex naïve tronque au mauvais endroit — vécu et
+réparé à la main ce jour-là). `SUPABASE_SERVICE_ROLE_KEY=... node
+scripts/verifier-cockpit-marqueurs.mjs` audite tout le cockpit et liste les
+chantiers où le corps dit « livré » mais le crochet dit autre chose — lance-le
+avant de dire à Raphaël que le cockpit est propre.
+
 **Et si c'est du travail à faire, ça devient un CHANTIER — pas une note.**
 Consigne explicite de Raphaël le 3 sept. 2026 : tout ce que tu n'as pas pu
 avancer, tout ce qui attend une décision de lui, et tout bug que tu découvres
@@ -336,6 +357,77 @@ tomberait à zéro au moment précis où il vient voir ce qui s'est passé.
 Le filtre du tableau vit désormais dans `CockpitPage`, pas dans
 `CockpitBoard` : une ligne de « Où j'en suis » doit pouvoir l'imposer.
 
+### Un extrait, UNE fonction : `extraitAuMot` (`src/lib/journalBord.ts`)
+
+Trois endroits du cockpit coupent un texte long pour l'afficher sur une ligne :
+le bandeau « depuis ton dernier passage », la citation d'une réponse du
+journal, et la ligne repliée d'un point qui attend sa décision. Il y en avait
+**trois copies privées**, et la troisième a été la fois de trop.
+
+**Mesuré le 17 sept. 2026 sur ses vraies données** : `CeQuiAttendTaDecision`
+affichait le corps ENTIER de la question sur la ligne REPLIÉE. Ses cinq points
+en attente faisaient 697, 561, 146, 110 et 86 caractères ; la carte montait à
+**924 points de haut pour quatre points repliés** — 231 par point, là où une
+ligne devrait en coûter 70 — et poussait « Où j'en suis » hors du premier
+écran. C'est la même régression que celle déjà documentée ici (« la carte
+faisait 616 points pour UN point »), dont la parade avait été de replier chaque
+point : **replier ne suffit pas si la ligne repliée porte 697 caractères.**
+Après correction, la carte fait 484 points, 161 par point.
+
+Deux choses que la fonction fait et qu'il ne faut pas défaire : couper AU MOT
+(une phrase coupée au caractère près se termine n'importe où), et écraser les
+blancs AVANT de couper (une note de session contient des retours à la ligne,
+qui feraient un extrait haut de cinq lignes pour trois mots).
+
+**Ce qu'on n'a PAS fait, et pourquoi** : plafonner le nombre de points
+affichés. Cette carte existe pour lui dire ce qui l'attend ; en cacher derrière
+un « voir les autres » la viderait de son sens. Le texte entier apparaît quand
+il OUVRE le point — c'est là qu'il en a besoin, pour répondre.
+
+**Le débordement restant vient du bandeau, et c'est mesuré.**
+`verifier-cockpit-reel.mjs` a maintenant deux mesures : avec le bandeau
+« Depuis ton dernier passage » (1102 points le 17 sept., donc rouge) et une
+fois qu'il a appuyé sur « Vu » (770, vert). Le bandeau est TRANSIENT et c'est
+la première chose sur laquelle il agit. Sans cette seconde mesure, on ne sait
+pas si le débordement se règle en un appui ou s'il faut reprendre de la place
+ailleurs. **Le premier contrôle reste rouge exprès** : le raccourcir demanderait
+de rogner le bandeau, dont le contenu a été décidé sur son retour du 6 sept.
+(« les livrés se lisent TOUS »). C'est son arbitrage, pas le nôtre.
+
+### Un chantier déplié montre sa dernière mise à jour, pas tout le pavé
+
+Chantier `e71199d6`, 17 sept. 2026, captures à l'appui. Ses mots : « regarde
+le pavé que je suis obligé de lire et de faire défiler pour comprendre quel
+est le blocage […] je ne comprends même pas, donc j'avance même pas dessus. »
+Déplier un vieux chantier (fa16146d, plusieurs sessions sur plusieurs jours)
+affichait tout `notes` en entier, sans troncature — plusieurs milliers de
+caractères, jargon technique, dates, IDs de commit.
+
+**Ne JAMAIS raccourcir ni perdre le contenu réel des notes** — c'est la
+mémoire du projet (section juste au-dessus : « un chantier garde ce qu'on y a
+écrit »). Le correctif est uniquement dans l'AFFICHAGE.
+
+`src/lib/derniereMajChantier.ts` (**pur**, `verifier-derniere-maj.ts`) isole
+le DERNIER paragraphe des notes — les sessions ajoutent toujours leur mise à
+jour à la suite des précédentes, séparée par une ou plusieurs lignes vides,
+qu'elles l'introduisent par un « --- <date> », un « MISE À JOUR DU… », un
+crochet « [EN COURS, <session>, <date>] » ou rien de tout ça (aucun en-tête
+n'est systématique — mesuré sur plusieurs vraies notes avant de coder, la
+ligne vide l'est). Le marqueur et l'intro d'origine ouvrent la note : ils sont
+donc le PREMIER paragraphe, jamais pris pour la dernière mise à jour.
+
+`DevItemCard.tsx` déplié montre cette dernière mise à jour seule, en tête.
+Le pavé complet va derrière « Voir tout l'historique », qui RÉUTILISE
+`CarteRepliable` (repliée par défaut) plutôt que d'inventer un second
+accordéon — et ne s'affiche PAS DU TOUT quand il n'y a qu'une seule mise à
+jour (rien à cacher, donc rien à proposer). **Cet accordéon est un composant
+interactif : il doit rester HORS du `<button>` qui déplie la ligne**, comme
+`HistoriqueChantier` déjà — un bouton dans un bouton casse le HTML.
+
+**Mesuré avant/après sur fa16146d (vraies données, 17 sept.)** : 2050 points
+déplié avant, 512 après — l'accordéon fermé. Le marqueur, lui, reste affiché
+comme avant, inchangé.
+
 ### Les marqueurs des notes sont visibles dans l'app (`src/lib/marqueurChantier.ts`)
 
 `[À CADRER AVEC RAPHAËL]`, `[LIBRE]`, `[BLOQUÉ PAR : …]`, `[DOUBLON — …]`,
@@ -439,6 +531,70 @@ vrai chantier de quelqu'un d'autre) : `ANON_KEY=... node
 scripts/verifier-historique-reel.mjs` couvre maintenant aussi la trace posée
 par le DELETE, son cloisonnement RLS, et la restauration qui rend le même
 titre et la même note.
+
+### Reprendre une discussion dans le journal (migration 0048)
+
+Ses mots, dictés le 17 sept. 2026 à 07 h 57 : « Dans le cockpit dev : journal
+de bord, incohérence sur la durée de consultation des conversations et
+impossibilité de reprendre la discussion ». Il l'avait déjà dicté quatre
+minutes plus tôt, en moins précis — les deux chantiers ont été fusionnés.
+
+**MESURÉ le même matin, et c'est ce qui rend sa phrase limpide** : 304 entrées
+au journal sur 14,5 jours, et **UNE SEULE** portait un bouton « Répondre ». Il
+n'apparaissait que sur une question sans réponse (`kind === "question" &&
+!answered_at`). Les 303 autres — 208 notes d'information des sessions, 18
+blocages, 42 réponses, 30 entrées écrites par lui — n'offraient aucun moyen
+d'enchaîner. Et l'écran n'en montrait que 60, **sans un mot** : 244 entrées
+coupées en silence, ce qui se lit exactement comme « il n'y a plus rien ».
+
+- `src/lib/filJournal.ts` — **pur**, vérifié par `verifier-fil-journal.ts`.
+- Migration 0047 : `dev_log.repond_a`, et le rattrapage conservateur de
+  l'existant (18 des 42 réponses, celles dont la question est certaine).
+
+**On répond à TOUT**, et la tentation à écarter est de remettre une condition
+« intelligente » : une note d'information est précisément ce à quoi il veut
+pouvoir répondre, c'est par là que les sessions lui parlent.
+
+**Mais « marquer traité » ne vaut QUE pour une question en attente** : c'est ce
+drapeau qui la sort de la colonne « pour toi ». Poser `answered_at` sur une
+note serait invisible aujourd'hui et faux le jour où quelque chose comptera les
+entrées traitées.
+
+**`repond_a` n'est pas `item_id`.** Le second dit sur quel CHANTIER porte une
+entrée — plusieurs fils vivent sur le même chantier, et une entrée peut n'en
+avoir aucun. Sans lien vers l'entrée précise, une réponse à une note retombait
+dans le flux sans que rien ne dise ce qu'elle répondait : le défaut de départ,
+à l'envers. `on delete set null` et pas `cascade` : effacer une question ne doit
+jamais emporter la réponse de Raphaël.
+
+**Et l'écran dit ce qu'il ne montre pas** (« 60 entrées affichées sur 304 » +
+« Voir les 60 précédentes »), mais **se tait quand tout est affiché** — un
+« 304 sur 304 » permanent est du bruit, et le bruit permanent cache le jour où
+il dit autre chose. Le total vient de `count: "exact"` dans la MÊME requête que
+la page : deux requêtes pourraient annoncer un total qui n'a jamais correspondu
+à ce qui est à l'écran. Total inconnu (le compte a échoué, la liste est
+arrivée) → on se tait.
+
+**Piège du banc, payé ici** : un contrôle qui DÉPLIE le journal doit le
+refermer. Déplié, il affiche le corps des entrées — dont celui d'une décision
+qu'un contrôle plus bas vérifie comme absente de l'écran une fois répondue. Un
+banc doit rendre la page dans l'état où il l'a trouvée.
+
+### La durée des conversations : ce que l'app en disait était faux
+
+Même signalement, l'autre moitié. `MemoirePage` affirmait « Le mot-à-mot des
+conversations, lui, disparaît au bout de sept jours » — **à trois lignes de la
+carte qui dit l'inverse**, « Combien de temps c'est gardé se règle dans
+Paramètres › Mémoire (sans limite par défaut) ». Les deux sous ses yeux, sur le
+même écran.
+
+La phrase était vraie jusqu'à la migration 0023 (5 sept.), qui a sorti la durée
+du code : `purger_echanges()` lit `retention_echanges(user_id)` et ne supprime
+**rien** tant que le réglage vaut « sans limite ». Vérifié le 17 sept. sur sa
+base : `retention_echanges` rend `null`, et 369 échanges couvrent 14,1 jours —
+aucun purgé. La phrase a donc été retirée (une seule affirmation, dans la carte
+qui montre les conversations), et le commentaire de `src/types/database.ts` qui
+disait la même chose corrigé.
 
 ### Un chantier porte sa conversation
 
@@ -795,6 +951,44 @@ rattrape, une tâche en double reste dans sa liste). Chantier `e4886791`, en
 `[À CADRER]` : la bonne réponse n'est pas la même pour une musique relancée et
 pour un message préparé deux fois — et « envoi de messages en son nom » est un
 sujet qu'une session autonome ne prend jamais.
+
+### « Prévenir puis refaire » : sa réponse à `e4886791`, pour les quatre familles
+
+Sa décision, 17 sept. 2026, mot pour mot : « Prévenir puis refaire ». Quand il
+redit une phrase en l'allongeant APRÈS qu'une PREMIÈRE action de la même
+famille a déjà eu lieu (musique/vidéo lancée, itinéraire ouvert, message
+préparé), Jarvis le dit avant de refaire, plutôt que d'agir une seconde fois
+sans un mot.
+
+`FamilleActionTelephone` (`src/lib/repriseDictee.ts`) porte trois familles —
+`"media"` (musique et vidéo, même mécanisme `open_app` + `music_query`),
+`"navigation"`, `"message"` — et `phraseRepriseAction` (pure) rend la phrase
+d'annonce quand `estUneReprise` a déjà dit oui ET qu'une action de la MÊME
+famille vient de partir (`dernierAppelTelephone()`,
+`src/lib/actionsTelephoneVocales.ts`, en mémoire du module, jamais relu après
+un redémarrage — même principe que `derniereCreation` pour les tâches).
+Musique/vidéo/itinéraire livrés le 17 sept. (claude/telephone-batch-0917,
+commit `fcc7161`) ; le MESSAGE (chantier `b02d70f5`), volontairement laissé de
+côté ce jour-là — « envoi de messages en son nom » est un sujet qu'une session
+autonome ne prend jamais —, complété le même jour dans une session où Raphaël
+était en ligne.
+
+**Pour le message, « refaire » veut dire RECOMPOSER LE MÊME BROUILLON, pas en
+ouvrir un second.** `executerActionTelephone` PRÉPARE toujours sans jamais
+envoyer (« Jarvis prépare, Raphaël valide ») : relancer `send_message` avec le
+texte complet appelle `preparerWhatsApp`/`preparerSms` une seconde fois pour le
+MÊME destinataire, qui affiche le texte à jour — pas de transformation façon
+`completerPlutotQueCreer` (pas de ligne en base à cibler pour un message,
+contrairement à une tâche). `dernierAppelTelephone()` ne retient donc la
+famille `"message"` qu'au moment où un brouillon est RÉELLEMENT préparé
+(après résolution du destinataire), jamais avant un échec.
+
+**Pas de collision avec la relecture vocale (`ed32cbcc`,
+`confirmationEnvoiVocale.ts`) ni avec la confirmation d'un envoi
+(`confirmationEnvoi.ts`), qui partagent `dernierTourRef`** : leur flux de
+relecture — quand il est actif (décoché par défaut) — retourne toujours AVANT
+d'atteindre ce branchement dans `MicButton.runTurn`, donc les deux mécanismes
+ne se déclenchent jamais dans le même tour.
 
 ## Une tâche perso qui est en fait un chantier (`src/lib/tacheOuChantier.ts`)
 
@@ -1244,6 +1438,75 @@ valide.
 garde-fou contre une phrase longue fait effectivement rougir le contrôle
 avant d'être remis en place).
 
+## Un chantier créé à la voix : la section et le titre se PROPOSENT
+
+Chantiers `9369ad72` (classement automatique) et `1be8988d` (titres), tous
+deux répondus par Raphaël le 17 sept. 2026, mot pour mot : « Proposer, je
+valide » — même règle que `suggestionTheme.ts` (saisie manuelle du cockpit)
+et `suggestionCategorie.ts` (tâches, ci-dessus). Avant, la consigne du
+serveur disait explicitement à `add_dev_item` de « classer le chantier dans
+un thème » — exactement l'inverse de sa décision, en silence.
+
+**Deux défauts, MESURÉS sur ses vrais chantiers OUVERTS, pas supposés** :
+
+```sql
+select title from dev_items where archived_at is null
+  and title ~* '^(dans |un |une |comme quoi)';
+```
+
+`54b307b1` (« Comme quoi tous les bruits exterieurs derangent le micro ») et
+`b8a4befd` (« Dans le cockpit pour que tout »), tous deux créés le jour même.
+**Ils ne se réparent PAS de la même façon**, et c'est le point à ne pas
+perdre : le premier garde une amorce de dictée devant une phrase par ailleurs
+complète (mesuré sur trois vrais titres « comme quoi… » du cockpit, aucun
+tronqué) — réparable localement, comme `titreTache.ts` pour les tâches. Le
+second est tronqué EN PLEIN MOT — sa note commence par « Dans le cockpit pour
+que tout ce qui concerne le bloc mettre a jour… », le titre s'arrête à
+« tout » : le contenu réel n'a jamais été synthétisé, et aucune règle locale
+ne peut le reconstituer (retirer « dans le » laisserait « cockpit pour que
+tout », toujours incompréhensible). Ce second cas se corrige côté consigne
+serveur uniquement.
+
+- `src/lib/titreChantier.ts` (pur) — `suggererTitreChantier`, mêmes
+  garde-fous que `titreTache.ts` (une amorce CONNUE, seulement en tête,
+  jamais si le reste est trop court) mais une liste d'amorces mesurée sur les
+  vrais titres de chantiers, pas recopiée de celle des tâches : `AMORCES` n'y
+  contient QUE `"comme quoi"` pour l'instant. **`null` quand rien de
+  récupérable ne se détache** — proposer un fragment tout aussi
+  incompréhensible serait pire que se taire.
+- `src/lib/chantierEnAttente.ts` (pur) — le chantier en attente d'une
+  validation (section et/ou titre), et la reconnaissance de la réponse. **Les
+  deux suggestions se valident ENSEMBLE, d'un seul « oui »** : les poser comme
+  deux questions séparées l'obligerait à répondre deux fois à la même
+  création — le défaut que la fenêtre de complétion des tâches (date +
+  catégorie) a déjà réglé en les regroupant. Mêmes verdicts que
+  `reponseCategorie` (accepter / refuser / corriger / illisible), transposés
+  aux sections. **100 % LOCAL, sans round-trip serveur** — à la différence de
+  la catégorie des tâches, dont l'« illisible » repart au serveur : le volume
+  mesuré (un seul cas réel de titre à corriger) ne justifie pas encore cette
+  complexité, et une phrase coupée sur une section se redemande directement
+  ici, en nommant le chantier.
+- `voiceActions.ts` : `add_dev_item` ne calcule une suggestion de section que
+  **quand le thème n'a pas été dit explicitement** — le serveur peut encore
+  classer un chantier, mais seulement si sa consigne le lui a permis (il l'a
+  nommé lui-même). `complete_last_chantier` (nouvelle action, reconnue
+  UNIQUEMENT par `commandeLocale.ts`, jamais par le serveur) applique la
+  validation. **Une correction de section ne touche jamais le titre en
+  silence** : le titre ne se renomme que sur un « oui » entier.
+
+**Trouvé en touchant ce code, corrigé dans le même travail** : `addDevItem`
+ne distinguait pas un échec réel d'une écriture partie dans la file hors
+ligne (contrairement à `addTask`, qui rend `{ id, enAttente }`) — un chantier
+dicté hors réseau s'entendait donc répondre « ajouté au cockpit », exactement
+le mensonge que `honnetete.ts` interdit pour les tâches depuis le chantier
+9476c7a0. Réparé avec la même `phraseHorsLigne`, et `addDevItem` rend
+maintenant le chantier créé (`DevItem | undefined`) plutôt que `unknown` —
+c'est aussi ce qui donne l'id du chantier à la suggestion en attente.
+
+`scripts/verifier-chantier-en-attente.ts` : les deux titres réels mesurés
+(un récupérable, un non), les verdicts de réponse, la fenêtre de complétion,
+et la consigne serveur (plus posée de thème deviné, plus de titre tronqué).
+
 ## Un onglet dédié aux notes personnelles
 
 Chantier `5ad49cc0`, 6 sept. 2026. Sa dictée : « creer un onglet dedie aux
@@ -1689,6 +1952,123 @@ Quatre choses à ne pas défaire :
    latérale ») lit l'état réel par `RoleManager` et ouvre le meilleur écran
    système atteignable.
 
+### La fenêtre invisible de la bulle : 2 dip n'avait jamais été essayé (17 sept. 2026)
+
+Chantiers `efe7e44c` / `7b8e68a7`. Sa phrase, le 17 sept. à 14h59, en réponse
+au chantier `468734ad` (« la bulle active/désactive le micro sans fenêtre »,
+mergé le matin même) : « Fait mais ca fonctionne pas ca saute directement et
+pareille pour la bulle jarvis ». Régression réelle, pas le même bug qu'avant :
+le 7 sept. il disait encore « La bulle elle fonctionne tres bien », alors que
+l'appui long, lui, « bug[ait], ressort[ait] » — déjà, et jamais confirmé
+corrigé depuis (aucun test réel entre le 8 et le 17 sept. dans `dev_log`).
+
+**VÉRIFIÉ, PAS SUPPOSÉ** : `journal_ecoute` ne porte aucun évènement autour de
+14h59 — ni `ecoute_auto_demarree`, ni rien côté Assistant/Bulle. L'ouverture
+plante ou ressort donc AVANT que la moindre instrumentation JS ne s'exécute
+(pas même `useTraceInteractions`, monté en tête de `AppRoutes`) — c'est du
+côté natif, pas dans `demarrageOverlay.ts`/`App.tsx`, dont la relecture ligne
+à ligne (les deux sondes en parallèle, le filet à 1,5 s, `quoiRendre`) n'a
+montré aucun défaut de logique.
+
+**Fait CONFIRMÉ, chronologique, pas une supposition** : la release
+`latest-debug` correspondant à HEAD (commit `52c0fa2`, run CI 322) a fini de
+publier son APK à 14:59:17 UTC — UNE SECONDE avant sa réponse. Il n'a
+matériellement pas pu tester cet APK-là : au mieux, ce qu'il a essayé
+correspond à un APK installé plus tôt (peut-être avant même le chantier
+`468734ad`, mergé à 12h22-12h23). **La régression de la bulle n'est donc
+peut-être pas encore confirmée sur le VRAI code du jour** — à revérifier
+après une réinstallation propre de l'APK publiée après ce commit-ci.
+
+**Une chose ÉTAIT fausse dans le code, indépendamment de cette incertitude,
+corrigée ici** : `BulleEcouteActivity` réduisait sa fenêtre à **2 dip** (5-6
+pixels réels) — le commentaire d'origine le disait déjà lui-même, « NON
+VÉRIFIÉ SUR UN VRAI TÉLÉPHONE ». Un WebView/Chromium créé dans une surface
+de quelques pixels est un cas limite documenté sur Android (rendu qui échoue
+selon l'appareil et la version du système) — DÉDUIT comme risque plausible,
+PAS confirmé comme LA cause faute d'accès à un appareil ici. Rien ne
+justifiait de prendre ce risque : **l'invisibilité vient de la classe CSS
+`sr-only`** posée par `OverlayMicContent(cache=true)`, pas de la taille de la
+fenêtre Android — les deux sont des couches différentes. La fenêtre fait
+maintenant 64 dip (une taille de bouton ordinaire, jamais problématique).
+`AssistOverlayActivity`, elle, a toujours utilisé une fenêtre normale (40 %
+d'écran) et n'a donc jamais couru ce risque précis.
+
+**Second écart trouvé et corrigé au passage** : `BulleEcouteActivity`
+n'enregistrait pas `EtatLivePlugin` (chantier `2a5b7802`), contrairement à
+`AssistOverlayActivity` — sans lui, la veille de la bulle ne pouvait jamais
+savoir qu'une conversation Live tourne dans l'autre fenêtre. `verifier-bulle.ts`
+et `verifier-live-croise.ts` gardent maintenant les deux (taille minimale,
+plugin enregistré), essayés à l'envers.
+
+**CE QUI RESTE INCONNU, à ne pas présenter comme réglé** : la cause exacte du
+« ça saute directement » de l'appui long (probablement le même défaut non
+confirmé-corrigé depuis le 7 sept., sans lien avec ce chantier-ci) reste
+ouverte. Aucune des deux fenêtres n'est vérifiable depuis cet environnement
+(pas de SDK Android, pas d'appareil, pas de logcat) : la seule preuve possible
+vient d'un nouvel essai de Raphaël, sur l'APK publiée APRÈS ce commit,
+appui long ET bulle testés séparément et décrits précisément (rien ne se
+passe / un flash / l'app complète s'ouvre / une fenêtre s'ouvre et se
+referme).
+
+### La VRAIE régression du 64 dip : l'écran entier avalait les appuis (17 sept. 2026, suite)
+
+Sa réponse au correctif ci-dessus, dans la foulée : « La bulle fonctionne
+encore moins bien qu'avant, corrige. » — PIRE que le simple « ça saute »
+d'origine, pas juste « toujours cassé ». Ce n'était pas une supposition à
+prendre pour argent comptant : `git log` sur `BulleService.java`,
+`JarvisAccessibiliteService.java`, `demarrageOverlay.ts` et
+`EtatLivePlugin.java` depuis le commit du build 324 (`71d8a40`) confirme
+qu'AUCUNE autre session n'y a touché entre-temps — la seule variable qui a
+changé est le passage 2 dip → 64 dip lui-même.
+
+**LA CAUSE, dans les DRAPEAUX de la fenêtre, pas dans sa taille.**
+`BulleEcouteActivity` posait `width`/`height`/`gravity`/`x`/`y` mais aucun
+drapeau tactile. Documenté par Android
+(`WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL`) : une fenêtre FOCUSABLE
+(le cas par défaut d'une Activity, aucun code ici ne disait le contraire) qui
+n'a pas ce drapeau consomme **TOUS** les événements tactiles de l'écran
+**ENTIER**, pas seulement ceux dans ses propres limites. À 2 dip, un WebView
+qui échouait vraisemblablement à se créer dans une surface aussi minuscule
+laissait cette fenêtre à peine vivante — le défaut existait déjà, mais personne
+ne pouvait le voir puisque la fenêtre ne survivait jamais assez longtemps. À
+64 dip, elle s'ouvre pour de vrai et reste au premier plan le temps de
+l'écoute (plusieurs secondes) : **l'écran entier devenait insensible au
+toucher** pendant tout ce temps, sans qu'aucun élément visible ne le laisse
+deviner — exactement ce que « fonctionne encore moins bien » décrit. Le
+correctif du 2→64 dip n'était pas faux (il restait justifié), il a simplement
+rendu visible un second défaut qui dormait depuis le début.
+
+**Corrigé (`FLAG_NOT_TOUCHABLE | FLAG_NOT_FOCUSABLE`)** : cette fenêtre n'a
+besoin d'AUCUNE interaction tactile — elle se referme par
+`BulleEcoutePlugin.fermer()`, appelé depuis le JS quand `MicButton` revient au
+repos, jamais par un appui sur elle. `FLAG_NOT_FOCUSABLE` pose aussi
+`FLAG_NOT_TOUCH_MODAL` automatiquement (documenté par Android) : les deux
+ensemble laissent tout passer à l'application réellement affichée en dessous,
+comme si cette fenêtre n'existait pas pour le doigt.
+
+**Le même piège existait dans `AssistOverlayActivity`** (l'appui long),
+repéré en corrigeant le premier : focusable, sans `FLAG_NOT_TOUCH_MODAL`, elle
+avalait aussi les appuis dans les DEUX TIERS assombris du haut (l'app en
+dessous, visible mais inerte au toucher), pas seulement dans son propre tiers
+du bas. Corrigé en ajoutant `FLAG_NOT_TOUCH_MODAL` SEUL — elle reste
+focusable, son propre micro et ses propres boutons continuent de fonctionner
+normalement, seul le comportement modal disparaît. **PAS confirmé comme LA
+cause du « ça bug, ressort » de l'appui long documenté depuis le 7 sept.**
+(aucun appareil ici pour le vérifier) : corrigé comme précaution justifiée par
+la mécanique Android documentée, pas comme correctif aveugle — exactement la
+même posture que le passage à 64 dip lui-même.
+
+`verifier-bulle.ts` garde les trois drapeaux (essayés à l'envers : les
+retirer fait rougir chacun des trois contrôles correspondants).
+
+**CE QUI RESTE À CONFIRMER, sur l'APK publiée après ce commit** : que le
+premier « ça saute directement » disparaît vraiment pour les deux chemins, et
+que l'écran ne se fige plus pendant qu'un appui long ou une bulle écoute —
+Raphaël doit pouvoir continuer à taper ailleurs sur l'écran (par exemple
+essayer de fermer une autre app) sans que rien ne semble mort. NE PAS
+ARCHIVER avant cette confirmation explicite, appui long ET bulle testés
+séparément.
+
 ## Une commande mal entendue reste rattrapable, sans jamais poser de question
 
 `src/lib/actionsTelephoneFenetre.ts` (pur) + `actionsTelephoneToast.ts` (le
@@ -1704,6 +2084,69 @@ NOMMANT la cible (c'est le seul mot qui permet de repérer l'erreur), et laisse
 quelques secondes. Seules les actions qui SORTENT vers une autre application y
 passent ; `media_control` et `set_alarm` non, sans quoi Jarvis serait lent
 partout. Le délai est un réglage, et « Immédiat » est disponible en un appui.
+
+## Le conflit de micro avec une autre application : couper avant d'insister
+
+Chantier `7a6e75c4-e639-40dd-97de-ffb4448e606e`, 18 sept. 2026. Son intitulé :
+« gérer le conflit d'utilisation du microphone entre Jarvis et d'autres
+applications (ex. WhatsApp pour les notes vocales), en permettant la coupure
+automatique du micro de Jarvis et sa réactivation manuelle, pour réduire les
+manipulations ».
+
+**Ce qui existait déjà, et qu'il ne fallait pas refaire.** La veille
+(`src/lib/veille.ts`) coupe déjà le micro TOUT DE SUITE dès que l'app perd le
+premier plan (`visible` passe à faux, l'effet qui porte la boucle se démonte
+et rend le micro sans attendre la fin de la rafale) — aucun bruit, aucune
+insistance dans ce cas précis. Et `REFUS_AVANT_ABANDON` (9 sept., mesuré le
+17 sept. sur 229 refus consécutifs) coupe déjà quand le service refuse
+d'ouvrir le micro plusieurs fois d'affilée, en exigeant un appui sur le cœur
+pour reprendre. Ce qui manquait entre les deux : quand l'app perd le premier
+plan **PENDANT que le mot-clé écoutait activement** (le micro était réellement
+ouvert), le retour au premier plan relançait la veille TOUTE SEULE — sans
+qu'aucun appui ne soit nécessaire, contrairement au cas des refus répétés.
+
+`focusPerduPendantEcoute(statut, documentCache)` (`src/lib/veille.ts`, pure,
+vérifiée par `verifier-dialogue.ts`) répond à une seule question : le micro
+était-il réellement ouvert (`statut === "wake-listening"`) au moment où l'app
+a perdu le premier plan ? Si oui, c'est traité EXACTEMENT comme
+`REFUS_AVANT_ABANDON` — même état (`veilleAbandonnee`), même message
+(« Le micro est pris par autre chose — j'ai arrêté d'insister. Touche le cœur
+pour reprendre. »), même réactivation par le cœur (`handleClick` remet les
+deux à zéro). Les deux mécanismes sont complémentaires, pas redondants :
+celui-ci coupe en une fraction de seconde sur un signal net (le micro était
+ouvert, la reprise du premier plan par une autre app est un fait qu'Android
+donne gratuitement) ; `REFUS_AVANT_ABANDON` reste le filet pour les cas où
+l'app garde le premier plan (voir plus bas) et où rien ne dit qu'un conflit
+est en cours avant d'avoir essayé — et échoué — plusieurs fois.
+
+**Perdre le premier plan alors que la veille était simplement AU REPOS**
+(entre deux rafales, aucun micro ouvert) n'est PAS traité comme un conflit :
+rien n'a été interrompu, donc rien à couper, et la veille reprend toute seule
+au retour — exactement comme avant ce chantier. Sans cette distinction, le
+moindre coup d'œil à une notification pendant un silence de la veille aurait
+obligé à retoucher le cœur en revenant, ce qui va à l'encontre de l'objectif
+même du chantier (réduire les manipulations, pas en ajouter).
+
+**LIMITE CONNUE, à ne pas présenter comme couverte** : cette détection ne voit
+que la perte du premier plan de LA FENÊTRE de Jarvis (document.visibilityState).
+Elle ne peut rien pour un conflit qui survient alors que Jarvis reste
+visible — l'écran partagé d'Android (multi-fenêtres), ou la fenêtre de
+l'appui long / la bulle flottante ouverte PAR-DESSUS une autre application
+encore au premier plan en dessous (`AssistantOverlayPage`, `BulleEcoutePage` :
+deux `BridgeActivity` distinctes, dont le `document.visibilityState` propre
+reste « visible » tant que CETTE fenêtre-là est à l'écran, quoi qu'il se passe
+dans l'application affichée dessous). Deviner qui tient le micro dans ces
+cas-là n'est pas possible depuis ici — Android ne l'expose pas — et ce n'est
+pas ce que ce chantier a tenté : `REFUS_AVANT_ABANDON` reste la seule
+protection pour eux, non mesurée comme suffisante pour autant. Non vérifié
+sur un vrai téléphone (aucun appareil ici) : c'est du `src/`, la mise à jour
+rapide suffit, pas besoin d'APK.
+
+Vérifié par un cas ajouté à `scripts/verifier-dialogue.ts` (la fonction pure)
+et un banc de bout en bout ajouté à `scripts/verifier-ecoute-web.mjs` (le vrai
+`MicButton`, moteur qui accepte de démarrer normalement, premier plan perdu
+pendant l'écoute) : la coupure est mesurée à moins de 1,5 s, contre plusieurs
+secondes à plusieurs minutes pour atteindre le seuil de vingt refus.
 
 ## Supprimer demande toujours, partout dans l'app
 
@@ -2319,8 +2762,44 @@ Quatre choses à ne pas défaire :
    Seuls le quota du JOUR, le passage sur un secours et une latence au-delà de
    8 s le dérangent.
 
-L'écran reste à faire : demande posée dans `dev_log` pour la session
-« Le cockpit ».
+L'écran est `src/components/settings/Consommation.tsx` (Paramètres › Le
+cockpit).
+
+### « Quel moteur tournes-tu, en ce moment ? » (17 sept. 2026)
+
+Chantier `920ff758`. Sa demande : pouvoir demander à voix haute quel moteur de
+langue tourne — MÊME en mode automatique de bascule (la veille ci-dessous) —
+pour identifier le plus performant.
+
+**L'app ne peut pas le savoir elle-même**, exactement pour la raison écrite
+juste au-dessus : le modèle principal se règle par le secret `GEMINI_MODELE`,
+et ce que la veille automatique a promu vit dans `moteur_choisi` — deux choses
+que l'app ne voit jamais.
+
+**Et lire `moteur_choisi` ou le secret directement aurait été la mauvaise
+réponse** : ça dit ce qui DEVRAIT répondre, pas ce qui répond RÉELLEMENT — le
+problème que `resumerConsommation` a déjà résolu pour le cockpit deux sections
+plus haut. `supabase/functions/_shared/moteurActif.ts` applique donc la MÊME
+règle (« le modèle qui a le plus répondu à ses phrases de commande, pas celui
+qui a le plus été essayé »), mesurée sur `appels_modele`, et rend un bloc de
+contexte — pas une nouvelle action — que voice-command joint à chaque phrase,
+comme `branchements.ts`.
+
+**Deux copies de la même règle, assumées** : une Edge Function ne peut pas
+importer `src/`, donc la sélection du « gagnant » vit à la fois dans
+`resumerConsommation` (cockpit) et dans `moteurActif.ts` (voix). Même stratégie
+que `destinataire.ts` / `journalDestinataire.ts` : `scripts/verifier-moteur-actif.ts`
+fait tourner les deux sur les mêmes cas et refuse qu'elles divergent.
+
+**Silencieux quand rien n'a encore été mesuré** (une base neuve, un compte de
+test) : pas de repli sur une configuration devinée, jamais un nom inventé —
+c'est le seul cas où Jarvis ne pourra pas répondre à cette question.
+
+**« Expliquer toutes les fonctionnalités développées »**, la seconde moitié de
+sa demande, n'avait rien à coder : `_shared/environnement.ts` (déjà importée
+par voice-command ET live-jeton) fait déjà ça — « Réponds avec ça […] ou ce que
+tu sais faire » — et décrit jusqu'à la carte « Le moteur de langue » de
+Paramètres › Le cockpit.
 
 ### La veille des modèles : passer tout seul au meilleur (6 sept. 2026)
 
@@ -2821,6 +3300,65 @@ au démarrage — dans l'écran dont il dit lui-même qu'il ne sait plus « où 
 le nez ». La question lui est posée dans le cockpit ; s'il tranche l'inverse,
 la place est prête.
 
+## L'écran affiché et le dernier bouton touché : dans journal_ecoute et jarvis_erreurs (chantier 6d94ab6a)
+
+Sa demande, 17 sept. 2026 : mieux comprendre comment Jarvis se comporte lors
+de ses requêtes et de ses problèmes, à la voix ET au clic dans l'app. Sa
+réponse au périmètre, posée en conversation et tranchée le jour même :
+« Enrichir l'existant » — pas un quatrième endroit à côté de `journal_ecoute`,
+`jarvis_erreurs` et `dev_log`.
+
+**`src/lib/contexteInteraction.ts` est le point UNIQUE que les deux lisent.**
+Pur à l'exception de deux variables de module (l'écran actuel, le dernier
+appui) — même discipline que `derniereParole` dans `journalEcoute.ts` : en
+mémoire seulement, jamais en base ni en stockage local, parce que la question
+posée est « où en est-il MAINTENANT », pas « où en était-il à la dernière
+ouverture ». `src/hooks/useTraceInteractions.ts` (DOM + `useLocation`, monté
+une fois dans `AppRoutes`, App.tsx — avant les retours anticipés qui rendent
+soit l'app normale soit la fenêtre d'assistance, pour couvrir les deux) est le
+seul endroit qui a besoin du navigateur ; il ne fait qu'écrire dans le module
+pur, toute la décision (ce qui reste pertinent, comment le formuler) y est
+vérifiable sans navigateur (`scripts/verifier-contexte-interaction.ts`).
+
+**`journalEcoute.ts#noterEcoute` enrichit CHAQUE événement**, sans toucher aux
+dizaines d'appels disséminés dans l'app : `detailInteraction()` ajoute `ecran`
+et, s'il est encore pertinent (moins de 30 s), `clic` + `clic_il_y_a_ms` au
+`detail` jsonb. Le `detail` fourni par l'appelant garde la main sur ces clés.
+**`erreurDepuisEcoute` continue de lire le `detail` ORIGINAL**, pas
+l'enrichi : son résumé JSON (tronqué à 300 caractères pour certains
+événements) ne doit pas voir l'écran et le clic écraser les champs propres à
+l'événement — cette même information arrive déjà dans `jarvis_erreurs.contexte`
+via le point suivant.
+
+**`erreurs.ts#signalerErreur` retombe sur `contextePourErreur()` UNIQUEMENT
+quand l'appelant n'a rien fourni.** C'est le vrai trou trouvé en creusant :
+`src/lib/notifyError.ts#withErrorToast` — le seul endroit par lequel passent
+TOUTES les écritures de l'app — n'a JAMAIS renseigné `contexte`, pas plus que
+`useFileEnAttente.ts`. Une écriture qui échouait disait QUOI avait raté
+(`detail`), jamais OÙ ni APRÈS QUOI. Les appels qui passent déjà quelque chose
+de plus précis (la phrase dictée, dans tout `MicButton.tsx` et
+`repondreDecisionVoix.ts`) gardent la main : le repli ne s'applique qu'en
+l'absence de `contexte` explicite, jamais en écrasement.
+
+**Aucune migration.** `jarvis_erreurs.contexte` (« ce qui se passait : la
+phrase dictée, l'écran, l'action tentée ») et `journal_ecoute.detail` (jsonb)
+existaient déjà exactement pour ça — la colonne le disait dans son propre
+commentaire depuis la migration 0019, personne ne l'alimentait pour l'écran.
+
+**Ce qui n'est PAS fait, volontairement** : `dev_log` n'a pas été touché.
+C'est le journal de bord des sessions et des échanges avec Raphaël, pas un
+journal d'interaction — les deux exemples concrets de sa demande (« quel
+bouton touché juste avant », « le contexte d'écran au moment d'une erreur »)
+visent `journal_ecoute` et `jarvis_erreurs`, pas `dev_log`. Y ajouter quelque
+chose ici aurait été une extension non demandée.
+
+**Non mesuré sur un vrai téléphone** (pas d'appareil ici) : que le clic
+capturé en phase de capture (`document.addEventListener("click", ..., {
+capture: true })`) survit bien aux boîtes de dialogue et menus qui arrêtent la
+propagation (Radix, utilisé par shadcn/ui) — c'est justement pour ce cas que
+la capture a été choisie plutôt que la bulle, mais seule une session future
+avec les vraies données de `journal_ecoute` le confirmera.
+
 ## Ce que Raphaël reprend à Jarvis lui revient
 
 `supabase/functions/_shared/corrections.ts` — **une seule source**, importée
@@ -2910,6 +3448,29 @@ texte.
 est d'exclure le compte rendu d'abord, puis d'énumérer les `kind`. Un contrôle
 garde ce cas précis.
 
+### Une question mal formée n'atteint plus sa carte (17 sept. 2026)
+
+Chantier `f397305d`. Une session a inséré en SQL brut une note TECHNIQUE
+adressée à une autre session (`kind='question'`), sans passer par
+`scripts/demander.sh` et sans préfixer « Pour la session … ». Elle a atterri
+telle quelle sur « Ce qui attend ta décision » — ses mots : « je ne comprends
+rien. En fait, il me fait un récap très bizarre, pas clair du tout. »
+
+**La mesure du 7 sept. (« 9 questions sur 14 sans `pourquoi`, toutes
+légitimes ») ne tient plus, remesuré le 17 sept. sur les 27 questions
+réelles du journal : les 10 sans `pourquoi` sont maintenant TOUTES des
+messages entre sessions, zéro question légitime.** La raison : `--pourquoi`
+est devenu obligatoire dans `demander.sh` entre-temps — toute question posée
+par le chemin canonique en porte un désormais, avec ou sans options.
+
+`questionMalFormee` (même fichier, même paire de copies que ci-dessus) exclut
+donc de `enAttenteDeRaphael`/`estPourRaphael` une question sans `pourquoi`,
+sans options, et non reconnue par `adresseeAUneSession`. **Volontairement PAS
+une liste de préfixes à élargir** (« Session X ici », « Pour les sessions… »
+existent aussi et continueraient à échapper à un motif énuméré) : puisqu'une
+vraie demande a toujours `pourquoi`, une question qui n'en a pas n'est
+structurellement plus une demande bien formée, quelle que soit sa formulation.
+
 ## Ce que Jarvis sait de sa propre application
 
 `supabase/functions/_shared/environnement.ts` — **une seule source**, importée
@@ -2923,6 +3484,63 @@ redéploie les deux fonctions — sinon Jarvis envoie Raphaël vers un bouton qu
 n'existe plus. Quatre contrôles de `verifier-commande-vocale.mjs` (« il sait
 où… ») disent si le texte arrive bien jusqu'au modèle.
 
+## Naviguer vers une section de Paramètres : la moitié « application »
+
+Chantier `aac9a0dd` (17 sept. 2026 ; `59468714` en était un doublon — même
+demande dictée deux fois, « Jarvis doit pouvoir manipuler/configurer/
+paramétrer toutes les fonctionnalités sur simple commande vocale » —, archivé
+au profit du premier). Sa demande : Jarvis doit pouvoir naviguer dans l'app
+(« emmène-moi dans les notifications ») et guider physiquement vers un réglage
+incompris.
+
+**Ce chantier livre UNIQUEMENT la moitié application.** La reconnaissance de
+la phrase elle-même (extraire « notifications » de « emmène-moi dans les
+notifications ») est le même travail que `commandeLocale.ts` — isoler la
+commande du verbe qui l'introduit — et vit dans
+`supabase/functions/voice-command/**`, `src/lib/commandeLocale.ts`,
+`MicButton.tsx` : hors du périmètre du thème « L'app elle-même », propriété du
+thème « Le téléphone ». Une question précise reste ouverte en `dev_log`
+(item_id `aac9a0dd`) pour la session qui porte la voix — ne la reproblématise
+pas, elle nomme déjà l'API prête à appeler ci-dessous.
+
+- `src/lib/sectionsParametres.ts` — **une seule source** pour le catalogue des
+  sections de Paramètres (`SECTIONS_PARAMETRES`, déplacé depuis
+  `SettingsPage.tsx` où il vivait en double emploi potentiel) et
+  `sectionCorrespond` (déplacé depuis `Section.tsx`, qui le réexporte pour ne
+  pas casser l'import existant). `resoudreCibleParametres(cible)` — **pure**,
+  `scripts/verifier-navigation-parametres.ts` — résout une cible déjà propre
+  (une clé exacte, ou un mot isolé) vers UNE section, ou `null` si rien ou
+  PLUSIEURS sections correspondent. Mesuré sur le vrai catalogue et pas
+  supposé : « google », « notification » (au singulier) et « mise à jour »
+  vivent chacun dans les mots-clés de DEUX sections à la fois et se taisent
+  donc à raison — ce n'est pas un défaut à corriger.
+- `SettingsPage.tsx` lit `?section=<cible>` dans l'URL (`useSearchParams`),
+  résout via `resoudreCibleParametres`, retient la clé trouvée en état, et
+  retire le paramètre de l'URL dans tous les cas (résolu ou pas) — le laisser
+  referait tenter la même résolution à chaque rendu.
+- `Section.tsx` reçoit `cibleNavigation` (vrai quand CETTE section est la
+  cible) : elle s'ouvre seule, défile jusqu'à elle et se met en évidence (un
+  contour, 2,5 s) — sans qu'on ait cliqué dessus. Vérifié dans un vrai
+  navigateur (`scripts/harness/reglages.tsx`, bloc `#navigation-section`, dans
+  `verifier-reglages-web.mjs`) : le composant RÉEL, pas une paraphrase.
+
+**Pourquoi une mise en évidence DOM et pas le contrôle d'écran du chantier
+3f3ad20b** (l'idée initiale de la demande, « s'appuyant sur le contrôle
+d'écran déjà livré ») : ce mécanisme (service d'accessibilité Android) existe
+pour cliquer sur l'écran d'une AUTRE application, dont notre app n'a pas le
+contrôle direct. Sur SA PROPRE interface, Jarvis a déjà le contrôle total
+(React, DOM) — y superposer un clic d'accessibilité serait plus fragile
+(dépend d'un service que Raphaël doit activer, relit l'arbre à chaque fois)
+pour un résultat que `scrollIntoView` + une classe CSS obtiennent directement
+et de façon fiable. Ne réintroduis pas cette confusion : le contrôle d'écran
+3f3ad20b reste réservé aux écrans d'AUTRES applications.
+
+**Ce qui n'est PAS encore utilisable de bout en bout, et il ne faut pas le
+présenter comme livré** : rien n'appelle encore
+`navigate("/settings?section=<cible>")` — ni une action vocale (hors
+périmètre, voir plus haut), ni un lien ailleurs dans l'app. C'est une API
+prête, pas une fonctionnalité que Raphaël peut déclencher aujourd'hui.
+
 ## Les vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
@@ -2935,6 +3553,7 @@ node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarv
 node --experimental-strip-types scripts/verifier-prechauffage.ts  # espacement du préchauffage de la connexion Live, sans réseau
 node --experimental-strip-types scripts/verifier-ouverture-live.ts  # l'ordre des trois étapes d'une ouverture Live : le micro en même temps que la connexion, jamais avant le jeton, sans réseau
 node --experimental-strip-types scripts/verifier-reprise-live.ts  # une fermeture Live subie rouvre la conversation, une panne installée ne boucle pas, sans réseau
+node --experimental-strip-types scripts/verifier-reponse-illisible.ts  # le mode Live ne montre jamais de charabia (<ctrl46>…) et ne reste pas bloqué dessus, sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node --experimental-strip-types scripts/verifier-nom-document.ts  # un nom de fichier hébreu ou accentué devient une clé que Storage accepte, et se relit, sans réseau
@@ -2950,10 +3569,12 @@ node --experimental-strip-types scripts/verifier-dedoublonnage.ts   # la mémoir
 node --experimental-strip-types scripts/verifier-corrections.ts   # ce que Raphaël reprend arrive au modèle, et rien d'autre, sans réseau
 node --experimental-strip-types scripts/verifier-moteur.ts        # quel fournisseur, quel modèle, quels seaux de quota — vrai répartiteur, fetch en doublure
 node --experimental-strip-types scripts/verifier-consommation.ts   # ce qu'on lui dit de sa consommation, et ce qu'on ne lui dit pas, sans réseau
+node --experimental-strip-types scripts/verifier-moteur-actif.ts  # quel moteur Jarvis annonce à voix haute, mesuré et pas deviné, sans réseau
 node --experimental-strip-types scripts/verifier-veille-modele.ts # on ne change pas de modèle à la légère, sans réseau
 npx tsc -p supabase/functions/tsconfig.json                      # le code des Edge Functions se tient (aucun Deno requis)
 node --experimental-strip-types scripts/verifier-pannes-silencieuses.ts  # une panne de la mémoire ne se lit pas comme une absence, sans réseau
 node --experimental-strip-types scripts/verifier-retours.ts       # Jarvis constate ses échecs, et se tait le reste du temps, sans réseau
+node --experimental-strip-types scripts/verifier-contexte-interaction.ts  # l'écran affiché et le dernier bouton touché, dans journal_ecoute et jarvis_erreurs, sans réseau
 ANON_KEY=... node scripts/verifier-memoire.mjs           # la mémoire de bout en bout : dédoublonnage réel + retrouver une conversation
 node scripts/verifier-memoire-web.mjs                    # « Vos conversations » parcourue dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-notifications.ts   # ce que Jarvis fera sonner, et quand, sans réseau
@@ -2966,11 +3587,14 @@ node --experimental-strip-types scripts/verifier-musique.ts       # « je lance 
 node --experimental-strip-types scripts/verifier-doublon-vocal.ts  # dicter deux fois ne crée pas deux chantiers, sans réseau
 node --experimental-strip-types scripts/verifier-ou-va-cette-dictee.ts  # tâche ou chantier : la supposition dite, et la correction d'un mot, sans réseau
 node --experimental-strip-types scripts/verifier-tache-date-categorie.ts  # « pour quand ? » complète la même tâche, la catégorie suggérée attend sa validation, sans réseau
+node --experimental-strip-types scripts/verifier-chantier-en-attente.ts  # un chantier créé à la voix : la section et le titre se proposent, ne s'appliquent jamais seuls, sans réseau
 node --experimental-strip-types scripts/verifier-titre-tache.ts  # le titre d'une tâche est ce qu'il y a à faire, et surtout ce qui ne doit PAS être touché, sans réseau
 node --experimental-strip-types scripts/verifier-seconde-demande.ts  # une phrase à deux demandes rend la main au serveur, et ses vrais titres à « et » n'y tombent pas, sans réseau
 node --experimental-strip-types scripts/verifier-reprise-dictee.ts  # redire une dictée coupée complète la même tâche au lieu d'en créer une seconde, sans réseau
 node --experimental-strip-types scripts/verifier-fenetre-annulation.ts  # le temps d'arrêter une commande mal entendue, sans réseau
 node --experimental-strip-types scripts/verifier-confirmation-envoi.ts  # « vas-y » après un message préparé devient un clic, pas un second brouillon, sans réseau
+node --experimental-strip-types scripts/verifier-correction-message.ts  # corriger ou relire un message WhatsApp/SMS préparé, à la voix — et le silence sur un autre domaine (tâche, chantier…), sans réseau
+node --experimental-strip-types scripts/verifier-message-annonce.ts  # quand et quoi Jarvis annonce d'un message programmé — PAS de notification, et le silence en conversation, sans réseau
 node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flottante : état réel, service déclaré, sans réseau
 node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
 node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau
@@ -2979,8 +3603,10 @@ node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis chois
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
 node --experimental-strip-types scripts/verifier-sections.ts    # groupement, ordre, compteurs et filtre du cockpit, sans réseau
+SUPABASE_SERVICE_ROLE_KEY=... node scripts/verifier-cockpit-marqueurs.mjs  # un chantier livré dont le crochet d'en-tête dit encore [LIBRE] : à relancer avant de dire à Raphaël que le cockpit est propre
 node --experimental-strip-types scripts/verifier-themes-non-declares.ts  # un thème sans section se signale, jamais tout seul, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
+node --experimental-strip-types scripts/verifier-navigation-parametres.ts  # une cible résolue vers UNE section de Paramètres, jamais une mauvaise, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
@@ -2992,11 +3618,14 @@ ANON_KEY=... node scripts/verifier-visite-cockpit.mjs    # le repère « déjà 
 node --experimental-strip-types scripts/verifier-file-en-attente.ts   # une tâche dictée hors réseau ne se perd pas et ne se dédouble pas, sans réseau
 node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une session autonome se retire quand il le faut, sans réseau
 node --experimental-strip-types scripts/verifier-historique-chantier.ts  # une note complétée n'est pas une note écrasée, sans réseau
+node --experimental-strip-types scripts/verifier-fil-journal.ts  # reprendre une discussion au journal, et dire ce qu'on ne montre pas, sans réseau
+node --experimental-strip-types scripts/verifier-derniere-maj.ts  # un chantier déplié montre sa dernière mise à jour d'abord, jamais le marqueur ni une entrée du milieu, sans réseau
 ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce qu'on y a écrit : trigger, restauration tracée, RLS
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
 node scripts/verifier-notes-web.mjs                      # l'onglet Notes : créer/modifier/supprimer avec confirmation/chercher, vrai navigateur
+node scripts/verifier-programmes-web.mjs                 # l'écran Programmé : voir tout, modifier, annuler avec confirmation, vrai navigateur
 node scripts/verifier-documents-web.mjs                  # l'onglet Docs : un nom hébreu ou accentué s'affiche et tient sur un écran de téléphone, vrai navigateur
 node scripts/verifier-ios-web.mjs                        # le site dans un vrai moteur WEBKIT à la taille d'un iPhone : rendu, zones tactiles, contrat « sur l'écran d'accueil »
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
@@ -3063,6 +3692,56 @@ de l'hébergeur), redirections suivies **à la main et revalidées une par une**
 8 Mo, et seuls un PDF ou une image acceptés en retour. **Ne relâche aucun de
 ces contrôles** ; `scripts/verifier-gmail.mjs` les vérifie tous hors ligne.
 
+### Transmettre un reçu retrouvé au contact désigné (chantier 4dabe586)
+
+La seconde moitié du titre du chantier, restée hors du périmètre
+« Messagerie » depuis le 7/8 sept. 2026 (propriété du contrôle du téléphone,
+`3f3ad20b`) : `find_receipts` ne pouvait QUE lister les reçus, jamais les
+transmettre — Jarvis le disait lui-même dans sa réponse (« je ne peux pas
+encore te les transmettre moi-même »). Livrée le 17 sept. par une session
+avec Raphaël en ligne, dans le thème « Messagerie et agenda ».
+
+Nouvelle action serveur `transmettre_recu` (`mail_cible` pour désigner LEQUEL
+message — mêmes mots que `read_email` : « le dernier », « la facture
+d'électricité » — et les mêmes champs destinataire que `send_message` :
+`contact_id`/`contact_name`/`phone_number`/`message_channel`). Côté client
+(`voiceActions.ts`), elle résout le message (`retrouverMessage`, déjà utilisé
+par `read_email`), lit ses pièces jointes (`gmail.lireMessage`), récupère la
+première via `recupererPieceJointe` — **l'action serveur `piece_jointe`
+existait déjà, déployée depuis le 3 sept., mais n'était appelée depuis aucun
+chemin de la voix** —, et délègue le partage à
+`transmettreFichier()` (`actionsTelephoneVocales.ts`).
+
+**Un fichier trouvé sur Gmail n'est pas sur le téléphone : il faut l'y
+écrire avant de le partager.** `transmettreFichier` écrit le base64 reçu dans
+le cache de l'app (`@capacitor/filesystem`, `Directory.Cache`, même outil que
+`majWeb.ts` pour un paquet téléchargé — chemin `partage/<nom>`, couvert par
+le `<cache-path path="." />` déjà déclaré dans `file_paths.xml`), obtient son
+chemin natif (`Filesystem.getUri`), puis appelle le nouveau plugin
+`ActionsTelephone.partagerFichier` (`ActionsTelephonePlugin.java`) : un
+`FileProvider.getUriForFile` (même motif que `ApkDownloaderPlugin` pour
+installer une APK) et un `Intent.ACTION_SEND` avec `EXTRA_STREAM`.
+
+**Même règle que `preparerWhatsApp`/`preparerSms` : ça PRÉPARE, ça n'envoie
+jamais tout seul.** Et une limite honnête, pas contournée : **il n'existe
+aucun intent public pour cibler UNE conversation précise avec une pièce
+jointe**, contrairement au texte seul (`send_message` avec un numéro connu
+ouvre directement la bonne conversation via le lien wa.me). Avec un `paquet`
+visé (WhatsApp ou WhatsApp Business, résolu par `quelWhatsApp()` comme pour
+`send_message`), l'application affiche son PROPRE écran de destinataire ;
+sans lui (SMS, ou aucune préférence claire), le sélecteur Android habituel.
+Le nom du destinataire désigné dans la phrase sert à le NOMMER dans la
+réponse (« Je prépare le reçu pour Dan sur WhatsApp, choisis-le et appuie sur
+envoyer »), pas à viser techniquement sa conversation — ne le présente jamais
+comme si Jarvis avait choisi le destinataire à sa place.
+
+**Touche `android/**` : une nouvelle APK est nécessaire**, la mise à jour
+rapide ne porte pas un nouveau plugin natif. **Non constaté sur un vrai
+compte Gmail** (pas de compte de test dans cet environnement, jeton Google
+expiré depuis le 8 sept. selon `verifier-gmail.mjs`) : le chantier reste
+ouvert jusqu'à ce que Raphaël confirme que « transmets ce reçu à … » ouvre
+bien WhatsApp avec le bon fichier attaché.
+
 ### Les messages programmés (`messages_programmes`, migration 0017)
 
 La table ne sait pas envoyer, et ne doit jamais le savoir : décision de Raphaël
@@ -3071,6 +3750,45 @@ du 3 sept., on reste sur le téléphone et rien ne part sans qu'il appuie. D'où
 a présenté sans réponse ne doit pas disparaître de sa liste comme s'il était
 parti. `canal` reste `null` tant qu'il n'a pas dit WhatsApp ou SMS.
 Client : `src/lib/messagesProgrammes.ts`.
+
+### L'écran « Programmé » : voir et modifier à la main (chantier 0c0193e3, 18 sept. 2026)
+
+Sa demande, mot pour mot, le jour où il a accepté que les messages programmés
+partent désormais tout seuls sans validation vocale au moment de l'envoi
+(voir la note du chantier `ed32cbcc` pour cette décision-là, hors périmètre
+ici) : « le top du top, ça serait qu'il y ait une section
+programmation/automatisation dans Jarvis même, comme ça je peux voir tout ce
+qui est programmé, et si nécessaire je peux le modifier à la main. »
+
+Nouvel onglet **Programmé** (`src/pages/ProgrammesPage.tsx`,
+`useMessagesProgrammesListe`), qui **AFFICHE ET MODIFIE les données, il
+n'exécute rien** — ni clic, ni ouverture de WhatsApp : c'est le rôle du
+chantier `ed32cbcc`, pas de celui-ci. TOUS les statuts s'affichent (prévu,
+annoncé, envoyé, annulé), triés par heure prévue — à la différence de
+`listerMessagesProgrammes()` appelée sans argument par la voix, qui ne veut
+que ce qui reste à traiter (d'où `TOUS_LES_STATUTS`, exporté pour cet écran
+précisément).
+
+**Modifier remet TOUJOURS le message à « prévu »**, y compris depuis
+« annoncé » : `modifierMessage()` (nouvelle fonction générique dans
+`messagesProgrammes.ts`, dont `reprogrammerMessage`/`modifierTexte` ne sont
+plus que de fins wrappers — même logique, pas dupliquée) efface l'annonce en
+même temps. Ce que Jarvis annoncerait a changé sous ses pieds ; une ancienne
+annonce ne veut plus rien dire. **Un message déjà « envoyé » ou « annulé » ne
+propose ni modifier ni annuler** : ce sont des états définitifs, pas
+rattrapables à la main.
+
+Annuler passe par `ConfirmerAction`, comme partout dans l'app, en nommant le
+destinataire et l'heure. Réutilise le même mécanisme temps réel que
+tasks/notes/dev_items : migration `0052_realtime_messages_programmes.sql`
+(REPLICA IDENTITY FULL + publication) — `messages_programmes` existait depuis
+la migration 0017 mais n'avait jamais été ajoutée au canal Realtime, personne
+n'ayant eu besoin jusqu'ici de la regarder en direct depuis un écran.
+
+Vérifié dans un vrai navigateur, écran de téléphone :
+`node scripts/verifier-programmes-web.mjs` (banc `scripts/harness/programmes.tsx`,
+qui recopie le balisage de `ProgrammesPage.tsx` avec un état local — toute
+retouche de l'un va dans l'autre).
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
@@ -3113,6 +3831,19 @@ elles **s'exécutent bien, mais tu ne récupères aucune ligne** — la réponse
 contient `"rows": null`. Le piège est silencieux : tu croirais que la table
 est vide alors qu'elle ne l'est pas. Ne groupe donc jamais deux `select`, ni
 un `update` et son `select` de vérification, dans le même appel.
+
+**N'alias jamais une colonne `as t` (ni aucun nom qui reprend l'alias interne
+du wrapper).** Trouvé le 17 sept. 2026 en enquêtant sur 3f3ad20b/21cf48d2 :
+`exec_sql` enveloppe ta requête dans `select coalesce(jsonb_agg(t), '[]') from
+(<ta requête>) as t`. Si ta requête a elle-même une colonne nommée `t`
+(`select ... as t`), `jsonb_agg(t)` devient ambigu et Postgres résout `t` vers
+CETTE COLONNE plutôt que vers la ligne entière — silencieusement, sans erreur.
+Résultat : `"rows"` contient la valeur de cette seule colonne au lieu de
+l'objet complet, et les autres colonnes sélectionnées disparaissent sans un
+mot. Vérifié : `select 1 as t, 2 as b` rend `"rows": [1]`, pas
+`[{"t":1,"b":2}]`. Piège de la même famille que `Filesystem.mkdir` et le
+sélecteur Playwright — un résultat qui a l'air correct mais ne l'est pas.
+Utilise `horodatage`, `t_`, ou n'importe quel nom qui n'est pas `t`.
 
 Puisqu'il n'y a plus de pop-up, enchaîner les appels ne coûte plus rien :
 
@@ -3840,6 +4571,73 @@ reprise se passe bien chez lui. La preuve sera dans son journal — un
 `live_reconnexion` avec `apres_panne: true` juste après un `live_fin` qui
 porte cette raison. C'est du `src/` : la mise à jour rapide suffit, pas besoin
 d'APK.
+
+### Le mode Live affichait du charabia et restait bloqué dessus (17 sept. 2026)
+
+Chantier `40f07c12`. Sa capture : en pleine conversation Live, il demande à
+Jarvis de créer un chantier pour un bug qu'il vient de décrire, et l'écran
+affiche « Jarvis : <ctrl46><ctrl46> » — du texte brut illisible — puis plus
+rien : la conversation reste « en cours » pour de bon.
+
+**VÉRIFIÉ DANS `journal_ecoute` AU MOMENT DES FAITS, PAS SUPPOSÉ** : aucun
+`live_commande` ni `live_fin` après sa demande. Le `live_commande` juste avant
+(« Appelle Dan Marciano sur WhatsApp ») avait fonctionné normalement. La panne
+n'avait donc laissé AUCUNE trace exploitable, et pour cause : rien dans le
+projet ne loggait jamais le texte de `outputTranscription` — ni les événements
+`live_commande` (qui ne loggent que les APPELS D'OUTIL, pas la parole libre du
+modèle) ni l'événement `reponse` (métadonnées seulement, jamais le texte). Un
+`grep` sur `journal_ecoute` pour retrouver d'autres occurrences ne pouvait
+donc structurellement rien trouver — ce n'est pas que c'était rare, c'est que
+rien ne l'aurait jamais enregistré.
+
+**LA CAUSE EST CONFIRMÉE, PAS UNE HYPOTHÈSE** — cherchée le 17 sept. sur le
+forum officiel des développeurs Gemini : un bug ouvert en janvier 2026 pour
+`gemini-2.5-flash-native-audio-preview`, **le modèle Live exact de Jarvis**,
+décrit le même symptôme mot pour mot. Le modèle envoie parfois des jetons de
+contrôle bruts (`<ctrl46>`…) à la place de l'audio, plus souvent après un
+appel d'outil (Jarvis n'en a qu'un, `commande_jarvis` — et c'est justement une
+demande de chantier qui l'a déclenché ici). Cité tel quel : « the session
+never recovers; subsequent user turns also produce only control-token
+output ». Aucun correctif ni contournement côté Google à cette date — on ne
+peut RIEN faire pour empêcher l'envoi, seulement pour ce qui suit.
+
+`src/lib/live/reponseIllisible.ts` (**pur**, vérifié par
+`scripts/verifier-reponse-illisible.ts`) porte la détection — un motif précis
+(`<ctrl\d+>`) qui ne matche jamais un mot français comme « contrôle » — et le
+nettoyage (`sansJetonsDeControle`, qui retire les jetons sans jeter le reste
+d'une réponse par ailleurs correcte). Branché dans `sessionLive.ts` :
+
+1. **Jamais affiché tel quel.** `ev.onReponse` ne reçoit plus jamais le brut
+   accumulé, seulement sa version nettoyée — vide, rien ne s'affiche du tout,
+   plutôt que le charabia.
+2. **Jamais bloqué en silence.** Le cas mesuré n'a déclenché ni `onclose`, ni
+   `onerror`, ni `goAway` : Google ne ferme rien, il se tait. Un jeton détecté
+   arme donc un minuteur de 8 s (`DELAI_REPONSE_ANORMALE_MS`) ; si le tour ne
+   se termine toujours pas, on ferme NOUS-MÊMES (`fermer("Le service vocal a
+   renvoyé une réponse illisible.")`), ce qui retombe dans `deciderReprise`
+   (`repriseLive.ts`, chantier `dde25deb`) — même famille de reprise que pour
+   « Internal error occurred », bornée à deux tentatives et honnête en
+   renonçant.
+3. **Le minuteur ne fuit pas** : désarmé à `turnComplete` (le tour s'est
+   terminé normalement, jeton isolé sans suite), à une interruption par
+   Raphaël, et dans `fermer()` lui-même (quel que soit le chemin de
+   fermeture) — sinon un minuteur resté armé se déclencherait sur une session
+   déjà close.
+
+Chaque occurrence laisse maintenant une trace : `noterEcoute("live_reponse_anormale", { echantillon })`,
+reprise dans le registre des erreurs (`src/lib/erreurs.ts`,
+`evenement === "live_reponse_anormale"`, catégorie `serveur`) — la prochaine
+occurrence n'exigera plus l'enquête à la main du 17 sept.
+
+**NON REPRODUIT NI MESURÉ AILLEURS QUE CETTE FOIS** (un seul cas dans
+`journal_ecoute`, et structurellement le seul possible avant ce correctif). Ne
+présente pas ce chantier comme « la cause d'un bug fréquent corrigée » : c'est
+un bug de Google, confirmé mais dont la fréquence chez Raphaël reste inconnue
+— seule la nouvelle trace le dira. **Non vérifiable ici** (pas d'appareil, pas
+de vraie session Google déclenchant le bug à la demande) : que la reprise se
+passe bien chez lui. La preuve sera un `live_reponse_anormale` dans le journal
+la prochaine fois que ça se produit, suivi d'une reprise normale au lieu d'un
+blocage. C'est du `src/` : la mise à jour rapide suffit, pas besoin d'APK.
 
 ### Le temps d'ouverture d'une Live : ce que ce N'EST PAS
 

@@ -176,6 +176,41 @@ export function notesSansMarqueur(notes: string | null): string | null {
   return reste || null
 }
 
+/**
+ * Le texte substantiel porté PAR le marqueur lui-même, au-delà de
+ * l'étiquette qu'il classe — s'il y en a.
+ *
+ * Bug trouvé par Raphaël le 17 sept. 2026 (chantier 4be6b04c), régression du
+ * même jour (e71199d6) : sur un chantier « à cadrer », la vraie question à
+ * trancher vit SOUVENT dans le même crochet que le marqueur, après un « — »
+ * ou un « : » (6d94ab6a : « [À CADRER … — périmètre pas assez défini pour
+ * coder sans lui : quoi enregistrer exactement, où l'afficher…] »). Ce texte
+ * est perdu deux fois ailleurs : `notesSansMarqueur` le retire (il fait
+ * partie du crochet), et `derniereMajChantier` ne regarde que les
+ * paragraphes qui SUIVENT les crochets — jamais leur contenu.
+ *
+ * MESURÉ sur les chantiers "à cadrer"/"bloqué" réels du 17 sept. 2026 :
+ * certains ne portent QUE l'étiquette (« [À CADRER AVEC RAPHAËL AVANT DE
+ * COMMENCER] », rien de plus) — là, rien à en tirer, le badge suffit déjà.
+ * D'où le seuil de longueur : sans lui, un marqueur nu rendrait un extrait
+ * vide ou un fragment de ponctuation, pas une vraie question.
+ */
+export function detailMarqueur(notes: string | null): string | null {
+  if (!notes) return null
+  let reste = notes.trimStart()
+  for (let i = 0; i < 2; i++) {
+    const m = reste.match(/^\[([^\]]{0,400})\]/)
+    if (!m) break
+    const contenu = m[1]
+    if (!classer(normaliserRecherche(contenu).slice(0, 60))) break
+    const suite = contenu.match(/[—:](.+)$/s)
+    const detail = suite?.[1]?.trim().replace(/\.+$/, "")
+    if (detail && detail.length >= 15) return detail
+    reste = reste.slice(m[0].length).trimStart()
+  }
+  return null
+}
+
 /** Combien de chantiers portent chaque marqueur, dans l'ordre d'affichage. */
 export function compterMarqueurs(items: DevItem[]): { marqueur: Etiquette; nb: number }[] {
   const compte = new Map<Etiquette, number>()

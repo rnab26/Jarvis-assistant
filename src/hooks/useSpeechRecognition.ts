@@ -12,6 +12,7 @@ import {
   type OptionsTour,
 } from "@/lib/dialogueTour"
 import { extraitEntendu, noterEcoute } from "@/lib/journalEcoute"
+import { lireEtatMajWeb } from "@/lib/majWeb"
 import { serviceReconnaissanceSouhaite } from "@/lib/reconnaissanceVocale"
 import { estUnePanne, raisonDepuisCode, type RaisonEcoute } from "@/lib/raisonEcoute"
 import { RESPIRATION_MS } from "@/lib/veille"
@@ -123,11 +124,29 @@ const GRACE_DEMARRAGE_MS = 1500
 const ATTENTE_FINAL_MS = 1000
 
 /** Le service a-t-il lâché sans rien dire ? Borné : un plugin muet n'est
- * pas un service vivant. */
-async function serviceEncoreVivant(): Promise<boolean> {
-  const r = await borner(NativeSpeechRecognition.isListening(), 400)
-  return r?.listening === true
+ * pas un service vivant.
+ *
+ * ELLE NE DIT PAS QUI TIENT LE MICRO, et c'est une erreur qui a été faite le
+ * 18 sept. 2026 : exportée ce matin-là pour trancher entre « c'est nous » et
+ * « c'est une autre application » pendant une chaîne de refus, elle vaut faux
+ * PAR CONSTRUCTION à cet instant — `onError` appelle `stopListening()`, qui
+ * remet le drapeau à faux avant qu'on puisse le lire. 69 refus mesurés, 69
+ * fois `false`, et ça ne prouvait rien. Remise en privé. */
+async function microEncoreOuvert(): Promise<boolean> {
+  try {
+    const r = await borner(NativeSpeechRecognition.isListening(), 400)
+    return r?.listening === true
+  } catch {
+    // Hors de l'app native (le banc d'essai, le site dans un navigateur), le
+    // plugin peut lever AVANT de rendre une promesse — `borner` n'aurait alors
+    // rien à attraper. Une mesure ne doit jamais faire échouer ce qu'elle
+    // observe : ici, ce serait la boucle de veille elle-même.
+    return false
+  }
 }
+
+/** Nom historique, gardé pour les appels internes du moteur d'écoute. */
+const serviceEncoreVivant = microEncoreOuvert
 
 /** Marge du filet de dernier recours, au-delà de la durée max d'un tour. */
 const PLAFOND_MARGE_MS = 15000
@@ -282,7 +301,41 @@ export function useSpeechRecognition() {
     microPretRef.current = true
 
     const service = await borner(serviceUtilise.serviceUtilise?.() ?? Promise.resolve(null), 400)
-    if (service) noterEcoute("service_reconnaissance", { nom: service.nom, disponibles: service.disponibles })
+    if (service) {
+      // L'APK INSTALLÉE PART AVEC LA MESURE, et ce n'est pas du confort.
+      // Deux sessions (17 et 18 sept. 2026, chantiers 3b78eef0 et 3840996e)
+      // ont mesuré des milliers de rafales sans pouvoir dire si le téléphone
+      // portait déjà le correctif natif qu'elles jugeaient : rien dans
+      // journal_ecoute ne disait quelle coquille Android tournait, et une
+      // mise à jour rapide laisse l'interface à jour au-dessus d'une APK qui
+      // ne l'est pas — ce qui donne toutes les raisons de croire l'inverse.
+      // On relève donc l'identité de l'APK, pas celle du paquet web :
+      // `BUILD_NUMBER`/`NATIVE_EMPREINTE` décrivent le paquet dès qu'un
+      // paquet est appliqué, `identiteApk` décrit la coquille (voir
+      // majWeb.ts). Posé ICI parce que `preparerNatif` ne s'exécute qu'une
+      // fois par démarrage d'app : c'est la bonne cadence pour une identité,
+      // et l'ajouter à chaque rafale noierait le journal.
+      //
+      // ET SURTOUT : ON N'ATTEND PAS CETTE LECTURE. `preparerNatif` est DANS
+      // la fenêtre que `ms_ouverture` mesure — `appuiAt` est pris à l'appui
+      // sur le cœur, pas après (correctif du 16 sept. 2026, dont le
+      // commentaire dit pourquoi : la préparation EST la partie lente). Un
+      // `await` de 400 ms ici retarderait la première ouverture du micro de
+      // chaque démarrage d'app, c'est-à-dire la plainte même qu'on cherche à
+      // mesurer, ET il fausserait le nombre au passage. Une instrumentation
+      // ne ralentit pas plus ce qu'elle observe qu'elle ne le fait échouer.
+      void (async () => {
+        const apk = (await borner(lireEtatMajWeb(), 400))?.identiteApk ?? null
+        noterEcoute("service_reconnaissance", {
+          nom: service.nom,
+          disponibles: service.disponibles,
+          // `null` et pas `0` quand on ne sait pas : sur le web il n'y a pas
+          // d'APK du tout, et un zéro se lirait comme un vrai numéro de build.
+          apk_build: apk?.build ?? null,
+          apk_empreinte: apk?.empreinte ?? null,
+        })
+      })()
+    }
   }, [])
 
   /**
@@ -780,7 +833,7 @@ export function useSpeechRecognition() {
       }
 
       function session(): Promise<void> {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
           const reco = new Ctor!()
           courante.reco = reco
           recognitionRef.current = reco
@@ -830,9 +883,22 @@ export function useSpeechRecognition() {
           }
 
           // Une exception synchrone ici (moteur déjà démarré, micro refusé)
-          // rejette la promesse d'elle-même : l'appelant la reçoit, le
-          // `finally` nettoie. Vérifié par scripts/verifier-ecoute-web.mjs.
-          reco.start()
+          // rejette la promesse, l'appelant la reçoit, le `finally` nettoie.
+          // Vérifié par scripts/verifier-ecoute-web.mjs.
+          //
+          // ELLE EST RENOMMÉE EN `MOTEUR_OCCUPE`, et c'est le même fait que
+          // côté natif : là-bas, une promesse `start()` rejetée pose
+          // `demarrageRefuse` et la rafale se termine sur cette erreur-là
+          // (voir plus haut). Ici, la même chose remontait sous le message
+          // brut du navigateur — donc la veille comptait un démarrage refusé
+          // comme une rafale MUETTE, prenait le recul du silence, et ne
+          // pouvait jamais renoncer (`renonceApresRefus`) quel que soit le
+          // nombre de refus. Une seule notion, un seul nom.
+          try {
+            reco.start()
+          } catch {
+            reject(new Error(MOTEUR_OCCUPE))
+          }
         })
       }
 

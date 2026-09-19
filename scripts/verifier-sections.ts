@@ -19,7 +19,13 @@ import {
   grouperParSection,
   themesSansSection,
 } from "../src/lib/sections.ts"
-import { A_TRIER, compterMarqueurs, marqueurDe, notesSansMarqueur } from "../src/lib/marqueurChantier.ts"
+import {
+  A_TRIER,
+  compterMarqueurs,
+  detailMarqueur,
+  marqueurDe,
+  notesSansMarqueur,
+} from "../src/lib/marqueurChantier.ts"
 import type { DevItem, DevPriority, DevSection, DevStatus } from "../src/types/database.ts"
 
 let echecs = 0
@@ -334,6 +340,37 @@ for (const [notes, attendu] of APERCUS) {
     obtenu === attendu,
     `obtenu ${JSON.stringify(obtenu)}, attendu ${JSON.stringify(attendu)}`,
   )
+}
+
+// ── Le détail porté par le marqueur lui-même ──
+//
+// Bug trouvé par Raphaël le 17 sept. 2026 (chantier 4be6b04c), sur le VRAI
+// chantier 6d94ab6a : la vraie question à trancher vivait DANS le crochet du
+// marqueur, jamais montrée nulle part dans l'app (ni le badge, ni l'aperçu,
+// ni « dernière mise à jour »). `detailMarqueur` va la chercher.
+const DETAILS: [string, string | null, string | null][] = [
+  [
+    "6d94ab6a : la vraie question, après le tiret",
+    "[À CADRER AVEC RAPHAËL AVANT DE COMMENCER — périmètre pas assez défini pour coder sans lui : quoi enregistrer exactement, où l'afficher, et en quoi ça diffère de ce qui existe déjà (journal_ecoute, jarvis_erreurs, dev_log).]\n\nContexte.",
+    "périmètre pas assez défini pour coder sans lui : quoi enregistrer exactement, où l'afficher, et en quoi ça diffère de ce qui existe déjà (journal_ecoute, jarvis_erreurs, dev_log)",
+  ],
+  [
+    "bloqué par, après les deux-points",
+    "[BLOQUÉ PAR : la mesure. L'instrumentation est livrée, il manque les nombres de son téléphone.]",
+    "la mesure. L'instrumentation est livrée, il manque les nombres de son téléphone",
+  ],
+  [
+    "à cadrer, rien qu'un tiret et un fragment court : sous le seuil, aucun détail",
+    "[À CADRER — voir]",
+    null,
+  ],
+  ["marqueur nu : rien à en tirer, le badge suffit déjà", "[À CADRER AVEC RAPHAËL AVANT DE COMMENCER]", null],
+  ["pas de marqueur du tout : rien à en tirer", "Une note ordinaire, sans crochets.", null],
+  ["notes vides : rien à en tirer", null, null],
+]
+for (const [titre, notes, attendu] of DETAILS) {
+  const obtenu = detailMarqueur(notes)
+  verifier(`détail du marqueur — ${titre}`, obtenu === attendu, `obtenu : ${JSON.stringify(obtenu)}`)
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

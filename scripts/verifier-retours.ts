@@ -17,6 +17,8 @@ import {
   echecSignalePar,
   estUnePlainte,
   estUneRedite,
+  estUnSignalementExplicite,
+  signalementDicte,
   themeDeLAction,
   type TourJarvis,
 } from "../src/lib/retours.ts"
@@ -113,6 +115,52 @@ verifier(
   "une redite après une QUESTION de Jarvis ne signale rien",
   echecSignalePar("Mets la musique de Booba Dolce Camara", tour({ actions: ["clarify"] }), T0 + 10_000) === null,
   "il vient de demander une précision, on la lui donne : c'est le dialogue normal",
+)
+
+// --- Le cas RÉEL du chantier d31a078d (17 sept. 2026) : une redite après un
+// add_dev_item ou un add_task réussi n'est PAS un échec — ces deux familles
+// ont déjà leur propre garde-fou anti-doublon (deciderDoublonVocal /
+// deciderDoublonTache) qui explique la redite à voix haute. Mesuré dans
+// `echanges` : 09:41:45 « lancer un chantier comme quoi tous les bruits
+// extérieurs dérangent le micro » → « Chantier "…" ajouté au cockpit » ;
+// 09:41:47, la redite quasi identique → « Tu as déjà "…" […] je ne le recrée
+// pas. » Raphaël n'avait rien à redemander : le premier essai avait marché.
+verifier(
+  "une redite juste après un add_dev_item réussi ne signale rien",
+  echecSignalePar(
+    "lancer un chantier comme quoi tous les bruits extérieurs rangeant le micro",
+    tour({
+      transcript: "lancer un chantier comme quoi tous les bruits extérieurs dérangent le micro",
+      actions: ["add_dev_item"],
+      cible: null,
+      reponse: 'Chantier "Comme quoi tous les bruits exterieurs derangent le micro" ajouté au cockpit.',
+    }),
+    T0 + 2_000,
+  ) === null,
+  "add_dev_item a déjà son garde-fou anti-doublon (deciderDoublonVocal), qui vient de répondre correctement",
+)
+verifier(
+  "même chose pour une redite après un add_task réussi",
+  echecSignalePar(
+    "ajoute une tâche : rappeler le plombier",
+    tour({
+      transcript: "ajoute une tâche : rappeler le plombier",
+      actions: ["add_task"],
+      cible: null,
+      reponse: 'Tâche "Rappeler le plombier" ajoutée.',
+    }),
+    T0 + 2_000,
+  ) === null,
+  "add_task a le même garde-fou (deciderDoublonTache)",
+)
+verifier(
+  "mais une VRAIE plainte après un add_dev_item reste détectée",
+  echecSignalePar(
+    "tu n'as pas fait ce que je t'ai demandé",
+    tour({ actions: ["add_dev_item"], cible: null, reponse: 'Chantier "…" ajouté au cockpit.' }),
+    T0 + 5_000,
+  ) !== null,
+  "exclure la redite ne doit pas faire taire une plainte explicite sur la même famille",
 )
 
 // --- L'échec de l'exemple vécu ---------------------------------------------
@@ -287,6 +335,86 @@ verifier(
 verifier(
   "ni une action sans cible, ni rien du tout",
   cibleDeLAction({ action: "list_tasks" }) === null && cibleDeLAction(null) === null,
+)
+
+// --- Le QUATRIÈME signal : un signalement dicté en direct (chantier 519e8fff)
+// La phrase RÉELLE du 6 sept. 2026 à 12h24, mot pour mot, mesurée dans
+// `echanges` — elle n'avait laissé AUCUNE trace dans `jarvis_erreurs` avant ce
+// chantier.
+const PHRASE_REELLE_6_SEPT =
+  "non non non tu vas noter tout de suite ce problème de comportement de Jarvis " +
+  "quand je lui dis de reprendre quelque chose il n'écoute pas il ne coupe en " +
+  "plein milieu il n'écoute pas la fin de ma phrase et je lui épelle des " +
+  "lettres il s'arrête en plein milieu et il note n'importe quoi il écoute rien"
+
+verifier(
+  "la phrase réelle du 6 sept. est reconnue comme un signalement explicite",
+  estUnSignalementExplicite(PHRASE_REELLE_6_SEPT),
+)
+{
+  const e = signalementDicte(PHRASE_REELLE_6_SEPT)
+  verifier("elle produit bien un échec à signaler", e !== null)
+  verifier("classée « comprehension » : elle parle de ce que Jarvis comprend", e?.categorie === "comprehension")
+  verifier("rangée dans « Voix et écoute »", e?.theme === "Voix et écoute", e?.theme)
+  verifier(
+    "le texte dicté est gardé en entier dans le contexte, pour preuve",
+    e?.contexte === PHRASE_REELLE_6_SEPT.replace(/\s+/g, " ").trim(),
+    e?.contexte,
+  )
+  verifier(
+    "et repris comme suggestion de correction : c'est tout ce qu'on a à en tirer",
+    e?.correctionSuggeree === PHRASE_REELLE_6_SEPT.replace(/\s+/g, " ").trim(),
+  )
+  verifier(
+    "indépendant de tout tour précédent : rien à passer, aucun `dernierTourRef`",
+    signalementDicte(PHRASE_REELLE_6_SEPT) !== null,
+  )
+}
+
+verifier(
+  "variantes plus courtes avec « signale » / « retiens »",
+  estUnSignalementExplicite("Signale ce problème de compréhension, tu ne m'as pas écouté jusqu'au bout") &&
+    estUnSignalementExplicite("Retiens ce bug avec toi, ça fait trois fois que tu coupes ma phrase"),
+)
+
+// --- Ce sur quoi il doit se TAIRE (le vrai piège de ce signal) -------------
+// « Signaler un problème : … » RÉELLEMENT dicté le 18 sept. 2026, déjà bien
+// compris aujourd'hui comme une demande de chantier (add_dev_item). Il ne
+// parle PAS du comportement de Jarvis lui-même : le doubler dans le registre
+// des erreurs serait la régression que ce contrôle doit empêcher.
+verifier(
+  "un « signaler un problème » sur l'APPLICATION, pas sur Jarvis, ne déclenche rien",
+  !estUnSignalementExplicite(
+    "Signaler un problème : impossible de répondre aux chantiers classés par catégorie avec l'étiquette " +
+      "à constater dans le cockpit, contrairement à ce qui est prévu pour les sessions Claude Code.",
+  ),
+  "ça reste un chantier (add_dev_item), pas une ligne du registre des erreurs",
+)
+verifier(
+  "« note un chantier pour un problème de micro » ne double pas le chantier",
+  !estUnSignalementExplicite(
+    "rajoute un chantier pour un problème de micro à chaque fois qu'on termine une phrase il faut que je réappuie",
+  ),
+  "aucun verbe de signalement (note/signale/enregistre/retiens) : « rajoute » n'en fait pas partie",
+)
+verifier(
+  "« garde ça » / « note ça » (reprendre une réponse à l'écran) n'est pas un signalement",
+  !estUnSignalementExplicite("Garde ça") && !estUnSignalementExplicite("Note sa réponse"),
+  "l'objet est « ça / sa réponse », pas « problème / bug / souci »",
+)
+verifier(
+  "« note un problème » sans référence au comportement de Jarvis reste muet",
+  !estUnSignalementExplicite("Note ce problème, la villa Dan a pris du retard"),
+  "sans « comportement / compréhension / avec toi / de Jarvis », on ne peut pas savoir que ça le concerne",
+)
+verifier(
+  "une plainte ordinaire (déjà couverte par `estUnePlainte`) n'est pas un signalement",
+  !estUnSignalementExplicite("Tu n'as pas lancé la musique que je t'ai demandée"),
+)
+verifier(
+  "un signalement trop court (rien à en tirer) ne produit rien",
+  signalementDicte("Signale ce problème de comportement") === null,
+  "moins de sept mots utiles : la même règle que pour une plainte nue (correctionDite)",
 )
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)

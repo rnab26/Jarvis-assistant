@@ -342,6 +342,259 @@ try {
   )
   if (!reponseCoeur.includes("Tu as 2 tâches")) console.log("      page :", reponseCoeur.replace(/\s+/g, " ").slice(0, 300))
   await coeur.close()
+
+  // ── L'ÉCRAN FIGÉ PENDANT QU'IL PARLE (chantier 53d99720) ──
+  //
+  // MESURÉ sur ses quatre vrais tours du 18/09 : le micro s'ouvre en 23 à
+  // 46 ms, mais Android met 1135 à 2826 ms à rendre son premier mot. Entre
+  // les deux, l'écran ne bougeait pas — et un écran figé pendant qu'on parle
+  // se lit comme un micro qui n'écoute pas encore. C'est ce qu'il décrivait
+  // par « je parle dans le vide le temps que ça s'initialise ».
+  //
+  // Le faux moteur reproduit exactement ça : il démarre (donc `ready`), et on
+  // ne lui fait rien « dire » pendant une seconde. Un module pur prouve la
+  // phrase ; seul ce banc-ci prouve qu'elle atteint VRAIMENT l'écran, depuis
+  // le vrai MicButton et son minuteur.
+  {
+    const lent = await navigateur.newPage()
+    lent.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (transcription lente):", e.message)
+    })
+    await lent.addInitScript(FAUX_MOTEUR)
+    await lent.goto(`${BASE}/scripts/harness/micbutton.html`)
+    await lent.waitForFunction("window.__sr && window.__sr.starts >= 1", null, { timeout: 10000 })
+
+    // On appuie sur le cœur : écoute de commande, moteur démarré, rien de dit.
+    await lent.click("button[aria-label='Commande vocale'], button[aria-label='J\\'ai fini de parler']").catch(async () => {
+      await lent.locator("button").first().click()
+    })
+
+    // AVANT le délai, l'écran ne doit RIEN dire de plus. Un message qui
+    // clignoterait à chaque prise de parole serait du bruit, et le bruit
+    // permanent finit par cacher le jour où il dit autre chose.
+    await pause(200)
+    const tot = (await lent.textContent("body")) ?? ""
+    verifier(
+      "transcription lente : rien de plus tant que le délai n'est pas passé",
+      !tot.includes("temps de retard"),
+      true,
+    )
+
+    // APRÈS le délai (600 ms par défaut), il doit être rassuré — et invité à
+    // CONTINUER, pas à attendre : ses mots sont déjà captés.
+    await pause(900)
+    const apres = (await lent.textContent("body")) ?? ""
+    verifier(
+      "transcription lente : l'écran dit que ses mots arrivent en retard",
+      apres.includes("temps de retard"),
+      true,
+    )
+    verifier(
+      "transcription lente : on lui dit de continuer, pas d'attendre",
+      /continue/i.test(apres) && !/patiente/i.test(apres),
+      true,
+    )
+    if (!apres.includes("temps de retard")) {
+      console.log("      page :", apres.replace(/\s+/g, " ").slice(0, 300))
+    }
+
+    // Et dès qu'un mot arrive, la phrase de réassurance s'efface : elle n'a
+    // plus rien à rassurer, la transcription défile sous ses yeux.
+    await lent.evaluate("window.__derniere().dire('bonjour Jarvis', false)")
+    await pause(300)
+    const avecTexte = (await lent.textContent("body")) ?? ""
+    verifier(
+      "transcription lente : la phrase s'efface dès le premier mot affiché",
+      !avecTexte.includes("temps de retard"),
+      true,
+    )
+
+    // ── ET LE TEXTE DU TOUR PRÉCÉDENT NE SURVIT PAS AU SUIVANT ──
+    //
+    // Défaut trouvé en faisant ce chantier : `startListening` n'effaçait pas
+    // `lastUserText`. Au second appui, « Toi : <sa phrase d'avant> » restait
+    // donc affiché pendant la seconde à trois secondes que met Android à
+    // rendre le premier mot du NOUVEAU tour. Il relisait son ancienne phrase
+    // en croyant voir la nouvelle — ce qui aggrave exactement le doute que
+    // tout ce chantier cherche à lever.
+    await lent.locator("button").first().click() // « j'ai fini » : clôt le tour
+    await lent
+      .waitForFunction("document.body.textContent.includes('Jarvis :')", null, { timeout: 8000 })
+      .catch(() => {
+        echecs++
+        console.log("ÉCHEC le tour ne s'est pas clos")
+      })
+    const avantSecondAppui = (await lent.textContent("body")) ?? ""
+    verifier(
+      "le tour clos affiche bien ce qui a été entendu",
+      avantSecondAppui.includes("Toi :"),
+      true,
+    )
+    await lent.locator("button").first().click() // second appui : nouveau tour
+    await pause(250)
+    const secondTour = (await lent.textContent("body")) ?? ""
+    verifier(
+      "second appui : la phrase du tour précédent a disparu",
+      !secondTour.includes("Toi :"),
+      true,
+    )
+    if (secondTour.includes("Toi :")) {
+      console.log("      page :", secondTour.replace(/\s+/g, " ").slice(0, 300))
+    }
+    await lent.close()
+  }
+
+  // ── LA VEILLE RENONCE QUAND LE MICRO EST PRIS ──
+  // Mesuré le 17 sept. 2026 sur son téléphone : 229 démarrages refusés
+  // d'affilée sur 2 h 22, zéro écoute réelle, PENDANT qu'une pastille
+  // clignotante promettait « Dis "Jarvis" quand tu veux ». Ce banc-là monte
+  // le VRAI MicButton avec un moteur qui refuse toujours, et vérifie les deux
+  // moitiés : ce qu'on cesse de faire (réclamer le micro sans fin) et ce
+  // qu'on dit à la place.
+  {
+    const mort = await navigateur.newPage()
+    mort.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (veille morte):", e.message)
+    })
+    await mort.addInitScript(FAUX_MOTEUR)
+    // Avant le premier rendu : la toute première rafale doit déjà se heurter
+    // au refus, sinon le compteur repart de zéro et le seuil n'est pas atteint.
+    await mort.addInitScript("window.addEventListener('DOMContentLoaded', () => { window.__sr.refuseDeDemarrer = true })")
+    await mort.goto(`${BASE}/scripts/harness/micbutton.html?abandon=3`)
+
+    await mort
+      .waitForFunction(
+        "document.body.textContent.includes(\"j'ai arrêté d'insister\")",
+        null,
+        { timeout: 15000 },
+      )
+      .catch(() => {
+        echecs++
+        console.log("ÉCHEC veille : elle n'a jamais renoncé malgré des démarrages tous refusés")
+      })
+
+    const texteMort = (await mort.textContent("body")) ?? ""
+    verifier(
+      "elle ne promet plus « Dis « Jarvis » » pendant que le micro est pris",
+      texteMort.includes("Dis « Jarvis »"),
+      false,
+    )
+    verifier(
+      "et elle dit par où reprendre",
+      texteMort.includes("Touche le cœur pour reprendre."),
+      true,
+    )
+
+    // LA MOITIÉ QUI COMPTE VRAIMENT : on a cessé de RÉCLAMER le micro. Un
+    // message honnête au-dessus d'une boucle qui continue de faire sa
+    // tonalité toutes les quatre secondes ne corrigerait rien.
+    const avant = await mort.evaluate("window.__sr.starts")
+    await pause(2500)
+    const apres = await mort.evaluate("window.__sr.starts")
+    verifier("et elle a vraiment cessé de rouvrir le micro", apres === avant, true)
+    if (apres !== avant) console.log(`      ${avant} → ${apres} démarrages`)
+    await mort.close()
+  }
+
+  // ── ET ELLE RENONCE MÊME SI L'APP PASSE EN ARRIÈRE-PLAN ENTRE-TEMPS ──
+  // C'EST LE CONTRÔLE QUI MANQUAIT LE 17 SEPT., et son absence a coûté un
+  // correctif entier : livré, mergé, arrivé sur son téléphone (version b326),
+  // et sans le moindre effet. Le compteur de refus était une variable LOCALE
+  // de la boucle de veille ; l'effet qui la porte se remonte dès que l'app
+  // passe en arrière-plan, donc le compteur repartait de zéro toutes les 5 à
+  // 13 rafales et le seuil n'était jamais atteint. Mesuré sur son journal le
+  // 18 sept. : UNE chaîne de 159 refus d'affilée, zéro abandon.
+  {
+    const fond = await navigateur.newPage()
+    fond.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (arrière-plan):", e.message)
+    })
+    await fond.addInitScript(FAUX_MOTEUR)
+    await fond.addInitScript("window.addEventListener('DOMContentLoaded', () => { window.__sr.refuseDeDemarrer = true })")
+    await fond.goto(`${BASE}/scripts/harness/micbutton.html?abandon=6`)
+
+    // On remonte la boucle toutes les deux secondes, comme le fait Android
+    // quand l'écran s'éteint ou qu'il change d'application. Un compteur local
+    // ne dépasse jamais deux ou trois dans une fenêtre aussi courte (le
+    // palier montant impose 700 ms, puis 1400) ; seul un compteur qui SURVIT
+    // au remontage peut atteindre six.
+    const cycle = setInterval(() => {
+      fond
+        .evaluate(`
+          const cache = document.visibilityState === "visible"
+          Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (cache ? "hidden" : "visible") })
+          document.dispatchEvent(new Event("visibilitychange"))
+        `)
+        .catch(() => {})
+    }, 2000)
+
+    let renonce = true
+    await fond
+      .waitForFunction("document.body.textContent.includes(\"j'ai arrêté d'insister\")", null, { timeout: 30000 })
+      .catch(() => {
+        renonce = false
+      })
+    clearInterval(cycle)
+    verifier("le compteur de refus survit au remontage de la boucle", renonce, true)
+    await fond.close()
+  }
+
+  // ── COUPURE PROACTIVE : L'APP PERD LE PREMIER PLAN PENDANT QUE LE MICRO
+  //    ÉCOUTE (chantier 7a6e75c4, 18 sept. 2026) ──
+  // Sa demande : « j'ouvre WhatsApp et je lance une note vocale » ne doit pas
+  // laisser la veille insister. Ici le moteur accepte de démarrer normalement
+  // (pas de refus) : le micro est réellement ouvert, la veille attend le
+  // mot-clé — exactement le moment où une autre application prend le premier
+  // plan. La coupure doit être IMMÉDIATE, pas après vingt refus comme dans
+  // le banc précédent, et la veille ne doit PAS reprendre toute seule au
+  // retour : Touche le cœur pour reprendre.
+  {
+    const conflit = await navigateur.newPage()
+    conflit.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (conflit micro) :", e.message)
+    })
+    await conflit.addInitScript(FAUX_MOTEUR)
+    await conflit.goto(`${BASE}/scripts/harness/micbutton.html`)
+    await conflit.waitForFunction("window.__actifs() === 1", null, { timeout: 10000 })
+
+    const avantConflit = Date.now()
+    await conflit.evaluate(`
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" })
+      document.dispatchEvent(new Event("visibilitychange"))
+    `)
+    await conflit
+      .waitForFunction("document.body.textContent.includes(\"j'ai arrêté d'insister\")", null, { timeout: 3000 })
+      .catch(() => {
+        echecs++
+        console.log("ÉCHEC conflit micro : la veille n'a pas coupé quand l'app a perdu le premier plan")
+      })
+    verifier(
+      "conflit micro : coupée tout de suite, pas après vingt refus",
+      Date.now() - avantConflit < 1500,
+      true,
+    )
+    verifier("conflit micro : le micro est bien relâché", await conflit.evaluate("window.__actifs()"), 0)
+
+    // Retour au premier plan : elle ne doit PAS reprendre toute seule.
+    const departsAvant = await conflit.evaluate("window.__sr.starts")
+    await conflit.evaluate(`
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" })
+      document.dispatchEvent(new Event("visibilitychange"))
+    `)
+    await pause(1000)
+    const departsApres = await conflit.evaluate("window.__sr.starts")
+    verifier("conflit micro : retour au premier plan → pas de reprise automatique", departsApres, departsAvant)
+    verifier(
+      "conflit micro : elle attend toujours un appui sur le cœur",
+      (await conflit.textContent("body"))?.includes("Touche le cœur pour reprendre.") ?? false,
+      true,
+    )
+    await conflit.close()
+  }
 } finally {
   await navigateur?.close()
   vite.kill()

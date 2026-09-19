@@ -230,6 +230,21 @@ const verifier = (nom: string, obtenu: unknown, attendu: unknown) => {
     /registerPlugin\(EtatLivePlugin\.class\)/.test(overlay),
     true,
   )
+
+  // Troisième fenêtre depuis le 15/17 sept. 2026 (chantier 468734ad) : la
+  // bulle a son propre BridgeActivity, oublié ici jusqu'au 17 sept.
+  // (chantier efe7e44c) — sans lui, la veille de la bulle ne sait jamais
+  // qu'une Live tourne ailleurs, exactement le trou que ce chantier corrige
+  // pour les deux autres fenêtres.
+  const bulle = readFileSync(
+    "android/app/src/main/java/com/raphael/jarvis/BulleEcouteActivity.java",
+    "utf8",
+  )
+  verifier(
+    "BulleEcouteActivity (la fenêtre de la bulle) enregistre AUSSI le plugin",
+    /registerPlugin\(EtatLivePlugin\.class\)/.test(bulle),
+    true,
+  )
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

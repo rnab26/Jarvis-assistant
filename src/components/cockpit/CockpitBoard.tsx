@@ -4,16 +4,25 @@ import {
   ChevronDown,
   ChevronRight,
   FolderCog,
+  Merge,
   Search,
   Trash2,
   X,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { DevItemCard } from "@/components/cockpit/DevItemCard"
 import { SectionsDialog } from "@/components/cockpit/SectionsDialog"
 import type { useDevSections } from "@/hooks/useDevSections"
@@ -23,13 +32,15 @@ import {
   filtreActif,
   filtrerChantiers,
   grouperParSection,
+  sectionDe,
   type FiltreCockpit,
   type FiltreStatut,
   type GroupeSection,
 } from "@/lib/sections"
-import { etatDe, type EtatChantier } from "@/hooks/useDevItems"
+import { etatDe, type EtatChantier, type FusionAnnulable } from "@/hooks/useDevItems"
 import { proposerAnnulation } from "@/lib/annulation"
 import { alreadyNotified } from "@/lib/notifyError"
+import { adresseeAUneSession } from "@/lib/journalDestinataire"
 import { LIBELLE_MARQUEUR, compterMarqueurs } from "@/lib/marqueurChantier"
 import { cleTheme } from "@/lib/themeChantier"
 import type { DevItem, DevItemInput, DevLogEntry, DevStatus } from "@/types/database"
@@ -66,11 +77,22 @@ interface CockpitBoardProps {
   onDeleteMany: (ids: string[]) => Promise<void>
   /** Le retour en arrière proposé après chaque action groupée. */
   onRestore: (etats: EtatChantier[]) => Promise<void>
+  /** Fusionner deux chantiers cochés (fonction SQL fusionner_dev_items,
+   * migration 0049) : la source est supprimée, ses notes et sa conversation
+   * rejoignent la cible. */
+  onFusionner: (source: string, cible: string) => Promise<FusionAnnulable>
+  onAnnulerFusion: (etat: FusionAnnulable) => Promise<void>
   /** Le filtre, tenu par la page : « Où j'en suis » doit pouvoir l'imposer
    * quand Raphaël appuie sur une section. Deux états séparés diraient deux
    * choses différentes du même filtre. */
   filtre: FiltreCockpit
   onFiltre: (filtre: FiltreCockpit) => void
+  /** Lien direct depuis une notification ou un message (`?chantier=<id>`,
+   * chantiers 04d2fa9e/332d87fd/f613211c) : ce chantier précis s'ouvre tout
+   * seul — sa section se déplie, les archivées aussi s'il y est, et la carte
+   * elle-même se déplie et se met en évidence — sans passer par une
+   * recherche sur le titre, qui peut désigner plusieurs chantiers. */
+  chantierCible?: string | null
   /** Le journal de bord, pour que chaque chantier porte ses messages. */
   messages?: DevLogEntry[]
   onRepondre?: (itemId: string, body: string) => Promise<void>
@@ -98,6 +120,7 @@ export function CockpitBoard({
   sectionsState,
   filtre,
   onFiltre,
+  chantierCible = null,
   onUpdate,
   onDelete,
   onArchive,
@@ -106,6 +129,8 @@ export function CockpitBoard({
   onArchiveMany,
   onDeleteMany,
   onRestore,
+  onFusionner,
+  onAnnulerFusion,
   messages = [],
   onRepondre,
   onMarquerTraite,
@@ -121,6 +146,18 @@ export function CockpitBoard({
   const themes = themesDe(devItems)
   const actifs = useMemo(() => devItems.filter((i) => !i.archived_at), [devItems])
   const archives = useMemo(() => devItems.filter((i) => i.archived_at), [devItems])
+
+  // Le chantier visé par un lien direct : cherché dans TOUT `devItems`, pas
+  // seulement ce que le filtre laisse voir — un lien vers un chantier
+  // archivé doit l'ouvrir même si « Archivées » est repliée et que rien
+  // n'est filtré.
+  const itemCible = useMemo(
+    () => (chantierCible ? devItems.find((i) => i.id === chantierCible) : undefined),
+    [devItems, chantierCible],
+  )
+  useEffect(() => {
+    if (itemCible?.archived_at) setArchivesOuvertes(true)
+  }, [itemCible])
 
   // Les compteurs du résumé portent sur TOUT, pas sur ce que le filtre laisse
   // passer : sinon « 0 restant » voudrait dire « rien ne correspond », ce qui
@@ -142,6 +179,17 @@ export function CockpitBoard({
     [archives, sections, filtre],
   )
 
+  // Naviguer vers un chantier depuis « Depuis ton dernier passage » pose une
+  // recherche (le titre du chantier) sans savoir s'il est déjà archivé — un
+  // chantier livré entre-temps resterait invisible derrière « Archivées »
+  // repliée, malgré une recherche qui le trouve. On ouvre donc tout seul
+  // quand la recherche ne trouve QUE dans les archives.
+  useEffect(() => {
+    if (filtreActif(filtre) && groupesAffiches.length === 0 && groupesArchives.length > 0) {
+      setArchivesOuvertes(true)
+    }
+  }, [filtre, groupesAffiches, groupesArchives])
+
   // Ce qui a avancé, pas seulement ce qui reste : sept jours glissants, la
   // fenêtre dans laquelle Raphaël se demande « qu'est-ce qui a bougé ? ».
   const livresRecemment = useMemo(() => {
@@ -152,10 +200,18 @@ export function CockpitBoard({
   // Les messages rangés par chantier une fois pour toutes : les répartir dans
   // chaque carte reviendrait à parcourir tout le journal autant de fois qu'il
   // y a de chantiers.
+  //
+  // Un message qu'une session adresse à une AUTRE session (« Pour la
+  // session… ») n'a rien à faire dans le fil que Raphaël lit sur un chantier
+  // — plainte du 17 sept. 2026 : un échange de coordination technique entre
+  // deux sessions s'affichait tel quel, avec en dessous un champ qui
+  // l'invitait à répondre à un sujet qui n'était pas le sien. Ces messages
+  // restent en base et lisibles par les sessions via `scripts/sql.sh` ; ils
+  // sont seulement retirés du fil affiché ici.
   const messagesParChantier = useMemo(() => {
     const parItem = new Map<string, DevLogEntry[]>()
     for (const m of messages) {
-      if (!m.item_id) continue
+      if (!m.item_id || adresseeAUneSession(m)) continue
       parItem.set(m.item_id, [...(parItem.get(m.item_id) ?? []), m])
     }
     // Le plus ancien en haut : on lit une conversation dans l'ordre où elle
@@ -175,7 +231,16 @@ export function CockpitBoard({
 
   // En mode sélection, tout est déplié : on ne peut pas cocher ce qu'on ne
   // voit pas, et « tout ce qui est affiché » doit vouloir dire ce qu'il dit.
-  const estOuverte = (nom: string) => cherche || selection !== null || ouvertes.has(cleTheme(nom))
+  // Le chantier visé par un lien direct force aussi l'ouverture de SA
+  // section, active ou pas — sans quoi il faudrait encore la déplier à la
+  // main pour voir ce qu'on est venu chercher.
+  const estOuverte = (nom: string) =>
+    cherche ||
+    selection !== null ||
+    ouvertes.has(cleTheme(nom)) ||
+    (itemCible !== undefined &&
+      !itemCible.archived_at &&
+      cleTheme(sectionDe(itemCible)) === cleTheme(nom))
   const basculer = (nom: string) =>
     setOuvertes((set) => {
       const suivant = new Set(set)
@@ -461,6 +526,7 @@ export function CockpitBoard({
                 selectionnable={enSelection}
                 selectionne={selection?.has(item.id) ?? false}
                 onSelectionner={basculerSelection}
+                misEnEvidence={item.id === chantierCible}
               />
             ))}
           </SectionPliante>
@@ -521,6 +587,7 @@ export function CockpitBoard({
                             selectionnable={enSelection}
                             selectionne={selection?.has(item.id) ?? false}
                             onSelectionner={basculerSelection}
+                            misEnEvidence={item.id === chantierCible}
                           />
                         ))}
                     </div>
@@ -578,6 +645,19 @@ export function CockpitBoard({
                 <Archive className="size-3.5" />
                 Archiver{aArchiver.length < choisis.length ? ` (${aArchiver.length})` : ""}
               </Button>
+            )}
+
+            {/* Fusionner n'a de sens qu'à deux : ni un chantier seul, ni
+                trois à la fois — le bouton n'existe donc que pile à ce
+                moment-là, pas désactivé le reste du temps. */}
+            {choisis.length === 2 && (
+              <BoutonFusionner
+                key={[choisis[0].id, choisis[1].id].sort().join("-")}
+                chantiers={[choisis[0], choisis[1]]}
+                onFusionner={onFusionner}
+                onAnnulerFusion={onAnnulerFusion}
+                onApresFusion={() => setSelection(new Set())}
+              />
             )}
 
             <ConfirmerAction
@@ -711,5 +791,81 @@ function SectionPliante({
         </CardContent>
       )}
     </Card>
+  )
+}
+
+/**
+ * Le bouton « Fusionner » de la barre d'actions groupées. Le parent ne le
+ * rend que pile quand deux chantiers sont cochés (fusionner n'a de sens qu'à
+ * deux) et lui passe une `key` dérivée de la paire : remonter le composant à
+ * chaque nouvelle paire suffit à repartir d'un choix vide, sans avoir à le
+ * remettre à zéro à la main — le même piège que `cibleFusion`/
+ * `cibleSuppression` dans SectionsDialog, réglé autrement ici.
+ *
+ * Lequel des deux survit se choisit dans la MÊME fenêtre que la
+ * confirmation, comme « où vont les chantiers de cette section ? » pour
+ * supprimer_section : le choix n'est jamais présumé (pas de « le plus
+ * ancien par défaut »), il faut le faire.
+ */
+function BoutonFusionner({
+  chantiers,
+  onFusionner,
+  onAnnulerFusion,
+  onApresFusion,
+}: {
+  chantiers: [DevItem, DevItem]
+  onFusionner: (source: string, cible: string) => Promise<FusionAnnulable>
+  onAnnulerFusion: (etat: FusionAnnulable) => Promise<void>
+  onApresFusion: () => void
+}) {
+  const [cible, setCible] = useState<string>("")
+
+  return (
+    <ConfirmerAction
+      destructif={false}
+      libelleConfirmation="Fusionner"
+      titre="Fusionner ces deux chantiers ?"
+      description={
+        <>
+          Celui que tu ne gardes pas est supprimé : ses notes rejoignent l'autre à la
+          suite des siennes, sa conversation le suit, et sa priorité est reprise si elle
+          est plus haute. Comme toute action groupée, récupérable dans les huit secondes
+          qui suivent.
+        </>
+      }
+      contenu={
+        <div className="flex flex-col gap-2">
+          <Label>Lequel garder ?</Label>
+          <Select value={cible} onValueChange={setCible}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Choisir…" />
+            </SelectTrigger>
+            <SelectContent>
+              {chantiers.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      }
+      onConfirmer={async () => {
+        const gardee = chantiers.find((c) => c.id === cible)
+        const source = chantiers.find((c) => c.id !== cible)
+        if (!gardee || !source) throw new Error("Choisis lequel des deux chantiers garder.")
+        const etat = await onFusionner(source.id, gardee.id)
+        onApresFusion()
+        proposerAnnulation(`« ${source.title} » fusionné dans « ${gardee.title} »`, [etat], (etats) =>
+          onAnnulerFusion(etats[0]),
+        )
+      }}
+      trigger={
+        <Button variant="ghost" size="sm">
+          <Merge className="size-3.5" />
+          Fusionner
+        </Button>
+      }
+    />
   )
 }

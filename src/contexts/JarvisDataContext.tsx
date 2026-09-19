@@ -12,6 +12,7 @@ import { useGoogleAccount } from "@/hooks/useGoogleAccount"
 import { useJarvisErreurs } from "@/hooks/useJarvisErreurs"
 import { useConsommation } from "@/components/settings/Consommation"
 import { useMajWeb } from "@/hooks/useMajWeb"
+import { useMessagesProgrammesListe } from "@/hooks/useMessagesProgrammesListe"
 import { useNotes } from "@/hooks/useNotes"
 import { useNotifications } from "@/hooks/useNotifications"
 import { usePlaceGeofences } from "@/hooks/usePlaceGeofences"
@@ -31,6 +32,7 @@ type DevSectionsState = ReturnType<typeof useDevSections>
 type ErreursState = ReturnType<typeof useJarvisErreurs>
 type DocumentsState = ReturnType<typeof useDocuments>
 type NotesState = ReturnType<typeof useNotes>
+type ProgrammesState = ReturnType<typeof useMessagesProgrammesListe>
 type ContactsState = ReturnType<typeof useContacts>
 type PlaceRemindersState = ReturnType<typeof usePlaceReminders>
 type PronunciationsState = ReturnType<typeof usePronunciations>
@@ -53,6 +55,7 @@ interface JarvisDataValue {
   erreursState: ErreursState
   documentsState: DocumentsState
   notesState: NotesState
+  programmesState: ProgrammesState
   contactsState: ContactsState
   placeRemindersState: PlaceRemindersState
   pronunciationsState: PronunciationsState
@@ -101,6 +104,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
   const erreursState = useJarvisErreurs(userId)
   const documentsState = useDocuments(userId)
   const notesState = useNotes(userId)
+  const programmesState = useMessagesProgrammesListe(userId)
   const contactsState = useContacts(userId)
   const placeRemindersState = usePlaceReminders(userId)
   const pronunciationsState = usePronunciations(userId)
@@ -162,6 +166,7 @@ export function JarvisDataProvider({ children }: { children: ReactNode }) {
         erreursState,
         documentsState,
         notesState,
+        programmesState,
         contactsState,
         placeRemindersState,
         pronunciationsState,

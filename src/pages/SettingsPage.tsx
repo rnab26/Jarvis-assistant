@@ -1,7 +1,10 @@
 import { Capacitor } from "@capacitor/core"
 import { Search, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
+import { CLE_ATTENTE_TRANSCRIPTION, lireAttente } from "@/lib/attenteTranscription"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { Deconnexion } from "@/components/settings/Deconnexion"
 import { Badge } from "@/components/ui/badge"
 import { AppsParDefaut } from "@/components/settings/AppsParDefaut"
@@ -20,6 +23,7 @@ import { Memoire, useDatesEchanges } from "@/components/settings/Memoire"
 import { Confidentialite } from "@/components/settings/Confidentialite"
 import { FenetreAnnulation } from "@/components/settings/FenetreAnnulation"
 import { ControleEcran } from "@/components/settings/ControleEcran"
+import { DelegationTasker } from "@/components/settings/DelegationTasker"
 import { Entrainement } from "@/components/settings/Entrainement"
 import { LectureNotifications } from "@/components/settings/LectureNotifications"
 import { MoteurReconnaissance } from "@/components/settings/MoteurReconnaissance"
@@ -29,7 +33,13 @@ import { ModeLive } from "@/components/settings/ModeLive"
 import { Notifications } from "@/components/settings/Notifications"
 import { Nouveautes } from "@/components/settings/Nouveautes"
 import { Reinitialiser } from "@/components/settings/Reinitialiser"
-import { Section, sectionCorrespond } from "@/components/settings/Section"
+import { Section } from "@/components/settings/Section"
+import {
+  LISTE_SECTIONS_PARAMETRES as LISTE_SECTIONS,
+  SECTIONS_PARAMETRES as SECTIONS,
+  resoudreCibleParametres,
+  sectionCorrespond,
+} from "@/lib/sectionsParametres"
 import { Theme } from "@/components/settings/Theme"
 import { Interrupteur } from "@/components/settings/Interrupteur"
 import { Button } from "@/components/ui/button"
@@ -59,98 +69,6 @@ import { ecrireReglage } from "@/lib/reglages"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
 
 const isNative = Capacitor.isNativePlatform()
-
-/** Les sections de l'écran : leur titre, leur résumé, et ce qu'on peut taper
- * pour les retrouver. Déclarées ici et étalées dans le rendu (`{...SECTIONS.voix}`)
- * plutôt qu'écrites deux fois — sinon les mots-clés de la recherche et ceux
- * de la section auraient divergé au premier ajout, et la recherche aurait
- * compté des résultats qu'elle n'affiche pas. */
-const SECTIONS = {
-  // EN PREMIER, et c'est une demande de Raphaël du 5 sept. 2026 : « pour la
-  // mise à jour, il faut que je descende tout en bas, essaye de la rehausser ».
-  // C'est la section qu'il ouvre le plus souvent, et c'était la septième.
-  app: {
-    cle: "app",
-    titre: "L'application",
-    resume: "Version, mise à jour, nouveautés",
-    motsCles:
-      "version build mise à jour apk installer télécharger réinstaller automatique nouveautés changements réinitialiser réglages par défaut confidentialité données vie privée suppression compte",
-  },
-  // Les autorisations Android, dites par ce qu'elles permettent. Haut de
-  // page volontairement : c'est le premier écran d'un téléphone neuf, et le
-  // seul recours quand une autorisation a été refusée une fois — Android ne
-  // la redemande alors plus jamais tout seul.
-  autorisations: {
-    cle: "autorisations",
-    titre: "Autorisations du téléphone",
-    resume: "Ce que Jarvis a le droit de faire",
-    motsCles:
-      "autorisation permission accès micro enregistrement contacts répertoire numéro téléphone appel appeler notification position gps localisation arrière-plan installer mise à jour assistant appui long bouton refusée bloquée accorder android réglages système premier lancement",
-  },
-  voix: {
-    cle: "voix",
-    titre: "Voix et écoute",
-    resume: "Sa voix, le rythme, le mot-clé de réveil",
-    motsCles:
-      "voix parler muet silence débit vitesse hauteur ton rythme pause silence enchaîner mot-clé réveil jarvis prononciation entendre travers accent langue mode live conversation continue essai moteur reconnaissance vocale android google automatique service",
-  },
-  taches: {
-    cle: "taches",
-    titre: "Tâches et organisation",
-    resume: "Widget d'écran d'accueil, rappels de lieu",
-    motsCles:
-      "widget écran d'accueil nombre de tâches urgentes catégorie rappel de lieu géolocalisation position gps arriver sur place",
-  },
-  notifications: {
-    cle: "notifications",
-    titre: "Notifications",
-    resume: "Ce que Jarvis a le droit de faire sonner",
-    motsCles:
-      "notification sonner déranger alerte rappel échéance heure d'une tâche avance point du matin briefing résumé nouvelle version chantier livré session bloquée alarme exacte permission tester silencieux apprentissage apprend appris priorités insistance ouvre ignore remettre à zéro",
-  },
-  apps: {
-    cle: "apps",
-    titre: "Ce que Jarvis utilise",
-    resume: "Applications par défaut, appui long sur le bouton",
-    motsCles:
-      "application par défaut musique spotify itinéraire navigation waze maps canal des messages whatsapp sms question à une ia assistant numérique touche latérale bouton appui long perplexity bixby lancer jarvis rôle android bulle flottante pastille par-dessus superposition délai annuler arrêter avant d'agir mal entendu",
-  },
-  consommation: {
-    cle: "consommation",
-    titre: "Ce que Jarvis consomme",
-    resume: "Phrases et jetons du jour, et la marge qu'il reste",
-    motsCles:
-      "consommation credit quota jetons tokens gemini plafond limite gratuit combien il reste phrases modele secours lenteur temps de reponse cout",
-  },
-  memoire: {
-    cle: "memoire",
-    titre: "Mémoire",
-    resume: "Combien de temps il garde tes conversations",
-    motsCles:
-      "mémoire conversation mot-à-mot historique échanges garder conserver effacer purge durée 7 30 90 jours sans limite souvenirs oubli",
-  },
-  cockpit: {
-    cle: "cockpit",
-    titre: "Le cockpit",
-    resume: "Ce qui compte comme « livré », les sessions qui travaillent sans toi, et le moteur de langue",
-    motsCles:
-      "cockpit chantier section où j'en suis livré aujourd'hui 24 heures 7 jours semaine bilan avancement bouge dort pour toi sessions autonomes automatique nuit absence routine déclencheur libre crédit",
-  },
-  apparence: {
-    cle: "apparence",
-    titre: "Apparence",
-    resume: "Thème clair ou sombre, image du cœur",
-    motsCles: "thème clair sombre nuit couleur affichage cœur réacteur image logo animation",
-  },
-  comptes: {
-    cle: "comptes",
-    titre: "Comptes et connexions",
-    resume: "Google, déconnexion",
-    motsCles: "compte google agenda calendrier gmail mail brancher connecter débrancher autorisation deconnexion déconnexion se déconnecter quitter session sortir",
-  },
-} as const
-
-const LISTE_SECTIONS = Object.values(SECTIONS)
 
 /**
  * Ce que la barre « L'application » dit sans qu'on l'ouvre.
@@ -497,6 +415,17 @@ export function SettingsPage() {
   // équivaut ».
   // Ce que Jarvis a appris de ses propres notifications (chantier 05241cc7).
   const apprentissageState = useApprentissageNotifications()
+  // Le délai au bout duquel Jarvis dit que ses mots arrivent avec du retard
+  // (chantier 53d99720). Lu une fois ici pour afficher le contrôle ; c'est
+  // `MicButton` qui le relit à chaque écoute, pour qu'un changement fait ici
+  // s'applique sans redémarrer l'app.
+  const [attenteMs, setAttenteMs] = useState(() => {
+    try {
+      return lireAttente(localStorage.getItem(CLE_ATTENTE_TRANSCRIPTION))
+    } catch {
+      return lireAttente(null)
+    }
+  })
   const {
     wakeWordState,
     dialogueState,
@@ -518,6 +447,36 @@ export function SettingsPage() {
   } = useJarvisData()
   const { getVoices, speak, speaking, erreur } = useSpeechSynthesis()
   const [recherche, setRecherche] = useState("")
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Navigation externe vers une section précise (chantier `aac9a0dd`,
+  // « emmène-moi dans les notifications ») : `?section=<mot ou clé>` dans
+  // l'URL. La cible RÉSOLUE reste en état après lecture — la retenir permet
+  // à `<Section>` de s'ouvrir, défiler jusqu'à elle et se mettre en
+  // évidence, sans qu'on ait à relire l'URL à chaque rendu. L'écriture de
+  // cette action vocale elle-même (reconnaître la phrase, appeler
+  // `navigate("/settings?section=…")`) n'est PAS ici : hors du périmètre de
+  // cette session (voir dev_log, chantier aac9a0dd), propriété du thème
+  // « Le téléphone ». Ce que ce paramètre attend est déjà une cible propre,
+  // pas une phrase entière.
+  const [cibleSection, setCibleSection] = useState<string | null>(null)
+  useEffect(() => {
+    const brut = searchParams.get("section")
+    if (!brut) return
+    const cle = resoudreCibleParametres(brut)
+    // Silence sur l'ambiguïté ou l'absence de résultat, même règle que la
+    // recherche au clavier : ouvrir la mauvaise section serait pire que ne
+    // rien ouvrir. Le paramètre est retiré dans tous les cas, résolu ou
+    // pas : le laisser referait tenter la même résolution à chaque rendu.
+    if (cle) setCibleSection(cle)
+    setSearchParams(
+      (p) => {
+        p.delete("section")
+        return p
+      },
+      { replace: true },
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [toutesLesVoix, setToutesLesVoix] = useState(false)
   // Les terminées dépliées d'entrée dans l'onglet Tâches. Le stockage local
@@ -645,21 +604,41 @@ export function SettingsPage() {
         filtre={recherche}
         ouverteParDefaut
         badge={<BadgeMaj status={updateState.status} />}
+        cibleNavigation={cibleSection === SECTIONS.app.cle}
       >
-        <MettreAJour update={updateState} majWeb={majWebState} />
-
-        <Nouveautes items={recentChanges} />
-
-        <Reinitialiser />
-
-        <Confidentialite />
+        {/* Fusion demandée par Raphaël le 17 sept. 2026 : « que tout ce qui
+            concerne le bloc mettre a jour soit plus condensé et dans un seul
+            même bloc avec les dernières mises à jour, et que ce soit
+            dépliable — je ne veux pas forcément voir d'entrée de jeu tout
+            ça. » Repliée par défaut (CarteRepliable, comme dans le cockpit) ;
+            le badge « À jour / Nouvelle version » reste visible SANS déplier,
+            même règle que boutonMaj.ts : on ne propose jamais une mise à jour
+            quand il n'y en a pas. */}
+        <CarteRepliable
+          titre="Mettre à jour l'application"
+          badge={<BadgeMaj status={updateState.status} />}
+        >
+          <MettreAJour update={updateState} majWeb={majWebState} />
+          <CardContent className="flex flex-col gap-2 pt-0">
+            <p className="text-sm font-medium">Dernières mises à jour</p>
+            <Nouveautes items={recentChanges} />
+          </CardContent>
+        </CarteRepliable>
       </Section>
 
-      <Section {...SECTIONS.autorisations} filtre={recherche}>
+      <Section
+        {...SECTIONS.autorisations}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.autorisations.cle}
+      >
         <CarteAutorisations />
       </Section>
 
-      <Section {...SECTIONS.voix} filtre={recherche}>
+      <Section
+        {...SECTIONS.voix}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.voix.cle}
+      >
         <Card>
           <CardHeader>
             <CardTitle>Voix de Jarvis</CardTitle>
@@ -682,7 +661,25 @@ export function SettingsPage() {
               actif={!voiceState.muted}
               onChange={(actif) => voiceState.setMuted(!actif)}
             />
-  
+
+            <Interrupteur
+              titre="Confirmer le résultat des actions à voix haute"
+              description={
+                voiceState.confirmerResultat
+                  ? "Après chaque action (message, tâche, itinéraire…), il dit si ça a réussi ou échoué."
+                  : "Il ne le dit plus à voix haute, mais le texte reste affiché sous le cœur. Une question qui attend ta réponse reste toujours dite."
+              }
+              actif={voiceState.confirmerResultat}
+              onChange={voiceState.setConfirmerResultat}
+              disabled={voiceState.muted}
+            >
+              {voiceState.muted && (
+                <p className="text-xs text-muted-foreground">
+                  Sans effet tant que la voix est coupée ci-dessus.
+                </p>
+              )}
+            </Interrupteur>
+
             <div className="flex flex-col gap-2">
               <Select
                 value={voiceState.voiceIndex === null ? "default" : String(voiceState.voiceIndex)}
@@ -790,6 +787,32 @@ export function SettingsPage() {
               format={(v) => (v === 0 ? "Non" : `${Math.round(v / 1000)} s`)}
               aide="Pour enchaîner sans retoucher le micro. Passe à « Non » pour revenir à un micro qu'on rouvre à chaque phrase."
             />
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="attente-transcription" className="text-sm font-medium">
+                Quand tes mots tardent à s'afficher
+              </label>
+              <select
+                id="attente-transcription"
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={String(attenteMs)}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  setAttenteMs(v)
+                  ecrireReglage(CLE_ATTENTE_TRANSCRIPTION, String(v))
+                }}
+              >
+                <option value="600">Au bout d'un demi-mot (0,6 s)</option>
+                <option value="1500">Au bout d'un temps (1,5 s)</option>
+                <option value="0">Ne rien dire</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Ton micro s'ouvre en moins de 50 millisecondes, mais Android met
+                1 à 3 secondes à rendre ton premier mot : pendant ce temps
+                l'écran ne bouge pas, alors que tu es déjà entendu. Passé ce
+                délai, Jarvis te le dit sous le cœur au lieu de te laisser
+                croire qu'il n'écoute pas encore.
+              </p>
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -819,6 +842,40 @@ export function SettingsPage() {
               actif={wakeWordState.enabled}
               onChange={wakeWordState.setEnabled}
             />
+            {/* SA DÉCISION DU 9 SEPT. 2026, mot pour mot : « il vaut mieux que
+                le micro s'arrête et qu'on réactive jarvis manuellement pour
+                reprendre une session plutôt que ça s'active de façon
+                intempestive ». Le seuil est un nombre mesuré (voir
+                REFUS_AVANT_ABANDON), donc il se règle ici plutôt que de rester
+                en dur — et « Ne jamais renoncer » rend exactement le
+                comportement d'avant, pour qu'il puisse comparer. */}
+            {wakeWordState.enabled && (
+              <div className="mt-4 flex flex-col gap-1.5">
+                <label
+                  htmlFor="veille-abandon"
+                  className="text-sm font-medium"
+                >
+                  Quand le micro est pris par autre chose
+                </label>
+                <select
+                  id="veille-abandon"
+                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                  value={String(wakeWordState.seuilAbandon)}
+                  onChange={(e) => wakeWordState.setSeuilAbandon(Number(e.target.value))}
+                >
+                  <option value="10">Renoncer vite (10 refus)</option>
+                  <option value="20">Renoncer après un moment (20 refus)</option>
+                  <option value="40">Insister longtemps (40 refus)</option>
+                  <option value="0">Ne jamais renoncer</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Chaque essai refusé rouvre le micro, et ton téléphone joue sa
+                  tonalité à chaque fois. Passé ce nombre d'essais refusés
+                  d'affilée, Jarvis arrête d'insister et te le dit sous le
+                  cœur — un appui sur le cœur le relance.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -870,7 +927,11 @@ export function SettingsPage() {
         </Card>
       </Section>
 
-      <Section {...SECTIONS.taches} filtre={recherche}>
+      <Section
+        {...SECTIONS.taches}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.taches.cle}
+      >
         {/* SA DEMANDE (chantiers 20435f77 / 7c37b6b0) : une tâche cochée quitte
             la liste pour l'archive de sa catégorie. Le réglage existe parce
             que « replié » est un choix, pas une fatalité — quelqu'un qui coche
@@ -1003,7 +1064,11 @@ export function SettingsPage() {
         <RappelsGeolocalises />
       </Section>
 
-      <Section {...SECTIONS.notifications} filtre={recherche}>
+      <Section
+        {...SECTIONS.notifications}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.notifications.cle}
+      >
         {/* Les tâches viennent d'ici : la carte dit combien d'entre elles
             feront réellement sonner quelque chose, avec le calcul qui
             programme les alarmes. */}
@@ -1012,42 +1077,79 @@ export function SettingsPage() {
         <ApprentissageNotifications api={apprentissageState} />
       </Section>
 
-      <Section {...SECTIONS.apps} filtre={recherche}>
+      <Section
+        {...SECTIONS.apps}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.apps.cle}
+      >
         <AssistantTelephone />
         <BulleFlottante />
         <AppsParDefaut />
         <ConnecteursIA />
         <ControleEcran />
+        <DelegationTasker />
         <Entrainement api={entrainementState} />
         <LectureNotifications />
         <FenetreAnnulation />
       </Section>
 
-      <Section {...SECTIONS.consommation} filtre={recherche}>
+      <Section
+        {...SECTIONS.consommation}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.consommation.cle}
+      >
         <Consommation api={consommationState} />
       </Section>
 
-      <Section {...SECTIONS.memoire} filtre={recherche}>
+      <Section
+        {...SECTIONS.memoire}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.memoire.cle}
+      >
         <Memoire api={datesEchanges} />
       </Section>
 
-      <Section {...SECTIONS.cockpit} filtre={recherche}>
+      <Section
+        {...SECTIONS.cockpit}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.cockpit.cle}
+      >
         <Cockpit />
         <SessionsAutonomes />
 
         <MoteurDeLangue />
       </Section>
 
-      <Section {...SECTIONS.apparence} filtre={recherche}>
+      <Section
+        {...SECTIONS.apparence}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.apparence.cle}
+      >
         <Theme />
         <CoeurDeJarvis />
       </Section>
 
-      <Section {...SECTIONS.comptes} filtre={recherche}>
+      <Section
+        {...SECTIONS.comptes}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.comptes.cle}
+      >
         <CompteGoogle />
         <Deconnexion />
       </Section>
 
+      {/* TOUT EN BAS, demande de Raphaël le 17 sept. 2026 : « ça nous
+          intéresse pas dans les paramètres, c'est vraiment tout en bas qu'il
+          faut le mettre » — pour la confidentialité comme pour les réglages
+          par défaut. Dernière section de la page, exprès. */}
+      <Section
+        {...SECTIONS.confidentialite}
+        filtre={recherche}
+        cibleNavigation={cibleSection === SECTIONS.confidentialite.cle}
+      >
+        <Reinitialiser />
+        <Confidentialite />
+      </Section>
     </div>
   )
 }

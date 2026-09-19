@@ -465,6 +465,11 @@ function noter(
       // 0 = le principal. C'est le serveur qui le sait : le principal se règle
       // par secret, et l'app ne peut pas lire les secrets.
       p_rang: rang,
+      // Le plafond EXACT que Google a rendu dans le corps du 429 (chantier
+      // fbdf9467) : `seau` le range déjà dans une case, ça reste utile tel
+      // quel ; ceci garde le chiffre et l'id précis, perdus sinon.
+      p_quota_id: e?.quota?.id ?? null,
+      p_quota_limite: e?.quota?.limite ?? null,
     })
     .then(() => {}, () => {})
 }

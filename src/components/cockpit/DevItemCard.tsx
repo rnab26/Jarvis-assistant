@@ -1,11 +1,14 @@
 import { Archive, ArchiveRestore, Check, MessageSquare, Pencil, Send, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
 import { Badge } from "@/components/ui/badge"
+import { CardContent } from "@/components/ui/card"
+import { CarteRepliable } from "@/components/cockpit/CarteRepliable"
 import { etatChantier, pastilleDe } from "@/lib/etatChantier"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { derniereMajChantier } from "@/lib/derniereMajChantier"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
 import { HistoriqueChantier } from "@/components/cockpit/HistoriqueChantier"
 import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
@@ -14,10 +17,17 @@ import {
   A_TRIER,
   LIBELLE_MARQUEUR,
   VARIANTE_MARQUEUR,
+  detailMarqueur,
   marqueurDe,
   notesSansMarqueur,
 } from "@/lib/marqueurChantier"
 import type { DevItem, DevItemInput, DevLogEntry, DevPriority, DevStatus } from "@/types/database"
+
+/** Combien de temps la mise en évidence reste visible après un lien direct
+ * (notification, message) — même durée que `Section.tsx` (chantier
+ * `aac9a0dd`) : assez long pour la voir en ayant fini de défiler, assez
+ * court pour ne pas devenir un élément permanent de l'écran. */
+const DUREE_MISE_EN_EVIDENCE_MS = 2500
 
 /** « Normale » reste implicite : c'est la priorité de presque tous les
  * chantiers, l'afficher sur chacun ne distingue rien et mange la place du
@@ -116,6 +126,11 @@ interface DevItemCardProps {
   selectionnable?: boolean
   selectionne?: boolean
   onSelectionner?: (id: string) => void
+  /** Vrai quand un lien direct (notification, message) vise CE chantier
+   * (chantiers 04d2fa9e/332d87fd/f613211c). La carte se déplie, défile
+   * jusqu'à elle et se met en évidence — jamais deviné depuis un titre ou
+   * une recherche, reçu déjà résolu par l'appelant (son id). */
+  misEnEvidence?: boolean
 }
 
 export function DevItemCard({
@@ -131,10 +146,22 @@ export function DevItemCard({
   selectionnable = false,
   selectionne = false,
   onSelectionner,
+  misEnEvidence = false,
 }: DevItemCardProps) {
-  const [deplie, setDeplie] = useState(false)
+  const [deplie, setDeplie] = useState(() => misEnEvidence)
+  const [enEvidence, setEnEvidence] = useState(false)
+  const conteneurRef = useRef<HTMLDivElement>(null)
   const [reponse, setReponse] = useState("")
   const [envoiReponse, setEnvoiReponse] = useState(false)
+
+  useEffect(() => {
+    if (!misEnEvidence) return
+    setDeplie(true)
+    setEnEvidence(true)
+    conteneurRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    const minuteur = setTimeout(() => setEnEvidence(false), DUREE_MISE_EN_EVIDENCE_MS)
+    return () => clearTimeout(minuteur)
+  }, [misEnEvidence])
 
   // Une question posée par une session et restée sans réponse est la seule
   // chose qui doive se voir SANS déplier : c'est elle qui bloque le travail.
@@ -144,12 +171,37 @@ export function DevItemCard({
   // pourtant invisible tant qu'on n'avait pas déplié la note.
   const marqueur = marqueurDe(item)
 
+  // Bug trouvé par Raphaël le 17 sept. 2026 (chantier 4be6b04c) : pour un
+  // chantier « à cadrer » ou « bloqué », la vraie question à trancher vit
+  // souvent dans le crochet même du marqueur (6d94ab6a), pas dans la suite
+  // chronologique des notes — et « dernière mise à jour » pouvait tomber sur
+  // un paragraphe purement administratif sans aucun rapport. `detailMarqueur`
+  // rend null quand le crochet n'est que l'étiquette : dans ce cas la phrase
+  // générique d'EXPLICATION_MARQUEUR ci-dessous suffit déjà.
+  const detail = marqueur === "a_cadrer" || marqueur === "bloque" ? detailMarqueur(item.notes) : null
+
+  // Plainte de Raphaël, 17 sept. 2026 : un chantier déplié montrait tout le
+  // pavé historique accumulé par chaque session, et il ne comprenait plus où
+  // ça en est. `derniereMajChantier` isole la mise à jour la plus récente —
+  // c'est elle qu'on montre en premier ; le pavé complet reste disponible
+  // derrière « Voir tout l'historique », rien n'est perdu ni raccourci en
+  // base (chantier e71199d6).
+  const notesCompletes = notesSansMarqueur(item.notes)
+  const derniereMaj = derniereMajChantier(item.notes)
+  const aHistoriqueSupplementaire =
+    notesCompletes !== null && derniereMaj !== null && notesCompletes !== derniereMaj
+
   // Même densité que les tâches (option « compact » choisie par Raphaël le
   // 3 sept. 2026) : plus de cadre par chantier, un filet entre deux, les
   // étiquettes dans la ligne du titre. Deux listes qui se ressemblent doivent
   // se lire pareil — sinon le cockpit paraît inachevé à côté des tâches.
   return (
-    <div className="flex flex-col gap-1.5 py-1.5">
+    <div
+      ref={conteneurRef}
+      className={`flex flex-col gap-1.5 rounded-lg py-1.5 ${
+        enEvidence ? "ring-2 ring-primary" : ""
+      }`}
+    >
       <div className="flex items-start gap-2">
       {/* En mode sélection, la case prend toute la hauteur de la ligne : sur
           un téléphone, viser un carré de trois millimètres à côté d'un titre
@@ -249,6 +301,12 @@ export function DevItemCard({
         {deplie && marqueur && (
           <p className="text-xs text-muted-foreground">{EXPLICATION_MARQUEUR[marqueur]}</p>
         )}
+        {deplie && detail && (
+          <p className="text-xs font-medium whitespace-pre-line text-foreground">
+            {marqueur === "bloque" ? "Bloqué par : " : "À trancher : "}
+            {detail}
+          </p>
+        )}
         {/* Deux états seulement ici : pris et laissé en plan. « Livré » n'y
             est pas — « Archivé le … » juste au-dessus le dit déjà, et le
             répéter serait la redondance qu'il reproche au cockpit. */}
@@ -266,16 +324,26 @@ export function DevItemCard({
             </p>
           )
         })()}
-        {notesSansMarqueur(item.notes) && (
-          // Trois lignes ici, contre deux pour une tâche : les notes d'un
-          // chantier portent le cadrage, et c'est ce qu'on vient y lire.
-          <p
-            className={`text-xs whitespace-pre-line text-muted-foreground ${
-              deplie ? "" : "line-clamp-2"
-            }`}
-          >
-            {renderNotes(notesSansMarqueur(item.notes)!)}
-          </p>
+        {deplie ? (
+          // Déplié : la dernière mise à jour seule, en clair — pas tout le
+          // pavé historique. C'est elle qui dit où ça en est MAINTENANT ; le
+          // reste attend derrière « Voir tout l'historique », plus bas.
+          derniereMaj && (
+            <p className="text-xs whitespace-pre-line text-muted-foreground">
+              {aHistoriqueSupplementaire && (
+                <span className="font-medium text-foreground">Dernière mise à jour : </span>
+              )}
+              {renderNotes(derniereMaj)}
+            </p>
+          )
+        ) : (
+          notesCompletes && (
+            // Trois lignes ici, contre deux pour une tâche : les notes d'un
+            // chantier portent le cadrage, et c'est ce qu'on vient y lire.
+            <p className="line-clamp-2 text-xs whitespace-pre-line text-muted-foreground">
+              {renderNotes(notesCompletes)}
+            </p>
+          )
         )}
       </button>
       {onArchive && item.status === "done" && (
@@ -332,6 +400,16 @@ export function DevItemCard({
       />
       </div>
 
+      {deplie && !selectionnable && aHistoriqueSupplementaire && (
+        <CarteRepliable titre="Voir tout l'historique">
+          <CardContent>
+            <p className="whitespace-pre-line text-xs text-muted-foreground">
+              {renderNotes(notesCompletes!)}
+            </p>
+          </CardContent>
+        </CarteRepliable>
+      )}
+
       {/* Les trois choses qu'on change tout le temps — le statut, la priorité,
           la section — se changeaient jusqu'ici en ouvrant le formulaire, en
           visant un menu et en enregistrant. Partout ailleurs (Linear, Trello,
@@ -382,7 +460,7 @@ export function DevItemCard({
                 rows={2}
                 placeholder={
                   marqueur === "a_cadrer"
-                    ? "Ta décision ici : la prochaine session la lira à son démarrage"
+                    ? "Écris ta décision ici, puis appuie sur Envoyer"
                     : messages.length > 0
                       ? "Répondre à la session, ici même"
                       : "Écrire à la prochaine session qui prendra ce chantier"
@@ -390,30 +468,32 @@ export function DevItemCard({
                 aria-label={`Répondre sur ${item.title}`}
                 onChange={(e) => setReponse(e.target.value)}
               />
-              {reponse.trim() && (
-                <Button
-                  size="sm"
-                  className="self-end"
-                  disabled={envoiReponse}
-                  onClick={async () => {
-                    setEnvoiReponse(true)
-                    try {
-                      await onRepondre(item.id, reponse.trim())
-                      setReponse("")
-                    } catch {
-                      // Toast déjà affiché : la saisie reste.
-                    } finally {
-                      setEnvoiReponse(false)
-                    }
-                  }}
-                >
-                  <Send className="size-3.5" />
-                  {/* Pas « Envoyer » tout court : la fenêtre du haut porte
-                      déjà ce mot pour créer un chantier, et deux boutons de
-                      même nom sur le même écran font hésiter. */}
-                  {messages.length > 0 ? "Répondre" : "Envoyer à la session"}
-                </Button>
-              )}
+              {/* Toujours visible dès que le champ existe, seulement grisé
+                  tant qu'il n'y a rien à envoyer — un bouton absent ne dit
+                  pas qu'il va apparaître une fois qu'on a écrit (Raphaël,
+                  17 sept. 2026 : « je ne sais pas quoi faire ensuite »). */}
+              <Button
+                size="sm"
+                className="self-end"
+                disabled={envoiReponse || !reponse.trim()}
+                onClick={async () => {
+                  setEnvoiReponse(true)
+                  try {
+                    await onRepondre(item.id, reponse.trim())
+                    setReponse("")
+                  } catch {
+                    // Toast déjà affiché : la saisie reste.
+                  } finally {
+                    setEnvoiReponse(false)
+                  }
+                }}
+              >
+                <Send className="size-3.5" />
+                {/* Pas « Envoyer » tout court : la fenêtre du haut porte
+                    déjà ce mot pour créer un chantier, et deux boutons de
+                    même nom sur le même écran font hésiter. */}
+                {messages.length > 0 ? "Répondre" : "Envoyer à la session"}
+              </Button>
             </div>
           )}
         </div>

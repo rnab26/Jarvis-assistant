@@ -26,7 +26,7 @@ export const AUTEUR_RAPHAEL = "Raphaël"
  * avec un badge qui compte ce qui ne sonne pas.
  */
 
-function adresseeAUneSession(entry: DevLogEntry): boolean {
+export function adresseeAUneSession(entry: DevLogEntry): boolean {
   return /^pour la session\b/i.test(entry.body.trim())
 }
 
@@ -58,9 +58,45 @@ function compteRenduDeSession(entry: DevLogEntry): boolean {
   return entry.pourquoi == null || entry.pourquoi.trim() === ""
 }
 
+/**
+ * Une question MAL FORMÉE : ni `pourquoi`, ni options, ni adressée à une
+ * session par la convention « Pour la session … ».
+ *
+ * Trouvé le 17 sept. 2026 : une session a inséré en SQL brut une note
+ * TECHNIQUE, adressée à une autre session, sans passer par
+ * `scripts/demander.sh` ni préfixer « Pour la session ». Elle a atterri telle
+ * quelle sur la carte « Ce qui attend ta décision » de Raphaël — ses mots :
+ * « je ne comprends rien. En fait, il me fait un récap très bizarre ».
+ *
+ * REMESURÉ ce jour-là sur les 27 questions du journal réel : les 10 sans
+ * `pourquoi` sont TOUTES des messages entre sessions (pas une seule question
+ * légitime pour Raphaël) — la mesure du 7 sept. (« 9 sur 14 légitimes ») ne
+ * tient donc plus. La raison : `scripts/demander.sh` exige `--pourquoi`
+ * depuis le 17 sept., donc toute question posée par le chemin canonique en
+ * porte un désormais. Une question qui n'en a pas, et qui ne coche aucun
+ * autre signal de forme (options, préfixe reconnu), n'est structurellement
+ * plus une vraie demande vers lui — elle est écartée plutôt que devinée mot à
+ * mot, ce qui éviterait d'avoir à énumérer indéfiniment les façons d'adresser
+ * une session (« Session X ici », « Pour les sessions… », déjà vues et
+ * ratées par le préfixe strict).
+ */
+function questionMalFormee(entry: DevLogEntry): boolean {
+  return (
+    entry.kind === "question" &&
+    (entry.pourquoi == null || entry.pourquoi.trim() === "") &&
+    entry.options == null &&
+    !adresseeAUneSession(entry)
+  )
+}
+
 /** Une question posée à Raphaël, à laquelle personne n'a encore répondu. */
 export function questionPourRaphael(entry: DevLogEntry): boolean {
-  return entry.kind === "question" && !entry.answered_at && !adresseeAUneSession(entry)
+  return (
+    entry.kind === "question" &&
+    !entry.answered_at &&
+    !adresseeAUneSession(entry) &&
+    !questionMalFormee(entry)
+  )
 }
 
 /**
@@ -79,7 +115,8 @@ export function enAttenteDeRaphael(entry: DevLogEntry): boolean {
     (entry.kind === "question" || entry.kind === "action") &&
     !entry.answered_at &&
     !adresseeAUneSession(entry) &&
-    !compteRenduDeSession(entry)
+    !compteRenduDeSession(entry) &&
+    !questionMalFormee(entry)
   )
 }
 
@@ -95,5 +132,6 @@ export function estPourRaphael(entry: DevLogEntry): boolean {
   // et personne d'autre que lui ne peut la déposer. Mais pas un compte rendu
   // de session, qui porte le même `kind` — ça le réveillerait pour rien.
   if (compteRenduDeSession(entry)) return false
+  if (questionMalFormee(entry)) return false
   return entry.kind === "question" || entry.kind === "blocage" || entry.kind === "action"
 }

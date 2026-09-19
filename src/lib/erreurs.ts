@@ -4,6 +4,7 @@
 // (scripts/verifier-raison-ecoute.ts). Les imports `@/…` ne s'y résolvent pas ;
 // `@/types/database` reste possible parce qu'il est effacé (import type).
 import { estUnePanne, titreDeLaPanne, type RaisonEcoute } from "./raisonEcoute.ts"
+import { contextePourErreur } from "./contexteInteraction.ts"
 import type { ErreurCategorie } from "@/types/database"
 
 /**
@@ -32,7 +33,15 @@ export type SourceErreur = "app" | "voix" | "live" | "ecoute" | "manuel"
 
 interface Options {
   detail?: string | null
-  /** Ce qui se passait : la phrase dictée, l'écran, l'action tentée. */
+  /**
+   * Ce qui se passait : la phrase dictée, l'écran, l'action tentée. Laissé à
+   * `null` (le cas de la plupart des erreurs `systeme` — `withErrorToast`,
+   * branché sur TOUTES les écritures de l'app, ne le renseigne jamais), il se
+   * remplit tout seul avec l'écran affiché et le dernier bouton touché
+   * (chantier 6d94ab6a, `contexteInteraction.ts`) plutôt que de rester vide —
+   * c'était le trou : une écriture qui échoue disait QUOI avait raté, jamais
+   * OÙ ni APRÈS QUOI.
+   */
   contexte?: string | null
   source?: SourceErreur
   /**
@@ -68,6 +77,10 @@ export function signalerErreur(
   const propre = titre.replace(/\s+/g, " ").trim()
   if (!propre) return
 
+  // Capturé ICI, au moment de l'appel — pas plus tard dans la file d'attente
+  // ci-dessous, où l'écran ou le dernier clic auraient pu changer entre-temps.
+  const contexteFinal = contexte ?? contextePourErreur()
+
   const cle = empreinteLocale(categorie, propre)
   const maintenant = Date.now()
   const vu = dernierEnvoi.get(cle)
@@ -95,7 +108,7 @@ export function signalerErreur(
           p_categorie: categorie,
           p_titre: propre.slice(0, 200),
           p_detail: detail?.slice(0, 2000) ?? null,
-          p_contexte: contexte?.slice(0, 1000) ?? null,
+          p_contexte: contexteFinal.slice(0, 1000),
           p_source: source,
           p_correction_suggeree: correctionSuggeree?.slice(0, 300) ?? null,
         }),
@@ -137,6 +150,20 @@ export function erreurDepuisEcoute(
           ? "Le mode Live n'obtient pas de jeton"
           : "Le mode Live n'arrive pas à se connecter",
       detail: texte("detail"),
+      source: "live",
+    }
+  }
+
+  if (evenement === "live_reponse_anormale") {
+    // Bug confirmé côté Google (src/lib/live/reponseIllisible.ts) : le modèle
+    // vocal natif envoie parfois des jetons de contrôle bruts (`<ctrl46>`…)
+    // au lieu de répondre. Une seule ligne, quel que soit l'échantillon
+    // exact, pour que la fréquence se lise d'un coup d'œil plutôt que d'être
+    // noyée dans autant de lignes que de jetons différents.
+    return {
+      categorie: "serveur",
+      titre: "Le mode Live a renvoyé une réponse illisible (jetons de contrôle bruts)",
+      detail: texte("echantillon"),
       source: "live",
     }
   }

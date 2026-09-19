@@ -1,6 +1,11 @@
-import { executerActionTelephone, type ActionTelephone } from "@/lib/actionsTelephoneVocales"
+import {
+  executerActionTelephone,
+  transmettreFichier,
+  type ActionTelephone,
+} from "@/lib/actionsTelephoneVocales"
 import { garderReponseEcran } from "@/lib/garderReponseEcran"
 import { lireDocumentLien } from "@/lib/lireDocumentLien"
+import { repondreDecisionVoix } from "@/lib/repondreDecisionVoix"
 import { phraseHorsLigne } from "@/lib/fileEnAttente"
 import type { Brouillon, MessageComplet, MessageResume, Recu } from "@/lib/googleGmail"
 import { estDernierMessage, nomExpediteur } from "@/lib/gmailVoix"
@@ -26,6 +31,13 @@ import {
   completionExpiree,
   type TacheEnAttente,
 } from "@/lib/tacheDateEtCategorie"
+import { suggererSection } from "@/lib/suggestionTheme"
+import { suggererTitreChantier } from "@/lib/titreChantier"
+import {
+  clauseSuggestionChantier,
+  completionExpiree as completionExpireeChantier,
+  type ChantierEnAttente,
+} from "@/lib/chantierEnAttente"
 import {
   correctionApplicable,
   phraseDeplacement,
@@ -36,6 +48,9 @@ import {
   type Destination,
 } from "@/lib/ouVaCetteDictee"
 import { titreLisible } from "@/lib/titreTache"
+import { SECTIONS_PARAMETRES } from "@/lib/sectionsParametres"
+import { momentLocal } from "@/lib/notifications/plan"
+import type { MessageProgramme } from "@/lib/messagesProgrammes"
 import type {
   Category,
   Contact,
@@ -74,11 +89,28 @@ export type VoiceAction =
         | { verdict: "refuser" }
         | { verdict: "corriger"; category_id: string; category_name: string }
     }
+  /** Valide, corrige ou refuse la suggestion de section et/ou de titre faite
+   * juste après la création d'un chantier (chantiers 9369ad72 et 1be8988d) —
+   * reconnue LOCALEMENT (commandeLocale.ts), résolue contre le dernier
+   * chantier en attente (voir chantierEnAttente.ts). */
+  | {
+      action: "complete_last_chantier"
+      verdict:
+        | { verdict: "accepter" }
+        | { verdict: "refuser" }
+        | { verdict: "corriger_section"; section_nom: string }
+        | { verdict: "illisible" }
+    }
   /** « garde ça », « retiens sa réponse » : reprendre à l'écran la réponse
    * d'une IA relayée, sans le menu Partager d'Android. Reconnue LOCALEMENT
    * (commandeLocale.ts), pour la même raison que `move_last_entry` : lire
    * l'écran est une décision qui vit sur l'appareil (chantier 7d7967b2). */
   | { action: "garder_reponse_ecran" }
+  /** « emmène-moi dans les notifications » : naviguer vers une section de
+   * Paramètres. Reconnue LOCALEMENT (commandeLocale.ts), résolue par
+   * `resoudreCibleParametres` (sectionsParametres.ts) — `cible` est déjà
+   * la clé d'UNE section, jamais une phrase brute (chantier aac9a0dd). */
+  | { action: "navigate_settings"; cible: string }
   /** Mode entraînement (chantier 86df4f4a), reconnues LOCALEMENT pour la
    * même raison : regarder l'écran et retrouver une séquence déjà montrée
    * sont des décisions de l'appareil. */
@@ -116,6 +148,16 @@ export type VoiceAction =
   | { action: "archive_dev_item"; item_id: string }
   | { action: "add_dev_section"; section_nom: string }
   | { action: "rename_dev_section"; section_id: string; section_nom: string }
+  /**
+   * Répondre à voix haute, en phrase libre, à un point de « Ce qui attend ta
+   * décision » (chantier 6044d8ad). Résolue par le SERVEUR (voice-command,
+   * via `_shared/ceQuiLAttend.ts`), comme item_id pour update_dev_item :
+   * `decision_id` est l'identifiant `dev_log` du point visé, jamais deviné
+   * côté appareil — sa règle de sûreté (plusieurs points en attente et une
+   * phrase ambiguë → clarify, jamais cette action) vit dans la consigne du
+   * serveur, au même endroit que la liste qui porte les identifiants.
+   */
+  | { action: "repondre_decision"; decision_id: string; decision_reponse: string }
   | { action: "list_documents" }
   | { action: "save_document"; filename: string; content: string }
   | {
@@ -171,6 +213,19 @@ export type VoiceAction =
       mail_jours?: number
       mail_limite?: number
     }
+  /** Transmettre un reçu déjà retrouvé (find_receipts/read_email) au contact
+   * qu'il désigne, via le partage Android (chantier 4dabe586) — ce que
+   * find_receipts ne pouvait QUE lister jusque-là. Mêmes champs destinataire
+   * que send_message : contact_id si connu, sinon contact_name (résolu dans
+   * le répertoire du téléphone), jamais un numéro deviné. */
+  | {
+      action: "transmettre_recu"
+      mail_cible: string
+      message_channel?: "whatsapp" | "whatsapp_business" | "sms"
+      contact_id?: string
+      contact_name?: string
+      phone_number?: string
+    }
   | { action: "set_voice"; voice_enabled: boolean }
   /** Changer un réglage lui-même (chantier f7137b0c). `setting_cle` et
    * `setting_valeur` viennent de `src/lib/reglagesVoix.ts`, la seule liste
@@ -180,6 +235,28 @@ export type VoiceAction =
    * réglage précis : `_shared/branchements.ts` dit déjà l'état courant à
    * chaque phrase, ça ferait double emploi. */
   | { action: "list_settings" }
+  /**
+   * Programmer l'envoi d'un message pour PLUS TARD — chantier ed32cbcc.
+   * À LA DIFFÉRENCE de `send_message` (dans `ActionTelephone`, ci-dessous),
+   * ceci n'ouvre RIEN tout de suite : ça écrit une intention dans
+   * `messages_programmes` (src/lib/messagesProgrammes.ts). Décision de
+   * Raphaël du 3 sept. 2026 : rien ne part sans qu'il valide — à l'heure
+   * dite, Jarvis annonce le message à voix haute et attend sa réponse
+   * (envoyer / modifier / reprogrammer / annuler), il ne l'envoie jamais
+   * tout seul.
+   */
+  | {
+      action: "schedule_message"
+      message_channel?: "whatsapp" | "whatsapp_business" | "sms"
+      message_text: string
+      contact_id?: string
+      contact_name?: string
+      phone_number?: string
+      /** Les deux obligatoires ici (contrairement à add_task) : un message
+       * "programmé" sans date NI heure ne veut rien dire. */
+      due_date: string
+      due_time: string
+    }
   // Actions qui sortent de Jarvis pour aller dans une autre application du
   // téléphone (ouvrir une app, préparer un message, composer un numéro,
   // poser une alarme, ouvrir un itinéraire). Leur exécution vit dans son
@@ -202,9 +279,12 @@ export interface TasksApi {
 
 export interface DevItemsApi {
   devItems: DevItem[]
-  // Le retour n'est pas utilisé ici (le cockpit, lui, s'en sert pour
-  // rattacher une erreur au chantier qu'elle vient d'ouvrir).
-  addDevItem: (input: DevItemInput) => Promise<unknown>
+  // `undefined` = pas encore en base (échec réel, ou noté dans la file hors
+  // ligne — useDevItems.ts ne distingue pas les deux, comme pour add_task).
+  // L'id du chantier créé sert à la fois à ErreursJarvis.tsx (rattacher une
+  // erreur au chantier qu'elle vient d'ouvrir) et à la suggestion de
+  // section/titre en attente ci-dessous (chantiers 9369ad72, 1be8988d).
+  addDevItem: (input: DevItemInput) => Promise<DevItem | undefined>
   updateDevItem: (id: string, input: Partial<DevItemInput>) => Promise<void>
   deleteDevItem: (id: string) => Promise<void>
   archiveDevItem: (id: string) => Promise<void>
@@ -241,6 +321,28 @@ export interface PronunciationsApi {
   deletePronunciation: (id: string) => Promise<void>
 }
 
+/**
+ * L'envoi PROGRAMMÉ d'un message — chantier ed32cbcc.
+ *
+ * `programmerMessage` est la seule que le MODÈLE déclenche (schedule_message) :
+ * il n'en lit ni n'en modifie jamais. Les trois autres servent à
+ * `messageAnnonce.ts` / MicButton, côté appareil uniquement, pour annoncer à
+ * l'heure dite et réagir à sa réponse (annuler / marquer envoyé) — jamais au
+ * modèle, qui ne voit ni ne doit voir la liste des messages en attente.
+ */
+export interface MessagesProgrammesApi {
+  programmerMessage: (entree: {
+    destinataire: string
+    texte: string
+    envoyer_a: string
+    canal?: "whatsapp" | "sms" | null
+    contact_id?: string | null
+  }) => Promise<MessageProgramme | null>
+  messagesAAnnoncer: () => Promise<MessageProgramme[]>
+  marquerAnnonce: (id: string) => Promise<void>
+  annulerMessage: (id: string) => Promise<void>
+}
+
 export interface AgendaApi {
   listerEvenements: (options: {
     depuis?: string
@@ -274,6 +376,12 @@ export interface GmailApi {
     recherche?: string
   }) => Promise<Recu[]>
   lireMessage: (messageId: string, options?: { marquer_lu?: boolean }) => Promise<MessageComplet | null>
+  /** Le contenu d'une pièce jointe (8 Mo max, refusé au-delà par le serveur)
+   * — chantier 4dabe586, transmettre un reçu retrouvé. */
+  recupererPieceJointe: (
+    messageId: string,
+    pieceJointeId: string,
+  ) => Promise<{ taille: number | null; contenu_base64: string } | null>
   preparerReponse: (options: { texte: string; message_id?: string }) => Promise<Brouillon | null>
   // Une réponse dictée n'attache jamais de fichier : le vrai envoyerMessage de
   // googleGmail.ts accepte des pièces jointes EN PLUS, l'appelant fournit un
@@ -474,6 +582,15 @@ export interface DevSectionsVoiceApi {
 }
 
 /**
+ * Naviguer vers une section de Paramètres (chantier aac9a0dd). Le format
+ * d'URL (`/settings?section=<cible>`) est une affaire de routeur, pas de ce
+ * module : c'est MicButton.tsx qui le sait, via `useNavigate`.
+ */
+export interface NavigationApi {
+  navigateVersParametres: (cible: string) => void
+}
+
+/**
  * Ce qui vient d'être créé, pour qu'une correction puisse le déplacer.
  *
  * En mémoire du module, et pas en base : la question est « qu'est-ce que je
@@ -507,6 +624,22 @@ export function oublierTacheEnAttente() {
   derniereTacheEnAttente = null
 }
 
+/**
+ * Le chantier qui vient d'être créé sans section dite explicitement et/ou
+ * avec un titre qui garde une amorce de dictée, tant qu'une réponse peut
+ * encore le compléter (chantiers 9369ad72 et 1be8988d). Même raison que
+ * `derniereTacheEnAttente` : en mémoire du module, pas en base.
+ */
+let derniereChantierEnAttente: ChantierEnAttente | null = null
+
+/** Exportée pour que MicButton la joigne au contexte de commandeLocale.ts. */
+export function memoireChantierEnAttente(): ChantierEnAttente | null {
+  return derniereChantierEnAttente
+}
+export function oublierChantierEnAttente() {
+  derniereChantierEnAttente = null
+}
+
 /** « vendredi 12 septembre » — lu à voix haute, pas de format ISO. */
 function formatDateCourte(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
@@ -529,6 +662,8 @@ export async function executeVoiceAction(
   { setWakeWordEnabled, setGeofenceEnabled }: ReglagesVoixApi,
   entrainementApi: EntrainementApi,
   gmail: GmailApi,
+  { navigateVersParametres }: NavigationApi,
+  { programmerMessage }: MessagesProgrammesApi,
 ): Promise<string> {
   switch (action.action) {
     case "list_tasks": {
@@ -728,6 +863,12 @@ export async function executeVoiceAction(
     case "garder_reponse_ecran":
       return await garderReponseEcran(saveTextDocument)
 
+    case "navigate_settings": {
+      navigateVersParametres(action.cible)
+      const section = SECTIONS_PARAMETRES[action.cible as keyof typeof SECTIONS_PARAMETRES]
+      return section ? `Je t'emmène dans ${section.titre}.` : "C'est ouvert."
+    }
+
     case "start_training":
       demarrerEnregistrement()
       return phraseDebutEntrainement()
@@ -790,23 +931,105 @@ export async function executeVoiceAction(
       const doublon = deciderDoublonVocal(action.title, action.notes, devItems)
       if (doublon.verdict === "refuser") return doublon.phrase
 
-      await addDevItem({
+      const cree = await addDevItem({
         title: action.title,
         notes: action.notes ?? null,
         status: action.status ?? "todo",
         priority: action.priority ?? "normal",
         theme: action.theme ?? null,
       })
-      // Le thème est dit à voix haute : c'est le seul moment où Raphaël peut
-      // corriger un classement qui part de travers. Et sans la deuxième
-      // phrase, il pouvait croire qu'une session allait s'en saisir tout de
-      // suite — c'est le même malentendu que corrige le bandeau permanent
-      // de la fenêtre d'envoi du cockpit.
       derniereCreation = { vers: "chantier", titre: action.title, quand: Date.now() }
-      const ajoute = `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
-      return doublon.verdict === "creer_en_avertissant"
-        ? `${doublon.phrase} ${ajoute}`
-        : ajoute
+
+      // NOTÉ, PAS ENREGISTRÉ — même honnêteté que pour les tâches (chantier
+      // 9476c7a0), trouvée en touchant ce code pour les chantiers 9369ad72 et
+      // 1be8988d : `addDevItem` ne rend rien de distinct entre un échec réel
+      // et une écriture partie dans la file hors ligne, donc les deux se
+      // traitent pareil — jamais « ajouté » à voix haute pour quelque chose
+      // qui n'est pas encore en base, et rien à proposer sur un chantier qui
+      // n'a pas d'id.
+      if (!cree) {
+        derniereChantierEnAttente = null
+        return phraseHorsLigne(action.title)
+      }
+
+      // AUCUNE SUGGESTION QUAND IL A DÉJÀ DIT LE THÈME. Réponse de Raphaël au
+      // chantier 9369ad72, 17 sept. 2026 : « Proposer, je valide » — même
+      // règle que suggestionTheme.ts pour la saisie manuelle du cockpit. Le
+      // serveur classe encore un chantier quand la consigne le lui demande
+      // explicitement ; côté appareil, on ne propose donc que ce qu'il n'a
+      // PAS dit lui-même.
+      const sectionSuggestion = action.theme
+        ? null
+        : suggererSection(`${action.title} ${action.notes ?? ""}`, devItems, sections)
+      // Même règle pour le titre (chantier 1be8988d) : un titre qui garde une
+      // amorce de dictée (« Comme quoi… ») se PROPOSE, il ne se réécrit
+      // jamais tout seul — à la différence de titreLisible() pour les tâches,
+      // appliquée en silence par une décision différente de Raphaël.
+      const titreSuggere = suggererTitreChantier(action.title)
+
+      derniereChantierEnAttente =
+        sectionSuggestion || titreSuggere
+          ? {
+              itemId: cree.id,
+              titre: action.title,
+              sectionSuggeree: sectionSuggestion?.nom ?? null,
+              titreSuggere,
+              quand: Date.now(),
+            }
+          : null
+
+      let reply = `Chantier "${action.title}" ajouté au cockpit${action.theme ? ` dans ${action.theme}` : ""}. Une session Claude Code le prendra à son prochain démarrage.`
+      if (doublon.verdict === "creer_en_avertissant") reply = `${doublon.phrase} ${reply}`
+      reply += clauseSuggestionChantier({
+        sectionSuggeree: sectionSuggestion?.nom ?? null,
+        titreSuggere,
+      })
+      return reply
+    }
+
+    /**
+     * Valide, corrige ou refuse la suggestion de section et/ou de titre
+     * faite juste après la création d'un chantier (chantiers 9369ad72 et
+     * 1be8988d) — reconnue localement contre `derniereChantierEnAttente`.
+     */
+    case "complete_last_chantier": {
+      const attente = derniereChantierEnAttente
+      if (!attente || completionExpireeChantier(attente, Date.now())) {
+        return "Je ne sais plus quel chantier compléter. Redis-moi lequel, et ce qu'il faut changer."
+      }
+
+      const verdict = action.verdict
+      if (verdict.verdict === "refuser") {
+        derniereChantierEnAttente = null
+        return `D'accord, "${attente.titre}" reste comme il est.`
+      }
+      if (verdict.verdict === "illisible") {
+        const noms = sections.map((s) => s.nom).join(", ")
+        return noms
+          ? `Dans quelle section je range "${attente.titre}" ? (${noms})`
+          : `Dans quelle section je range "${attente.titre}" ?`
+      }
+
+      // La correction d'une section ne vaut QUE pour la section : il a
+      // corrigé une chose précise, pas validé tout le reste en silence.
+      const changes: Partial<DevItemInput> = {}
+      const dits: string[] = []
+      if (verdict.verdict === "corriger_section") {
+        changes.theme = verdict.section_nom
+        dits.push(`rangé dans ${verdict.section_nom}`)
+      } else if (attente.sectionSuggeree) {
+        changes.theme = attente.sectionSuggeree
+        dits.push(`rangé dans ${attente.sectionSuggeree}`)
+      }
+      if (verdict.verdict === "accepter" && attente.titreSuggere) {
+        changes.title = attente.titreSuggere
+        dits.push(`renommé "${attente.titreSuggere}"`)
+      }
+
+      derniereChantierEnAttente = null
+      if (Object.keys(changes).length === 0) return `D'accord, "${attente.titre}" reste comme il est.`
+      await updateDevItem(attente.itemId, changes)
+      return `C'est noté, "${attente.titre}" est ${dits.join(" et ")}.`
     }
 
     case "update_dev_item": {
@@ -844,6 +1067,9 @@ export async function executeVoiceAction(
       await archiveDevItem(action.item_id)
       return `"${item.title}" marqué fait et archivé.`
     }
+
+    case "repondre_decision":
+      return await repondreDecisionVoix(action.decision_id, action.decision_reponse)
 
     case "add_dev_section": {
       const nom = action.section_nom?.trim()
@@ -1098,10 +1324,39 @@ export async function executeVoiceAction(
         .slice(0, 6)
         .map((r) => `${nomExpediteur(r.de)}${r.date ? ` (${r.date})` : ""}`)
         .join(", ")
-      // Ce que je ne sais PAS encore faire, dit en toutes lettres plutôt que
-      // tu par silence : les transmettre reste du ressort du contrôle du
-      // téléphone (partage Android), pas encore construit.
-      return `J'ai trouvé ${recus.length} reçu${recus.length > 1 ? "s" : ""} : ${liste}. Je ne peux pas encore te les transmettre moi-même, ça viendra avec le contrôle du téléphone.`
+      return `J'ai trouvé ${recus.length} reçu${recus.length > 1 ? "s" : ""} : ${liste}. Dis-moi à qui le transmettre.`
+    }
+
+    case "transmettre_recu": {
+      // Même résolution que read_email/prepare_email_reply : "le dernier",
+      // "la facture d'électricité"... — une seule source de vérité pour
+      // désigner un message.
+      const resolu = await retrouverMessage(gmail, action.mail_cible)
+      if (!resolu.message) return resolu.reponse!
+      const complet = await gmail.lireMessage(resolu.message.id)
+      if (!complet) return "Je n'ai pas réussi à rouvrir ce message."
+      if (complet.pieces_jointes.length === 0) {
+        // Beaucoup de reçus arrivent par un LIEN plutôt qu'en pièce jointe
+        // (google-gmail/lien.ts, chantier 13c39a9b) — on ne le devine pas
+        // ici, on dit ce qui manque plutôt que d'échouer en silence.
+        return "Ce message n'a pas de pièce jointe que je peux transmettre. S'il contient un lien vers le reçu, dis-moi de le récupérer d'abord."
+      }
+      // Plusieurs pièces jointes sur un même reçu, ça arrive (le PDF et son
+      // aperçu) : on prend la première et on la NOMME, pour qu'une commande
+      // mal comprise se repère tout de suite — jamais un choix silencieux.
+      const piece = complet.pieces_jointes[0]
+      const contenu = await gmail.recupererPieceJointe(resolu.message.id, piece.id)
+      if (!contenu) return "Je n'ai pas réussi à récupérer cette pièce jointe."
+      return await transmettreFichier(
+        { nom: piece.nom, typeContenu: piece.type, base64: contenu.contenu_base64 },
+        contacts,
+        {
+          contact_id: action.contact_id,
+          contact_name: action.contact_name,
+          phone_number: action.phone_number,
+        },
+        action.message_channel,
+      )
     }
 
     case "set_voice": {
@@ -1136,6 +1391,44 @@ export async function executeVoiceAction(
       else if (reglage.cle === "jarvis_geofence_enabled") setGeofenceEnabled(option.stocke === "1")
       else ecrireReglage(reglage.cle, option.stocke)
       return `C'est fait : ${reglage.nom} est maintenant ${option.dit}. Tu peux aussi le voir depuis ${reglage.ou}.`
+    }
+
+    case "schedule_message": {
+      // Décision de Raphaël du 3 sept. 2026 : rien ne part sans qu'il
+      // valide. Contrairement à send_message, on n'ouvre RIEN maintenant —
+      // on écrit une intention, que le téléphone annoncera à voix haute à
+      // l'heure dite (src/lib/messagesProgrammes.ts).
+      const nom =
+        contacts.find((c) => c.id === action.contact_id)?.name ??
+        action.contact_name ??
+        action.phone_number ??
+        null
+      const moment = momentLocal(action.due_date, action.due_time)
+      if (!moment) {
+        return "Je n'ai pas compris la date ou l'heure d'envoi, dis-le-moi autrement."
+      }
+      if (moment.getTime() <= Date.now()) {
+        return "Cette heure est déjà passée, dis-moi un autre moment."
+      }
+      // "whatsapp_business" n'est pas un canal distinct dans messages_programmes
+      // (juste 'whatsapp'/'sms'/null) : le choix entre les deux WhatsApp se
+      // tranche à l'heure dite, comme pour send_message.
+      const canal: "whatsapp" | "sms" | null =
+        action.message_channel === "sms" ? "sms" : action.message_channel ? "whatsapp" : null
+      try {
+        await programmerMessage({
+          destinataire: nom ?? "ce contact",
+          texte: action.message_text,
+          envoyer_a: moment.toISOString(),
+          canal,
+          contact_id: contacts.find((c) => c.id === action.contact_id)?.id ?? null,
+        })
+      } catch {
+        return "Je n'ai pas réussi à programmer ce message, réessaie."
+      }
+      const heure = action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
+      const pour = nom ? ` pour ${nom}` : ""
+      return `C'est noté : je te proposerai ce message${pour} ${formatDateCourte(action.due_date)}${heure}.`
     }
 
     case "open_app":

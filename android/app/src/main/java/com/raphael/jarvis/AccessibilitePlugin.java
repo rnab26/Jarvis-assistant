@@ -171,12 +171,39 @@ public class AccessibilitePlugin extends Plugin {
         });
     }
 
+    /**
+     * Un clic rend son verdict dans `resultat`, pas dans `ok` : les deux
+     * echecs du service y prennent donc la place d'un verdict.
+     *
+     * `viaTasker` est DECIDE cote TypeScript (reglage + etat reel de Tasker
+     * et AutoInput, src/lib/delegationTasker.ts) -- ce plugin ne lit aucun
+     * reglage lui-meme. Quand il est pose, on tente d'abord la delegation
+     * (chantier d9ffb735) ; le repli sur le service natif est INCONDITIONNEL
+     * des que Tasker ne rend pas un succes explicite dans le delai --
+     * absent, tache non configuree, timeout, echec rapporte : dans tous ces
+     * cas, cliquer() continue de fonctionner exactement comme avant ce
+     * chantier.
+     */
     @PluginMethod
     public void cliquer(PluginCall call) {
         int index = call.getInt("index", -1);
         String libelle = call.getString("libelle", "");
-        // Un clic rend son verdict dans `resultat`, pas dans `ok` : les deux
-        // echecs du service y prennent donc la place d'un verdict.
+        boolean viaTasker = Boolean.TRUE.equals(call.getBoolean("viaTasker", false));
+
+        if (viaTasker) {
+            TaskerDelegation.tenter(getContext(), libelle, (succes) -> {
+                if (Boolean.TRUE.equals(succes)) {
+                    call.resolve(new JSObject().put("resultat", "fait"));
+                } else {
+                    cliquerNatif(call, index, libelle);
+                }
+            });
+            return;
+        }
+        cliquerNatif(call, index, libelle);
+    }
+
+    private void cliquerNatif(PluginCall call, int index, String libelle) {
         avecService(call, (raison) -> new JSObject().put("resultat", raison), (service) -> {
             JarvisAccessibiliteService.ResultatClic r = service.cliquer(index, libelle);
             String mot;

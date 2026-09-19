@@ -146,6 +146,43 @@ async function demander(phrase, extra = {}) {
   return await r.json()
 }
 
+// « Ce qui attend une décision de Raphaël » (ceQuiLAttend.ts) est lu par la
+// fonction DIRECTEMENT en base, jamais envoyé par l'app dans `extra` : pour
+// tester repondre_decision, on pose donc de VRAIES lignes dev_log pour
+// l'utilisateur de test, marquées par cet auteur pour pouvoir les remplacer
+// sans laisser traîner celles d'un cas précédent — sinon « une seule
+// question en attente » et « plusieurs » se marcheraient dessus. Le compte
+// disparaît de toute façon à la fin (dev_log.user_id → auth.users on delete
+// cascade), ce nettoyage sert seulement à isoler les cas entre eux.
+const AUTEUR_CONTROLE_DECISIONS = "controle-repondre-decision"
+
+async function seedDecisions(points) {
+  await admin(
+    `/rest/v1/dev_log?user_id=eq.${userId}&author=eq.${encodeURIComponent(AUTEUR_CONTROLE_DECISIONS)}`,
+    { method: "DELETE" },
+  )
+  for (const p of points) {
+    const { statut, corps } = await admin("/rest/v1/dev_log", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        id: p.id,
+        user_id: userId,
+        item_id: null,
+        author: AUTEUR_CONTROLE_DECISIONS,
+        kind: "question",
+        body: p.body,
+        pourquoi: p.pourquoi ?? null,
+        options: p.options ?? null,
+      }),
+    })
+    if (statut >= 300) {
+      console.error("Impossible de poser une décision de test :", statut, JSON.stringify(corps))
+      process.exit(1)
+    }
+  }
+}
+
 let echecs = 0
 const verifier = (nom, ok, detail) => {
   if (!ok) echecs++
@@ -383,11 +420,66 @@ cas.push(
       return [true]
     },
   },
+  // Chantier fa16146d, sa demande mot pour mot : « il peut soit rajouter un
+  // rappel dans Google Agenda, soit une alarme dans le téléphone, soit
+  // directement une alerte Jarvis c'est encore mieux, ou bien autant de ces
+  // solutions tant que je lui demande ! »
+  {
+    nom: "rappel : deux canaux nommés dans la même phrase font DEUX actions",
+    phrase:
+      "Ajoute le rappel de Yoni mardi prochain à 14 heures, note-le dans Google Agenda et toi aussi rappelle-le-moi.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      const agenda = (r.actions ?? []).find((x) => x.action === "add_calendar_event")
+      const tache = (r.actions ?? []).find((x) => x.action === "add_task")
+      if (!agenda) return [false, `pas d'add_calendar_event : ${types}`]
+      if (!tache) return [false, `pas d'add_task : ${types}`]
+      if (!/T14:00/.test(agenda.event_debut ?? "")) return [false, `debut agenda = ${agenda.event_debut}`]
+      if (tache.due_time && !/^14:00/.test(tache.due_time)) return [false, `due_time tâche = ${tache.due_time}`]
+      return [true]
+    },
+  },
+  {
+    nom: "rappel : agenda SEUL nommé ne crée pas de tâche en plus",
+    phrase: "Note un rendez-vous avec Yoni mardi à 14 heures dans Google Agenda, seulement dans l'agenda.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (!types.includes("add_calendar_event")) return [false, `pas d'add_calendar_event : ${types}`]
+      if (types.includes("add_task")) return [false, `une tâche en trop a été créée : ${types}`]
+      return [true]
+    },
+  },
+  {
+    nom: "rappel : Jarvis SEUL nommé ne touche pas l'agenda",
+    phrase: "Rappelle-moi d'appeler Yoni mardi à 14 heures, toi seul Jarvis, pas besoin de l'agenda.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (!types.includes("add_task")) return [false, `pas d'add_task : ${types}`]
+      if (types.includes("add_calendar_event")) return [false, `un événement d'agenda en trop a été créé : ${types}`]
+      return [true]
+    },
+  },
 )
 
+// Chantiers 9369ad72 et 1be8988d, réponse de Raphaël le 17 sept. 2026 :
+// « Proposer, je valide » — le serveur ne doit plus deviner un thème en
+// silence (même règle que category_id pour les tâches, chantier eeca8cca) :
+// c'est le téléphone qui suggère et attend sa validation. L'ancien test
+// vérifiait l'inverse (un thème deviné sur le seul sens de la phrase) —
+// remplacé par les deux cas qui comptent désormais.
 cas.push({
-  nom: "un nouveau chantier est rangé dans un thème existant",
+  nom: "un chantier SANS thème dit explicitement n'en reçoit AUCUN",
   phrase: "Ajoute un chantier : quand je chuchote, Jarvis n'entend rien du tout.",
+  controle: (r) => {
+    const a = (r.actions ?? []).find((x) => x.action === "add_dev_item")
+    if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+    if (a.theme) return [false, `thème deviné en silence : ${JSON.stringify(a.theme)}`]
+    return [true]
+  },
+})
+cas.push({
+  nom: "un chantier avec un thème NOMMÉ explicitement est bien classé",
+  phrase: "Ajoute un chantier dans la section Voix et écoute : le micro coupe trop tôt après une phrase.",
   controle: (r) => {
     const a = (r.actions ?? []).find((x) => x.action === "add_dev_item")
     if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
@@ -575,6 +667,58 @@ cas.push(
     },
   },
   {
+    // Chantier dc09476d, 17 sept. 2026 : un choix PONCTUEL dicté dans la
+    // phrase, distinct de la préférence retenue (jarvis_app_whatsapp).
+    nom: "message avec WhatsApp Business explicite : message_channel le porte",
+    phrase: "Envoie un message à Dylan sur WhatsApp Business pour lui dire que je passe demain.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "send_message")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.message_channel !== "whatsapp_business") return [false, `message_channel = ${a.message_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "appel sans rien préciser : call_channel absent (appel classique)",
+    phrase: "Appelle Dylan.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "call_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.call_channel) return [false, `call_channel renseigné à tort : ${a.call_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "appel avec WhatsApp explicite : call_channel le porte",
+    phrase: "Appelle Dylan sur WhatsApp.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "call_contact")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.call_channel !== "whatsapp") return [false, `call_channel = ${a.call_channel}`]
+      return [true]
+    },
+  },
+  {
+    nom: "itinéraire sans application précisée : app_name absent",
+    phrase: "Emmène-moi au 12 rue de la Paix à Paris.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "navigate_to")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (a.app_name) return [false, `app_name renseigné à tort : ${a.app_name}`]
+      return [true]
+    },
+  },
+  {
+    nom: "itinéraire avec application précisée dans la phrase : app_name la porte",
+    phrase: "Emmène-moi au 12 rue de la Paix à Paris avec Waze.",
+    controle: (r) => {
+      const a = (r.actions ?? []).find((x) => x.action === "navigate_to")
+      if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
+      if (!/waze/i.test(a.app_name ?? "")) return [false, `app_name = ${a.app_name}`]
+      return [true]
+    },
+  },
+  {
     nom: "apprentissage direct : quelle app pour la navigation",
     phrase: "Utilise Waze pour la navigation.",
     controle: (r) => {
@@ -679,6 +823,22 @@ cas.push(
       const a = (r.actions ?? []).find((x) => x.action === "find_receipts")
       if (!a) return [false, `actions : ${JSON.stringify((r.actions ?? []).map((x) => x.action))}`]
       if (!/melissa/i.test(a.mail_recherche ?? "")) return [false, `mail_recherche = ${a.mail_recherche}`]
+      return [true]
+    },
+  },
+  {
+    // Chantier 4dabe586, 17 sept. 2026 : transmettre_recu, jamais confondu
+    // avec find_receipts — la distinction est justement ce qui manquait.
+    nom: "gmail : transmettre un reçu déjà retrouvé, jamais confondu avec le lister",
+    phrase: "Transmets la dernière facture d'électricité à Dan par WhatsApp.",
+    controle: (r) => {
+      const types = (r.actions ?? []).map((x) => x.action)
+      if (types.includes("find_receipts")) return [false, `find_receipts au lieu de transmettre : ${JSON.stringify(types)}`]
+      const a = (r.actions ?? []).find((x) => x.action === "transmettre_recu")
+      if (!a) return [false, `actions : ${JSON.stringify(types)}`]
+      if (!/electricit|électricit/i.test(a.mail_cible ?? "")) return [false, `mail_cible = ${a.mail_cible}`]
+      if (!/dan/i.test(a.contact_name ?? "")) return [false, `contact_name = ${a.contact_name}`]
+      if (a.message_channel !== "whatsapp") return [false, `message_channel = ${a.message_channel}`]
       return [true]
     },
   },
@@ -1158,6 +1318,76 @@ cas.push(
   },
 )
 
+// ── Répondre à voix haute à « Ce qui attend ta décision » (6044d8ad) ──
+// Chantier de Raphaël, 17 sept. 2026 : répondre en phrase libre à une
+// question du cockpit, sans répéter le libellé exact d'une option. Sa règle
+// de sûreté, non négociable : plusieurs questions en attente et une phrase
+// ambiguë → il DEMANDE laquelle plutôt que de deviner ; une seule → il
+// répond directement, même si sa phrase est vague.
+const ID_DECISION_SEULE = "d1000000-0000-4000-8000-000000000001"
+cas.push(
+  {
+    nom: "une seule décision en attente : il répond direct, sans demander laquelle",
+    avant: () =>
+      seedDecisions([
+        {
+          id: ID_DECISION_SEULE,
+          body: "On laisse les sessions autonomes tourner en continu (y compris la nuit) ou seulement pendant la journée ?",
+          pourquoi: "Ça décide si une session peut coder pendant qu'il dort.",
+          options: [
+            { cle: "continu", libelle: "En continu, même la nuit", aide: null, recommande: false },
+            { cle: "journee", libelle: "Seulement la journée", aide: null, recommande: true },
+          ],
+        },
+      ]),
+    phrase: "laisse comme c'est pour les sessions autonomes",
+    controle: (r) => {
+      const a = r.actions ?? []
+      const rep = a.find((x) => x.action === "repondre_decision")
+      if (!rep) return [false, `pas de repondre_decision : ${JSON.stringify(a.map((x) => x.action))}`]
+      if (rep.decision_id !== ID_DECISION_SEULE) {
+        return [false, `mauvais decision_id : ${rep.decision_id} au lieu de ${ID_DECISION_SEULE}`]
+      }
+      if (!rep.decision_reponse?.trim()) return [false, "decision_reponse vide"]
+      return [true]
+    },
+  },
+  {
+    nom: "plusieurs décisions en attente et une phrase ambiguë : il ne devine pas",
+    avant: () =>
+      seedDecisions([
+        {
+          id: "d2000000-0000-4000-8000-000000000002",
+          body: "On garde le mot-à-mot des conversations combien de temps ?",
+          options: [
+            { cle: "illimite", libelle: "Sans limite", aide: null, recommande: true },
+            { cle: "30j", libelle: "30 jours", aide: null, recommande: false },
+          ],
+        },
+        {
+          id: "d3000000-0000-4000-8000-000000000003",
+          body: "Le bouton de la bulle flottante doit ouvrir le micro, ou juste afficher les tâches du jour ?",
+          options: [
+            { cle: "micro", libelle: "Ouvrir le micro", aide: null, recommande: false },
+            { cle: "taches", libelle: "Afficher les tâches du jour", aide: null, recommande: false },
+          ],
+        },
+      ]),
+    // Ne cite ni « conversations »/« mot-à-mot », ni « bulle »/« micro » : rien
+    // ne désigne clairement l'un des deux points plutôt que l'autre.
+    phrase: "laisse comme c'est, ne change rien",
+    controle: (r) => {
+      const a = r.actions ?? []
+      const rep = a.find((x) => x.action === "repondre_decision")
+      if (rep) return [false, `il a deviné entre deux points au lieu de demander : ${JSON.stringify(rep)}`]
+      if (!a.some((x) => x.action === "clarify")) {
+        return [false, `ni repondre_decision ni clarify : ${JSON.stringify(a.map((x) => x.action))}`]
+      }
+      return [true]
+    },
+  },
+)
+
 // Un rouge qui n'est PAS un bug, et qui a déjà coûté une heure (4 sept. 2026,
 // au soir) : quand le quota du jour de la clé de test est épuisé, la fonction
 // répond « J'ai atteint la limite de l'offre gratuite », ou meurt en
@@ -1188,7 +1418,7 @@ for (const c of aJouer) {
   // espacer deux requêtes déjà envoyées.
   if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))
   premier = false
-  c.avant?.()
+  await c.avant?.()
   const r = await demander(c.phrase, c.extra)
   if (r.error) { verifier(c.nom, false, `erreur serveur : ${r.error}`); continue }
   const [ok, detail] = c.controle(r)

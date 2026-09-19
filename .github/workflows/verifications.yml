@@ -68,6 +68,13 @@ jobs:
       - name: Ce qu'on dit d'une liste qui devrait se mettre à jour toute seule
         run: node --experimental-strip-types scripts/verifier-etat-direct.ts
 
+      # Le micro s'ouvre en moins de 50 ms (mesuré), mais Android met 1 à 3 s
+      # à rendre le premier mot : la moitié de ces contrôles vérifie qu'on ne
+      # dit RIEN pendant qu'il transcrit vite, l'autre qu'on le rassure quand
+      # il tarde — sans jamais lui demander d'attendre, ses mots étant déjà pris.
+      - name: Ce que l'écran dit pendant qu'il parle
+        run: node --experimental-strip-types scripts/verifier-attente-transcription.ts
+
       # Le bouton « Appeler » d'un rappel. Ce qui casse en silence ici : un
       # bouton proposé sur « rappelle-moi de sortir les poubelles », ou pire,
       # sur une commande mal entendue — « appelle mail » a réellement composé
@@ -155,6 +162,16 @@ jobs:
       - name: Une fermeture subie ne finit pas la conversation Live
         run: node --experimental-strip-types scripts/verifier-reprise-live.ts
 
+      # Bug confirmé côté Google (forum officiel Gemini, jan. 2026) pour
+      # gemini-2.5-flash-native-audio-preview : le modèle envoie parfois des
+      # jetons de contrôle bruts (<ctrl46>…) au lieu de répondre, et certaines
+      # sessions ne s'en sortent jamais. Signalé le 17 sept. 2026 : « Jarvis :
+      # <ctrl46><ctrl46> » affiché à l'écran, puis plus rien, ni live_commande
+      # ni live_fin. On ne peut pas corriger Google ; on ne montre jamais ce
+      # charabia, et on referme nous-mêmes si le tour ne se termine pas.
+      - name: Le mode Live ne montre pas de charabia et ne reste pas bloqué dessus
+        run: node --experimental-strip-types scripts/verifier-reponse-illisible.ts
+
       # Laissé de côté par le chantier qui l'a écrit : il était dans CLAUDE.md
       # mais dans aucun workflow, donc rien ne le lançait.
       - name: L'espacement du préchauffage de la connexion Live
@@ -166,6 +183,13 @@ jobs:
       # ne plus crier sur un silence, ne jamais se taire sur une vraie panne.
       - name: Ce qui finit dans le registre des erreurs, et ce qui n'y finit pas
         run: node --experimental-strip-types scripts/verifier-raison-ecoute.ts
+
+      # Chantier 6d94ab6a : comprendre après coup comment Jarvis se comporte,
+      # à la voix ET au clic. Ce qui casse en silence ici : un écran ou un
+      # dernier clic périmé qu'on continue d'afficher comme s'il expliquait
+      # encore ce qui vient de se passer.
+      - name: L'écran affiché et le dernier bouton touché, dans journal_ecoute et jarvis_erreurs
+        run: node --experimental-strip-types scripts/verifier-contexte-interaction.ts
 
       # Le cas qui compte : quand il NE répond PAS à « avec quelle
       # application ? », sa phrase suivante ne doit surtout pas être
@@ -217,6 +241,14 @@ jobs:
       - name: Le moteur — quel fournisseur, quel modèle, quels seaux de quota
         run: node --experimental-strip-types scripts/verifier-moteur.ts
 
+      # « Pouvoir connaitre le moteur de langue utilisé, même en mode
+      # automatique de bascule. » Ce qu'on annonce est MESURÉ (le modèle qui a
+      # réellement répondu), jamais une configuration devinée — et la règle de
+      # sélection doit rendre le même verdict côté serveur et côté cockpit,
+      # deux fichiers distincts qui pourraient diverger sans ce contrôle.
+      - name: Quel moteur Jarvis annonce quand on le lui demande
+        run: node --experimental-strip-types scripts/verifier-moteur-actif.ts
+
       # « Savoir combien il me reste, et à combien de temps de discussion ça
       # équivaut. » Sur l'offre gratuite il n'y a pas de solde, seulement des
       # plafonds qui ne se lisent qu'une fois dépassés : la moitié de ces
@@ -255,6 +287,12 @@ jobs:
 
       - name: Les sections du cockpit
         run: node --experimental-strip-types scripts/verifier-sections.ts
+
+      # Résoudre une cible parlée (« notifications ») vers UNE section de
+      # Paramètres, jamais une mauvaise. Chantier aac9a0dd — absent de la CI
+      # depuis sa création le 17 sept., corrigé au passage.
+      - name: Naviguer vers une section de Paramètres
+        run: node --experimental-strip-types scripts/verifier-navigation-parametres.ts
 
       # Les quatre nombres par section de « Où j'en suis ». Ce qui se joue là
       # est faux EN SILENCE : un chantier compté comme avançant alors que la
@@ -330,6 +368,18 @@ jobs:
       # demande. Ce contrôle existait mais n'était jamais lancé en CI.
       - name: « Vas-y » après un message préparé devient un clic
         run: node --experimental-strip-types scripts/verifier-confirmation-envoi.ts
+
+      # Corriger (« remplace X par Y ») ou faire relire (« relis-le moi ») un
+      # message WhatsApp/SMS préparé, sans jamais avaler une demande d'un
+      # AUTRE domaine (tâche, chantier, rappel…) — chantier ed32cbcc.
+      - name: Corriger ou relire un message préparé, à la voix
+        run: node --experimental-strip-types scripts/verifier-correction-message.ts
+
+      # Quand et quoi Jarvis annonce d'un message programmé : PAS de
+      # notification (sa réponse du 4 sept.), l'annonce vit dans une
+      # conversation active — moitié du contrôle vérifie le silence.
+      - name: L'annonce d'un message programmé, et surtout son silence
+        run: node --experimental-strip-types scripts/verifier-message-annonce.ts
 
       # La relecture vocale avant l'envoi WhatsApp (chantier ed32cbcc) :
       # décochée par défaut, et surtout un « non » suivi d'une vraie
@@ -450,6 +500,13 @@ jobs:
       # se taire le reste du temps.
       - name: Un chantier garde ce qu'on y a écrit
         run: node --experimental-strip-types scripts/verifier-historique-chantier.ts
+
+      # Le 17 sept. : 304 entrees au journal, UNE SEULE repondable, et 60
+      # affichees sans un mot. Ce qui se verifie ici est surtout le SILENCE —
+      # un compteur qui s'affiche quand tout est visible, ou une citation
+      # inventee a partir d'un parent absent.
+      - name: Reprendre une discussion dans le journal de bord
+        run: node --experimental-strip-types scripts/verifier-fil-journal.ts
 
       # Il dicte en voiture : le reseau coupe n'est pas le cas rare. Ce qui se
       # verifie ici peut etre FAUX EN SILENCE — un renvoi qui cree un doublon,
