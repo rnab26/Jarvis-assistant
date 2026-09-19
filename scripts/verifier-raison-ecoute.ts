@@ -23,7 +23,14 @@
  */
 
 import { erreurDepuisEcoute } from "../src/lib/erreurs.ts"
-import { estUnePanne, raisonDepuisCode, titreDeLaPanne } from "../src/lib/raisonEcoute.ts"
+import {
+  estUnePanne,
+  phraseTourSansTexte,
+  raisonDepuisCode,
+  RIEN_ENTENDU,
+  titreDeLaPanne,
+  type RaisonEcoute,
+} from "../src/lib/raisonEcoute.ts"
 
 let echecs = 0
 
@@ -230,6 +237,71 @@ function titre(evenement: string, detail: Record<string, string | number | boole
   )
   verifier("une réponse sans erreur ne signale rien", titre("reponse", { erreur: null }), null)
   verifier("un événement quelconque ne signale rien", titre("rafale_debut", {}), null)
+}
+
+// --- 7. CE QU'ON LUI DIT QUAND UN TOUR DE COMMANDE FINIT SANS UN MOT -------
+//
+// Mesuré le 19 sept. 2026 (chantier 5df26510) sur ses 14 tours de commande
+// réels terminés sans un mot : SEPT portaient `raison = "service"` (codes 5
+// et 11), dont trois de 12 secondes avec 18, 21 et 28 relances du moteur. Les
+// sept s'entendaient répondre « Je n'ai rien entendu, réessaie » — on lui
+// attribuait NOTRE panne. C'est la règle de honnetete.ts appliquée à notre
+// propre code : on n'affirme pas ce qu'on n'a pas constaté.
+{
+  verifier(
+    "un vrai silence lui est bien attribué, phrase inchangée",
+    phraseTourSansTexte("silence"),
+    RIEN_ENTENDU,
+  )
+  verifier(
+    "pas de code du tout : on ne sait pas, donc on reste sur le silence",
+    phraseTourSansTexte(null),
+    RIEN_ENTENDU,
+  )
+
+  // LE CAS MESURÉ, celui des sept tours.
+  verifier(
+    "le service qui refuse ne s'annonce JAMAIS comme son silence",
+    phraseTourSansTexte("service").startsWith("Je n'ai rien entendu"),
+    false,
+  )
+  verifier(
+    "et il dit que c'est NOUS qui n'avons pas pu écouter",
+    phraseTourSansTexte("service").startsWith("Je n'ai pas pu écouter"),
+    true,
+  )
+
+  // Toutes les pannes, sans exception : une seule oubliée et elle
+  // retomberait sur la phrase qui l'accuse.
+  const pannes: RaisonEcoute[] = [
+    "occupe",
+    "permission",
+    "reseau",
+    "audio",
+    "langue",
+    "rationne",
+    "service",
+  ]
+  verifier(
+    "AUCUNE panne ne lui attribue le silence",
+    pannes.filter((r) => phraseTourSansTexte(r).startsWith("Je n'ai rien entendu")),
+    [],
+  )
+  verifier(
+    "chaque panne dit quelque chose de différent",
+    new Set(pannes.map((r) => phraseTourSansTexte(r))).size,
+    pannes.length,
+  )
+
+  // La phrase du silence doit rester reconnaissable par MicButton, qui s'en
+  // sert pour clore une conversation sans rien afficher d'alarmant après une
+  // réponse de Jarvis. La changer ferait apparaître un écran d'erreur rouge
+  // à la fin de chaque conversation normale.
+  verifier(
+    "la phrase du silence commence bien par ce que MicButton reconnaît",
+    RIEN_ENTENDU.startsWith("Je n'ai rien entendu"),
+    true,
+  )
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

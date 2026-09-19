@@ -235,6 +235,19 @@ for (const { fichier, fonction, fin } of RAPPELS) {
     /void \(async \(\) => \{\s*const apk = \(await borner\(lireEtatMajWeb\(\)/.test(sansCommentaires),
     "attendue, elle ajoute jusqu'à 400 ms à ms_ouverture et fausse la mesure qu'elle sert",
   )
+
+  // ET LE TOUR DE COMMANDE NE LUI ATTRIBUE PLUS NOTRE PANNE. La phrase elle-
+  // même est gardée par verifier-raison-ecoute.ts ; ici on garde l'APPEL,
+  // parce qu'un module pur peut rester juste pendant que le hook continue de
+  // jeter l'ancienne phrase — et ça, personne ne le verrait : à l'écran, « Je
+  // n'ai rien entendu » après une vraie panne du service ressemble à un
+  // silence ordinaire.
+  const commande = sansCommentaires.slice(sansCommentaires.indexOf('mode: "commande"'))
+  verifier(
+    "le tour de commande dit la vraie cause quand il ne rend rien",
+    /if \(!transcript\) throw new Error\(phraseTourSansTexte\(raison\)\)/.test(commande),
+    "sans ça, une panne du service se présente comme son silence — 7 de ses 14 tours mesurés",
+  )
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)

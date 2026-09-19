@@ -14,7 +14,13 @@ import {
 import { extraitEntendu, noterEcoute } from "@/lib/journalEcoute"
 import { lireEtatMajWeb } from "@/lib/majWeb"
 import { serviceReconnaissanceSouhaite } from "@/lib/reconnaissanceVocale"
-import { estUnePanne, raisonDepuisCode, type RaisonEcoute } from "@/lib/raisonEcoute"
+import {
+  estUnePanne,
+  phraseTourSansTexte,
+  raisonDepuisCode,
+  RIEN_ENTENDU,
+  type RaisonEcoute,
+} from "@/lib/raisonEcoute"
 import { RESPIRATION_MS } from "@/lib/veille"
 
 type SpeechRecognitionCtor = new () => SpeechRecognition
@@ -58,7 +64,6 @@ function friendlyErrorMessage(code: string): string {
   }
 }
 
-const RIEN_ENTENDU = "Je n'ai rien entendu, réessaie."
 
 /** Le service de reconnaissance a refusé de démarrer (encore occupé par la
  * session précédente, ou app passée en arrière-plan). Distinct du silence :
@@ -776,7 +781,15 @@ export function useSpeechRecognition() {
           ms_ouverture: microOuvertAt ? microOuvertAt - appuiAt : null,
           ms_premier_mot: premierPartielAt && microOuvertAt ? premierPartielAt - microOuvertAt : null,
         })
-        if (!transcript) throw new Error(RIEN_ENTENDU)
+        // IL A PARLÉ, ET ON NE L'A PAS ÉCOUTÉ : ON NE LUI DIT PLUS QU'IL
+        // S'EST TU. Mesuré le 19 sept. 2026 sur ses 14 tours de commande
+        // réels finis sans un mot — SEPT portaient une vraie panne du service
+        // (codes 5 et 11), dont trois de 12 secondes pleines avec 18, 21 et
+        // 28 relances du moteur. Tous s'entendaient répondre « Je n'ai rien
+        // entendu, réessaie », c'est-à-dire qu'on lui attribuait notre
+        // panne. La veille faisait déjà cette distinction (voir plus haut,
+        // `demarrageRefuse || panneReelle`) ; ce tour-ci ne la faisait pas.
+        if (!transcript) throw new Error(phraseTourSansTexte(raison))
         return transcript
       } finally {
         clearInterval(pouls)
