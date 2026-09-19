@@ -256,6 +256,19 @@ export function erreurDepuisEcoute(
     // 16 tours sur 21 le 5 sept.).
     if (texte("entendu")) return null
 
+    // UN TOUR ANNULÉ N'EST PAS UNE PANNE. Mesuré le 19 sept. 2026 (chantier
+    // 5df26510) sur les 14 tours de commande sans un mot des cinq derniers
+    // jours : 2 des 14 portaient `arret_manuel = true` — Raphaël avait
+    // lui-même réappuyé sur le cœur pour arrêter, pas attendu que le micro
+    // échoue. Le titre disait « il a parlé, et rien n'est arrivé », qui est
+    // faux dans ce cas précis : c'est lui qui a décidé d'arrêter. Cette ligne
+    // était la plus vue du registre (33 occurrences, jamais rattachée à un
+    // chantier) et une fausse alerte qui revient sans arrêt n'est plus lue du
+    // tout — même défaut, même remède que les 363 rafales de veille calmes du
+    // 5 sept. `arret_manuel` n'existe que sur `commande_fin` (la veille ne
+    // sait pas qu'on l'a annulée : elle se relance toute seule).
+    if (texte("mode") === "commande" && texte("arret_manuel") === "true") return null
+
     const raison = texte("raison") as RaisonEcoute | null
     const silencieuse = detail.mort_silencieuse === true || Number(detail.morts_silencieuses ?? 0) > 0
 

@@ -154,6 +154,35 @@ function titre(evenement: string, detail: Record<string, string | number | boole
     titre("commande_fin", { ...commandeVide, raison: "occupe" }),
     titreDeLaPanne("occupe"),
   )
+
+  // UN TOUR ANNULÉ N'EST PAS UNE PANNE. Mesuré le 19 sept. 2026 (chantier
+  // 5df26510) : 2 des 14 vrais tours de commande sans un mot portaient
+  // `arret_manuel = true` — il avait lui-même réappuyé pour arrêter.
+  verifier(
+    "commande : arrêté à la main → rien, même sans un mot entendu",
+    titre("commande_fin", { ...commandeVide, arret_manuel: true }),
+    null,
+  )
+  verifier(
+    "commande : arrêté à la main → rien non plus si Android nommait une vraie panne",
+    titre("commande_fin", { ...commandeVide, raison: "occupe", arret_manuel: true }),
+    null,
+  )
+  // `arret_manuel` n'existe que sur commande_fin : la veille se relance
+  // toute seule et ne sait jamais qu'on l'a annulée. Une rafale de veille
+  // ne doit donc pas se taire pour cette seule raison si le champ apparaît
+  // par erreur sur cet événement.
+  verifier(
+    "veille : `arret_manuel` n'a aucun effet, ce champ n'existe pas pour elle",
+    titre("rafale_fin", {
+      mode: "veille",
+      mort_silencieuse: true,
+      raison: "occupe",
+      entendu: null,
+      arret_manuel: true,
+    }),
+    titreDeLaPanne("occupe"),
+  )
 }
 
 // --- 5. Ce qui a été entendu ne se signale jamais ---------------------------
