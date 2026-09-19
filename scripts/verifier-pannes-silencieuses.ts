@@ -224,6 +224,17 @@ for (const { fichier, fonction, fin } of RAPPELS) {
       !/apk_empreinte:\s*NATIVE_EMPREINTE/.test(sansCommentaires),
     "BUILD_NUMBER décrit le paquet une fois une mise à jour rapide appliquée, pas la coquille",
   )
+  // ET ELLE NE RALENTIT PAS CE QU'ELLE OBSERVE. `preparerNatif` est DANS la
+  // fenêtre que `ms_ouverture` mesure : `appuiAt` est pris à l'appui sur le
+  // cœur, pas après (correctif du 16 sept. 2026). Un `await` de 400 ms ici
+  // retarderait la première ouverture du micro de chaque démarrage d'app —
+  // la plainte même qu'on cherche à mesurer — et fausserait le nombre au
+  // passage. La lecture part donc détachée, comme la trace d'echangeLocal.
+  verifier(
+    "et elle ne retarde pas l'ouverture du micro qu'elle mesure",
+    /void \(async \(\) => \{\s*const apk = \(await borner\(lireEtatMajWeb\(\)/.test(sansCommentaires),
+    "attendue, elle ajoute jusqu'à 400 ms à ms_ouverture et fausse la mesure qu'elle sert",
+  )
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)

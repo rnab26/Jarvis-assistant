@@ -315,15 +315,26 @@ export function useSpeechRecognition() {
       // majWeb.ts). Posé ICI parce que `preparerNatif` ne s'exécute qu'une
       // fois par démarrage d'app : c'est la bonne cadence pour une identité,
       // et l'ajouter à chaque rafale noierait le journal.
-      const apk = (await borner(lireEtatMajWeb(), 400))?.identiteApk ?? null
-      noterEcoute("service_reconnaissance", {
-        nom: service.nom,
-        disponibles: service.disponibles,
-        // `null` et pas `0` quand on ne sait pas : sur le web il n'y a pas
-        // d'APK du tout, et un zéro se lirait comme un vrai numéro de build.
-        apk_build: apk?.build ?? null,
-        apk_empreinte: apk?.empreinte ?? null,
-      })
+      //
+      // ET SURTOUT : ON N'ATTEND PAS CETTE LECTURE. `preparerNatif` est DANS
+      // la fenêtre que `ms_ouverture` mesure — `appuiAt` est pris à l'appui
+      // sur le cœur, pas après (correctif du 16 sept. 2026, dont le
+      // commentaire dit pourquoi : la préparation EST la partie lente). Un
+      // `await` de 400 ms ici retarderait la première ouverture du micro de
+      // chaque démarrage d'app, c'est-à-dire la plainte même qu'on cherche à
+      // mesurer, ET il fausserait le nombre au passage. Une instrumentation
+      // ne ralentit pas plus ce qu'elle observe qu'elle ne le fait échouer.
+      void (async () => {
+        const apk = (await borner(lireEtatMajWeb(), 400))?.identiteApk ?? null
+        noterEcoute("service_reconnaissance", {
+          nom: service.nom,
+          disponibles: service.disponibles,
+          // `null` et pas `0` quand on ne sait pas : sur le web il n'y a pas
+          // d'APK du tout, et un zéro se lirait comme un vrai numéro de build.
+          apk_build: apk?.build ?? null,
+          apk_empreinte: apk?.empreinte ?? null,
+        })
+      })()
     }
   }, [])
 
