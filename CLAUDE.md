@@ -3768,6 +3768,13 @@ après un déploiement, `verifier-commande-vocale.mjs` reste LA vérification.
 **Écris un fichier de cas pour toute modification de consigne**, avec un
 témoin sans la modification : c'est ce qui prouve qu'elle sert.
 
+**Son pendant pour le mode Live : `scripts/essayer-consigne-live.sh <nom>`**
+(cas dans `scripts/consigne/live-<nom>.mjs`). La consigne de `live-jeton` est
+extraite par Deno de la même façon, puis Node ouvre de VRAIES sessions Live
+(jeton éphémère, clé de test) et leur parle en texte : ça dit si le modèle
+appelle l'outil, avec quoi, et ce qu'il dit. L'audio (fin de phrase, voix) et
+le vrai contexte n'y sont pas.
+
 ## Ce qu'il disait ne pas savoir faire, alors que l'app le sait (23 sept. 2026)
 
 Relu dans ses 409 vraies dictées : « mets-toi à jour » / « installe la
@@ -3953,6 +3960,8 @@ node --experimental-strip-types scripts/verifier-memoire-de-travail.ts  # ce qu'
 node --experimental-strip-types scripts/verifier-capacites-voix.ts  # « mets-toi à jour », « quoi de neuf », le quota, « coupe le point du matin » — et ce qui n'en est pas, sans réseau
 scripts/essayer-consigne.sh memoire-de-travail           # la consigne sur le disque contre le VRAI modèle (clé de test), sans déployer ni compte
 scripts/essayer-consigne.sh memoire-extraction           # la mémoire ne réécrit pas ce qu'elle sait, ni une erreur de dictée qui le contredit
+scripts/essayer-consigne.sh reglages                     # un réglage en phrase libre devient set_setting côté serveur, jamais « je ne peux pas »
+scripts/essayer-consigne-live.sh reglages                # en Live, une demande de réglage part à l'outil (vraie session Google, clé de test)
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
@@ -4328,7 +4337,7 @@ Une préférence qu'un seul chemin permet de poser — une question orale, une
 détection automatique, une valeur par défaut — se règle **aussi** depuis
 Paramètres. Au minimum : la voir, et pouvoir l'effacer.
 
-## Les réglages à la voix : quatorze, et ils s'appliquent tout de suite (23 sept. 2026)
+## Les réglages à la voix : dix-sept, compris SUR LE TÉLÉPHONE, et ils s'appliquent tout de suite (23 sept. 2026)
 
 Chantier `8e1da88b`, né du parapluie a9c75d52. `src/lib/reglagesVoix.ts` est
 passé de 9 à 14 réglages : l'annonce du résultat de chaque action, le mode
@@ -4357,6 +4366,74 @@ voix dans un vrai navigateur (essayé à l'envers : sans `ThemeEnDirect`, il
 rougit). **La moitié serveur** (`_shared/branchements.ts`, l'énumération et la
 consigne de `voice-command`) attend le redéploiement (chantier 2e40a764) :
 d'ici là, le modèle ne propose que les neuf anciens réglages.
+
+### Le soir même : « règle ta vitesse de réponse », et « qu'est-ce que j'ai paramétré ? »
+
+Ses mots après un essai : « elle est toujours pas capable de me dire qu'est-ce
+que j'ai paramétré […] j'aimerais pouvoir régler Jarvis à l'oral, dire “règle
+ta vitesse de réponse” […] il y a beaucoup de réglages, à l'utilisation ça
+devient vite difficile ». **Mesuré sur la vraie consigne Live alors en ligne**
+(`scripts/essayer-consigne-live.sh reglages`, témoin) : à « Règle ta vitesse de
+réponse sur rapide », le modèle répondait « je ne peux pas » sans appeler
+l'outil — `_shared/environnement.ts` disait encore « NEUF de tes réglages » —
+et à « quelle est ta vitesse de réponse ? », il inventait « quasi
+instantanée ». Consigne corrigée : 10 demandes de réglage sur 10 partent à
+l'outil, une question générale reste une réponse directe.
+
+- **Tout se reconnaît SUR LE TÉLÉPHONE** (`commandeReglage`, dans
+  `reglagesVoix.ts`, pur) : régler (« mets le thème sombre », « active le mode
+  Live »), ajuster d'un palier (« réponds plus vite », « parle plus
+  lentement », « ne me coupe pas la parole ») — action `adjust_setting`, que
+  le serveur ne connaît pas —, lire UN réglage (« quelle est ta vitesse de
+  réponse ? », ou « règle ta vitesse de réponse » sans valeur) ou TOUS
+  (« qu'est-ce que j'ai paramétré ? »). Aucun modèle : ça marche pendant que
+  Google sature. Tout est ANCRÉ — « coupe le mode Live et appelle Yoni » part
+  au serveur. **Mesuré sur ses 409 dictées et 160 commandes Live : zéro prise
+  à tort**, et sa commande de 16 h 07 (« activer la lecture des rappels à voix
+  haute », morte sur un 503) passe.
+- **Trois curseurs réglables par paliers nommés** : la vitesse de réponse
+  (`jarvis_dialogue_pause_ms` : posée 3,5 s / normale 2 s / rapide 1 s), le
+  débit de la voix (`jarvis_voice_rate`), l'écoute après réponse
+  (`jarvis_dialogue_suite_ms`). Une valeur posée au curseur ENTRE deux paliers
+  se dit telle quelle, et « plus vite » va au palier voisin dans ce sens,
+  jamais à l'envers. **La vitesse de réponse ne joue pas en Live** (c'est
+  Google qui décide de la fin de phrase) : la confirmation le DIT quand le
+  mode Live est allumé.
+- **« Qu'est-ce que j'ai réglé ? » dit les VALEURS**, pas la liste de ce qu'il
+  pourrait changer : chaque réglage vocal lu comme le lit son module (`defaut`
+  de chaque entrée, relu dans ce module, et aligné sur `branchements.ts` par un
+  contrôle), plus les applications par défaut, la voix coupée, le point du
+  matin, les heures de silence et la lecture des rappels.
+- L'écriture vit dans UNE fonction, `appliquerReglage` (`voiceActions.ts`),
+  partagée par « mets X » et « plus vite » : un contrôle refuse une écriture à
+  part dans l'un des deux cas.
+
+## Le modèle Live parle à l'INFINITIF, le téléphone attendait l'impératif (23 sept. 2026)
+
+Mesuré sur ses 160 vraies commandes Live : le modèle reformule avant de
+passer la phrase à l'outil, presque toujours à l'infinitif (« Ouvrir
+WhatsApp », « supprimer la tâche … », « appeler Mel ma femme »). Toutes les
+règles de `commandeLocale.ts` attendaient l'impératif : ces phrases partaient
+au serveur, soit plusieurs secondes de plus en Live (le modèle Live réfléchit
+~1,5 s, puis l'outil, puis il reparle), et une panne quand Google sature.
+`imperatifDeTete` ne touche que le PREMIER mot, et seulement s'il est dans sa
+liste.
+
+**La mesure a surtout montré des résultats locaux FAUX, anciens**, qui lui
+imposaient des retouches : un LIEU nommé (« Ajouter au cockpit dev : … »,
+« créer la tâche X dans la section Prélèvements », « Noter dans le journal de
+bord ») devenait une tâche titrée « Journal de bord… » ou « Dans les tâches
+administratives », la catégorie perdue — il part maintenant au serveur ;
+« créer un nouveau chantier » devenait une tâche ; « appelle X sur WhatsApp »
+cherchait un contact nommé « X sur WhatsApp » (→ `call_channel`) ;
+« reprends le contexte… » relançait la musique. **Mesure de référence**, à
+refaire avant de toucher une règle : sur les 409 dictées, comparer
+`interpreterLocalement` avant/après ET relire chaque résultat qui change — un
+compte de phrases « comprises » ne dit rien de ce qui est compris de travers.
+
+**Et côté serveur, les six lectures du contexte partent ensemble**
+(`voice-command/index.ts`, `Promise.all`) : elles s'additionnaient à chaque
+phrase alors qu'aucune ne dépend d'une autre.
 
 ## Le thème sombre existait déjà, et rien ne l'allumait
 
@@ -5143,6 +5220,24 @@ CHAQUE appel d'Edge Function, et `getSession()` renouvelle le jeton quand il
 approche de l'expiration — un aller-retour réseau de plus, sur un réseau
 mobile. Non prouvé : `ms_jeton - ms_serveur` le dira dès ses prochaines
 ouvertures. **Ne recodez rien avant d'avoir lu ces nombres-là.**
+
+**Lu le 23 sept. à 16 h 06 : `ms_jeton` 4632, `ms_session` 1, `ms_serveur`
+728.** La piste du renouvellement de jeton est donc MORTE sur une ouverture
+lente (1 ms) ; il reste 3,9 s entre son téléphone et la fonction. Sondé d'ici
+le même soir après six heures sans appel, le démarrage à froid de
+`live-jeton` coûte ~0,6 s de plus qu'à chaud — pas 3,9. Reste son réseau
+mobile, qu'on ne mesure pas d'ici.
+
+### Ne coupe PAS la « réflexion » du modèle Live — mesuré, pas supposé
+
+Le 23 sept. au soir, pour ses réponses « hyper longues » : `thinkingConfig:
+{ thinkingBudget: 0 }` dans la configuration scellée fait bien gagner du
+temps (outil appelé en ~0,3-1 s au lieu de 1,2-1,7 s, premier son ~0,9 s plus
+tôt, 16 essais) — **mais avec la VRAIE consigne, la session s'est fermée sur
+« Internal error occurred » 6 fois sur 12, contre 0 sur 12 sans ce réglage**,
+et il reformulait sa demande en la raccourcissant. Écarté. Si quelqu'un veut
+le retenter, c'est `scripts/essayer-consigne-live.sh` qui le dira, en
+comptant les fermetures.
 
 ### Troisième piège de la fenêtre d'assistance : deux tas JS, une seule veille voulue
 

@@ -2,6 +2,7 @@
 // `node --experimental-strip-types` pour sa vérification, qui ne connaît
 // pas l'alias « @/ » de Vite.
 import { lireHeure, lireQuand, retirerMots, sansAccents } from "./dateOrale.ts"
+import { commandeReglage } from "./reglagesVoix.ts"
 import { cibleTropCourante } from "./chercherContact.ts"
 import { correctionDeDestination } from "./ouVaCetteDictee.ts"
 import {
@@ -622,6 +623,19 @@ export function interpreterLocalement(
       /^(tu peux )?reparle[rz]?\b/.test(texte)) {
     return [{ action: "set_voice", voice_enabled: true }]
   }
+
+  /* ---------- Ses réglages, lus et changés sur le téléphone ----------
+     (reglagesVoix.ts, 23 sept. 2026 au soir) : « règle ta vitesse de
+     réponse », « réponds plus vite », « qu'est-ce que j'ai paramétré ? ». Un
+     réglage n'a besoin d'aucun modèle, et le serveur répondait « je ne peux
+     pas » ou tombait sur un Google saturé. Tout est ancré : une phrase qui
+     demande autre chose en plus part au serveur. */
+  const reglage = commandeReglage(texte)
+  if (reglage?.type === "regler") {
+    return [{ action: "set_setting", setting_cle: reglage.cle, setting_valeur: reglage.cleValeur }]
+  }
+  if (reglage?.type === "ajuster") return [{ action: "adjust_setting", setting_cle: reglage.cle, sens: reglage.sens }]
+  if (reglage?.type === "etat") return [{ action: "list_settings", ...(reglage.cle ? { setting_cle: reglage.cle } : {}) }]
 
   /* ---------- L'agenda ---------- */
   const parleAgenda = /\b(agenda|planning|rendez-vous|rdv|programme)\b/.test(texte)

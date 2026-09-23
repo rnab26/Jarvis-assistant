@@ -173,7 +173,10 @@ verifier(
 )
 verifier(
   "le bloc reste court : ~45 000 caractères partent déjà à chaque phrase",
-  branche.length < 1400,
+  // 1 400 jusqu'au 23 sept. 2026 ; 1 500 depuis que trois réglages de plus
+  // (vitesse de réponse, débit de la voix, écoute après réponse) s'y lisent —
+  // leurs lignes ont d'abord été raccourcies au plus court (1 489 → 1 435).
+  branche.length < 1500,
   `${branche.length} caractères`,
 )
 for (const fonction of ["voice-command", "live-jeton"]) {

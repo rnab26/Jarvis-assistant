@@ -26,6 +26,9 @@ import type { PublishedBuild, UpdateStatus, Verdict } from "@/hooks/useUpdateChe
 import { PREFS_NOTIFS_DEFAUT, type PrefsNotifications } from "@/lib/notifications/prefs"
 import { REGLAGES_RESTAURES } from "@/lib/reglages"
 import { THEME_KEY } from "@/lib/theme"
+import { useDialogueSetting } from "@/hooks/useDialogueSetting"
+import { interpreterLocalement } from "@/lib/commandeLocale"
+import { executeVoiceAction } from "@/lib/voiceActions"
 import type { EtatNotifications } from "@/lib/notifications/service"
 
 /**
@@ -610,11 +613,44 @@ function BancDesReglages() {
   )
 }
 
+/**
+ * Le chemin COMPLET d'un réglage dit à la voix (23 sept. 2026) : la phrase
+ * passe par la vraie reconnaissance locale puis par la vraie exécution, et la
+ * pause s'affiche par le MÊME hook que la carte « Rythme de la discussion » de
+ * Paramètres. Si l'écriture ne prévient pas les lecteurs, l'affichage ne bouge
+ * pas.
+ */
+function RythmeALaVoix() {
+  const dialogue = useDialogueSetting()
+  const [reponse, setReponse] = useState("")
+  const dire = async (phrase: string) => {
+    const action = interpreterLocalement(phrase, { taches: [], chantiers: [], contacts: [], maintenant: new Date() })?.[0]
+    if (!action) return setReponse("NON RECONNU")
+    const rien = {} as never
+    const reglages = { setWakeWordEnabled: () => {}, setGeofenceEnabled: () => {} }
+    setReponse(
+      await executeVoiceAction(action, rien, rien, rien, rien, rien, rien, rien, { muted: false, setMuted: () => {} } as never, rien, rien, reglages as never, rien, rien, rien, rien, rien),
+    )
+  }
+  return (
+    <div id="rythme-voix" className="flex flex-col gap-2 p-4">
+      <p id="pause-affichee">{(dialogue.pauseMs / 1000).toFixed(1)} s</p>
+      {["réponds plus vite", "Règle ta vitesse de réponse sur posée", "qu'est-ce que j'ai paramétré ?"].map((p) => (
+        <button key={p} type="button" onClick={() => void dire(p)}>
+          Dire : {p}
+        </button>
+      ))}
+      <p id="reponse-voix">{reponse}</p>
+    </div>
+  )
+}
+
 createRoot(document.getElementById("root")!).render(
   <ThemeProvider attribute="class" defaultTheme="system" storageKey={THEME_KEY} enableSystem>
     {/* Comme dans App.tsx : c'est lui qui applique un thème changé ailleurs
         que par la carte (à la voix, depuis un autre appareil). */}
     <ThemeEnDirect />
     <BancDesReglages />
+    <RythmeALaVoix />
   </ThemeProvider>,
 )

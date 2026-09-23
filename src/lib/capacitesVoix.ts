@@ -220,7 +220,7 @@ const NOTIFS: ReadonlyArray<{ cle: CleNotifVoix; motif: RegExp; dit: string }> =
   { cle: "livre", motif: /\bnotifications? (?:de|des) chantiers livres\b|\bchantiers livres\b/, dit: "l'annonce des chantiers livrés" },
   { cle: "bloque", motif: /\bsessions? bloquees?\b/, dit: "l'annonce des sessions bloquées" },
   { cle: "silenceNuit", motif: /\bheures? de silence\b|\bmode nuit\b/, dit: "les heures de silence" },
-  { cle: "direAVoixHaute", motif: /\blecture (?:a voix haute )?des notifications\b|\blire les notifications a voix haute\b/, dit: "la lecture des notifications à voix haute" },
+  { cle: "direAVoixHaute", motif: /\blecture (?:a voix haute )?des (?:notifications|rappels)(?: a voix haute)?\b|\blire (?:les|mes) (?:notifications|rappels) a voix haute\b|\b(?:notifications|rappels) (?:dits? )?a voix haute\b/, dit: "la lecture des rappels à voix haute" },
 ]
 
 export type CommandeNotif =

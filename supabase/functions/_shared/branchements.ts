@@ -131,6 +131,24 @@ export const REGLAGES_MODIFIABLES: { cle: string; dit: (v: string) => string; de
     dit: (v) => `« livré » du cockpit : ${v === "24h" ? "24 h" : v === "7j" ? "7 jours" : "depuis ce matin"}`,
     defaut: "aujourdhui",
   },
+  // Les trois curseurs du rythme, réglables à la voix par paliers depuis le
+  // 23 sept. 2026 (src/lib/reglagesVoix.ts) : le nombre exact est dit, le
+  // palier le plus proche se choisit.
+  {
+    cle: "jarvis_dialogue_pause_ms",
+    dit: (v) => `vitesse de réponse : ${Number(v) / 1000} s de silence`,
+    defaut: "2000",
+  },
+  {
+    cle: "jarvis_voice_rate",
+    dit: (v) => `débit de ta voix : ${v}`,
+    defaut: "1.15",
+  },
+  {
+    cle: "jarvis_dialogue_suite_ms",
+    dit: (v) => `écoute après réponse : ${Number(v) === 0 ? "non" : `${Number(v) / 1000} s`}`,
+    defaut: "8000",
+  },
 ]
 
 /** Ce que dit une portée Google, en français. */

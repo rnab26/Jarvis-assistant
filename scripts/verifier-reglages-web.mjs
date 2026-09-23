@@ -653,6 +653,47 @@ try {
   await theme.getByRole("button", { name: "Clair" }).click()
   await pause(300)
 
+  // ── Un réglage DIT, par le chemin complet de la voix (23 sept. 2026) ──
+  // Sa demande : « règle ta vitesse de réponse ». La phrase passe par la
+  // vraie reconnaissance locale et la vraie exécution ; la pause s'affiche
+  // par le même hook que la carte de Paramètres.
+  {
+    const bloc = page.locator("#rythme-voix")
+    await page.evaluate(() => localStorage.removeItem("jarvis_dialogue_pause_ms"))
+    await page.evaluate(() => window.dispatchEvent(new Event("jarvis:reglages-restaures")))
+    await pause(200)
+    const avant = await bloc.locator("#pause-affichee").textContent()
+    await bloc.getByRole("button", { name: "Dire : réponds plus vite" }).click()
+    await pause(300)
+    const apres = await bloc.locator("#pause-affichee").textContent()
+    const dit = (await bloc.locator("#reponse-voix").textContent()) ?? ""
+    verifier(
+      "« réponds plus vite » passe la pause de 2 s à 1 s, et le curseur de Paramètres le montre tout de suite",
+      avant === "2.0 s" && apres === "1.0 s" && /rapide/.test(dit),
+      `avant ${avant}, après ${apres}, dit : ${dit.slice(0, 120)}`,
+    )
+    await bloc.getByRole("button", { name: "Dire : réponds plus vite" }).click()
+    await pause(200)
+    verifier(
+      "au bout, il le dit au lieu de faire semblant",
+      /déjà au plus/.test((await bloc.locator("#reponse-voix").textContent()) ?? ""),
+    )
+    await bloc.getByRole("button", { name: "Dire : Règle ta vitesse de réponse sur posée" }).click()
+    await pause(300)
+    verifier("« règle ta vitesse de réponse sur posée » → 3,5 s", (await bloc.locator("#pause-affichee").textContent()) === "3.5 s")
+    await bloc.getByRole("button", { name: "Dire : qu'est-ce que j'ai paramétré ?" }).click()
+    await pause(300)
+    const liste = (await bloc.locator("#reponse-voix").textContent()) ?? ""
+    verifier(
+      "« qu'est-ce que j'ai paramétré ? » dit la VALEUR qu'il vient de poser",
+      liste.startsWith("Voici tes réglages") && /posée/.test(liste) && /point du matin/.test(liste),
+      liste.slice(0, 200),
+    )
+    await page.evaluate(() => localStorage.removeItem("jarvis_dialogue_pause_ms"))
+    await page.evaluate(() => window.dispatchEvent(new Event("jarvis:reglages-restaures")))
+    await pause(200)
+  }
+
   // ── Remettre les réglages par défaut ──
   await page.evaluate(() => localStorage.setItem("jarvis_voice_rate", "1.75"))
   const reinit = page.locator("#reinit")

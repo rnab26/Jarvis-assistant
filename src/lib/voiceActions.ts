@@ -1,8 +1,12 @@
 import {
+  appPreferee,
+  canalMessagesPrefere,
   executerActionTelephone,
   transmettreFichier,
   type ActionTelephone,
 } from "@/lib/actionsTelephoneVocales"
+import { lireModeLive } from "@/lib/livePrefs"
+import { readVoicePrefs } from "@/lib/voicePrefs"
 import { garderReponseEcran } from "@/lib/garderReponseEcran"
 import { lireDocumentLien } from "@/lib/lireDocumentLien"
 import { repondreDecisionVoix } from "@/lib/repondreDecisionVoix"
@@ -23,7 +27,16 @@ import {
 } from "@/lib/capacitesVoix"
 import type { Consommation } from "@/lib/consommationModele"
 import { ecrirePrefsNotifs, lirePrefsNotifs } from "@/lib/notifications/prefs"
-import { listeReglagesVoix, trouverOptionReglageVoix, trouverReglageVoix } from "@/lib/reglagesVoix"
+import {
+  ajuster,
+  phraseEtat,
+  phraseTousLesReglages,
+  trouverOptionReglageVoix,
+  trouverReglageVoix,
+  valeurActuelle,
+  type OptionReglageVoix,
+  type ReglageVoix,
+} from "@/lib/reglagesVoix"
 import {
   arreterEnregistrement,
   demarrerEnregistrement,
@@ -258,10 +271,15 @@ export type VoiceAction =
    * `setting_valeur` viennent de `src/lib/reglagesVoix.ts`, la seule liste
    * fermée de réglages qu'il sait toucher à la voix. */
   | { action: "set_setting"; setting_cle: string; setting_valeur: string }
-  /** « Qu'est-ce que tu peux régler toi-même ? » — pas de lecture d'un
-   * réglage précis : `_shared/branchements.ts` dit déjà l'état courant à
-   * chaque phrase, ça ferait double emploi. */
-  | { action: "list_settings" }
+  /** « Qu'est-ce que j'ai réglé ? » : la valeur ACTUELLE de chaque réglage,
+   * lue sur le téléphone (pas la description de ce qu'il pourrait changer —
+   * c'est ce qu'il reprochait le 23 sept.). Avec `setting_cle`, un seul :
+   * « quelle est ta vitesse de réponse ? ». */
+  | { action: "list_settings"; setting_cle?: string }
+  /** « Réponds plus vite », « parle plus lentement » : un palier dans un sens.
+   * Reconnue UNIQUEMENT sur le téléphone (commandeLocale.ts), le serveur ne la
+   * propose pas. */
+  | { action: "adjust_setting"; setting_cle: string; sens: 1 | -1 }
   /**
    * Programmer l'envoi d'un message pour PLUS TARD — chantier ed32cbcc.
    * À LA DIFFÉRENCE de `send_message` (dans `ActionTelephone`, ci-dessous),
@@ -693,6 +711,74 @@ function formatDateCourte(iso: string): string {
   const d = new Date(`${iso}T00:00:00`)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })
+}
+
+/** Ce qui est RÉELLEMENT stocké sur ce téléphone pour un réglage — `null`
+ * quand il n'a jamais été touché (le module qui le possède lit alors son
+ * défaut, que `valeurActuelle` reprend). */
+function lireStockage(cle: string): string | null {
+  try {
+    return localStorage.getItem(cle)
+  } catch {
+    return null
+  }
+}
+
+/** Écrit un réglage et le fait s'appliquer TOUT DE SUITE. */
+function appliquerReglage(api: ReglagesVoixApi, reglage: ReglageVoix, option: OptionReglageVoix) {
+  // Ces deux-là passent par le VRAI hook (React + persistance), pas par
+  // une écriture locale toute seule — voir ReglagesVoixApi.
+  if (reglage.cle === "jarvis_wake_word_enabled") api.setWakeWordEnabled(option.stocke === "1")
+  else if (reglage.cle === "jarvis_geofence_enabled") api.setGeofenceEnabled(option.stocke === "1")
+  else {
+    ecrireReglage(reglage.cle, option.stocke)
+    // S'APPLIQUE TOUT DE SUITE (sa règle d'e687f0e2) : `ecrireReglage` ne
+    // prévient que la sauvegarde en base (REGLAGE_MODIFIE). Les écrans et
+    // les hooks qui gardent le réglage en mémoire se relisent sur
+    // REGLAGES_RESTAURES — sans lui, « mets le thème sombre » écrivait la
+    // valeur et l'écran restait clair jusqu'au redémarrage (vérifié le
+    // 23 sept. 2026, chantier 8e1da88b).
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(REGLAGES_RESTAURES))
+  }
+}
+
+/** Ce qu'on ajoute à la confirmation — et, pour la vitesse de réponse, la
+ * limite qu'il doit connaître : en Live, c'est Google qui décide quand il a
+ * fini de parler, ce réglage n'y change rien. */
+function conseilReglage(reglage: ReglageVoix): string {
+  let conseil = reglage.conseil ? ` ${reglage.conseil}` : ""
+  if (reglage.cle === "jarvis_dialogue_pause_ms" && lireModeLive()) {
+    conseil += " Attention : tu es en mode Live, où c'est Google qui décide quand tu as fini de parler — ce réglage vaut pour le micro classique."
+  }
+  return conseil
+}
+
+/** Les réglages qui se LISENT ailleurs que dans reglagesVoix.ts, pour
+ * « qu'est-ce que j'ai réglé ? » : applications par défaut, voix coupée,
+ * notifications. Chacun lu par la fonction du module qui le possède. */
+function autresReglagesEnClair(): string[] {
+  const lignes: string[] = []
+  const voix = readVoicePrefs()
+  if (voix.muted) lignes.push("ma voix : coupée, je réponds seulement à l'écrit")
+  const apps: [string, string | null][] = [
+    ["la musique", appPreferee("musique")],
+    ["les itinéraires", appPreferee("navigation")],
+    ["les appels", appPreferee("appels")],
+    ["les questions à une IA", appPreferee("ia")],
+  ]
+  const choisies = apps.filter(([, app]) => app).map(([quoi, app]) => `${app} pour ${quoi}`)
+  const canal = canalMessagesPrefere()
+  if (canal) choisies.push(`${canal === "sms" ? "les SMS" : "WhatsApp"} pour les messages`)
+  lignes.push(
+    choisies.length
+      ? `tes applications par défaut : ${choisies.join(", ")}`
+      : "aucune application par défaut choisie pour l'instant (je te demande la première fois)",
+  )
+  const n = lirePrefsNotifs()
+  lignes.push(`le point du matin : ${n.matin ? `à ${n.heureMatin.replace(":", " h ")}` : "coupé"}`)
+  lignes.push(`les heures de silence : ${n.silenceNuit ? `de ${n.silenceDebut.replace(":", " h ")} à ${n.silenceFin.replace(":", " h ")}` : "coupées"}`)
+  lignes.push(`la lecture des rappels à voix haute : ${n.direAVoixHaute ? "activée" : "coupée"}`)
+  return lignes
 }
 
 export async function executeVoiceAction(
@@ -1494,8 +1580,24 @@ export async function executeVoiceAction(
         : "D'accord, je me tais. Je continue de te répondre à l'écrit."
     }
 
-    case "list_settings":
-      return `Je peux régler moi-même : ${listeReglagesVoix()}. Pour le reste, ça se règle depuis Paramètres.`
+    case "list_settings": {
+      if (action.setting_cle) {
+        const reglage = trouverReglageVoix(action.setting_cle)
+        if (reglage) return phraseEtat(reglage, lireStockage(reglage.cle))
+      }
+      return phraseTousLesReglages(lireStockage, autresReglagesEnClair())
+    }
+
+    case "adjust_setting": {
+      const reglage = trouverReglageVoix(action.setting_cle)
+      if (!reglage?.ajustable) return "Je ne sais pas régler ça par paliers. Dis-moi « qu'est-ce que j'ai réglé ? » pour la liste."
+      const cible = ajuster(reglage, lireStockage(reglage.cle), action.sens)
+      if (!cible) {
+        return `C'est déjà au plus ${action.sens === 1 ? "haut" : "bas"} que je sache régler à la voix : ${reglage.nom}, ${valeurActuelle(reglage, lireStockage(reglage.cle)).dit}. Le curseur de ${reglage.ou} va plus loin.`
+      }
+      appliquerReglage({ setWakeWordEnabled, setGeofenceEnabled }, reglage, cible)
+      return `C'est fait, ${action.sens === 1 ? reglage.ajustable.plus : reglage.ajustable.moins} : ${cible.dit}.${conseilReglage(reglage)}`
+    }
 
     case "set_setting": {
       // Un `setting_cle` ou `setting_valeur` inventé ou mal compris ne doit
@@ -1509,21 +1611,11 @@ export async function executeVoiceAction(
       if (!option) {
         return `Pour ${reglage.nom}, je ne connais que : ${reglage.options.map((o) => o.dit).join(", ")}.`
       }
-      // Ces deux-là passent par le VRAI hook (React + persistance), pas par
-      // une écriture locale toute seule — voir ReglagesVoixApi.
-      if (reglage.cle === "jarvis_wake_word_enabled") setWakeWordEnabled(option.stocke === "1")
-      else if (reglage.cle === "jarvis_geofence_enabled") setGeofenceEnabled(option.stocke === "1")
-      else {
-        ecrireReglage(reglage.cle, option.stocke)
-        // S'APPLIQUE TOUT DE SUITE (sa règle d'e687f0e2) : `ecrireReglage` ne
-        // prévient que la sauvegarde en base (REGLAGE_MODIFIE). Les écrans et
-        // les hooks qui gardent le réglage en mémoire se relisent sur
-        // REGLAGES_RESTAURES — sans lui, « mets le thème sombre » écrivait la
-        // valeur et l'écran restait clair jusqu'au redémarrage (vérifié le
-        // 23 sept. 2026, chantier 8e1da88b).
-        if (typeof window !== "undefined") window.dispatchEvent(new Event(REGLAGES_RESTAURES))
+      if (valeurActuelle(reglage, lireStockage(reglage.cle)).option === option) {
+        return `C'était déjà réglé comme ça : ${reglage.nom}, ${option.dit}.`
       }
-      return `C'est fait : ${reglage.nom} est maintenant ${option.dit}. Tu peux aussi le voir depuis ${reglage.ou}.`
+      appliquerReglage({ setWakeWordEnabled, setGeofenceEnabled }, reglage, option)
+      return `C'est fait : ${reglage.nom}, maintenant ${option.dit}.${conseilReglage(reglage)} Tu peux aussi le voir depuis ${reglage.ou}.`
     }
 
     case "schedule_message": {
