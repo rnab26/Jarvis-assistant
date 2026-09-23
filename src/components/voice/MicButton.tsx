@@ -107,6 +107,7 @@ import {
   type MessagesProgrammesApi,
   type PlaceRemindersApi,
   type PronunciationsApi,
+  type NotesApi,
   type TasksApi,
   type VoiceSettingApi,
   type VoiceAction,
@@ -151,6 +152,9 @@ interface MicButtonProps {
   placeRemindersApi: PlaceRemindersApi
   messagesProgrammesApi: MessagesProgrammesApi
   pronunciationsApi: PronunciationsApi
+  /** Ses notes personnelles, pour « crée une note », « lis mes notes »
+   * (chantier 447560d1). */
+  notesApi: NotesApi
   voiceSettingApi: VoiceSettingApi
   widgetApi: WidgetApi
   entrainementApi: EntrainementApi
@@ -247,6 +251,7 @@ export function MicButton({
   placeRemindersApi,
   messagesProgrammesApi,
   pronunciationsApi,
+  notesApi,
   voiceSettingApi,
   widgetApi,
   entrainementApi,
@@ -575,6 +580,7 @@ export function MicButton({
       tacheEnAttente: memoireTacheEnAttente(),
       sections: devSectionsApi.sections,
       chantierEnAttente: memoireChantierEnAttente(),
+      notes: notesApi.notes.map((n) => ({ id: n.id, title: n.title, content: n.content })),
     })
     if (local) {
       noterEcoute("reponse", { delai_ms: 0, source: "locale", actions: local.length })
@@ -942,6 +948,7 @@ export function MicButton({
             gmailVoiceApi,
             { navigateVersParametres: (cible) => navigate(`/settings?section=${cible}`) },
             messagesProgrammesApi,
+            notesApi,
           ),
         )
         // Le capteur générique (chantier d50d5f34) : CHAQUE action exécutée par

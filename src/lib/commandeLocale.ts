@@ -20,6 +20,7 @@ import {
 import { urlDansLaPhrase } from "./documentLien.ts"
 import { porteUneSecondeDemande } from "./secondeDemande.ts"
 import { resoudreCibleParametres } from "./sectionsParametres.ts"
+import { demandeNote, trouverNote, type NoteConnue } from "./notesVocales.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 import type { Category, DevSection } from "@/types/database"
 
@@ -82,6 +83,9 @@ export interface ContexteLocal {
    * le compléter (voir chantierEnAttente.ts). Absent ou expiré = aucune
    * réponse à chercher. */
   chantierEnAttente?: ChantierEnAttente | null
+  /** Ses notes personnelles (onglet Notes), pour reconnaître « lis la note
+   * courses » ou « ajoute à la note courses : du pain » (chantier 447560d1). */
+  notes?: NoteConnue[]
   /** Injecté pour que les tests ne dépendent pas du jour où ils tournent. */
   maintenant?: Date
 }
@@ -414,6 +418,35 @@ export function interpreterLocalement(
      phrase au serveur, un faux positif lirait l'écran pour rien. */
   if (/^(garde|retiens|note)(\s*-?\s*(ca|sa reponse|cette reponse|la reponse))\b/.test(texte)) {
     return [{ action: "garder_reponse_ecran" }]
+  }
+
+  /* ---------- Ses notes personnelles (chantier 447560d1) ----------
+     « Crée une note courses : lait, œufs », « lis mes notes », « ajoute à la
+     note courses : du pain ». AVANT la règle des tâches, qui lisait « crée
+     une note X » comme une tâche intitulée « Note X ». Le mot « note »
+     employé comme un NOM (« une note », « la note », « mes notes ») : « note
+     ça », « note un rappel… », « note que… » n'y tombent pas — voir
+     notesVocales.ts, et la moitié de verifier-notes-vocales.ts. */
+  const note = demandeNote(texte, phrase)
+  if (note) {
+    const notes = ctx.notes ?? []
+    if (note.type === "ajouter") return [{ action: "add_note", title: note.titre, content: note.contenu }]
+    if (note.type === "lister") return [{ action: "list_notes", recherche: note.recherche }]
+    const cible = trouverNote(note.cible, notes)
+    if (!cible) {
+      const titres = notes.slice(0, 6).map((n) => n.title).join(", ")
+      return [
+        {
+          action: "clarify",
+          message: titres
+            ? `Je ne trouve pas de note qui parle de « ${note.cible} ». Tes notes : ${titres}.`
+            : `Tu n'as aucune note pour l'instant.`,
+        },
+      ]
+    }
+    if (note.type === "lire") return [{ action: "read_note", note_id: cible.id }]
+    if (note.type === "completer") return [{ action: "append_note", note_id: cible.id, ajout: note.ajout }]
+    return [{ action: "delete_note", note_id: cible.id }]
   }
 
   /* ---------- Mode entraînement ----------

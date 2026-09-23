@@ -501,6 +501,12 @@ jobs:
       - name: Un chantier garde ce qu'on y a écrit
         run: node --experimental-strip-types scripts/verifier-historique-chantier.ts
 
+      # Le 23 sept. : « crée une note courses : lait » devenait une TACHE.
+      # Ce qui se verifie surtout ici, c'est le SILENCE : « note ca », « note
+      # un rappel », « note que », « note de frais » ne sont pas des notes.
+      - name: Ses notes a la voix
+        run: node --experimental-strip-types scripts/verifier-notes-vocales.ts
+
       # Le 23 sept. : « impossible de repondre aux chantiers a constater ».
       # Ce qui peut etre FAUX EN SILENCE ici : un « ca ne marche pas » qui ne
       # change pas le crochet d'en-tete laisse le chantier « a constater »,

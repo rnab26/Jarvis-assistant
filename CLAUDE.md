@@ -1599,9 +1599,25 @@ modifier, supprimer (`ConfirmerAction`, comme partout dans l'app), chercher
 Vérifié dans un vrai navigateur, écran de téléphone :
 `scripts/verifier-notes-web.mjs`.
 
-**L'action vocale n'est PAS livrée ici, et ce n'est pas un oubli** : elle
-touche `src/lib/commandeLocale.ts` et `supabase/functions/voice-command/`,
-propriété de la session « Le téléphone » — laissée en `dev_log` pour elle.
+**L'action vocale est livrée depuis le 23 sept. 2026** (chantier `447560d1`,
+sa dictée : « Ouvre un chantier comme quoi tu dois pouvoir créer des notes »).
+Avant, « crée une note courses : lait » devenait une TÂCHE « Note courses :
+lait » — la règle des tâches de `commandeLocale.ts` la prenait. Maintenant
+`src/lib/notesVocales.ts` (pur, `verifier-notes-vocales.ts`) reconnaît, SUR
+L'APPAREIL et donc aussi en Live : créer (« crée une note X : … », « nouvelle
+note : … », « mets dans mes notes … », titre entre guillemets compris), lister
+et chercher, lire une note, la compléter (« ajoute à la note X : … »), la
+supprimer (avec « Annuler » huit secondes — une note n'a pas d'archive). Le
+contenu garde les accents de SA phrase (`suffixeOriginal`), pas le texte
+aplati des règles locales. **Ce qui n'est PAS une note**, mesuré sur ses 477
+dictées : « note ça » (garder la réponse), « note un rappel… » (tâche), « note
+que Dylan… » (mémoire), « une note de frais », « une note à la tâche X », et sa
+dictée du 14 sept. « créer une note me rappelant d'appeler Adam… dans perso »,
+qui est un rappel. Le serveur connaît aussi `add_note`/`list_notes`, mais
+**n'est pas encore redéployé** (jeton de déploiement expiré le 23 sept.) : en
+attendant, le mode Live peut répondre « je ne sais pas » au lieu de passer la
+phrase à l'outil, parce que `_shared/environnement.ts` en ligne dit encore le
+contraire.
 `_shared/environnement.ts` (les deux consignes) connaît déjà l'onglet, pour
 que Jarvis n'envoie pas Raphaël vers un écran qu'il ignore. Au passage, la
 même mise à jour a corrigé une description devenue fausse depuis le 7 sept. :
@@ -3693,6 +3709,7 @@ node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une se
 node --experimental-strip-types scripts/verifier-historique-chantier.ts  # une note complétée n'est pas une note écrasée, sans réseau
 node --experimental-strip-types scripts/verifier-fil-journal.ts  # reprendre une discussion au journal, et dire ce qu'on ne montre pas, sans réseau
 node --experimental-strip-types scripts/verifier-derniere-maj.ts  # un chantier déplié montre sa dernière mise à jour d'abord, jamais le marqueur ni une entrée du milieu, sans réseau
+node --experimental-strip-types scripts/verifier-notes-vocales.ts  # ses notes à la voix — et surtout « note ça », « note un rappel », « note de frais » qui n'en sont pas, sans réseau
 node --experimental-strip-types scripts/verifier-constat-chantier.ts  # « Ça marche / Ça ne marche pas » sur un chantier livré : le crochet d'en-tête change, rien ne se perd, sans réseau
 ANON_KEY=... node scripts/verifier-constat-reel.mjs      # sa réponse sur un chantier livré : trois écritures d'un bloc, annulation, RLS, « ce qui marche »
 ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce qu'on y a écrit : trigger, restauration tracée, RLS

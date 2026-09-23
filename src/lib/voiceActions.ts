@@ -50,6 +50,8 @@ import {
 import { titreLisible } from "@/lib/titreTache"
 import { SECTIONS_PARAMETRES } from "@/lib/sectionsParametres"
 import { momentLocal } from "@/lib/notifications/plan"
+import { phraseLectureNote, phraseListeNotes } from "@/lib/notesVocales"
+import { proposerAnnulation } from "@/lib/annulation"
 import type { MessageProgramme } from "@/lib/messagesProgrammes"
 import type {
   Category,
@@ -62,6 +64,8 @@ import type {
   DevStatus,
   DocumentFile,
   EvenementAgenda,
+  Note,
+  NoteInput,
   PlaceReminder,
   PlaceReminderInput,
   Pronunciation,
@@ -264,6 +268,14 @@ export type VoiceAction =
   | ActionTelephone
   | { action: "chat"; message: string }
   | { action: "clarify"; message: string }
+  /** Ses notes personnelles (onglet Notes), chantier 447560d1. Reconnues
+   * LOCALEMENT (commandeLocale.ts → notesVocales.ts) : la cible est déjà
+   * résolue en id, jamais une phrase brute. */
+  | { action: "add_note"; title: string; content: string }
+  | { action: "list_notes"; recherche?: string | null }
+  | { action: "read_note"; note_id: string }
+  | { action: "append_note"; note_id: string; ajout: string }
+  | { action: "delete_note"; note_id: string }
   | { action: "unknown"; message: string }
 
 export interface TasksApi {
@@ -586,6 +598,15 @@ export interface DevSectionsVoiceApi {
  * d'URL (`/settings?section=<cible>`) est une affaire de routeur, pas de ce
  * module : c'est MicButton.tsx qui le sait, via `useNavigate`.
  */
+/** Les notes personnelles (chantier 447560d1) — même hook que l'onglet
+ * Notes, pas un second chemin d'écriture. */
+export interface NotesApi {
+  notes: Note[]
+  addNote: (input: NoteInput) => Promise<Note | undefined>
+  updateNote: (id: string, input: Partial<NoteInput>) => Promise<void>
+  deleteNote: (id: string) => Promise<void>
+}
+
 export interface NavigationApi {
   navigateVersParametres: (cible: string) => void
 }
@@ -664,8 +685,48 @@ export async function executeVoiceAction(
   gmail: GmailApi,
   { navigateVersParametres }: NavigationApi,
   { programmerMessage }: MessagesProgrammesApi,
+  { notes, addNote, updateNote, deleteNote }: NotesApi,
 ): Promise<string> {
   switch (action.action) {
+    case "add_note": {
+      // Même honnêteté que pour les tâches : « ajoutée » seulement si la base
+      // l'a vraiment écrite. `addNote` rend undefined sur un échec déjà
+      // signalé par son toast.
+      const cree = await addNote({ title: action.title, content: action.content })
+      if (!cree) return `Je n'ai pas pu enregistrer la note « ${action.title} ».`
+      return `Note « ${action.title} » enregistrée, dans l'onglet Notes.`
+    }
+
+    case "list_notes":
+      return phraseListeNotes(notes, action.recherche ?? null)
+
+    case "read_note": {
+      const note = notes.find((n) => n.id === action.note_id)
+      if (!note) return "Je ne retrouve plus cette note. Redis-moi laquelle."
+      return phraseLectureNote(note)
+    }
+
+    case "append_note": {
+      const note = notes.find((n) => n.id === action.note_id)
+      if (!note) return "Je ne retrouve plus cette note. Redis-moi laquelle."
+      const contenu = note.content.trim() ? `${note.content.trimEnd()}\n${action.ajout}` : action.ajout
+      await updateNote(note.id, { content: contenu })
+      return `Ajouté à la note « ${note.title} ».`
+    }
+
+    case "delete_note": {
+      const note = notes.find((n) => n.id === action.note_id)
+      if (!note) return "Je ne retrouve plus cette note. Redis-moi laquelle."
+      await deleteNote(note.id)
+      // Une note n'a pas d'archive : le « Annuler » du cockpit, huit
+      // secondes, la recrée à l'identique (titre et texte) si c'était la
+      // mauvaise — à la voix, il n'y a pas de fenêtre de confirmation.
+      proposerAnnulation(`Note « ${note.title} » supprimée.`, [note], async ([n]) => {
+        await addNote({ title: n.title, content: n.content })
+      })
+      return `Note « ${note.title} » supprimée. Tu as quelques secondes pour appuyer sur Annuler.`
+    }
+
     case "list_tasks": {
       const filtered = tasks.filter(
         (t) =>

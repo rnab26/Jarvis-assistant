@@ -26,6 +26,7 @@ export function OverlayMicContent({ onIdle, cache = false }: { onIdle: () => voi
     contactsState,
     placeRemindersState,
     pronunciationsState,
+    notesState,
     entrainementState,
     geofenceState,
     wakeWordState,
@@ -56,6 +57,7 @@ export function OverlayMicContent({ onIdle, cache = false }: { onIdle: () => voi
         }}
         messagesProgrammesApi={messagesProgrammesApi}
         pronunciationsApi={pronunciationsState}
+        notesApi={notesState}
         voiceSettingApi={{ muted: voiceState.muted, setMuted: voiceState.setMuted }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}

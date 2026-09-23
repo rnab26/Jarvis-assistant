@@ -70,6 +70,7 @@ function BancDuCoeur() {
         annulerMessage: rien,
       }}
       pronunciationsApi={{ pronunciations: [], addPronunciation: rien, deletePronunciation: rien }}
+      notesApi={{ notes: [], addNote: async () => undefined, updateNote: rien, deleteNote: rien }}
       voiceSettingApi={{ muted: false, setMuted: () => {} }}
       widgetApi={{ config: { maxTasks: 5, urgentOnly: false, categoryId: null }, setConfig: () => {} }}
       // Le banc du cœur : la pastille du quota est montée dans un état PARLANT

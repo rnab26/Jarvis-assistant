@@ -17,6 +17,7 @@ function ShellContent() {
     contactsState,
     placeRemindersState,
     pronunciationsState,
+    notesState,
     entrainementState,
     geofenceState,
     wakeWordState,
@@ -43,6 +44,7 @@ function ShellContent() {
         }}
         messagesProgrammesApi={messagesProgrammesApi}
         pronunciationsApi={pronunciationsState}
+        notesApi={notesState}
         voiceSettingApi={{ muted: voiceState.muted, setMuted: voiceState.setMuted }}
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}

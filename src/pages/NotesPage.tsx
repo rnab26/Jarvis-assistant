@@ -72,7 +72,7 @@ export function NotesPage() {
         <LoadError message={error} onRetry={refresh} />
       ) : notes.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">
-          Aucune note pour l'instant. « Nouvelle note » pour commencer.
+          Aucune note pour l'instant. « Nouvelle note » pour commencer, ou dis à Jarvis « crée une note courses : lait, œufs ».
         </p>
       ) : filtrees.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">

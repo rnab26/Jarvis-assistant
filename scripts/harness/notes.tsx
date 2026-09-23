@@ -95,7 +95,7 @@ function BancDesNotes() {
 
       {notes.length === 0 ? (
         <p id="vide" className="py-8 text-center text-muted-foreground">
-          Aucune note pour l'instant. « Nouvelle note » pour commencer.
+          Aucune note pour l'instant. « Nouvelle note » pour commencer, ou dis à Jarvis « crée une note courses : lait, œufs ».
         </p>
       ) : filtrees.length === 0 ? (
         <p id="rien-trouve" className="py-8 text-center text-muted-foreground">
