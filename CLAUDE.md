@@ -5114,11 +5114,12 @@ Deux choses à ne pas défaire :
    décision est exactement celle d'avant. Le client a pu partir avant le
    serveur sans rien casser.
 
-**`live-jeton` n'est PAS encore redéployé** au 23 sept. : `SUPABASE_ACCESS_TOKEN`
-rend 401 (jeton expiré). Après le redéploiement :
-`ANON_KEY=... node scripts/verifier-live-jeton.mjs` puis
-`ANON_KEY=... node scripts/verifier-live-reprise.mjs` (tous deux avec
-`SUPABASE_SERVICE_ROLE_KEY`). Sur son téléphone, la preuve sera un
+**`live-jeton` est en ligne depuis le 23 sept.** (version 30, chantier
+2e40a764, après le renouvellement de `SUPABASE_ACCESS_TOKEN`) :
+`verifier-live-jeton.mjs`, `verifier-live-contexte.mjs` et
+`verifier-live-reprise.mjs` sont verts sur la fonction déployée — rouverte
+avec la poignée, la session redonne le mot dit avant la coupure. Sur son
+téléphone, la preuve sera un
 `live_reconnexion` avec `avec_poignee: true`, et `live_debut` avec
 `reprise: 1`.
 
