@@ -104,6 +104,25 @@ try {
     // diffusé — une question ou une réponse écrite ailleurs n'apparaissait
     // qu'au retour au premier plan de l'app restée ouverte.
     ["dev_log", { author: "essai", kind: "info", body: "essai temps réel" }],
+    // Chantier e687f0e2 (migration 0054, 23 sept.) : « tout ce qui se passe
+    // dans l'environnement de Jarvis […] un réglage doit s'appliquer
+    // instantanément ». Mesuré avant : les réglages n'étaient relus qu'à la
+    // connexion, et `sequences_entrainement` avait un abonnement côté app SANS
+    // être dans la publication — « SUBSCRIBED » et jamais rien.
+    ["reglages", { valeurs: { jarvis_voice_rate: "1.1" } }],
+    ["souvenirs", { contenu: "essai temps réel" }],
+    ["echanges", { transcript: "essai temps réel" }],
+    ["notes", { title: "essai temps réel" }],
+    ["place_reminders", { place: "essai", reminder: "essai temps réel" }],
+    ["prononciations", { entendu: "essai", veut_dire: "essai temps réel" }],
+    ["passes_autonomes", { branche: "essai", verdict: "rien_a_prendre", raison: "essai temps réel" }],
+    ["sequences_entrainement", { nom: "essai temps réel" }],
+    ["visites_cockpit", { vu_at: new Date().toISOString() }],
+    [
+      "messages_programmes",
+      { destinataire: "essai", texte: "essai temps réel", envoyer_a: new Date(Date.now() + 3600e3).toISOString() },
+    ],
+    ["ce_qui_marche", { source: "voix", titre: "essai temps réel", empreinte: "voix:essai temps reel" }],
   ]) {
     const recus = await ecouter(a.client, a.jeton, table, a.id)
     const { error } = await admin.from(table).insert({ user_id: a.id, ...ligne })

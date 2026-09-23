@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
 import { withErrorToast } from "@/lib/notifyError"
@@ -48,6 +49,10 @@ export function usePronunciations(userId: string | undefined) {
   }, [refresh])
 
   useRefreshOnForeground(refresh)
+  // En direct (chantier e687f0e2) : ce qui change ailleurs — sur le site,
+  // par la voix, par une session — s'affiche sans attendre le retour au
+  // premier plan. `prononciations` est dans la publication depuis la migration 0054.
+  useRealtimeRefresh("prononciations", userId, refresh)
 
   async function addPronunciation(input: PronunciationInput) {
     if (!userId) return

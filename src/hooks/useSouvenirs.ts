@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
 import { withErrorToast } from "@/lib/notifyError"
@@ -46,6 +47,10 @@ export function useSouvenirs(userId: string | undefined) {
   }, [refresh])
 
   useRefreshOnForeground(refresh)
+  // En direct (chantier e687f0e2) : ce qui change ailleurs — sur le site,
+  // par la voix, par une session — s'affiche sans attendre le retour au
+  // premier plan. `souvenirs` est dans la publication depuis la migration 0054.
+  useRealtimeRefresh("souvenirs", userId, refresh)
 
   async function corriger(id: string, contenu: string) {
     await withErrorToast("Impossible de corriger ce souvenir", async () => {

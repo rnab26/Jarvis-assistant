@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useAuth } from "@/hooks/useAuth"
+import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import {
   ecrireRepereLocal,
   lireRepereLocal,
@@ -76,6 +77,30 @@ export function useVisiteCockpit(): VisiteCockpitApi {
       vivant = false
     }
   }, [userId])
+
+  // « Vu » appuyé sur l'AUTRE écran (chantier e687f0e2) : le bandeau d'ici
+  // se range aussi, en direct. Seulement vers l'AVANT — le repère ne recule
+  // jamais, même règle que `marquer_cockpit_vu` côté SQL — et seulement une
+  // fois la première lecture faite : avant, c'est elle qui décide.
+  const relireDistant = useCallback(async () => {
+    if (!fige.current) return
+    try {
+      const { data, error } = await withTimeout(
+        supabase.from("visites_cockpit").select("vu_at").maybeSingle(),
+      )
+      if (error) return
+      const distant = (data as { vu_at: string } | null)?.vu_at ?? null
+      if (!distant) return
+      setVuLe((actuel) => {
+        if (actuel && new Date(actuel).getTime() >= new Date(distant).getTime()) return actuel
+        ecrireRepereLocal(distant)
+        return distant
+      })
+    } catch {
+      // Le direct est un confort : la prochaine ouverture relira la base.
+    }
+  }, [])
+  useRealtimeRefresh("visites_cockpit", userId, relireDistant)
 
   const marquerVu = useCallback(() => {
     const maintenant = new Date().toISOString()

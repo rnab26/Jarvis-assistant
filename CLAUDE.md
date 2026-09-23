@@ -1143,6 +1143,29 @@ a fait passer le tableau des chantiers de 482 à 526 points et
 `verifier-cockpit-web.mjs` a rougi. La règle du projet tient : si tu ajoutes
 quelque chose au cockpit, prends sa place quelque part.
 
+### Et tout le reste en direct, réglages compris (migration 0054)
+
+Chantier `e687f0e2` (et `67dd962b`, la même demande dictée deux jours plus
+tôt), 23 sept. 2026 : « un réglage doit s'appliquer instantanément ».
+**Mesuré avant** : la publication `supabase_realtime` portait 9 tables, pas les
+réglages — relus seulement à la connexion. Et un défaut muet :
+`useEntrainement` s'abonnait à `sequences_entrainement`, absente de la
+publication, donc « SUBSCRIBED » et jamais rien.
+
+Sont maintenant diffusées aussi : `reglages`, `souvenirs`, `echanges`,
+`place_reminders`, `prononciations`, `passes_autonomes`,
+`sequences_entrainement`, `visites_cockpit` (et `ce_qui_marche`, 0053).
+`verifier-donnees.mjs` prouve l'arrivée d'une écriture sur CHACUNE des 16.
+
+Deux choix à ne pas défaire. **Un réglage distant n'est PAS appliqué pendant
+qu'une modification locale attend de partir** (le délai d'une seconde de
+`useReglagesSync`) : sa copie, plus ancienne, effacerait le geste qu'il vient
+de faire. Et **le repère « Vu » ne recule jamais**, même en direct : un « Vu »
+appuyé sur l'autre écran range le bandeau d'ici, jamais l'inverse.
+`souvenirs` et `echanges` restent en identité de réplication par défaut (leur
+empreinte de 384 nombres à chaque rattrapage) : une suppression faite ailleurs
+s'y voit au retour au premier plan, pas en direct.
+
 ### La section suggérée à la saisie (`src/lib/suggestionTheme.ts`)
 
 Calcul **local**, jamais un appel au modèle : ranger un chantier n'a pas à

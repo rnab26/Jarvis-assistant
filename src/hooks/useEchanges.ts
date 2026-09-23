@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useRealtimeRefresh } from "@/hooks/useRealtimeRefresh"
 import { useRefreshOnForeground } from "@/hooks/useRefreshOnForeground"
 import { errorMessage } from "@/lib/errorMessage"
 import { withErrorToast } from "@/lib/notifyError"
@@ -75,6 +76,10 @@ export function useEchanges(userId: string | undefined): EchangesApi {
   }, [refresh])
 
   useRefreshOnForeground(refresh)
+  // En direct (chantier e687f0e2) : ce qui change ailleurs — sur le site,
+  // par la voix, par une session — s'affiche sans attendre le retour au
+  // premier plan. `echanges` est dans la publication depuis la migration 0054.
+  useRealtimeRefresh("echanges", userId, refresh)
 
   async function oublier(id: string) {
     await withErrorToast("Impossible d'effacer cet échange", async () => {
