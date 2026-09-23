@@ -1616,6 +1616,16 @@ le mensonge que `honnetete.ts` interdit pour les tâches depuis le chantier
 maintenant le chantier créé (`DevItem | undefined`) plutôt que `unknown` —
 c'est aussi ce qui donne l'id du chantier à la suggestion en attente.
 
+**Et le titre garde SES accents** (23 sept. 2026). Les règles locales de
+`commandeLocale.ts` comparent le texte APLATI (sans accents, en minuscules) ;
+jusque-là le titre et la note d'un chantier ou d'une tâche en sortaient tels
+quels — « Ameliorer la gestion des contacts lors », « programme » là où il
+avait dit « programmé », « Appeler yoni ». `retrouverAccents(phrase, aplati)`
+réaligne mot à mot sur la phrase dictée (un suffixe ne suffit pas : les mots
+de date sont retirés du milieu). Les anciens contrôles de
+`verifier-commande-locale.ts` ATTENDAIENT le texte aplati : ils figeaient le
+défaut, ils ont été corrigés avec lui.
+
 `scripts/verifier-chantier-en-attente.ts` : les deux titres réels mesurés
 (un récupérable, un non), les verdicts de réponse, la fenêtre de complétion,
 et la consigne serveur (plus posée de thème deviné, plus de titre tronqué).

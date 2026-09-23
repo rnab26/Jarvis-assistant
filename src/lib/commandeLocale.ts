@@ -266,6 +266,43 @@ function titreDepuis(reste: string): string {
 const MOTS_TITRE_COURT = 12
 const MOTS_TITRE_TRONQUE = 8
 
+/**
+ * Rend à un morceau de la phrase APLATIE (sans accents, en minuscules, telle
+ * que les règles la comparent) les mots tels qu'il les a dits : accents,
+ * majuscules (« WhatsApp »), apostrophes. Alignement mot à mot, dans l'ordre
+ * — un simple suffixe ne suffit pas, les mots de date sont retirés du milieu
+ * (« rappelle-moi DEMAIN d'appeler… »). Un mot qu'on ne retrouve pas reste
+ * tel qu'aplati : on ne devine rien.
+ *
+ * Trouvé le 23 sept. 2026 : un chantier dicté devenait « Ameliorer la
+ * gestion des contacts lors », et sa note disait « programme » là où il avait
+ * dit « programmé » — un autre mot. Les tâches pareil (« Verifier le devis »).
+ */
+export function retrouverAccents(phrase: string, aplati: string): string {
+  const origine = phrase.replace(/\s+/g, " ").trim().split(" ")
+  let i = 0
+  return aplati
+    .split(" ")
+    .map((mot) => {
+      for (let j = i; j < origine.length; j++) {
+        const dit = origine[j]
+        if (sansAccents(dit) === mot) {
+          i = j + 1
+          return dit
+        }
+        // La ponctuation collée au mot (« garanti. », « (Mélissa) ») a été
+        // retirée d'un côté et pas de l'autre.
+        const nu = dit.replace(/^[«"“(]+|[»"”).,;:!?]+$/g, "")
+        if (nu !== dit && sansAccents(nu) === mot) {
+          i = j + 1
+          return nu
+        }
+      }
+      return mot
+    })
+    .join(" ")
+}
+
 function decouper(phrase: string): { titre: string; notes: string | null } {
   const mots = phrase.split(" ").filter(Boolean)
   const majuscule = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
@@ -280,9 +317,13 @@ function decouper(phrase: string): { titre: string; notes: string | null } {
     "a", "au", "aux", "de", "du", "des", "la", "le", "les", "un", "une",
     "et", "ou", "que", "qu'on", "qu'il", "qui", "en", "pour", "dans", "sur",
     "avec", "il", "elle", "je", "ce", "cette", "mon", "ma", "mes", "son",
+    // « lors de la programmation… » : sa dictée du 22 sept. finissait son
+    // titre sur « lors ».
+    "lors",
   ])
   const coupe = mots.slice(0, MOTS_TITRE_TRONQUE)
-  while (coupe.length > 3 && OUTILS.has(coupe[coupe.length - 1])) coupe.pop()
+  // Comparé aplati : le titre garde désormais SES accents (« à », « Qu'on »).
+  while (coupe.length > 3 && OUTILS.has(sansAccents(coupe[coupe.length - 1]))) coupe.pop()
 
   return {
     titre: majuscule(coupe.join(" ")),
@@ -559,7 +600,9 @@ export function interpreterLocalement(
     if (!resteChantier) return null
     const brut = titreDepuis(resteChantier)
     if (!brut || brut.length < 3) return null
-    const { titre, notes } = decouper(brut)
+    // SES ACCENTS, repris de la phrase dictée : le texte comparé ci-dessus est
+    // aplati (voir retrouverAccents).
+    const { titre, notes } = decouper(retrouverAccents(phrase, brut))
     return [{ action: "add_dev_item", title: titre, notes }]
   }
 
@@ -901,7 +944,7 @@ export function interpreterLocalement(
     const { date, heure, motsRetires } = lireQuand(resteTache, maintenant)
     const brut = titreDepuis(retirerMots(resteTache, motsRetires))
     if (!brut || brut.length < 3) return null
-    const { titre, notes } = decouper(brut)
+    const { titre, notes } = decouper(retrouverAccents(phrase, brut))
 
     return [
       {

@@ -82,7 +82,7 @@ doitDonner("ajoute une tâche pour demain : sortir les poubelles", {
 })
 doitDonner("rappelle-moi d'appeler Yoni demain à 14h", {
   action: "add_task",
-  title: "Appeler yoni",
+  title: "Appeler Yoni",
   due_date: "2026-09-04",
   due_time: "14:00",
 })
@@ -103,7 +103,7 @@ doitDonner("supprime la tâche des carreaux", {
 })
 doitDonner("ajoute un chantier : le widget ne se met pas à jour", {
   action: "add_dev_item",
-  title: "Le widget ne se met pas a jour",
+  title: "Le widget ne se met pas à jour",
 })
 doitDonner("liste mes chantiers", { action: "list_dev_items" })
 doitDonner("coupe ta voix", { action: "set_voice", voice_enabled: false })
@@ -134,18 +134,18 @@ console.log("\n— Ses tournures réelles, relevées dans la table `echanges` �
 // et ses demandes sont longues et descriptives.
 doitDonner("Jarvis rajoute un chantier pour un problème de micro", {
   action: "add_dev_item",
-  title: "Un probleme de micro",
+  title: "Un problème de micro",
 })
 doitDonner(
   "rajoute un chantier pour un problème de micro à chaque fois qu'on termine une phrase il faut que je réappuie sur le bouton",
   {
     action: "add_dev_item",
-    title: "Un probleme de micro a chaque fois",
+    title: "Un problème de micro à chaque fois",
   },
 )
 doitDonner("rajoute une tâche : vérifier le devis de la boutique", {
   action: "add_task",
-  title: "Verifier le devis de la boutique",
+  title: "Vérifier le devis de la boutique",
 })
 doitDonner("dans les tâches de développement ajoute un chantier à traiter en priorité", {
   action: "add_dev_item",
@@ -160,6 +160,30 @@ doitDonner("modifie la priorité du chantier micro en très élevé", {
 })
 doitDonner("archive le chantier micro", { action: "archive_dev_item", item_id: "c-micro" })
 
+// Le 23 sept. 2026 : ces titres sortaient SANS ACCENTS — la règle travaillait
+// sur le texte aplati. Sa vraie dictée du 22 sept., mot pour mot :
+{
+  const a = interpreterLocalement(
+    "Ouvrir un chantier pour améliorer la gestion des contacts lors de la programmation de messages, en s'assurant que le contact WhatsApp programmé soit visible et garanti.",
+    CTX,
+  )?.[0] as unknown as Record<string, unknown> | undefined
+  verifier(
+    "un chantier dicté garde SES accents et SES majuscules (« programmé », « WhatsApp »)",
+    a?.title === "Améliorer la gestion des contacts" &&
+      typeof a?.notes === "string" &&
+      (a.notes as string).includes("le contact WhatsApp programmé soit visible"),
+    JSON.stringify(a),
+  )
+  const t = interpreterLocalement("rappelle-moi demain à 10h d'appeler Hélène pour le devis", CTX)?.[0] as unknown as
+    | Record<string, unknown>
+    | undefined
+  verifier(
+    "une tâche aussi, même quand les mots de date sont retirés du milieu",
+    t?.title === "Appeler Hélène pour le devis",
+    JSON.stringify(t),
+  )
+}
+
 // La note garde tout ce qu'il a dit — c'est ce qui rend acceptable un titre
 // tronqué : rien n'est perdu, seul le titre est à retoucher.
 {
@@ -169,7 +193,7 @@ doitDonner("archive le chantier micro", { action: "archive_dev_item", item_id: "
   const a = actions?.[0] as unknown as Record<string, unknown> | undefined
   verifier(
     "une dictée longue garde tout son contenu dans la note",
-    typeof a?.notes === "string" && (a.notes as string).includes("ecoute constante"),
+    typeof a?.notes === "string" && (a.notes as string).includes("écoute constante"),
     `notes = ${JSON.stringify(a?.notes)}`,
   )
 }
@@ -301,17 +325,17 @@ console.log("\n— Créer un chantier à la voix : ses phrases réelles du 5 sep
 // hasard, la troisième a créé une TÂCHE intitulée « R un chantier ».
 doitDonner("Lance un chantier et ajoute-le : savoir combien il me reste de crédit", {
   action: "add_dev_item",
-  title: "Savoir combien il me reste de credit",
+  title: "Savoir combien il me reste de crédit",
 })
 doitDonner("Lance un chantier et vas-y ajoute-le. J'aimerais savoir combien il me reste de crédit", {
   action: "add_dev_item",
-  title: "Savoir combien il me reste de credit",
+  title: "Savoir combien il me reste de crédit",
 })
 // Le piège était un `\\s*` au lieu d'un `\\s+` : « creer » se lisait « cree »
 // suivi de « r », et le « r » restait collé en tête du titre.
 doitDonner("Créer un chantier : savoir combien il reste de crédit", {
   action: "add_dev_item",
-  title: "Savoir combien il reste de credit",
+  title: "Savoir combien il reste de crédit",
 })
 doitDonner("créer une tâche : appeler le plombier", {
   action: "add_task",
