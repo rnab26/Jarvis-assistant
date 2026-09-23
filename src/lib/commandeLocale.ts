@@ -20,6 +20,7 @@ import {
 import { urlDansLaPhrase } from "./documentLien.ts"
 import { porteUneSecondeDemande } from "./secondeDemande.ts"
 import { resoudreCibleParametres } from "./sectionsParametres.ts"
+import { ongletDemande } from "./ongletsApp.ts"
 import { demandeNote, trouverNote, type NoteConnue } from "./notesVocales.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 import type { Category, DevSection } from "@/types/database"
@@ -709,6 +710,14 @@ export function interpreterLocalement(
       question: majuscule(question),
     }]
   }
+
+  /* ---------- Changer d'onglet dans l'app (chantier a9c75d52) ----------
+     AVANT les sections de Paramètres et « ouvre <application> » : « ouvre
+     le cockpit » cherchait une application du téléphone, et « va dans le
+     cockpit » ouvrait la section cockpit de Paramètres. Seul un nom
+     d'onglet ENTIER est reconnu (ongletsApp.ts) — le reste passe. */
+  const onglet = ongletDemande(texte)
+  if (onglet) return [{ action: "navigate_tab", chemin: onglet.chemin, dit: onglet.dit }]
 
   /* ---------- Naviguer vers une section de Paramètres ----------
      Chantier aac9a0dd. La moitié application est déjà livrée

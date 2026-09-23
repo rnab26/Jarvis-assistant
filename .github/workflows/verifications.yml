@@ -511,6 +511,11 @@ jobs:
       - name: Le destinataire d'un message programmé est vérifié, jamais inventé
         run: node --experimental-strip-types scripts/verifier-destinataire-programme.ts
 
+      # Le 23 sept. : « ouvre le cockpit » cherchait une application du
+      # téléphone. Un onglet de l'app s'ouvre à la voix — et seulement lui.
+      - name: Changer d'onglet à la voix, sans rien prendre d'autre pour un onglet
+        run: node --experimental-strip-types scripts/verifier-onglets-app.ts
+
       # Le 23 sept. : « crée une note courses : lait » devenait une TACHE.
       # Ce qui se verifie surtout ici, c'est le SILENCE : « note ca », « note
       # un rappel », « note que », « note de frais » ne sont pas des notes.

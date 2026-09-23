@@ -76,6 +76,7 @@ export function OverlayMicContent({ onIdle, cache = false }: { onIdle: () => voi
         confirmerResultatVoix={voiceState.confirmerResultat}
         suiteMs={dialogueState.suiteMs}
         onIdle={onIdle}
+        sansOnglets
       />
     </div>
   )

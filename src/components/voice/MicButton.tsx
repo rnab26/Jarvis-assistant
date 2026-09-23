@@ -183,6 +183,9 @@ interface MicButtonProps {
    * — utilisé par la fenêtre de l'appui long pour se refermer d'elle-même,
    * jamais par l'app normale. */
   onIdle?: () => void
+  /** La fenêtre de l'appui long n'a pas les onglets de l'app : « ouvre le
+   * cockpit » y est dit impossible plutôt que de naviguer dans le vide. */
+  sansOnglets?: boolean
 }
 
 /** Début d'une note : de quoi reconnaître l'élément dont parle Raphaël sans
@@ -265,6 +268,7 @@ export function MicButton({
   confirmerResultatVoix,
   suiteMs,
   onIdle,
+  sansOnglets = false,
 }: MicButtonProps) {
   const { listen, stop: stopListening, isSupported, ready: micReady } = useSpeechRecognition()
   const { speak, stop: stopSpeaking } = useSpeechSynthesis()
@@ -947,7 +951,12 @@ export function MicButton({
             { setWakeWordEnabled, setGeofenceEnabled },
             entrainementApi,
             gmailVoiceApi,
-            { navigateVersParametres: (cible) => navigate(`/settings?section=${cible}`) },
+            {
+              navigateVersParametres: (cible) => navigate(`/settings?section=${cible}`),
+              // La fenêtre d'assistance (appui long) n'a pas d'onglets : là,
+              // Jarvis le dit au lieu de naviguer dans le vide.
+              naviguerVers: sansOnglets ? undefined : (chemin) => navigate(chemin),
+            },
             messagesProgrammesApi,
             notesApi,
           ),

@@ -3748,6 +3748,29 @@ présenter comme livré** : rien n'appelle encore
 périmètre, voir plus haut), ni un lien ailleurs dans l'app. C'est une API
 prête, pas une fonctionnalité que Raphaël peut déclencher aujourd'hui.
 
+## Changer d'onglet à la voix (chantier a9c75d52, 23 sept. 2026)
+
+La moitié « Paramètres » existait (`navigate_settings`, ci-dessus) ; les
+ONGLETS non. MESURÉ sur la commande locale avant ce travail : « ouvre le
+cockpit » → `open_app` « Le cockpit » (une application DU TÉLÉPHONE qui
+porterait ce nom), « ouvre la mémoire » et « ouvre les paramètres » pareil,
+« va dans le cockpit » → la section cockpit de Paramètres, et « emmène-moi
+dans mes notes » ou « va dans mes tâches » → rien.
+
+`src/lib/ongletsApp.ts` (**pur**, `verifier-onglets-app.ts`) : un verbe de
+déplacement, puis EN ENTIER un nom d'onglet (article, possessif, « l'onglet »,
+« la page » tolérés) — les libellés de `DashboardLayout.tsx` y sont tous. La
+règle passe AVANT les sections de Paramètres et « ouvre <application> ».
+**La moitié du contrôle vérifie le silence** : « ouvre WhatsApp », « ouvre
+Samsung Notes », « emmène-moi à la villa Dan » (itinéraire), « va voir les
+réglages du cockpit » (section), « montre-moi mes tâches » et « lis mes
+notes » (qui les LISENT) ne bougent pas.
+
+**La fenêtre de l'appui long n'a pas d'onglets** : `MicButton` y reçoit
+`sansOnglets`, et Jarvis dit qu'il faut ouvrir l'application plutôt que de
+naviguer dans le vide. Un onglet ajouté à la barre se déclare dans
+`ongletsApp.ts` dans le même travail.
+
 ## Les vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
@@ -3816,6 +3839,7 @@ SUPABASE_SERVICE_ROLE_KEY=... node scripts/verifier-cockpit-marqueurs.mjs  # un 
 node --experimental-strip-types scripts/verifier-themes-non-declares.ts  # un thème sans section se signale, jamais tout seul, sans réseau
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-navigation-parametres.ts  # une cible résolue vers UNE section de Paramètres, jamais une mauvaise, sans réseau
+node --experimental-strip-types scripts/verifier-onglets-app.ts  # « ouvre le cockpit » change d'onglet — et « ouvre WhatsApp », l'itinéraire, « lis mes notes » ne bougent pas, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie

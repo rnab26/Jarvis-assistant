@@ -118,6 +118,9 @@ export type VoiceAction =
    * `resoudreCibleParametres` (sectionsParametres.ts) — `cible` est déjà
    * la clé d'UNE section, jamais une phrase brute (chantier aac9a0dd). */
   | { action: "navigate_settings"; cible: string }
+  /** Un onglet de l'app (chantier a9c75d52) — reconnu UNIQUEMENT sur
+   * l'appareil (commandeLocale.ts, ongletsApp.ts). */
+  | { action: "navigate_tab"; chemin: string; dit: string }
   /** Mode entraînement (chantier 86df4f4a), reconnues LOCALEMENT pour la
    * même raison : regarder l'écran et retrouver une séquence déjà montrée
    * sont des décisions de l'appareil. */
@@ -602,6 +605,8 @@ export interface NotesApi {
 
 export interface NavigationApi {
   navigateVersParametres: (cible: string) => void
+  /** Un onglet de l'app : `/cockpit`, `/notes`… (chantier a9c75d52). */
+  naviguerVers?: (chemin: string) => void
 }
 
 /**
@@ -676,7 +681,7 @@ export async function executeVoiceAction(
   { setWakeWordEnabled, setGeofenceEnabled }: ReglagesVoixApi,
   entrainementApi: EntrainementApi,
   gmail: GmailApi,
-  { navigateVersParametres }: NavigationApi,
+  { navigateVersParametres, naviguerVers }: NavigationApi,
   { programmerMessage }: MessagesProgrammesApi,
   { notes, addNote, updateNote, deleteNote }: NotesApi,
 ): Promise<string> {
@@ -916,6 +921,14 @@ export async function executeVoiceAction(
 
     case "garder_reponse_ecran":
       return await garderReponseEcran(saveTextDocument)
+
+    case "navigate_tab": {
+      // Hors d'un écran qui sait naviguer (la fenêtre d'assistance de l'appui
+      // long n'a pas les onglets) : on le DIT, on ne prétend pas l'avoir fait.
+      if (!naviguerVers) return `Je ne peux pas t'ouvrir ${action.dit} depuis cette fenêtre : ouvre l'application Jarvis.`
+      naviguerVers(action.chemin)
+      return `Je t'ouvre ${action.dit}.`
+    }
 
     case "navigate_settings": {
       navigateVersParametres(action.cible)
