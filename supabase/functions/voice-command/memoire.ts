@@ -10,6 +10,7 @@
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2"
 import { appelerModele } from "../_shared/modele.ts"
+import { CONSIGNE_EXTRACTION, OUTIL_EXTRACTION, messageExtraction } from "./extraction.ts"
 import { signalerPanne } from "../_shared/pannes.ts"
 import {
   type CandidatSouvenir,
@@ -259,53 +260,7 @@ export async function rappelerSouvenirs(
   }
 }
 
-const OUTIL_EXTRACTION = {
-  name: "extraire_faits",
-  description:
-    "Extrait de l'échange les faits durables à retenir sur l'utilisateur. Zéro fait est une réponse normale et fréquente.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      faits: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            contenu: {
-              type: "string",
-              description:
-                "Le fait, en une phrase courte et autonome, compréhensible dans six mois sans le contexte de l'échange.",
-            },
-            categorie: {
-              type: "string",
-              enum: ["personne", "dossier", "engagement", "preference", "fait"],
-            },
-          },
-          required: ["contenu", "categorie"],
-        },
-      },
-    },
-    required: ["faits"],
-  },
-}
 
-const CONSIGNE_EXTRACTION = `Tu tries ce qui mérite d'être retenu d'un échange entre Raphaël et son assistant.
-
-RETIENS : les personnes de son entourage (qui elles sont, leur lien avec lui), les dossiers et projets (état, montants, échéances), les engagements qu'il prend, ses préférences et sa façon de travailler, et les faits durables sur lui.
-
-NE RETIENS PAS :
-- Les salutations, le bavardage, les questions de culture générale et leurs réponses.
-- Ce qui n'aura plus de sens dans une semaine.
-- Une demande de créer une tâche, un chantier, un document ou un rappel. C'est DÉJÀ enregistré ailleurs, en dupliquer le contenu ici est une erreur. N'en tire un souvenir que si la phrase révèle en plus quelque chose de durable sur Raphaël — une préférence, une contrainte, une façon de travailler — et alors retiens cela seulement, pas la demande.
-- Un bug ou un problème technique de l'application : il devient un chantier, pas un souvenir.
-
-JARVIS, C'EST TOI. Jarvis (ou Claude) est l'assistant, jamais une personne de l'entourage de Raphaël. Ne crée jamais de souvenir qui le décrive comme quelqu'un qu'il connaît, et ne retiens rien sur le fonctionnement de l'assistant lui-même.
-
-UN SEUL SOUVENIR PAR IDÉE. Ne découpe pas la même information en deux ou trois faits qui se répètent sous des angles différents : garde le plus utile et jette les autres.
-
-MÉFIE-TOI DE LA TRANSCRIPTION. Ces phrases viennent d'une dictée vocale : un nom propre inconnu et improbable est souvent une erreur de reconnaissance. Dans le doute, n'en fais pas un fait.
-
-Chaque fait tient en une phrase courte et se suffit à lui-même. Zéro fait est une réponse normale et fréquente : la plupart des échanges n'ont rien à retenir. N'invente jamais, ne déduis pas au-delà de ce qui a été dit.`
 
 /**
  * Dit au registre des erreurs que la mémoire a lâché.
@@ -375,10 +330,21 @@ export async function memoriser(
     // font rien du tout.
     await compacterVieuxEchanges(supabase, userId, essai)
 
+    // CE QU'ELLE SAIT DÉJÀ, relu avant d'écrire (23 sept. 2026) : sans ça,
+    // « Haim Mazgan » existait en quatre orthographes, et « salut Yael » dicté
+    // dans un message à sa femme a fait écrire « L'épouse de Raphaël se
+    // prénomme Yael » à côté de deux souvenirs qui disent Mel. Même empreinte
+    // que l'échange, déjà calculée : une lecture de plus, aucun appel modèle.
+    const connus = empreinteEchange
+      ? await supabase
+          .rpc("chercher_souvenirs", { p_embedding: JSON.stringify(empreinteEchange), p_limite: 8 })
+          .then(({ data }: { data: unknown }) => ((data as Souvenir[] | null) ?? []).map((x) => x.contenu))
+      : []
+
     const { args } = await appelerModele({
       role: "memoire",
       systeme: CONSIGNE_EXTRACTION,
-      texte: `Raphaël a dit : « ${transcript} »\n${reponse ? `Jarvis a répondu : « ${reponse} »` : ""}`,
+      texte: messageExtraction(transcript, reponse, connus),
       outil: OUTIL_EXTRACTION,
       maxTokens: 512,
       essai,

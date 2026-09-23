@@ -3406,6 +3406,29 @@ node --experimental-strip-types scripts/nettoyer-souvenirs.ts             # mont
 node --experimental-strip-types scripts/nettoyer-souvenirs.ts --appliquer # écrit
 ```
 
+**Elle relit ce qu'elle sait AVANT d'écrire (23 sept. 2026).** Mesuré ce
+jour-là sur ses 53 souvenirs actifs : « Haim Mazgan » en quatre orthographes
+(Desgan, Demazgan — la dictée), « Ilan Régnier » en quatre, et « L'épouse de
+Raphaël se prénomme Yael » — tiré d'un « salut Yael » dicté dans un message
+à sa femme — à côté de deux souvenirs qui disent Mel. L'extracteur ne voyait
+que l'échange. `memoriser` lui joint maintenant jusqu'à huit souvenirs proches
+(`chercher_souvenirs`, sur l'empreinte déjà calculée pour l'échange), et la
+consigne (`voice-command/extraction.ts`, sortie de memoire.ts pour se
+vérifier seule) dit : un fait connu ne se réécrit pas, une personne connue
+garde SON orthographe, et une contradiction n'est retenue que s'il corrige
+EXPLICITEMENT. `scripts/essayer-consigne.sh memoire-extraction` (vrai modèle,
+clé de test) : 5/5, et le témoin sans « ce qu'elle sait » réécrit bien
+« La femme de Raphaël s'appelle Yael ». À déployer (chantier 2e40a764).
+
+Le même jour, rangement de l'existant (réversible, `perime_at` — barré dans
+l'onglet Mémoire, réactivable) : 29 sur 53. Dix-huit parlaient des bugs et
+des chantiers de Jarvis (« Jarvis est une personne avec laquelle Raphaël a des
+discussions liées au micro »), écrits avant que la consigne ne l'interdise ;
+onze étaient des doublons ou des erreurs de dictée. Deux fiches ont été
+réunies (Yakov Alain, Haim Mazgan). **Attention en relisant `souvenirs`** :
+filtre par `user_id` — les faits « Dylan / 07 88 99 00 11 » sont ceux des
+comptes de test, pas les siens.
+
 **La mémoire peut mourir sans un bruit — d'où le témoin.** Elle est
 silencieuse par construction (choix de Raphaël) et elle avale ses erreurs : le
 4 sept. elle est restée morte des heures, 42 échanges dictés sans rien retenir,
@@ -3929,6 +3952,7 @@ node --experimental-strip-types scripts/verifier-trouver-application.ts  # « ou
 node --experimental-strip-types scripts/verifier-memoire-de-travail.ts  # ce qu'on vient de se dire part avec la phrase, et rien de vieux, sans réseau
 node --experimental-strip-types scripts/verifier-capacites-voix.ts  # « mets-toi à jour », « quoi de neuf », le quota, « coupe le point du matin » — et ce qui n'en est pas, sans réseau
 scripts/essayer-consigne.sh memoire-de-travail           # la consigne sur le disque contre le VRAI modèle (clé de test), sans déployer ni compte
+scripts/essayer-consigne.sh memoire-extraction           # la mémoire ne réécrit pas ce qu'elle sait, ni une erreur de dictée qui le contredit
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone

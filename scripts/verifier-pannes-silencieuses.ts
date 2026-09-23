@@ -89,10 +89,11 @@ for (const { fichier, fonction, fin } of RAPPELS) {
 // Le rappel lui-même : chaque branche d'erreur doit mener à un signalement.
 {
   const code = lire("supabase/functions/voice-command/memoire.ts")
-  const rappel = code.slice(
-    code.indexOf("export async function rappelerSouvenirs"),
-    code.indexOf("const OUTIL_EXTRACTION"),
-  )
+  // Jusqu'à la déclaration suivante au premier niveau : la consigne
+  // d'extraction qui la suivait vit depuis le 23 sept. dans extraction.ts.
+  const debutRappel = code.indexOf("export async function rappelerSouvenirs")
+  const finRappel = code.slice(debutRappel + 1).search(/\n(?:export |const |function |async function |\/\*\*)/)
+  const rappel = code.slice(debutRappel, finRappel === -1 ? undefined : debutRappel + 1 + finRappel)
   verifier(
     "rappelerSouvenirs a bien été trouvé dans le fichier",
     rappel.length > 200,
