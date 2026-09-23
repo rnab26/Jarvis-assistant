@@ -126,6 +126,20 @@ export function dernierAppelTelephone(): { famille: "media" | "navigation" | "me
 }
 
 /**
+ * La dernière RECHERCHE musique/vidéo lancée (« Booba DKR »), pour que
+ * « clique sur la vidéo » juste après sache laquelle (chantier a67ac63d, voir
+ * `designer` dans ecranTelephone.ts). Dix minutes : au-delà, il a pu changer
+ * de page ou d'application, et le contexte ne vaut plus.
+ */
+let derniereRecherche: { texte: string; quand: number } | null = null
+const FRAICHEUR_RECHERCHE_MS = 10 * 60_000
+
+export function derniereRechercheMedia(maintenant = Date.now()): string | null {
+  if (!derniereRecherche || maintenant - derniereRecherche.quand > FRAICHEUR_RECHERCHE_MS) return null
+  return derniereRecherche.texte
+}
+
+/**
  * Le dernier brouillon WhatsApp/SMS PRÉPARÉ avec succès — pas seulement SA
  * FAMILLE comme `derniereActionTelephone`, mais son CONTENU réel : texte,
  * destinataire, canal. Chantier ed32cbcc, 17 sept. 2026 : sans le texte
@@ -490,6 +504,7 @@ export async function executerActionTelephone(
         })
         if (action.music_query) {
           derniereActionTelephone = { famille: "media", quand: Date.now() }
+          derniereRecherche = { texte: action.music_query, quand: Date.now() }
           // Le résultat réel part aussi dans le journal : c'est la seule
           // façon de savoir, depuis ici, ce qui se passe sur SON téléphone
           // sans avoir à le lui demander. Une APK antérieure à ce correctif
@@ -787,7 +802,7 @@ export async function executerActionTelephone(
         // commande de LECTURE fait déjà partie de ce qu'il montre (« je
         // vérifie que je suis actif », par exemple), pas seulement les clics.
         ajouterEtapeEnregistree({ commande: action.screen_command, cible: action.screen_target ?? null })
-        return (await agirSurEcran(action.screen_command, action.screen_target)).message
+        return (await agirSurEcran(action.screen_command, action.screen_target, derniereRechercheMedia())).message
       }
 
       case "read_notifications": {

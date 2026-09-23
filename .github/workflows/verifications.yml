@@ -501,6 +501,11 @@ jobs:
       - name: Un chantier garde ce qu'on y a écrit
         run: node --experimental-strip-types scripts/verifier-historique-chantier.ts
 
+      # Le 22 sept. : sept « modifie la tache » d'affilee, parce que Jarvis
+      # confirmait avec l'ANCIEN titre. La confirmation dit la nouvelle valeur.
+      - name: Une modification se confirme avec la nouvelle valeur
+        run: node --experimental-strip-types scripts/verifier-phrase-mise-a-jour.ts
+
       # Le 23 sept. : « crée une note courses : lait » devenait une TACHE.
       # Ce qui se verifie surtout ici, c'est le SILENCE : « note ca », « note
       # un rappel », « note que », « note de frais » ne sont pas des notes.

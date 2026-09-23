@@ -189,9 +189,21 @@ Deno.serve(async (req) => {
     const maintenant = Date.now()
 
     let contexte = ""
+    // LA POIGNÉE DE REPRISE (chantier 0373a04d, « adapter Jarvis aux longues
+    // discussions »). Mesuré le 23 sept. 2026 : Google ferme la session toutes
+    // les ~9-10 minutes (« Google a demandé de fermer la session », 5 fois le
+    // 17 sept.), l'app en rouvre une NEUVE — et Jarvis oubliait tout ce qui
+    // venait d'être dit dans la conversation. L'app renvoie la dernière
+    // poignée que Google lui a donnée ; on la scelle dans le jeton, puisque
+    // tout le reste de la configuration y est scellé (voir plus bas) et
+    // qu'une valeur envoyée par l'app à la connexion serait ignorée.
+    let reprise: string | null = null
     try {
       const corps = await req.json()
       if (typeof corps?.contexte === "string") contexte = corps.contexte.slice(0, CONTEXTE_MAX)
+      if (typeof corps?.reprise === "string" && corps.reprise.length > 0 && corps.reprise.length <= 4096) {
+        reprise = corps.reprise
+      }
     } catch {
       // Pas de corps : une session sans contexte, c'est permis.
     }
@@ -258,6 +270,15 @@ Deno.serve(async (req) => {
             inputAudioTranscription: {},
             outputAudioTranscription: {},
             speechConfig: { languageCode: "fr-FR" },
+            // Google envoie alors des poignées (`sessionResumptionUpdate`) que
+            // l'app garde pour la reconnexion suivante ; avec `handle`, la
+            // conversation REPREND au lieu de repartir de zéro.
+            sessionResumption: reprise ? { handle: reprise } : {},
+            // Sans compression, une session audio est bornée à quinze minutes
+            // de contexte ; la fenêtre glissante garde la consigne et le
+            // début de la session, et laisse tomber le plus ancien des
+            // échanges au lieu de couper la conversation.
+            contextWindowCompression: { slidingWindow: {} },
           },
         },
       },
@@ -270,7 +291,7 @@ Deno.serve(async (req) => {
     // plus (ms_jeton - serveur) est le réseau du téléphone et le démarrage à
     // froid de l'isolat, qu'on ne peut pas chronométrer de l'intérieur.
     const temps = { auth: tAuth, lectures: tLectures, google: tGoogle, serveur: Date.now() - t0 }
-    console.log("live-jeton", JSON.stringify({ utilisateur: user.id, modele, contexte: contexte.length, ...temps }))
+    console.log("live-jeton", JSON.stringify({ utilisateur: user.id, modele, contexte: contexte.length, reprise: reprise !== null, ...temps }))
     return json({ jeton: jeton.name, modele, expire: jeton.expireTime ?? null, temps })
   } catch (err) {
     console.error("live-jeton en échec", String(err))

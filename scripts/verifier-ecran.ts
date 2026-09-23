@@ -117,6 +117,60 @@ verifier(
   "« Abonnements » est dans la barre du bas, pas dans les résultats",
 )
 
+// --- « Clique sur la vidéo », juste après une recherche (chantier a67ac63d) --
+// Le 18 sept. 2026 à 10h16, sur la page YouTube de « Booba DKR », Jarvis a
+// hésité entre « Autres options » et « Booba - DKR (Clip officiel) », et n'a
+// rien lancé. Sa correction : « on a un contexte, faut qu'il comprenne tout
+// seul comme un humain ». Libellés ci-dessous : ceux que la réponse de ce
+// jour-là énumérait.
+{
+  const dkr = ecran("com.google.android.youtube", [
+    el("Rechercher", true, false),
+    el("Autres options", true, false),
+    el("Booba - DKR (Clip officiel)", true, true),
+    el("Autres options", true, true),
+    el("Booba - DKR (Lyrics)", true, true),
+    el("Kaaris - Tchoin", true, true),
+  ])
+  verifier(
+    "« clique sur la vidéo » après la recherche « Booba DKR » : la vidéo qui porte ces mots, la PREMIÈRE",
+    estTrouve(designer("clique sur la vidéo", dkr, "Booba DKR"), "Booba - DKR (Clip officiel)"),
+    JSON.stringify(designer("clique sur la vidéo", dkr, "Booba DKR")),
+  )
+  verifier(
+    "…sans contexte de recherche, plusieurs vidéos : on DEMANDE toujours (règle de sûreté)",
+    designer("clique sur la vidéo", dkr).etat === "ambigu",
+  )
+  verifier(
+    "…et « Autres options » n'est plus proposé comme une vidéo possible",
+    (() => {
+      const d = designer("clique sur la vidéo", dkr)
+      return d.etat === "ambigu" && !d.candidats.some((c) => c.libelle === "Autres options")
+    })(),
+  )
+  const une = ecran("com.google.android.youtube", [
+    el("Rechercher", true, false),
+    el("Autres options", true, false),
+    el("Booba - DKR (Clip officiel)", true, true),
+  ])
+  verifier(
+    "une seule vidéo à l'écran, entourée de boutons : « la vidéo », c'est elle",
+    estTrouve(designer("clique sur la vidéo", une), "Booba - DKR (Clip officiel)"),
+  )
+  verifier(
+    "le contexte ne l'emporte JAMAIS sur ses mots : « celle avec Kaaris » reste Kaaris",
+    estTrouve(designer("lance celle avec Kaaris", dkr, "Booba DKR"), "Kaaris - Tchoin"),
+  )
+  verifier(
+    "une recherche sans rapport avec l'écran n'impose rien (moins de la moitié de ses mots)",
+    designer("clique sur la vidéo", dkr, "Ninho Jefe").etat === "ambigu",
+  )
+  verifier(
+    "« appuie sur autres options », nommé, reste possible",
+    estTrouve(designer("appuie sur autres options", une), "Autres options"),
+  )
+}
+
 // --- Le silence : ce qui ne doit PAS cliquer -------------------------------
 
 const rate = (ordre: string, lecture: LectureEcran) => designer(ordre, lecture).etat !== "trouve"

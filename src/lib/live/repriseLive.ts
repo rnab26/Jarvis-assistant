@@ -81,11 +81,17 @@ export interface Fermeture {
   reprisesApresPanne: number
   /** Raphaël a demandé l'arrêt pendant qu'on décidait. */
   arretDemande: boolean
+  /** Cette session a été ouverte AVEC une poignée de reprise (chantier
+   * 0373a04d) — c'est-à-dire en demandant à Google de continuer la
+   * conversation précédente plutôt que d'en commencer une neuve. */
+  avecPoignee?: boolean
 }
 
 export type Reprise =
-  /** On rouvre. `apresPanne` dit lequel des deux compteurs avance. */
-  | { reprendre: true; apresPanne: boolean }
+  /** On rouvre. `apresPanne` dit lequel des deux compteurs avance.
+   * `oublierPoignee` : la reprise AVEC poignée n'a pas pu s'ouvrir, on
+   * rouvre une conversation neuve plutôt que d'y renoncer. */
+  | { reprendre: true; apresPanne: boolean; oublierPoignee?: boolean }
   /** On s'arrête. `message` est ce que Raphaël doit lire — `undefined` quand
    * il n'y a rien à dire (c'est lui qui a fermé, ou la limite est atteinte
    * sans qu'aucune panne ne soit survenue). */
@@ -101,6 +107,12 @@ export function deciderReprise(f: Fermeture): Reprise {
   if (f.arretDemande || f.parRaphael) return { reprendre: false }
 
   if (f.raison) {
+    // UNE REPRISE AVEC POIGNÉE QUI N'A PAS PU S'OUVRIR n'est pas une panne
+    // installée : c'est Google qui ne reconnaît plus la poignée (expirée,
+    // refusée). On rouvre UNE fois sans elle — une conversation neuve vaut
+    // mieux que plus de conversation du tout. La suivante n'a plus de
+    // poignée, donc un second échec retombe dans la borne 1 : pas de boucle.
+    if (!f.ouverte && f.avecPoignee) return { reprendre: true, apresPanne: false, oublierPoignee: true }
     // Borne 1 : une ouverture qui n'a jamais abouti ne se rejoue pas.
     if (!f.ouverte) return { reprendre: false, message: f.raison }
     // Borne 2, puis borne 3.

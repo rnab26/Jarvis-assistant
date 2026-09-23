@@ -206,9 +206,70 @@ function sansDoublons(elements: ElementEcran[]): ElementEcran[] {
  * deuxième »). Les deux ensemble se disent aussi : « la deuxième vidéo de
  * Booba ».
  */
-export function designer(ordre: string, lecture: LectureEcran): Designation {
-  const cibles = sansDoublons(lecture.elements.filter(estDesignable))
+/**
+ * Les COMMANDES d'une application — ses boutons de barre d'outils, pas son
+ * contenu. « La vidéo » ne veut jamais dire « Autres options » : c'est
+ * pourtant entre les deux que Jarvis a hésité le 18 sept. à 10h16, sur la
+ * page YouTube de « Booba DKR », et il n'a rien lancé (chantier a67ac63d).
+ * Écartés SEULEMENT quand la demande ne nomme qu'une NATURE (« la vidéo »,
+ * « le message ») : « appuie sur partager » reste possible, évidemment.
+ */
+const COMMANDES_D_APPLICATION = [
+  "autres options", "plus d'options", "plus doptions", "options supplementaires", "options",
+  "rechercher", "recherche", "recherche vocale", "menu", "retour", "revenir en arriere",
+  "naviguer vers le haut", "partager", "j'aime", "jaime", "je n'aime pas", "je naime pas",
+  "enregistrer", "telecharger", "fermer", "accueil", "abonnements", "bibliotheque",
+  "notifications", "caster", "compte", "parametres", "filtres", "plus",
+]
+
+function estUneCommande(e: ElementEcran): boolean {
+  const l = aplatir(e.libelle)
+  return COMMANDES_D_APPLICATION.some((c) => l === aplatir(c))
+}
+
+/** « la vidéo », « le message » : seulement une NATURE d'élément, au
+ * singulier défini, sans rien qui l'identifie ni le range. */
+export function designationGenerique(ordre: string): boolean {
+  const plat = aplatir(ordre)
+  return (
+    motsIdentite(ordre).length === 0 &&
+    rangDemande(ordre) === null &&
+    /\b(?:la|le|l|cette|ce|cet)\s+(?:video|resultat|chanson|morceau|episode|photo|image|message|lien|article|clip)\b/.test(plat)
+  )
+}
+
+export function designer(ordre: string, lecture: LectureEcran, indice?: string | null): Designation {
+  let cibles = sansDoublons(lecture.elements.filter(estDesignable))
   if (cibles.length === 0) return { etat: "aucun", raison: "rien_affiche" }
+
+  // « CLIQUE SUR LA VIDÉO », juste après « lance la musique de Booba DKR »
+  // (18 sept. 2026, 10h15-10h16). Sa correction, écrite dans le registre :
+  // « je veux une réaction instantanée, pas obligé de préciser tous les
+  // détails, on a un contexte faut qu'il comprenne tout seul comme un
+  // humain ». Le contexte, c'est la recherche qu'il vient de faire lancer :
+  // un humain à côté de lui appuierait sur la vidéo qui porte ces mots-là,
+  // la première si plusieurs les portent — c'est ce que YouTube a classé en
+  // tête pour cette recherche. SEULEMENT pour une désignation générique : dès
+  // qu'il nomme quelque chose (« celle avec Kaaris »), ce sont SES mots qui
+  // comptent, et la règle de sûreté ci-dessous reste entière.
+  if (designationGenerique(ordre)) {
+    const contenu = cibles.filter((e) => !estUneCommande(e))
+    if (contenu.length > 0) cibles = contenu
+    const motsIndice = indice ? motsIdentite(indice) : []
+    if (motsIndice.length > 0) {
+      const notes = cibles.map((e) => {
+        const libelle = aplatir(e.libelle)
+        return { e, note: motsIndice.filter((m) => libelle.includes(m)).length / motsIndice.length }
+      })
+      const meilleure = Math.max(...notes.map((n) => n.note))
+      // Au moins la moitié des mots de sa recherche : en dessous, le titre ne
+      // parle pas de ce qu'il a demandé, et on ne l'impose pas.
+      if (meilleure >= 0.5) {
+        return { etat: "trouve", element: notes.find((n) => n.note === meilleure)!.e }
+      }
+    }
+    if (cibles.length === 1) return { etat: "trouve", element: cibles[0] }
+  }
 
   const mots = motsIdentite(ordre)
   const rang = rangDemande(ordre)
@@ -289,6 +350,16 @@ export function texteVisible(lecture: LectureEcran): string {
     precedent = texte
   }
   return lignes.join("\n")
+}
+
+/** Pour le journal : TOUS les libellés désignables, chacun coupé à 40
+ * caractères, séparés par « | » — de quoi relire après coup ce que l'écran
+ * montrait vraiment quand un clic a été refusé. */
+export function libellesVisibles(lecture: LectureEcran, maximum = 40): string {
+  return sansDoublons(lecture.elements.filter(estDesignable))
+    .slice(0, maximum)
+    .map((e) => e.libelle.replace(/\s+/g, " ").trim().slice(0, 40))
+    .join(" | ")
 }
 
 /** Ce que Jarvis ÉNUMÈRE quand il n'a pas trouvé — pour que Raphaël puisse

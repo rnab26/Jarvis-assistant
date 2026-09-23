@@ -1,6 +1,7 @@
 import { registerPlugin } from "@capacitor/core"
 import {
   designer,
+  libellesVisibles,
   phraseEcran,
   type CommandeEcran,
   type ElementEcran,
@@ -148,6 +149,9 @@ export interface ResultatEcran {
 export async function agirSurEcran(
   commande: CommandeEcran,
   cible?: string,
+  /** La recherche qu'il vient de lancer (« Booba DKR »), pour comprendre
+   * « la vidéo » comme un humain à côté de lui (chantier a67ac63d). */
+  indice?: string | null,
 ): Promise<ResultatEcran> {
   const lecture = await lire()
   if ("echec" in lecture) {
@@ -213,7 +217,7 @@ export async function agirSurEcran(
     }
   }
 
-  const choix = designer(cible, lecture)
+  const choix = designer(cible, lecture, indice)
   if (choix.etat !== "trouve") {
     noterEcoute("ecran_action", {
       commande,
@@ -221,6 +225,13 @@ export async function agirSurEcran(
       resultat: choix.etat === "ambigu" ? "ambigu" : choix.raison,
       paquet: lecture.paquet,
       application: lecture.application ?? null,
+      // CE QUI ÉTAIT À L'ÉCRAN, en entier (coupé à 40 caractères par libellé).
+      // Le 21 sept. à 22h29, « Envoyer » était introuvable dans WhatsApp et le
+      // journal ne gardait que la réponse dite — « Retour, Mel Ma Femme,
+      // Appel vidéo… et 6 de plus » : impossible de savoir après coup si le
+      // bouton manquait ou s'il portait un autre nom (chantier 615c03ab).
+      visibles: libellesVisibles(lecture),
+      indice: indice ?? null,
     })
     return { message: phraseEcran({ fait: "echec", cause: choix, lecture }), ok: false }
   }

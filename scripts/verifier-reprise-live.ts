@@ -249,5 +249,64 @@ for (const champ of ["commandes", "ms_depuis_commande", "parlait", "ouverte"]) {
   )
 }
 
+
+// ── La conversation REPREND au lieu de repartir de zéro (chantier 0373a04d) ──
+// Mesuré le 23 sept. 2026 : Google coupe toutes les ~9-10 minutes, et chaque
+// reconnexion ouvrait une conversation NEUVE — Jarvis oubliait tout. Avec la
+// poignée de reprise, une ouverture qui échoue À CAUSE de la poignée ne doit
+// pas tuer la conversation : on rouvre une fois sans elle.
+{
+  const refusee = deciderReprise(
+    fermeture({ raison: "Session fermée : invalid handle", ouverte: false, avecPoignee: true, reprises: 1 }),
+  )
+  verifier(
+    "une reprise AVEC poignée qui ne s'ouvre pas : on rouvre SANS poignée, plutôt que d'y renoncer",
+    refusee.reprendre === true && refusee.oublierPoignee === true && refusee.apresPanne === false,
+    JSON.stringify(refusee),
+  )
+  verifier(
+    "…et sans poignée, la même ouverture ratée s'arrête (borne 1 intacte : pas de boucle)",
+    deciderReprise(fermeture({ raison: "Session fermée : invalid handle", ouverte: false, avecPoignee: false, reprises: 2 }))
+      .reprendre === false,
+  )
+  const panne = deciderReprise(
+    fermeture({ raison: "Session fermée : Internal error occurred.", ouverte: true, avecPoignee: true }),
+  )
+  verifier(
+    "une panne APRÈS une ouverture réussie avec poignée reste une reprise après panne ordinaire",
+    panne.reprendre === true && panne.apresPanne === true && !panne.oublierPoignee,
+    JSON.stringify(panne),
+  )
+  verifier(
+    "Raphaël qui ferme l'emporte, poignée ou pas",
+    deciderReprise(fermeture({ parRaphael: true, avecPoignee: true, ouverte: false, raison: "x" })).reprendre === false,
+  )
+}
+
+// Le branchement dans sessionLive.ts — lu dans le code, faute de vraie
+// session Google ici : la poignée part à live-jeton, vient de
+// `sessionResumptionUpdate` SEULEMENT quand elle est reprenable, et les deux
+// décisions de `maintenirSessionLive` savent si la session l'utilisait.
+{
+  const code = readFileSync(new URL("../src/lib/live/sessionLive.ts", import.meta.url), "utf8")
+  verifier(
+    "la poignée part à live-jeton avec le contexte",
+    /body:\s*\{\s*contexte:\s*ev\.contexte,\s*reprise:/.test(code),
+  )
+  verifier(
+    "elle n'est retenue que quand Google la dit reprenable",
+    /miseAJour\?\.resumable && miseAJour\.newHandle/.test(code),
+  )
+  verifier(
+    "les DEUX appels à deciderReprise savent si la session avait une poignée",
+    (code.match(/avecPoignee,\n\s*\}\)/g) ?? []).length === 2,
+  )
+  const serveur = readFileSync(new URL("../supabase/functions/live-jeton/index.ts", import.meta.url), "utf8")
+  verifier(
+    "live-jeton scelle la reprise ET la fenêtre glissante dans le jeton",
+    /sessionResumption: reprise \? \{ handle: reprise \} : \{\}/.test(serveur) && /contextWindowCompression:/.test(serveur),
+  )
+}
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

@@ -50,6 +50,10 @@ export interface EvenementsLive {
    * tâche ») : envoyée en texte dès la connexion, Jarvis y répond sans
    * qu'on la redise. */
   premierMessage?: string
+  /** La poignée de la conversation précédente (chantier 0373a04d) : avec
+   * elle, Google REPREND la conversation au lieu d'en ouvrir une neuve, et
+   * Jarvis se souvient de ce qui vient d'être dit. Absente à l'ouverture. */
+  reprise?: string | null
 }
 
 export interface SessionLive {
@@ -57,7 +61,16 @@ export interface SessionLive {
   /** Se résout quand la session est close, avec la raison, qui l'a close, et
    * si elle s'était vraiment ouverte — ce dernier point décide si une
    * fermeture qui porte une raison se rejoue ou s'affiche (`repriseLive.ts`). */
-  finie: Promise<{ raison?: string; parRaphael: boolean; ouverte: boolean }>
+  finie: Promise<FinSession>
+}
+
+/** Comment une session s'est terminée. `poignee` : la dernière poignée de
+ * reprise que Google a envoyée, pour rouvrir en continuant la conversation. */
+export interface FinSession {
+  raison?: string
+  parRaphael: boolean
+  ouverte: boolean
+  poignee?: string | null
 }
 
 /** Quand rouvrir une session fermée, et quand s'arrêter en le disant : la
@@ -210,10 +223,14 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   // Raphaël a dit « terminé » : le micro ne part plus, on laisse Jarvis
   // finir sa phrase d'adieu, puis on ferme — comme s'il avait appuyé.
   let finDemandee = false
-  let resoudreFin: (v: { raison?: string; parRaphael: boolean; ouverte: boolean }) => void = () => {}
-  const finie = new Promise<{ raison?: string; parRaphael: boolean; ouverte: boolean }>((resolve) => {
+  let resoudreFin: (v: FinSession) => void = () => {}
+  const finie = new Promise<FinSession>((resolve) => {
     resoudreFin = resolve
   })
+  /** La dernière poignée de reprise reçue de Google — seulement quand il la
+   * dit REPRENABLE : pendant un appel d'outil ou une réponse en cours, il en
+   * envoie une vide, et reprendre là perdrait une partie de l'échange. */
+  let poignee: string | null = null
 
   /** Le micro est lancé plus bas, dès que le jeton est là — voir le bloc qui
    * l'explique. Déclaré ici parce que `fermer()`, juste en dessous, doit
@@ -237,14 +254,14 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       /** Le découpage du temps passé DANS la fonction (chantier ba140853).
        * Absent d'une version déployée plus ancienne : ne rien supposer. */
       temps?: { auth: number; lectures: number; google: number; serveur: number }
-    }>("live-jeton", { body: { contexte: ev.contexte } }),
+    }>("live-jeton", { body: { contexte: ev.contexte, reprise: ev.reprise ?? null } }),
     JETON_MAX_MS,
   )
   if (error || !data?.jeton) {
     const raison = error ? String((error as { message?: string }).message ?? error) : "pas de jeton"
     noterEcoute("live_echec", { etape: "jeton", detail: raison.slice(0, 120) })
     ev.onEtat("fermee", `Impossible d'ouvrir la conversation : ${raison}`)
-    return { arreter: () => {}, finie: Promise.resolve({ raison, parRaphael: false, ouverte: false }) }
+    return { arreter: () => {}, finie: Promise.resolve({ raison, parRaphael: false, ouverte: false, poignee: null }) }
   }
 
   // Le jeton est obtenu : on retient QUAND, pour pouvoir séparer les trois
@@ -320,10 +337,15 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       ms_depuis_commande: derniereCommandeAt ? Date.now() - derniereCommandeAt : null,
       parlait: lecteur.enCours,
       contexte: ev.contexte.length,
+      // La conversation pourra-t-elle reprendre là où elle en était ? Sans
+      // ce relevé, « Jarvis a tout oublié après la coupure » et « Google ne
+      // nous a jamais donné de poignée » se ressembleraient parfaitement.
+      reprise_utilisee: Boolean(ev.reprise),
+      poignee_recue: poignee !== null,
     })
     // Une clôture voulue n'est pas une panne : rien à afficher.
     ev.onEtat("fermee", parRaphael ? undefined : raison, parRaphael)
-    resoudreFin({ raison, parRaphael, ouverte })
+    resoudreFin({ raison, parRaphael, ouverte, poignee })
   }
 
   /** Clôture à la voix : Jarvis finit de parler, puis la session se ferme. */
@@ -427,6 +449,8 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
         if (!fermee) session?.sendToolResponse({ functionResponses: reponses })
       })()
     }
+    const miseAJour = m.sessionResumptionUpdate
+    if (miseAJour?.resumable && miseAJour.newHandle) poignee = miseAJour.newHandle
     if (m.goAway) fermer("Google a demandé de fermer la session.")
   }
 
@@ -519,6 +543,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       ms_micro_attente: Date.now() - avantAttenteMicro,
       premier: ev.premierMessage ? 1 : 0,
       contexte: ev.contexte.length,
+      reprise: ev.reprise ? 1 : 0,
     })
     // À PARTIR D'ICI SEULEMENT une fermeture subie mérite d'être rejouée : le
     // micro est pris, Google écoute, la conversation a vraiment eu lieu.
@@ -562,6 +587,11 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
   /** Tenu à part des reconnexions normales : un quart d'heure de conversation
    * ne doit pas consommer le droit de survivre à une panne, ni l'inverse. */
   let reprisesApresPanne = 0
+  /** La poignée pour reprendre la conversation là où elle en était, gardée
+   * d'une session à la suivante (chantier 0373a04d). Nulle tant que Google
+   * n'en a pas donné — et c'est le cas tant que live-jeton déployé ne
+   * demande pas `sessionResumption` : rien ne change alors. */
+  let poignee: string | null = null
 
   // Le drapeau natif couvre TOUTE la durée de la conversation maintenue, y
   // compris les reconnexions transparentes de Google : sans ce wrapper, un
@@ -588,9 +618,11 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
          * le cœur resterait sur « connexion » devant une session qui ne
          * rouvrira jamais. */
         let avalee = false
+        const avecPoignee = reprises > 0 && poignee !== null
         courante = await demarrerSessionLive({
           ...ev,
           premierMessage: reprises === 0 ? ev.premierMessage : undefined,
+          reprise: avecPoignee ? poignee : null,
           onEtat: (etat, detail, parRaphael) => {
             if (etat === "ecoute") ouverteVue = true
             // La fermeture par Google est absorbée ici : le cœur reste sur
@@ -605,6 +637,7 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
                 reprises,
                 reprisesApresPanne,
                 arretDemande,
+                avecPoignee,
               })
               if (decision.reprendre) {
                 avalee = true
@@ -638,7 +671,13 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
           reprises,
           reprisesApresPanne,
           arretDemande,
+          avecPoignee,
         })
+        // La poignée la plus récente que Google a donnée, pour la prochaine
+        // ouverture. Une session qui n'en a donné aucune garde la précédente —
+        // sauf si c'est la poignée elle-même qui a fait échouer l'ouverture.
+        if (fin.poignee) poignee = fin.poignee
+        if (decision.reprendre && decision.oublierPoignee) poignee = null
         if (!decision.reprendre) {
           // On avait laissé le cœur sur « connexion » en promettant une
           // reprise qui n'a pas lieu : c'est ici, et nulle part ailleurs,
@@ -656,6 +695,8 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
           // des « Internal error » deviendrait illisible.
           apres_panne: decision.apresPanne,
           raison: fin.raison ?? null,
+          // Reprendra-t-elle la conversation, ou en ouvrira-t-elle une neuve ?
+          avec_poignee: poignee !== null,
         })
       }
     } finally {
@@ -669,6 +710,6 @@ export async function maintenirSessionLive(ev: EvenementsLive): Promise<SessionL
       arretDemande = true
       courante?.arreter()
     },
-    finie: Promise.resolve({ parRaphael: true, ouverte: false }),
+    finie: Promise.resolve({ parRaphael: true, ouverte: false, poignee: null }),
   }
 }

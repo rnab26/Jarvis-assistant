@@ -807,6 +807,24 @@ frontière. Il vise maintenant « Note quelque chose d'important », où
 été remplacé par l'invariant qui compte pour lui — ce qui reste ne commence
 jamais par un morceau de commande — qui rougit quand on casse l'un OU l'autre.
 
+## Après « modifie la tâche », Jarvis dit la NOUVELLE valeur (23 sept. 2026)
+
+Chantier `8b8b6d36`, ouvert tout seul par Jarvis. MESURÉ dans
+`journal_ecoute`, le 22 sept. entre 22h22 et 22h24 : SEPT « modifie la
+tâche… » d'affilée. Chaque modification avait bien eu lieu — mais la
+confirmation disait `"<titre d'AVANT>" mise à jour.` Il entendait l'ancien
+nom, concluait que rien n'avait bougé, et recommençait (la dictée alternant
+« fonds » et « points », chaque tour annulait le précédent). Ni la
+compréhension ni l'écriture n'étaient en cause : la PHRASE l'était.
+
+`src/lib/phraseMiseAJour.ts` (**pur**, `verifier-phrase-mise-a-jour.ts`) dit
+ce qui a changé avec sa nouvelle valeur (« renommée en "…" », « pour
+vendredi 25 septembre à 10 h », « rangée dans Perso »), garde la tâche telle
+qu'il la connaissait comme sujet de la phrase (c'est elle qu'il cherche des
+yeux), et dit **« était déjà comme ça »** quand rien n'a vraiment changé —
+plutôt qu'un « mise à jour » qui le laisserait croire à un effet. Même règle
+pour `update_dev_item`.
+
 ## Une phrase à DEUX demandes n'est pas traitée sur l'appareil (15 sept. 2026)
 
 Chantier `7b2c99e2`, sa plainte : « il fait 50% dans la première tâche et 50%
@@ -1995,6 +2013,40 @@ défaire finit par bloquer quelque chose de légitime sans recours.
 est appliquée par NOTRE code — elle empêche vraiment Jarvis d'agir — mais le
 service d'accessibilité garde techniquement la visibilité sur l'écran. Aucune
 application ne peut se restreindre elle-même là-dessus.
+
+### « Clique sur la vidéo » : le contexte, comme un humain (23 sept. 2026)
+
+Chantier `a67ac63d`. Le 18 sept. à 10h15 il fait lancer « Booba DKR » sur
+YouTube, puis dit « clique sur la vidéo » : Jarvis hésite entre « Autres
+options » et « Booba - DKR (Clip officiel) », et ne lance rien. Sa correction,
+écrite dans le registre : « je veux une réaction instantanée, pas obligé de
+préciser tous les détails, on a un contexte faut qu'il comprenne tout seul
+comme un humain ».
+
+**La règle de sûreté ci-dessus ne bouge pas, sauf dans UN cas précis** :
+une désignation GÉNÉRIQUE (`designationGenerique` : « la vidéo », « le
+message », « le résultat » — une nature, au défini, sans rang ni mot qui
+l'identifie). Alors, dans `designer` :
+
+1. les **commandes de l'application** (`COMMANDES_D_APPLICATION` : « Autres
+   options », « Partager », « Rechercher »…) sont écartées — « la vidéo » ne
+   veut jamais dire « Autres options » ;
+2. s'il vient de lancer une recherche musique/vidéo (`derniereRechercheMedia`,
+   10 minutes, `actionsTelephoneVocales.ts`), l'élément dont le libellé porte
+   **au moins la moitié** de ses mots gagne — le PREMIER si plusieurs, parce
+   que c'est ce que l'application a classé en tête pour SA recherche ;
+3. sinon, un seul élément de contenu restant suffit.
+
+**Dès qu'il nomme quelque chose** (« celle avec Kaaris », « la deuxième »),
+ce sont SES mots qui décident et l'ambiguïté se signale comme avant. Les
+contrôles de `verifier-ecran.ts` gardent les deux moitiés, dont l'écran exact
+du 18 sept.
+
+**Et un clic refusé laisse maintenant l'écran ENTIER dans le journal**
+(`ecran_action.visibles`, `libellesVisibles`, 40 libellés de 40 caractères) :
+le 21 sept. à 22h29, « Envoyer » était introuvable dans WhatsApp et seule la
+phrase dite restait — impossible de savoir si le bouton manquait ou portait
+un autre nom (chantier `615c03ab`, en attente de la prochaine occurrence).
 
 ### Ce que ça ne fait pas, et qu'il ne faut pas présenter comme livré
 
@@ -3642,6 +3694,8 @@ node --experimental-strip-types scripts/verifier-mot-cle.ts    # réveil « Jarv
 node --experimental-strip-types scripts/verifier-prechauffage.ts  # espacement du préchauffage de la connexion Live, sans réseau
 node --experimental-strip-types scripts/verifier-ouverture-live.ts  # l'ordre des trois étapes d'une ouverture Live : le micro en même temps que la connexion, jamais avant le jeton, sans réseau
 node --experimental-strip-types scripts/verifier-reprise-live.ts  # une fermeture Live subie rouvre la conversation, une panne installée ne boucle pas, sans réseau
+ANON_KEY=... node scripts/verifier-live-reprise.mjs      # une conversation Live rouverte avec la poignée se souvient de ce qui a été dit (live-jeton déployé)
+node --experimental-strip-types scripts/verifier-phrase-mise-a-jour.ts  # « modifie la tâche » : Jarvis dit la NOUVELLE valeur, pas l'ancien titre, sans réseau
 node --experimental-strip-types scripts/verifier-reponse-illisible.ts  # le mode Live ne montre jamais de charabia (<ctrl46>…) et ne reste pas bloqué dessus, sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
@@ -4730,6 +4784,51 @@ de vraie session Google déclenchant le bug à la demande) : que la reprise se
 passe bien chez lui. La preuve sera un `live_reponse_anormale` dans le journal
 la prochaine fois que ça se produit, suivi d'une reprise normale au lieu d'un
 blocage. C'est du `src/` : la mise à jour rapide suffit, pas besoin d'APK.
+
+### Une longue discussion Live ne repart plus de zéro toutes les dix minutes (23 sept. 2026)
+
+Chantier `0373a04d`, « adapter Jarvis aux longues discussions ». MESURÉ dans
+`journal_ecoute` : Google ferme une session Live toutes les ~9-10 minutes
+(`live_fin` « Google a demandé de fermer la session », son `goAway`), et
+`maintenirSessionLive` en rouvrait une NEUVE — la conversation continuait
+pour l'oreille, mais Jarvis avait tout oublié de ce qui venait d'être dit.
+
+**La reprise de session de Google** : `live-jeton` scelle dans le jeton
+`sessionResumption` (avec `handle` quand l'app en renvoie une) et
+`contextWindowCompression: { slidingWindow: {} }`. Google envoie alors des
+`sessionResumptionUpdate` ; `sessionLive.ts` garde la dernière poignée
+**REPRENABLE** seulement (pendant un appel d'outil ou une réponse en cours il
+en envoie une vide — reprendre là perdrait une partie de l'échange), et la
+renvoie à `live-jeton` à la reconnexion suivante. **Côté Google, reprendre ne
+consomme pas l'usage unique du jeton** (documentation Live API).
+
+**VÉRIFIÉ contre Google le 23 sept., sans déployer** (clé de TEST, même
+configuration que `live-jeton`, jamais affichée) : la configuration est
+acceptée par `authTokens.create`, une poignée reprenable arrive après le
+premier tour, la session rouverte AVEC elle redonne le mot dit avant la
+coupure (« Le mot du jour était ANANAS-VIOLET. ») — et le témoin sans poignée
+répond « Je ne me souviens pas d'un mot du jour ». C'est ce que
+`scripts/verifier-live-reprise.mjs` rejoue par le VRAI `live-jeton`.
+
+Deux choses à ne pas défaire :
+
+1. **Une poignée qui fait échouer l'ouverture est oubliée, UNE fois**
+   (`oublierPoignee` dans `deciderReprise`) : expirée ou refusée, on rouvre
+   une conversation neuve plutôt que plus de conversation du tout. La
+   suivante n'a plus de poignée, donc un second échec retombe dans la borne 1
+   — pas de boucle. `verifier-reprise-live.ts` le garde.
+2. **Tant que `live-jeton` déployé ne demande pas la reprise, RIEN ne
+   change** : Google n'envoie aucune poignée, `avecPoignee` reste faux, et la
+   décision est exactement celle d'avant. Le client a pu partir avant le
+   serveur sans rien casser.
+
+**`live-jeton` n'est PAS encore redéployé** au 23 sept. : `SUPABASE_ACCESS_TOKEN`
+rend 401 (jeton expiré). Après le redéploiement :
+`ANON_KEY=... node scripts/verifier-live-jeton.mjs` puis
+`ANON_KEY=... node scripts/verifier-live-reprise.mjs` (tous deux avec
+`SUPABASE_SERVICE_ROLE_KEY`). Sur son téléphone, la preuve sera un
+`live_reconnexion` avec `avec_poignee: true`, et `live_debut` avec
+`reprise: 1`.
 
 ### Le temps d'ouverture d'une Live : ce que ce N'EST PAS
 

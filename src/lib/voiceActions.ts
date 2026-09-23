@@ -51,6 +51,7 @@ import { titreLisible } from "@/lib/titreTache"
 import { SECTIONS_PARAMETRES } from "@/lib/sectionsParametres"
 import { momentLocal } from "@/lib/notifications/plan"
 import { phraseLectureNote, phraseListeNotes } from "@/lib/notesVocales"
+import { phraseMiseAJourChantier, phraseMiseAJourTache } from "@/lib/phraseMiseAJour"
 import { proposerAnnulation } from "@/lib/annulation"
 import type { MessageProgramme } from "@/lib/messagesProgrammes"
 import type {
@@ -465,18 +466,6 @@ export interface EntrainementApi {
 
 function categoryName(categories: Category[], id: string | null | undefined) {
   return categories.find((c) => c.id === id)?.name
-}
-
-const STATUS_LABEL: Record<DevStatus, string> = {
-  todo: "à faire",
-  in_progress: "en cours",
-  done: "terminé",
-}
-
-const PRIORITY_LABEL: Record<DevPriority, string> = {
-  low: "priorité basse",
-  normal: "priorité normale",
-  high: "priorité haute",
 }
 
 /** Une modification sans aucun champ passerait en base sans rien changer, et
@@ -963,8 +952,10 @@ export async function executeVoiceAction(
         return `Je n'ai pas compris ce qu'il faut changer sur "${task.title}". Redis-moi ce que je modifie.`
       }
       await updateTask(action.task_id, action.changes)
-      if (action.changes.status === "done") return `"${task.title}" marquée comme faite.`
-      return `"${task.title}" mise à jour.`
+      // La NOUVELLE valeur, dite à voix haute — jamais « "<ancien titre>"
+      // mise à jour », qui lui a fait redire sept fois la même modification
+      // le 22 sept. (chantier 8b8b6d36, voir phraseMiseAJour.ts).
+      return phraseMiseAJourTache(task, action.changes, (id) => categoryName(categories, id))
     }
 
     case "delete_task": {
@@ -1104,15 +1095,10 @@ export async function executeVoiceAction(
         return `Je n'ai pas compris ce qu'il faut changer sur "${item.title}". Redis-moi ce que je modifie.`
       }
       await updateDevItem(action.item_id, action.changes)
-      // La confirmation nomme ce qui a vraiment changé : sans ça, un
-      // "mis à jour" générique ne permet pas de savoir si la priorité
-      // demandée a été prise en compte.
-      const dits: string[] = []
-      if (action.changes.status) dits.push(STATUS_LABEL[action.changes.status])
-      if (action.changes.priority) dits.push(PRIORITY_LABEL[action.changes.priority])
-      if (action.changes.theme) dits.push(`thème ${action.changes.theme}`)
-      if (dits.length > 0) return `"${item.title}" passé en ${dits.join(", ")}.`
-      return `"${item.title}" mis à jour.`
+      // La confirmation nomme ce qui a vraiment changé, AVEC la nouvelle
+      // valeur — le titre compris (chantier 8b8b6d36, même défaut que pour
+      // les tâches).
+      return phraseMiseAJourChantier(item, action.changes)
     }
 
     case "delete_dev_item": {
