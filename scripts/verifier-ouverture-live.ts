@@ -60,7 +60,9 @@ const corps = source.slice(debutFonction, finFonction > debutFonction ? finFonct
 const posDe = (appel: string) => corps.indexOf(appel)
 
 const posJeton = posDe('invoke<{')
-const posMicro = posDe("capturerMicro((paquet)")
+// La signature porte maintenant la durée du paquet (mesure du décalage,
+// chantier f82f7a60) : on vise l'appel, pas sa liste d'arguments.
+const posMicro = posDe("capturerMicro((paquet")
 const posConnexion = posDe("ai.live.connect(")
 
 verifier(

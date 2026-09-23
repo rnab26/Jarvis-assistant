@@ -24,8 +24,17 @@ export interface CaptureMicro {
 /**
  * Ouvre le micro et livre des paquets PCM16 à 16 kHz, encodés en base64,
  * prêts pour `sendRealtimeInput`.
+ *
+ * `msPaquet` est la durée d'audio que porte CE paquet. L'appelant s'en sert
+ * pour savoir combien de millisecondes d'audio Google a réellement reçues —
+ * la seule ancre qui permette de dater la transcription (voir
+ * `decalageTranscription.ts`). Elle est donnée par paquet et pas cumulée
+ * exprès : les premiers paquets sont jetés tant que la session n'est pas
+ * ouverte, et c'est l'appelant, lui seul, qui sait lesquels sont partis.
  */
-export async function capturerMicro(surPaquet: (base64: string) => void): Promise<CaptureMicro> {
+export async function capturerMicro(
+  surPaquet: (base64: string, msPaquet: number) => void,
+): Promise<CaptureMicro> {
   const flux = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
   })
@@ -40,7 +49,8 @@ export async function capturerMicro(surPaquet: (base64: string) => void): Promis
 
   processeur.onaudioprocess = (e) => {
     const entree = e.inputBuffer.getChannelData(0)
-    surPaquet(pcm16Base64(sousEchantillonner(entree, rapport)))
+    const echantillons = sousEchantillonner(entree, rapport)
+    surPaquet(pcm16Base64(echantillons), (echantillons.length / CADENCE_ENTREE) * 1000)
   }
   source.connect(processeur)
   // Sans destination, Chrome ne fait pas tourner le processeur ; on branche

@@ -3910,6 +3910,7 @@ node --experimental-strip-types scripts/verifier-reprise-live.ts  # une fermetur
 ANON_KEY=... node scripts/verifier-live-reprise.mjs      # une conversation Live rouverte avec la poignée se souvient de ce qui a été dit (live-jeton déployé)
 node --experimental-strip-types scripts/verifier-phrase-mise-a-jour.ts  # « modifie la tâche » : Jarvis dit la NOUVELLE valeur, pas l'ancien titre, sans réseau
 node --experimental-strip-types scripts/verifier-reponse-illisible.ts  # le mode Live ne montre jamais de charabia (<ctrl46>…) et ne reste pas bloqué dessus, sans réseau
+node --experimental-strip-types scripts/verifier-decalage-transcription.ts  # « tout est en décalage » : la mesure du retard de la transcription Live rend null quand on n'a rien su, jamais zéro, sans réseau
 node --experimental-strip-types scripts/verifier-commande-locale.ts  # commandes comprises sans modèle
 node --experimental-strip-types scripts/verifier-documents.ts    # un lien dicté ou partagé : l'adresse, le nom du fichier, sans réseau
 node --experimental-strip-types scripts/verifier-nom-document.ts  # un nom de fichier hébreu ou accentué devient une clé que Storage accepte, et se relit, sans réseau
@@ -5239,6 +5240,69 @@ tôt, 16 essais) — **mais avec la VRAIE consigne, la session s'est fermée sur
 et il reformulait sa demande en la raccourcissant. Écarté. Si quelqu'un veut
 le retenter, c'est `scripts/essayer-consigne-live.sh` qui le dira, en
 comptant les fermetures.
+
+### « Tout est en décalage » : on MESURE, on ne recode pas (23 sept. 2026)
+
+Chantier `f82f7a60`. Ses mots : « je vois ça même par rapport à ce qui est
+écrit en fonction de comment je discute. Ça prend pas du tout les écrits
+rapidement. Tout est en décalage. » Trois causes plausibles se ressemblent
+parfaitement à l'écran et se corrigent à trois endroits différents : Google
+transcrit tard, nous affichons le mauvais flux, ou le tour entier attend qu'il
+se taise. **Rien n'a été recodé** — la note du chantier dit de mesurer d'abord,
+et c'est la mesure qui est livrée.
+
+**CE QUI N'EXISTE PAS, et qu'il ne faut pas aller chercher : un signal qui
+dirait QUAND il a commencé à parler.** Vérifié dans les types de
+`@google/genai` 2.21, pas supposé : `activityStart` / `activityEnd` vivent dans
+`LiveSendRealtimeInputParameters` — ce sont des messages que le CLIENT envoie.
+`LiveServerContent` n'en porte aucun. Inventer un seuil d'énergie sur le micro
+pour le deviner serait une mesure fabriquée ; on ne le fait pas.
+
+**Deux ancres réelles le remplacent**, et `src/lib/live/decalageTranscription.ts`
+(pur, `verifier-decalage-transcription.ts`) ne fait rien d'autre que les tenir :
+
+1. **Les mots datés.** `Transcription.words[].endOffset` donne la fin de chaque
+   mot « relative to the start of the audio », c'est-à-dire de l'audio que
+   Google a REÇU. `capturerMicro` rend maintenant la durée de CHAQUE paquet, et
+   `sessionLive` ne l'additionne que pour les paquets **réellement partis** (les
+   premiers sont jetés tant que la session n'est pas ouverte, et Google compte
+   depuis ce qu'il a reçu). La soustraction donne le retard vrai, sans rien
+   supposer. Google n'est pas obligé de remplir `words` : dans ce cas le champ
+   reste `null`.
+2. **Les deux flux comparés l'un à l'autre.** Google rend
+   `interimInputTranscription` (« Low latency transcription updated while the
+   user is speaking ») en plus de `inputTranscription` — et **l'app n'affiche
+   aujourd'hui que le second**. Les deux décrivent la même phrase : leur écart
+   est de la latence pure, quelle que soit l'heure à laquelle il a parlé.
+   `avance_interim_ms` est le nombre qui décidera du correctif ; s'il est net,
+   il tient en une ligne d'affichage. L'interim est **relevé, pas affiché** :
+   l'afficher sans savoir s'il précède vraiment ferait clignoter le texte pour
+   rien.
+
+**`ms_premier` ne se lit JAMAIS seul** : il compte aussi le silence entre la fin
+du tour précédent et le moment où il se met à parler. Ce sont la FORME des
+arrivées (`arrivees`, « i900,i1500,2100 » = un flux, « 2400 » = une rafale en
+fin de phrase), l'avance de l'interim et le retard mesuré qui disent la latence.
+
+**`null` partout où la chose n'a pas eu lieu, jamais zéro** — « zéro
+milliseconde » et « ça n'est jamais arrivé » se liraient pareil en SQL, et c'est
+exactement la confusion qui a coûté l'enquête à la main de
+`live_reponse_anormale`. Quatre contrôles essayés à l'envers gardent ce point.
+
+Un tour de parole écrit une ligne `live_transcription` ; un tour du modèle seul
+n'en écrit aucune. Pour lire la mesure :
+
+```sql
+select at, detail->>'morceaux' as morceaux, detail->>'interims' as interims,
+       detail->>'avance_interim_ms' as avance, detail->>'retard_median_ms' as retard,
+       detail->>'mots_dates' as mots_dates, detail->>'ms_dernier_a_fini' as fin,
+       detail->>'arrivees' as arrivees, detail->>'ms_tour' as tour
+from journal_ecoute where evenement = 'live_transcription' order by at desc limit 30;
+```
+
+**Ne recode rien avant d'avoir lu ces nombres-là** — c'est la même consigne que
+pour `ms_jeton` et `ms_ouverture`, et elle a déjà écarté trois causes supposées
+d'un coup.
 
 ### Troisième piège de la fenêtre d'assistance : deux tas JS, une seule veille voulue
 

@@ -581,6 +581,13 @@ jobs:
       - name: Le mode entraînement reconnaît, nomme et retrouve ses séquences
         run: node --experimental-strip-types scripts/verifier-entrainement.ts
 
+      # « Tout est en décalage » (chantier f82f7a60) : on MESURE avant de
+      # recoder. Ces contrôles gardent la seule chose qui compte pour ça — une
+      # mesure absente rend `null`, jamais zéro, sinon on lirait « instantané »
+      # exactement là où on n'a rien su.
+      - name: Le décalage de la transcription Live se mesure sans rien supposer
+        run: node --experimental-strip-types scripts/verifier-decalage-transcription.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.

@@ -9,6 +9,11 @@ import { lireClotureLive } from "@/lib/livePrefs"
 import { definirLiveActifNatif } from "@/lib/live/etatLiveNatif"
 import { deciderReprise } from "@/lib/live/repriseLive"
 import { contientJetonDeControle, sansJetonsDeControle } from "@/lib/live/reponseIllisible"
+import {
+  finDernierMot,
+  resumerTour,
+  type MorceauTranscription,
+} from "@/lib/live/decalageTranscription"
 
 /**
  * Une conversation Live avec Gemini : l'audio part en continu, Google décide
@@ -198,6 +203,15 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   let parRaphael = false
   let reponseEnCours = ""
   let entenduEnCours = ""
+  /** CE QU'ON MESURE DU DÉCALAGE (chantier f82f7a60), et rien de plus : aucune
+   * de ces variables ne change ce qui s'affiche. `msAudioEnvoye` ne compte que
+   * les paquets RÉELLEMENT partis — ceux d'avant l'ouverture de la session sont
+   * jetés, et Google date ses mots depuis l'audio qu'il a reçu, pas depuis
+   * l'ouverture du micro. */
+  let msAudioEnvoye = 0
+  let morceauxDuTour: MorceauTranscription[] = []
+  let debutTourAt = Date.now()
+  let finiTourAt: number | null = null
   /** Non nul dès qu'un jeton de contrôle est vu dans le tour en cours (voir
    * `reponseIllisible.ts`) : si `turnComplete` n'arrive pas avant
    * `DELAI_REPONSE_ANORMALE_MS`, on ferme nous-mêmes plutôt que d'attendre un
@@ -295,8 +309,11 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
   // n'est pas même ouvert. La garde qui les jette (`session?.`) existait déjà.
   microDemarreAt = Date.now()
   micro = withTimeout(
-    capturerMicro((paquet) => {
-      if (!fermee && !finDemandee) session?.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
+    capturerMicro((paquet, msPaquet) => {
+      if (!fermee && !finDemandee && session) {
+        session.sendRealtimeInput({ audio: { data: paquet, mimeType: "audio/pcm;rate=16000" } })
+        msAudioEnvoye += msPaquet
+      }
     }),
     MICRO_MAX_MS,
   ).then((c) => {
@@ -362,6 +379,38 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
     setTimeout(() => void clore(), clotureLive.delaiMs)
   }
 
+  /** Relève un morceau de transcription. N'AFFICHE RIEN et ne décide rien :
+   * `journal_ecoute` est un journal, pas une donnée (chantier f82f7a60). */
+  const noterMorceau = (t: { text?: string; words?: unknown }, interim: boolean) => {
+    morceauxDuTour.push({
+      arriveeMs: Date.now() - debutTourAt,
+      audioEnvoyeMs: msAudioEnvoye,
+      finDernierMotMs: finDernierMot(t.words),
+      caracteres: (t.text ?? "").length,
+      interim,
+    })
+  }
+
+  /** Un tour de parole qui s'achève. On se tait quand il n'a rien dit : un
+   * tour du modèle seul (une réponse enchaînée, un retour d'outil) n'a aucun
+   * décalage à raconter, et une ligne par tour vide noierait les autres. */
+  const ecrireDecalage = (raisonFin: string | null) => {
+    if (morceauxDuTour.length > 0) {
+      noterEcoute(
+        "live_transcription",
+        resumerTour({
+          morceaux: morceauxDuTour,
+          finiMs: finiTourAt === null ? null : finiTourAt - debutTourAt,
+          tourMs: Date.now() - debutTourAt,
+          raisonFin,
+        }),
+      )
+    }
+    morceauxDuTour = []
+    finiTourAt = null
+    debutTourAt = Date.now()
+  }
+
   const surMessage = (m: LiveServerMessage) => {
     const contenu = m.serverContent
     if (contenu?.interrupted) {
@@ -372,11 +421,20 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       ev.onEtat("ecoute")
     }
     if (contenu?.inputTranscription?.text) {
+      noterMorceau(contenu.inputTranscription, false)
       entenduEnCours += contenu.inputTranscription.text
       ev.onEntendu(entenduEnCours, contenu.inputTranscription.finished === true)
       if (clotureVocaleDemandee(entenduEnCours)) surFinDemandee()
-      if (contenu.inputTranscription.finished) entenduEnCours = ""
+      if (contenu.inputTranscription.finished) {
+        finiTourAt = Date.now()
+        entenduEnCours = ""
+      }
     }
+    // LE FLUX « BASSE LATENCE » EST SEULEMENT RELEVÉ, PAS AFFICHÉ. Il pourrait
+    // être ce qui manque à l'écran (voir `decalageTranscription.ts`) — mais la
+    // note du chantier dit de mesurer avant de recoder, et l'afficher sans
+    // savoir s'il précède vraiment ferait clignoter le texte pour rien.
+    if (contenu?.interimInputTranscription?.text) noterMorceau(contenu.interimInputTranscription, true)
     if (contenu?.outputTranscription?.text) {
       const brut = contenu.outputTranscription.text
       // BUG CONNU DE GOOGLE (voir reponseIllisible.ts) : ne jamais afficher ce
@@ -412,6 +470,7 @@ export async function demarrerSessionLive(ev: EvenementsLive): Promise<SessionLi
       // ici qu'un « terminé » est reconnu.
       if (clotureVocaleDemandee(entenduEnCours)) surFinDemandee()
       entenduEnCours = ""
+      ecrireDecalage(contenu.turnCompleteReason ?? null)
       if (finDemandee) void clore()
       else ev.onEtat("ecoute")
     }
