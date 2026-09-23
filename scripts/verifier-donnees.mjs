@@ -184,7 +184,16 @@ try {
 } catch (e) {
   verifier("déroulement du script", false, String(e))
 } finally {
-  for (const id of comptes) await admin.auth.admin.deleteUser(id)
+  // LE RETOUR SE LIT. Avalé, il a laissé cinq comptes de test en base du 15 au
+  // 23 sept. : la trace des tâches supprimées (migration 0045) faisait échouer
+  // la suppression d'un compte qui a des tâches — le défaut que la 0044 avait
+  // déjà corrigé pour les chantiers (migration 0055). Ces comptes ont écrit
+  // une tâche ET un chantier : c'est exactement le cas qui casse.
+  for (const id of comptes) {
+    const { error } = await admin.auth.admin.deleteUser(id)
+    verifier("un compte qui a des tâches et des chantiers se supprime", !error,
+      `compte de test ${id} resté en base : ${error?.message ?? ""}`)
+  }
 }
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)

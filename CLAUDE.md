@@ -582,6 +582,28 @@ scripts/verifier-historique-reel.mjs` couvre maintenant aussi la trace posée
 par le DELETE, son cloisonnement RLS, et la restauration qui rend le même
 titre et la même note.
 
+### Une trace de suppression ne doit jamais empêcher de supprimer un COMPTE (migrations 0044, 0055)
+
+Deux fois le même défaut, à un jour d'écart. PostgreSQL supprime la ligne
+d'`auth.users` PUIS applique les cascades ; un trigger `BEFORE DELETE` qui
+écrit une trace (`dev_items_supprimes`, `taches_supprimees`) référençant ce
+compte échoue alors sur sa clé étrangère (« Key (user_id) is not present in
+table users »), et tout le DELETE du compte est annulé. La 0044 l'a corrigé
+pour les chantiers le 8 sept. ; la 0045 (trace des tâches, le lendemain) a
+recopié le mécanisme SANS le garde-fou, et la 0055 l'y a remis le 23 sept.
+
+**Tout trigger de trace posé sur une table rattachée à `auth.users` commence
+par** `if not exists (select 1 from auth.users where id = old.user_id) then
+return old; end if;` — une trace dont le propriétaire a disparu ne peut plus
+être ni lue ni restaurée (RLS `auth.uid() = user_id`).
+
+Le symptôme est silencieux : les scripts de vérification créent un compte de
+test, puis le suppriment sans lire le retour — cinq comptes `…@jarvis-test.local`
+sont ainsi restés en base, et leurs « essai temps réel » apparaissaient au
+démarrage de chaque session (le hook lit en service_role). `verifier-donnees.mjs`
+lit maintenant ce retour, sur un compte qui a des tâches ET des chantiers :
+c'est lui qui rougira à la prochaine trace sans garde-fou.
+
 ### Reprendre une discussion dans le journal (migration 0048)
 
 Ses mots, dictés le 17 sept. 2026 à 07 h 57 : « Dans le cockpit dev : journal
