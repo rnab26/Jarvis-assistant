@@ -27,10 +27,15 @@
  * qui permet à `erreurs.ts` de continuer à importer ce fichier au niveau
  * racine et de rester chargeable sous Node
  * (`scripts/verifier-contexte-interaction.ts`,
- * `scripts/verifier-raison-ecoute.ts`). La capture réelle des clics — qui a
+ * `scripts/verifier-raison-ecoute.ts`). `Capacitor.isNativePlatform()` (pour
+ * `plateforme` ci-dessous) n'y fait pas exception : elle ne lit que
+ * `globalThis`, jamais `window`/`document`, donc reste sans effet sous Node
+ * (rend "web", comme en vrai dans un navigateur). La capture réelle des clics — qui a
  * besoin du DOM — vit dans `src/hooks/useTraceInteractions.ts` et se
  * contente d'appeler `noterAppui`/`noterEcranActuel`.
  */
+
+import { Capacitor } from "@capacitor/core"
 
 /**
  * Les noms d'écran, alignés avec la barre d'onglets (DashboardLayout.tsx) et
@@ -130,17 +135,26 @@ export function reinitialiserContexteInteraction(): void {
  * une chaîne vide) quand il n'y a rien à dire — même règle que le reste du
  * journal (`ms_ouverture`, `ms_premier_mot`) : un zéro se lirait comme
  * "aucun délai", ce qui est faux.
+ *
+ * `plateforme` — chantier f0228dc7, 23 sept. 2026 : sa remarque « ça le fait
+ * toujours un peu sur la version web » ne pouvait pas se vérifier, faute de
+ * pouvoir séparer ses rafales web de ses rafales Android dans les mêmes
+ * requêtes. L'écoute web passe par `webkitSpeechRecognition` (le
+ * navigateur), l'écoute app par le SpeechRecognizer d'Android — deux chemins
+ * différents, donc pas la même cause à supposer. Un seul point à brancher.
  */
 export function detailInteraction(maintenant: number = Date.now()): {
   ecran: string
   clic: string | null
   clic_il_y_a_ms: number | null
+  plateforme: "app" | "web"
 } {
   const appui = appuiPertinent(dernierAppuiValeur, maintenant)
   return {
     ecran: nomEcran(ecranValeur),
     clic: appui?.libelle ?? null,
     clic_il_y_a_ms: appui?.il_y_a_ms ?? null,
+    plateforme: Capacitor.isNativePlatform() ? "app" : "web",
   }
 }
 

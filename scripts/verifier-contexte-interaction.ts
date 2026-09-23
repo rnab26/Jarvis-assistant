@@ -101,6 +101,7 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
     ecran: "Tâches",
     clic: null,
     clic_il_y_a_ms: null,
+    plateforme: "web",
   })
 
   noterEcranActuel("/cockpit")
@@ -109,12 +110,14 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
     ecran: "Cockpit dev",
     clic: "Archiver",
     clic_il_y_a_ms: 500,
+    plateforme: "web",
   })
 
   verifier("passé la fenêtre, l'écran reste mais le clic disparaît", detailInteraction(1500 + FENETRE_CLIC_MS), {
     ecran: "Cockpit dev",
     clic: null,
     clic_il_y_a_ms: null,
+    plateforme: "web",
   })
 
   // `noterAppui(null)` doit laisser le dernier appui connu intact — un clic
@@ -124,7 +127,17 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
     ecran: "Cockpit dev",
     clic: "Archiver",
     clic_il_y_a_ms: 500,
+    plateforme: "web",
   })
+
+  // Chantier f0228dc7, 23 sept. 2026 : sous Node (comme dans un vrai
+  // navigateur), Capacitor.isNativePlatform() rend "web" — aucune des deux
+  // ne pose androidBridge/webkit.messageHandlers.bridge sur globalThis.
+  verifier(
+    "hors application native (Node, comme un navigateur), la plateforme est web",
+    detailInteraction(1000).plateforme,
+    "web",
+  )
 }
 
 // --- 5. Ce qui part dans jarvis_erreurs.contexte --------------------------
