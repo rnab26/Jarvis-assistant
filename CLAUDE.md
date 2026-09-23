@@ -3745,6 +3745,33 @@ après un déploiement, `verifier-commande-vocale.mjs` reste LA vérification.
 **Écris un fichier de cas pour toute modification de consigne**, avec un
 témoin sans la modification : c'est ce qui prouve qu'elle sert.
 
+## Ce qu'il disait ne pas savoir faire, alors que l'app le sait (23 sept. 2026)
+
+Relu dans ses 409 vraies dictées : « mets-toi à jour » / « installe la
+dernière version » (six fois), « montre-moi les nouvelles fonctionnalités »,
+« il me reste assez de crédit ? », « désactive le point du matin jusqu'à
+nouvel ordre » — et chaque fois « je ne peux pas, va dans Paramètres ».
+`src/lib/capacitesVoix.ts` (**pur**, `verifier-capacites-voix.ts`) les
+reconnaît SUR L'APPAREIL (actions `update_app`, `whats_new`, `usage_report`,
+`set_notif_pref`) : elles marchent sans le serveur. **Mesuré sur les 409
+dictées : 9 déclenchements, tous justes, zéro à tort.**
+
+- **La mise à jour** : rapide → Jarvis le DIT puis applique 4,5 s plus tard
+  (appliquer redémarre l'app, il n'entendrait jamais la phrase) ; natif changé
+  → il ouvre Paramètres › L'application au lieu de prétendre installer ; GitHub
+  muet → ni « à jour » ni « rien à faire ». Une QUESTION (« y a-t-il une mise
+  à jour ? ») ne déclenche aucun geste.
+- **Quoi de neuf / à essayer** : les archivés des sept derniers jours, et les
+  ouverts au marqueur `a_constater` — lus par `marqueurDe`, la seule lecture
+  des marqueurs du projet.
+- **Le quota** : reprend le verdict de `pastilleQuota` pour ne jamais dire
+  autre chose que la pastille sous le cœur. Jamais de pourcentage.
+- **Les notifications** : écrit `jarvis_notifications` et émet
+  `REGLAGES_RESTAURES`, sur lequel `useNotifications` relit et REPROGRAMME —
+  sans lui, « coupe le point du matin » laisserait sonner celui de demain.
+- `src/lib/systemeVoix.ts` construit ce que le micro sait de la version et du
+  quota, au même endroit pour l'app et la fenêtre de l'appui long.
+
 ## Ce que Jarvis sait de sa propre application
 
 `supabase/functions/_shared/environnement.ts` — **une seule source**, importée
@@ -3900,6 +3927,7 @@ node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà
 node --experimental-strip-types scripts/verifier-apps-par-defaut.ts  # les applications proposées sont celles du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-trouver-application.ts  # « ouvre l'application WhatsApp » ouvre WhatsApp, jamais מכבי, sans réseau
 node --experimental-strip-types scripts/verifier-memoire-de-travail.ts  # ce qu'on vient de se dire part avec la phrase, et rien de vieux, sans réseau
+node --experimental-strip-types scripts/verifier-capacites-voix.ts  # « mets-toi à jour », « quoi de neuf », le quota, « coupe le point du matin » — et ce qui n'en est pas, sans réseau
 scripts/essayer-consigne.sh memoire-de-travail           # la consigne sur le disque contre le VRAI modèle (clé de test), sans déployer ni compte
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau

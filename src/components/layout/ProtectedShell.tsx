@@ -4,6 +4,7 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout"
 import { MicButton } from "@/components/voice/MicButton"
 import { JarvisDataProvider, useJarvisData } from "@/contexts/JarvisDataContext"
 import { resumerConsommation } from "@/lib/consommationModele"
+import { systemeVoix } from "@/lib/systemeVoix"
 import { useAuth } from "@/hooks/useAuth"
 import { useShareReceiver } from "@/hooks/useShareReceiver"
 import { geocodePlace } from "@/lib/geocodePlace"
@@ -26,7 +27,11 @@ function ShellContent() {
     widgetState,
     devSectionsState,
     consommationState,
+    updateState,
+    majWebState,
   } = useJarvisData()
+  const consommation =
+    consommationState.lignes === null ? null : resumerConsommation(consommationState.lignes)
 
   useShareReceiver(documentsState.saveTextDocument, documentsState.saveBinaryDocument)
 
@@ -49,9 +54,8 @@ function ShellContent() {
         widgetApi={{ config: widgetState.config, setConfig: widgetState.setConfig }}
         wakeWordEnabled={wakeWordState.enabled}
         seuilAbandonVeille={wakeWordState.seuilAbandon}
-        consommation={
-          consommationState.lignes === null ? null : resumerConsommation(consommationState.lignes)
-        }
+        consommation={consommation}
+        systemeApi={systemeVoix(updateState, majWebState, consommation)}
         setWakeWordEnabled={wakeWordState.setEnabled}
         setGeofenceEnabled={geofenceState.setEnabled}
         entrainementApi={{

@@ -469,6 +469,11 @@ jobs:
       - name: La mémoire de travail de Jarvis
         run: node --experimental-strip-types scripts/verifier-memoire-de-travail.ts
 
+      # « mets-toi à jour », « quoi de neuf », « il me reste du crédit ? »,
+      # « coupe le point du matin » : le serveur répondait « je ne peux pas ».
+      - name: Ce que Jarvis croyait ne pas savoir faire
+        run: node --experimental-strip-types scripts/verifier-capacites-voix.ts
+
       # Les connecteurs d'IA : « je n'ai pas pu regarder » ne doit jamais se
       # lire comme « tu n'as aucune application d'IA », et la liste des IA
       # connues met en avant sans jamais limiter.

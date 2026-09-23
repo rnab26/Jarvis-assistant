@@ -114,6 +114,7 @@ import {
   type VoiceSettingApi,
   type VoiceAction,
   type WidgetApi,
+  type SystemeVoixApi,
 } from "@/lib/voiceActions"
 
 type Status = "idle" | "wake-listening" | "listening" | "processing" | "speaking" | "error"
@@ -168,6 +169,10 @@ interface MicButtonProps {
   /** Ce que Jarvis a consommé aujourd'hui, pour la ligne sous le cœur.
    * `null` = pas encore lu, ou lecture en échec — on n'affiche alors RIEN. */
   consommation: Consommation | null
+  /** Sa version et son quota, pour « mets-toi à jour », « il me reste du
+   * crédit ? » (capacitesVoix.ts). Absent, Jarvis dit qu'il ne peut pas
+   * regarder d'ici. */
+  systemeApi?: SystemeVoixApi
   /** Pour que « active le mot-clé » / « désactive la géolocalisation »
    * touchent le VRAI hook (React + persistance), voir ReglagesVoixApi. */
   setWakeWordEnabled: (v: boolean) => void
@@ -263,6 +268,7 @@ export function MicButton({
   wakeWordEnabled,
   seuilAbandonVeille = 0,
   consommation,
+  systemeApi,
   setWakeWordEnabled,
   setGeofenceEnabled,
   voiceIndex,
@@ -990,6 +996,7 @@ export function MicButton({
             },
             messagesProgrammesApi,
             notesApi,
+            systemeApi,
           ),
         )
         // Le capteur générique (chantier d50d5f34) : CHAQUE action exécutée par

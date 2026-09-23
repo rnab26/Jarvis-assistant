@@ -12,6 +12,17 @@ import { estDernierMessage, nomExpediteur } from "@/lib/gmailVoix"
 import { cleTheme } from "@/lib/themeChantier"
 import { deciderDoublonTache, deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
 import { ecrireReglage, REGLAGES_RESTAURES } from "@/lib/reglages"
+import {
+  decisionMaj,
+  phraseAEssayer,
+  phraseConsommation,
+  phraseNotif,
+  phraseNouveautes,
+  type CommandeNotif,
+  type EtatMaj,
+} from "@/lib/capacitesVoix"
+import type { Consommation } from "@/lib/consommationModele"
+import { ecrirePrefsNotifs, lirePrefsNotifs } from "@/lib/notifications/prefs"
 import { listeReglagesVoix, trouverOptionReglageVoix, trouverReglageVoix } from "@/lib/reglagesVoix"
 import {
   arreterEnregistrement,
@@ -121,6 +132,12 @@ export type VoiceAction =
   /** Un onglet de l'app (chantier a9c75d52) — reconnu UNIQUEMENT sur
    * l'appareil (commandeLocale.ts, ongletsApp.ts). */
   | { action: "navigate_tab"; chemin: string; dit: string }
+  /** Reconnues UNIQUEMENT sur l'appareil (capacitesVoix.ts, 23 sept. 2026) :
+   * ce que Jarvis disait ne pas savoir faire alors que l'app le sait. */
+  | { action: "update_app"; mode: "faire" | "question" }
+  | { action: "whats_new"; quoi: "nouveautes" | "a_essayer" }
+  | { action: "usage_report" }
+  | { action: "set_notif_pref"; cle: string; valeur: boolean | string; dit: string }
   /** Mode entraînement (chantier 86df4f4a), reconnues LOCALEMENT pour la
    * même raison : regarder l'écran et retrouver une séquence déjà montrée
    * sont des décisions de l'appareil. */
@@ -609,6 +626,18 @@ export interface NavigationApi {
   naviguerVers?: (chemin: string) => void
 }
 
+/** Ce que Jarvis sait de lui-même, pour les questions qu'il ne pouvait pas
+ * servir (capacitesVoix.ts). Facultatif : un banc ou une fenêtre qui ne le
+ * fournit pas fait dire à Jarvis qu'il ne peut pas regarder d'ici. */
+export interface SystemeVoixApi {
+  maj: EtatMaj
+  appliquerMaj: () => Promise<void>
+  consommation: Consommation | null
+}
+
+/** Le temps que la phrase soit dite avant un geste qui coupe l'app. */
+const DELAI_AVANT_GESTE_MS = 4500
+
 /**
  * Ce qui vient d'être créé, pour qu'une correction puisse le déplacer.
  *
@@ -684,8 +713,39 @@ export async function executeVoiceAction(
   { navigateVersParametres, naviguerVers }: NavigationApi,
   { programmerMessage }: MessagesProgrammesApi,
   { notes, addNote, updateNote, deleteNote }: NotesApi,
+  systeme?: SystemeVoixApi,
 ): Promise<string> {
   switch (action.action) {
+    case "update_app": {
+      if (!systeme) return "Je ne peux pas vérifier la version depuis cette fenêtre : ouvre l'application Jarvis."
+      const { phrase, geste } = decisionMaj(action.mode, systeme.maj)
+      // Le geste part APRÈS la phrase : appliquer redémarre l'app, et il
+      // n'entendrait jamais ce qui a été fait.
+      if (geste === "appliquer") setTimeout(() => void systeme.appliquerMaj(), DELAI_AVANT_GESTE_MS)
+      if (geste === "recharger" && typeof window !== "undefined") {
+        setTimeout(() => window.location.reload(), DELAI_AVANT_GESTE_MS)
+      }
+      if (geste === "ouvrir_parametres") navigateVersParametres("app")
+      return phrase
+    }
+
+    case "whats_new":
+      return action.quoi === "a_essayer" ? phraseAEssayer(devItems) : phraseNouveautes(devItems, Date.now())
+
+    case "usage_report":
+      return phraseConsommation(systeme ? systeme.consommation : null)
+
+    case "set_notif_pref": {
+      const avant = lirePrefsNotifs()
+      const commande = { cle: action.cle, valeur: action.valeur, dit: action.dit } as CommandeNotif
+      ecrirePrefsNotifs({ ...avant, [action.cle]: action.valeur })
+      // Les notifications se reprogramment sur cet événement (useNotifications
+      // relit ses préférences) : sans lui, « coupe le point du matin » serait
+      // écrit sans que le point de demain matin soit annulé.
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(REGLAGES_RESTAURES))
+      return phraseNotif(commande, avant)
+    }
+
     case "add_note": {
       // Même honnêteté que pour les tâches : « ajoutée » seulement si la base
       // l'a vraiment écrite. `addNote` rend undefined sur un échec déjà

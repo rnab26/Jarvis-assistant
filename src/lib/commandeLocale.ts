@@ -22,6 +22,7 @@ import { porteUneSecondeDemande } from "./secondeDemande.ts"
 import { resoudreCibleParametres } from "./sectionsParametres.ts"
 import { ongletDemande } from "./ongletsApp.ts"
 import { demandeNote, trouverNote, type NoteConnue } from "./notesVocales.ts"
+import { commandeNotif, demandeConsommation, demandeMiseAJour, demandeNouveautes } from "./capacitesVoix.ts"
 import type { VoiceAction } from "@/lib/voiceActions"
 import type { Category, DevSection } from "@/types/database"
 
@@ -732,6 +733,19 @@ export function interpreterLocalement(
      d'onglet ENTIER est reconnu (ongletsApp.ts) — le reste passe. */
   const onglet = ongletDemande(texte)
   if (onglet) return [{ action: "navigate_tab", chemin: onglet.chemin, dit: onglet.dit }]
+
+  /* ---------- Ce qu'il croyait que Jarvis ne savait pas faire ----------
+     (capacitesVoix.ts, 23 sept. 2026) : se mettre à jour, dire ce qui est
+     nouveau ou à essayer, dire ce qu'il reste de quota, régler une
+     notification. Aucune n'a besoin du modèle — et le serveur répondait
+     « je ne peux pas » à chacune. */
+  const maj = demandeMiseAJour(texte)
+  if (maj) return [{ action: "update_app", mode: maj }]
+  const nouveautes = demandeNouveautes(texte)
+  if (nouveautes) return [{ action: "whats_new", quoi: nouveautes }]
+  if (demandeConsommation(texte)) return [{ action: "usage_report" }]
+  const notif = commandeNotif(texte)
+  if (notif) return [{ action: "set_notif_pref", cle: notif.cle, valeur: notif.valeur, dit: notif.dit }]
 
   /* ---------- Naviguer vers une section de Paramètres ----------
      Chantier aac9a0dd. La moitié application est déjà livrée
