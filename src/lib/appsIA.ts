@@ -57,7 +57,8 @@ function aplatir(texte: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
+    // Toutes les lettres, hébreu compris : voir `aplatir` dans actionsTelephone.ts.
+    .replace(/[^\p{L}\p{N}]/gu, "")
 }
 
 export interface ApplicationVue {

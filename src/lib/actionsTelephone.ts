@@ -66,14 +66,32 @@ interface ActionsTelephonePlugin {
 export const ActionsTelephone = registerPlugin<ActionsTelephonePlugin>("ActionsTelephone")
 
 /** Ignore accents, casse et espaces : "spotify", "Spotify" et "Spotifaï"
- * mal transcrit doivent tomber sur la même app. */
+ * mal transcrit doivent tomber sur la même app.
+ *
+ * LES LETTRES DE TOUS LES ALPHABETS RESTENT, et c'est la cause racine de
+ * « J'ouvre מכבי » (5, 6 et 18 sept. 2026) : l'ancienne version ne gardait
+ * que `a-z0-9`, donc « מכבי » devenait une chaîne VIDE — et une chaîne vide
+ * est contenue dans n'importe quelle demande. Toute demande qui ne tombait
+ * pas pile sur un nom (« l'application WhatsApp ») ouvrait la première
+ * application au nom hébreu, triée en tête parce que la plus « courte ». */
 function aplatir(texte: string): string {
   return texte
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "")
 }
+
+/** « l'application WhatsApp », « l'appli YouTube » : l'enveloppe n'est pas
+ * le nom. Retirée avant de comparer, pour que la correspondance soit EXACTE
+ * au lieu de passer par le rapprochement approximatif. */
+function sansEnveloppe(demande: string): string {
+  return demande.replace(/^\s*(?:l['’]\s*|la\s+|mon\s+|ma\s+)?(?:application|appli|app)\s+/i, "")
+}
+
+/** En dessous, un nom ne se rapproche de rien : deux lettres se trouvent
+ * dans trop de mots. */
+const LONGUEUR_MIN_RAPPROCHEMENT = 3
 
 /**
  * Retrouve l'application dont le nom colle le mieux à ce que Raphaël a dit.
@@ -88,15 +106,18 @@ export function trouverApplication(
   applications: ApplicationInstallee[],
   demande: string,
 ): ApplicationInstallee | null {
-  const cible = aplatir(demande)
+  const cible = aplatir(sansEnveloppe(demande))
   if (!cible) return null
 
   const exact = applications.find((a) => aplatir(a.nom) === cible)
   if (exact) return exact
+  if (cible.length < LONGUEUR_MIN_RAPPROCHEMENT) return null
 
   const proches = applications
     .filter((a) => {
       const nom = aplatir(a.nom)
+      // Un nom vide ou minuscule serait « contenu » dans toutes les demandes.
+      if (nom.length < LONGUEUR_MIN_RAPPROCHEMENT) return false
       return nom.includes(cible) || cible.includes(nom)
     })
     .sort((a, b) => aplatir(a.nom).length - aplatir(b.nom).length)

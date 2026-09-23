@@ -1783,6 +1783,23 @@ trois.
 à l'envers : viser la mauvaise liste, retirer le message d'application
 introuvable ou la déclaration `<queries>` le fait rougir.
 
+### « J'ouvre מכבי » : la cause était un nom VIDE, pas une phrase trop longue (23 sept. 2026)
+
+Trois fois le 18 sept. (« Ouvre l'application WhatsApp », « … YouTube »),
+après le 5 et le 6 sept. Les deux premières fois, on avait écarté les phrases
+longues et les « un épisode » — des contournements, la cause restait.
+`aplatir` (`actionsTelephone.ts`) ne gardait que `a-z0-9` : « מכבי » devenait
+`""`, et `cible.includes("")` est vrai pour TOUTE demande. Le tri par longueur
+mettait ensuite le nom vide en tête. Toute demande qui ne tombait pas pile sur
+un nom ouvrait donc la première application au nom hébreu.
+
+Maintenant : les lettres de tous les alphabets restent (`\p{L}\p{N}`), un nom
+de moins de trois caractères ne se rapproche de rien, et « l'application X »
+est retirée avant de comparer. `verifier-trouver-application.ts` (CI) rejoue
+les deux phrases du 18 sept. — essayé à l'envers, quatre contrôles rougissent.
+**Tout `aplatir` qui fait un `includes` doit garder les lettres hébreues** :
+son téléphone est à moitié en hébreu.
+
 ## Chercher passe par les IA de son téléphone, jamais par une API
 
 Sa décision du 5 sept. 2026, à ne pas rouvrir : « je ne veux pas payer, je
@@ -3831,6 +3848,7 @@ node --experimental-strip-types scripts/verifier-bulle.ts        # la bulle flot
 node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l'écran d'une autre app : et surtout ne RIEN toucher quand on n'est pas sûr, sans réseau
 node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau
 node --experimental-strip-types scripts/verifier-apps-par-defaut.ts  # les applications proposées sont celles du téléphone, sans réseau
+node --experimental-strip-types scripts/verifier-trouver-application.ts  # « ouvre l'application WhatsApp » ouvre WhatsApp, jamais מכבי, sans réseau
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone
