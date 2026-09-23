@@ -381,3 +381,80 @@ export function signalementDicte(phrase: string): Echec | null {
     correctionSuggeree: propre,
   }
 }
+
+/**
+ * L'inverse d'une plainte : il dit que c'est BIEN (chantier c2fd0205, 23 sept.
+ * 2026). Ses mots : « Quand je dis à Jarvis que tout se passe bien ou qu'il a
+ * bien accompli une tâche, la mémoire doit s'entraîner en continuant à aller
+ * dans ce sens […] pour que lorsque Claude travaille il sait dans quelle
+ * direction aller. »
+ *
+ * Même forme que `echecSignalePar`, et rangé pareil : la FAMILLE d'action et
+ * sa cible, jamais la phrase — dix « parfait » après une tâche créée font une
+ * ligne de `ce_qui_marche` qui dit « dix fois ».
+ *
+ * PLUS ÉTROIT QU'IL N'Y PARAÎT, exprès :
+ * - une plainte l'emporte toujours (« ça marche PAS » contient « ça marche ») ;
+ * - la phrase doit être COURTE : « parfait, maintenant ajoute une tâche pour
+ *   demain » est une nouvelle demande, pas un compliment ;
+ * - le tour précédent doit avoir FAIT quelque chose : un « ça marche » après
+ *   « Tu veux dire la villa Dan ? » veut dire « oui », pas « bravo » ;
+ * - « c'est bon », « ok », « merci » seuls n'y sont PAS : ce sont ses mots
+ *   pour valider un envoi (`confirmationEnvoi.ts`) ou clore, pas pour juger.
+ */
+const SATISFACTIONS = [
+  "ca marche",
+  "ca a marche",
+  "ca fonctionne",
+  "ca a fonctionne",
+  "parfait",
+  "impeccable",
+  "nickel",
+  "genial",
+  "super",
+  "bravo",
+  "bien joue",
+  "top",
+  "excellent",
+  "c est exactement ca",
+  "c est exactement ce que",
+  "tu as bien fait",
+  "bien fait",
+  "tout se passe bien",
+  "ca se passe bien",
+]
+
+/** Au-delà, ce n'est plus un compliment : c'est une nouvelle demande. */
+export const MOTS_MAX_SATISFACTION = 10
+
+/** Ce qu'on retient quand il dit que c'est bien. */
+export interface Satisfaction {
+  titre: string
+  paroles: string
+  contexte: string
+}
+
+export function estUneSatisfaction(phrase: string): boolean {
+  if (estUnePlainte(phrase)) return false
+  const plat = aplatir(phrase)
+  if (!plat || plat.split(" ").length > MOTS_MAX_SATISFACTION) return false
+  return SATISFACTIONS.some((m) => new RegExp(`(^| )${m}( |$)`).test(plat))
+}
+
+export function satisfactionSignaleePar(
+  phrase: string,
+  precedent: TourJarvis | null,
+  maintenant: number,
+): Satisfaction | null {
+  if (!precedent) return null
+  if (maintenant - precedent.at > FENETRE_PLAINTE_MS) return null
+  if (estUneNonAction(precedent.actions)) return null
+  if (!estUneSatisfaction(phrase)) return null
+  return {
+    titre: `${precedent.actions[0]}${precedent.cible ? ` (${precedent.cible})` : ""}`,
+    paroles: phrase.replace(/\s+/g, " ").trim(),
+    contexte: `Demande : « ${precedent.transcript} ».${
+      precedent.reponse ? ` Jarvis avait répondu : « ${precedent.reponse} ».` : ""
+    }`,
+  }
+}

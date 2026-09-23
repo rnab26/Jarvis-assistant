@@ -33,7 +33,15 @@ import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
 import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
 import { signalerErreur } from "@/lib/erreurs"
-import { cibleDeLAction, echecDeLAction, echecSignalePar, signalementDicte, type TourJarvis } from "@/lib/retours"
+import {
+  cibleDeLAction,
+  echecDeLAction,
+  echecSignalePar,
+  satisfactionSignaleePar,
+  signalementDicte,
+  type TourJarvis,
+} from "@/lib/retours"
+import { noterCeQuiMarche } from "@/lib/ceQuiMarche"
 import { delaiAvantAction } from "@/lib/enchainementActions"
 import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import {
@@ -357,6 +365,9 @@ export function MicButton({
   // « réussi », et ce reproche partait dans le vide. C'est le SEUL témoin d'un
   // échec que Jarvis croit être une réussite (chantier 25a58902).
   const dernierTourRef = useRef<TourJarvis | null>(null)
+  // Le tour déjà salué d'un « parfait » (son `at`) : un second compliment sur
+  // la même action ne compte pas deux fois dans `ce_qui_marche`.
+  const tourSalueRef = useRef<number | null>(null)
 
   // Le brouillon de réponse Gmail préparé (prepare_email_reply), en attente
   // d'un « envoie » — même raison d'être que dernierTourRef : un mail part
@@ -376,6 +387,27 @@ export function MicButton({
         source,
         correctionSuggeree: signalement.correctionSuggeree,
       })
+    }
+
+    // L'inverse d'une plainte (chantier c2fd0205) : « parfait », « ça
+    // marche » juste après une action. Retenu dans `ce_qui_marche`, que les
+    // sessions lisent au démarrage pour ne pas casser ce qui lui convient.
+    //
+    // Le tour précédent N'EST PAS oublié ici, contrairement à une plainte :
+    // « parfait, vas-y envoie-le » après un message préparé est AUSSI la
+    // confirmation d'envoi, et `estConfirmationEnvoi` a besoin de ce tour
+    // juste après. On retient seulement qu'il a déjà été salué, pour ne pas
+    // compter deux fois « parfait… super » sur la même action.
+    const satisfaction = satisfactionSignaleePar(phrase, dernierTourRef.current, Date.now())
+    if (satisfaction) {
+      if (tourSalueRef.current !== dernierTourRef.current?.at) {
+        tourSalueRef.current = dernierTourRef.current?.at ?? null
+        noterCeQuiMarche(satisfaction.titre, {
+          paroles: satisfaction.paroles,
+          contexte: satisfaction.contexte,
+        })
+      }
+      return
     }
 
     const echec = echecSignalePar(phrase, dernierTourRef.current, Date.now())

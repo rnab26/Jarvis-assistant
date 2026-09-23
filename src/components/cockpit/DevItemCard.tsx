@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { derniereMajChantier } from "@/lib/derniereMajChantier"
 import { DevItemFormDialog } from "@/components/cockpit/DevItemFormDialog"
 import { HistoriqueChantier } from "@/components/cockpit/HistoriqueChantier"
+import { ConstatChantier, type OnConstater } from "@/components/cockpit/ConstatChantier"
 import { ago, courtAuteur, KIND_LABEL, KIND_VARIANT } from "@/lib/journalBord"
 import {
   EXPLICATION_MARQUEUR,
@@ -109,7 +110,7 @@ const PRIORITES: { valeur: DevPriority; libelle: string }[] = [
   { valeur: "high", libelle: "Haute" },
 ]
 
-interface DevItemCardProps {
+export interface DevItemCardProps {
   item: DevItem
   /** Thèmes déjà utilisés, proposés à la saisie lors d'une modification. */
   themes?: string[]
@@ -122,6 +123,9 @@ interface DevItemCardProps {
   /** Répondre depuis le chantier, sans passer par le journal général. */
   onRepondre?: (itemId: string, body: string) => Promise<void>
   onMarquerTraite?: (id: string) => Promise<void>
+  /** Sa réponse sur un chantier « à constater » : ça marche, ou pas
+   * (chantier 56b1a074). Absent : le bloc ne s'affiche pas. */
+  onConstater?: OnConstater
   /** Mode sélection : la ligne se coche au lieu de se déplier. */
   selectionnable?: boolean
   selectionne?: boolean
@@ -143,6 +147,7 @@ export function DevItemCard({
   messages = [],
   onRepondre,
   onMarquerTraite,
+  onConstater,
   selectionnable = false,
   selectionne = false,
   onSelectionner,
@@ -400,6 +405,18 @@ export function DevItemCard({
       />
       </div>
 
+      {/* « Tu l'as essayé ? » — chantier 56b1a074, 23 sept. 2026 : « Impossible
+          de répondre aux chantiers "à constater" dans le cockpit […] Je peux
+          seulement cliquer et voir l'historique. » Le champ du bas existait,
+          mais rien n'arrivait au bout : le chantier restait « à constater »
+          quoi qu'il écrive. Ici, sa réponse FAIT quelque chose — archiver, ou
+          rendre le chantier à la session suivante. Juste sous la dernière
+          mise à jour, qui dit quoi essayer : c'est là qu'il lit, c'est là
+          qu'il répond. */}
+      {deplie && !selectionnable && !item.archived_at && marqueur === "a_constater" && onConstater && (
+        <ConstatChantier item={item} onConstater={onConstater} />
+      )}
+
       {deplie && !selectionnable && aHistoriqueSupplementaire && (
         <CarteRepliable titre="Voir tout l'historique">
           <CardContent>
@@ -576,3 +593,4 @@ function Puce({
     </button>
   )
 }
+

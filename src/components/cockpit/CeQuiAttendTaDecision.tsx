@@ -1,6 +1,5 @@
-import { Camera, ChevronDown, ChevronRight, HelpCircle, Mic, Send, Sparkles, X } from "lucide-react"
+import { Camera, ChevronDown, ChevronRight, FlaskConical, HelpCircle, Send, Sparkles, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CardContent } from "@/components/ui/card"
@@ -13,7 +12,11 @@ import {
   questionsEnAttente,
   reponsePrete,
 } from "@/lib/decisions"
-import { ajouterSegmentDicte, constructeurDictee, messageErreurDictee } from "@/lib/dicteeChamp"
+import { ajouterSegmentDicte } from "@/lib/dicteeChamp"
+import { BoutonDictee } from "@/components/cockpit/BoutonDictee"
+import { ConstatChantier, type OnConstater } from "@/components/cockpit/ConstatChantier"
+import { chantiersAConstater } from "@/lib/constatChantier"
+import { derniereMajChantier } from "@/lib/derniereMajChantier"
 import { ago, courtAuteur, extraitAuMot } from "@/lib/journalBord"
 import { alreadyNotified } from "@/lib/notifyError"
 import type { DevItem, DevLogEntry, EtatAction, OptionDecision } from "@/types/database"
@@ -82,6 +85,15 @@ interface CeQuiAttendTaDecisionProps {
    * montre déjà la question. En mode « une à la fois », elle devient celle
    * qu'on montre ; en liste, elle se déplie et se met en évidence. */
   entreeCible?: string | null
+  /**
+   * Sa réponse sur un chantier livré « à constater » (chantier 56b1a074,
+   * 23 sept. 2026) : « Impossible de répondre aux chantiers "à constater"
+   * dans le cockpit, contrairement à ce qui est prévu pour les sessions
+   * Claude Code. » Les questions des sessions avaient leur place ici ; les
+   * chantiers qui attendaient son essai, non — en « Vue simple », ils
+   * n'existaient même pas. Absent : ils ne s'affichent pas.
+   */
+  onConstater?: OnConstater
 }
 
 export function CeQuiAttendTaDecision({
@@ -91,8 +103,13 @@ export function CeQuiAttendTaDecision({
   onEtat,
   uneALaFois = false,
   entreeCible = null,
+  onConstater,
 }: CeQuiAttendTaDecisionProps) {
   const enAttente = useMemo(() => questionsEnAttente(messages), [messages])
+  const aEssayer = useMemo(
+    () => (onConstater ? chantiersAConstater(devItems) : []),
+    [devItems, onConstater],
+  )
   const titreParItem = useMemo(
     () => new Map(devItems.map((i) => [i.id, i.title])),
     [devItems],
@@ -118,7 +135,7 @@ export function CeQuiAttendTaDecision({
     </>
   )
 
-  if (enAttente.length === 0) {
+  if (enAttente.length === 0 && aEssayer.length === 0) {
     // En mode simplifié, cette carte est TOUT ce qu'il voit : un retour
     // silencieux (comme en mode normal) laisserait un écran vide, sans dire
     // qu'il n'y a justement plus rien à faire.
@@ -137,41 +154,56 @@ export function CeQuiAttendTaDecision({
   const actions = enAttente.filter((e) => e.kind === "action").length
   const badge = (
     <Badge variant="destructive" className="shrink-0">
-      {enAttente.length}
-      {actions > 0 ? ` dont ${actions} à faire` : ""}
+      {enAttente.length > 0 && (
+        <>
+          {enAttente.length}
+          {actions > 0 ? ` dont ${actions} à faire` : ""}
+        </>
+      )}
+      {enAttente.length > 0 && aEssayer.length > 0 ? " · " : ""}
+      {aEssayer.length > 0 ? `${aEssayer.length} à essayer` : ""}
     </Badge>
   )
 
   if (uneALaFois) {
-    const i = Math.min(indice, enAttente.length - 1)
-    const question = enAttente[i]
+    // Une seule file : ses questions d'abord (elles bloquent une session),
+    // puis les chantiers livrés qui attendent son essai.
+    const total = enAttente.length + aEssayer.length
+    const i = Math.min(indice, total - 1)
+    const question = i < enAttente.length ? enAttente[i] : null
+    const chantier = question ? null : aEssayer[i - enAttente.length]
     return (
       <CarteRepliable ouverteParDefaut titre={titre} badge={badge}>
         <CardContent className="flex flex-col gap-3">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              Question {i + 1} sur {enAttente.length}
+              {question
+                ? `Question ${i + 1} sur ${enAttente.length}`
+                : `À essayer ${i - enAttente.length + 1} sur ${aEssayer.length}`}
             </span>
-            {enAttente.length > 1 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIndice((n) => (n + 1) % enAttente.length)}
-              >
+            {total > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => setIndice((n) => (n + 1) % total)}>
                 Suivante
                 <ChevronRight className="size-3.5" />
               </Button>
             )}
           </div>
-          <Point
-            key={question.id}
-            question={question}
-            chantier={question.item_id ? titreParItem.get(question.item_id) : undefined}
-            onRepondre={onRepondre}
-            onEtat={onEtat}
-            forceOuvert
-            misEnEvidence={question.id === entreeCible}
-          />
+          {question ? (
+            <Point
+              key={question.id}
+              question={question}
+              chantier={question.item_id ? titreParItem.get(question.item_id) : undefined}
+              onRepondre={onRepondre}
+              onEtat={onEtat}
+              forceOuvert
+              misEnEvidence={question.id === entreeCible}
+            />
+          ) : (
+            chantier &&
+            onConstater && (
+              <PointAEssayer key={chantier.id} item={chantier} onConstater={onConstater} />
+            )
+          )}
         </CardContent>
       </CarteRepliable>
     )
@@ -190,8 +222,94 @@ export function CeQuiAttendTaDecision({
             misEnEvidence={question.id === entreeCible}
           />
         ))}
+        {aEssayer.length > 0 && onConstater && (
+          <AEssayer items={aEssayer} onConstater={onConstater} />
+        )}
       </CardContent>
     </CarteRepliable>
+  )
+}
+
+/**
+ * Les chantiers livrés qui attendent son essai, en UNE ligne repliée.
+ *
+ * Il y en avait une douzaine le 23 sept. Une ligne chacun aurait repoussé
+ * « Où j'en suis » et le tableau hors du premier écran — le budget de hauteur
+ * mesuré par `verifier-cockpit-web.mjs`, que le 17 sept. a déjà coûté cher
+ * (924 points pour quatre questions). Ouverte, elle en montre UN à la fois,
+ * avec « Suivant » : répondre fait passer tout seul au suivant, puisque le
+ * chantier quitte la liste.
+ */
+function AEssayer({ items, onConstater }: { items: DevItem[]; onConstater: OnConstater }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [indice, setIndice] = useState(0)
+  const i = Math.min(indice, items.length - 1)
+  const courant = items[i]
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-2.5">
+      <button
+        type="button"
+        aria-expanded={ouvert}
+        onClick={() => setOuvert(!ouvert)}
+        className="flex items-center gap-1.5 text-left"
+      >
+        {ouvert ? (
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <FlaskConical className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="text-sm">
+          {items.length} chantier{items.length > 1 ? "s" : ""} livré{items.length > 1 ? "s" : ""}{" "}
+          attend{items.length > 1 ? "ent" : ""} ton essai
+        </span>
+      </button>
+      {ouvert && courant && (
+        <>
+          {items.length > 1 && (
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                {i + 1} sur {items.length}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setIndice((n) => (n + 1) % items.length)}>
+                Suivant
+                <ChevronRight className="size-3.5" />
+              </Button>
+            </div>
+          )}
+          <PointAEssayer key={courant.id} item={courant} onConstater={onConstater} />
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Un chantier à essayer : son titre, ce qu'il faut essayer (la dernière mise
+ * à jour, écrite par la session qui l'a livré), et sa réponse. */
+function PointAEssayer({ item, onConstater }: { item: DevItem; onConstater: OnConstater }) {
+  const essai = derniereMajChantier(item.notes)
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-0.5">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="destructive" className="shrink-0">
+            À essayer
+          </Badge>
+          {item.theme && <span className="text-xs text-muted-foreground">{item.theme}</span>}
+        </span>
+        <span className="text-sm font-medium">{item.title}</span>
+      </div>
+      {essai && (
+        // Une dernière mise à jour peut faire plusieurs centaines de mots :
+        // elle défile dans sa boîte au lieu de pousser les boutons hors de
+        // l'écran.
+        <p className="max-h-40 overflow-y-auto whitespace-pre-line text-xs text-muted-foreground">
+          {essai}
+        </p>
+      )}
+      <ConstatChantier item={item} onConstater={onConstater} />
+    </div>
   )
 }
 
@@ -454,89 +572,5 @@ function Point({
       </>
       )}
     </div>
-  )
-}
-
-/**
- * Le micro du champ de commentaire. Un appui, une écoute, un résultat ajouté
- * au texte — l'API navigateur directement, en one-shot : pas le moteur
- * d'écoute de Jarvis (veille, mot-clé, session Capacitor), démesuré pour
- * dicter dans un champ.
- */
-function BoutonDictee({
-  cible,
-  onResultat,
-}: {
-  cible: string
-  onResultat: (segment: string) => void
-}) {
-  const [enEcoute, setEnEcoute] = useState(false)
-  const recoRef = useRef<SpeechRecognition | null>(null)
-
-  // Coupe le micro si la question disparaît (répondue, ou la carte se
-  // referme) pendant qu'on dicte encore.
-  useEffect(() => {
-    return () => {
-      recoRef.current?.abort()
-      recoRef.current = null
-    }
-  }, [])
-
-  function demarrer() {
-    const Ctor = constructeurDictee()
-    if (!Ctor) {
-      toast.error("La dictée n'est pas disponible sur ce navigateur.", {
-        description: "Écris ton commentaire directement dans le champ.",
-      })
-      return
-    }
-    const reco = new Ctor()
-    reco.lang = "fr-FR"
-    reco.continuous = false
-    reco.interimResults = false
-    reco.maxAlternatives = 1
-
-    reco.onresult = (event) => {
-      const transcript = event.results[0]?.[0]?.transcript
-      if (transcript) onResultat(transcript)
-    }
-    reco.onerror = (event) => {
-      const message = messageErreurDictee(event.error)
-      if (message) toast.error(message)
-    }
-    reco.onend = () => {
-      setEnEcoute(false)
-      recoRef.current = null
-    }
-
-    try {
-      reco.start()
-      recoRef.current = reco
-      setEnEcoute(true)
-    } catch {
-      toast.error("Impossible de démarrer le micro, réessaie.")
-    }
-  }
-
-  function arreter() {
-    recoRef.current?.stop()
-  }
-
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      className="absolute right-1 top-1"
-      aria-pressed={enEcoute}
-      aria-label={
-        enEcoute
-          ? "En écoute… appuie pour arrêter"
-          : `Dicter ton commentaire sur : ${cible.slice(0, 60)}`
-      }
-      onClick={enEcoute ? arreter : demarrer}
-    >
-      <Mic className={`size-4 ${enEcoute ? "animate-pulse text-destructive" : "text-muted-foreground"}`} />
-    </Button>
   )
 }

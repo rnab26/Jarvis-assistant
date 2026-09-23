@@ -2,6 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { type SupabaseClient, createClient } from "jsr:@supabase/supabase-js@2"
 import { GoogleGenAI, Modality, Type } from "npm:@google/genai"
 import { rappelerCorrections } from "../_shared/corrections.ts"
+import { rappelerCeQuiMarche } from "../_shared/ceQuiMarche.ts"
 import { signalerPanne } from "../_shared/pannes.ts"
 import { CONSIGNE_ENVIRONNEMENT } from "../_shared/environnement.ts"
 import { rappelerBranchements } from "../_shared/branchements.ts"
@@ -229,13 +230,14 @@ Deno.serve(async (req) => {
     // avalent leurs erreurs et rendent ""), donc Promise.all ne change que le
     // temps. L'ordre du texte final reste celui d'avant.
     const avantLectures = Date.now()
-    const [branchements, souvenirs, corrections] = await Promise.all([
+    const [branchements, souvenirs, corrections, marche] = await Promise.all([
       rappelerBranchements(supabase),
       souvenirsDeLUtilisateur(supabase),
       rappelerCorrections(supabase),
+      rappelerCeQuiMarche(supabase),
     ])
     tLectures = Date.now() - avantLectures
-    contexte = `${contexte}\n${branchements}\n${souvenirs}\n${corrections}`.trim()
+    contexte = `${contexte}\n${branchements}\n${souvenirs}\n${corrections}\n${marche}`.trim()
 
     // Les jetons éphémères ne vivent que dans la version v1alpha de l'API.
     const avantGoogle = Date.now()

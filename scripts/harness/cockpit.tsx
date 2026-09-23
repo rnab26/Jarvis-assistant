@@ -17,6 +17,9 @@ import { DevLogFeed } from "@/components/cockpit/DevLogFeed"
 import { DoublonsTrouves } from "@/components/cockpit/DoublonsTrouves"
 import { ErreursJarvis } from "@/components/cockpit/ErreursJarvis"
 import { CeQuiAttendTaDecision } from "@/components/cockpit/CeQuiAttendTaDecision"
+import { DevItemCard } from "@/components/cockpit/DevItemCard"
+import type { OnConstater } from "@/components/cockpit/ConstatChantier"
+import { notesApresConstat } from "@/lib/constatChantier"
 import { OuJenSuis } from "@/components/cockpit/OuJenSuis"
 import { FILTRE_VIDE, type FiltreCockpit } from "@/lib/sections"
 import type { FusionAnnulable } from "@/hooks/useDevItems"
@@ -894,13 +897,86 @@ function BancDuCockpit() {
   )
 }
 
+
+/**
+ * Répondre sur un chantier « à constater » (chantier 56b1a074) : sa propre
+ * page, pour la même raison que `UneALaFoisDemo` — des chantiers à essayer
+ * dans le banc principal changeraient les comptes que d'autres parcours y
+ * vérifient. `onConstater` fait ce que fait `constater_chantier` en base, avec
+ * la VRAIE fonction pure qui calcule la note : le banc ne recopie pas ce qu'il
+ * doit vérifier.
+ */
+function ConstatDemo({ simple }: { simple: boolean }) {
+  const livre = (id: string, titre: string, essai: string): DevItem => ({
+    ...chantier(titre, "Le téléphone"),
+    id,
+    notes: `[LIVRÉ — RESTE À CONSTATER SUR SON TÉLÉPHONE]\n\nLe code est fini.\n\n${essai}`,
+  })
+  const [items, setItems] = useState<DevItem[]>([
+    livre("k1", "Glisser la bulle vers le bas pour la fermer", "Essaie : fais glisser la bulle tout en bas de l'écran."),
+    livre("k2", "Le micro rend la main plus vite", "Essaie : appuie sur le cœur et parle tout de suite."),
+    { ...chantier("Un chantier libre, pas à essayer", "Le téléphone"), id: "k3", notes: "[LIBRE]\n\nÀ faire." },
+  ])
+  const onConstater: OnConstater = async (item, verdict, paroles) => {
+    setItems((liste) =>
+      liste.map((i) =>
+        i.id === item.id
+          ? {
+              ...i,
+              notes: notesApresConstat(i.notes, verdict, paroles, new Date()),
+              status: verdict === "marche" ? "done" : "todo",
+              archived_at: verdict === "marche" ? new Date().toISOString() : null,
+            }
+          : i,
+      ),
+    )
+  }
+  return (
+    <div className="flex flex-col gap-4 p-3">
+      <Toaster />
+      <CeQuiAttendTaDecision
+        messages={[]}
+        devItems={items}
+        uneALaFois={simple}
+        onRepondre={async () => {}}
+        onEtat={async () => {}}
+        onConstater={onConstater}
+      />
+      <div className="divide-y rounded-lg border p-2" aria-label="Tableau du banc">
+        {items
+          .filter((i) => !i.archived_at)
+          .map((i) => (
+            <DevItemCard
+              key={i.id}
+              item={i}
+              onUpdate={async () => {}}
+              onDelete={async () => {}}
+              onConstater={onConstater}
+            />
+          ))}
+      </div>
+      <p data-testid="archives">
+        Archivés : {items.filter((i) => i.archived_at).map((i) => i.title).join(" | ") || "aucun"}
+      </p>
+    </div>
+  )
+}
+
 // Sa propre petite page, plutôt qu'un bloc de plus dans `BancDuCockpit` :
 // celui-ci est déjà ouvert et déplié dès le montage (forceOuvert), et
 // mélangé au reste il fausserait les comptes globaux (« chaque point porte
 // SON champ de commentaire », par exemple) que d'autres parcours vérifient
 // sur toute la page. Même précédent que `?volume=1` / `?calme=1`.
 const UNE_A_LA_FOIS = new URLSearchParams(location.search).has("une-a-la-fois")
+const CONSTAT = new URLSearchParams(location.search).has("constat")
+const CONSTAT_SIMPLE = new URLSearchParams(location.search).has("simple")
 
 createRoot(document.getElementById("root")!).render(
-  UNE_A_LA_FOIS ? <UneALaFoisDemo /> : <BancDuCockpit />,
+  CONSTAT ? (
+    <ConstatDemo simple={CONSTAT_SIMPLE} />
+  ) : UNE_A_LA_FOIS ? (
+    <UneALaFoisDemo />
+  ) : (
+    <BancDuCockpit />
+  ),
 )

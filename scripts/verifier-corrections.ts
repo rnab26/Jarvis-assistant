@@ -13,6 +13,7 @@
  * caractères à Gemini, et une erreur « serveur » ou « systeme » n'apprend
  * rien à un modèle de langue. La lui envoyer, c'est payer du quota pour rien.
  */
+import { formaterCeQuiMarche, MAX_CONFIRMATIONS } from "../supabase/functions/_shared/ceQuiMarche.ts"
 import {
   CATEGORIES_UTILES,
   MAX_CORRECTIONS,
@@ -166,6 +167,34 @@ verifier(
     CATEGORIES_UTILES.includes("action"),
   `retenues : ${CATEGORIES_UTILES.join(", ")}`,
 )
+
+// ── Ce qui MARCHE (chantier c2fd0205) : le pendant des corrections ────────
+{
+  const vide = formaterCeQuiMarche([])
+  verifier("rien de confirmé : aucun bloc, pas même un titre", vide === "")
+  const bloc = formaterCeQuiMarche([
+    { source: "voix", titre: "add_task", paroles: "Parfait merci", occurrences: 3 },
+    { source: "cockpit", titre: "Le son des medias lorsque jarvis est actif", paroles: "Ca marche tres bien" },
+  ])
+  verifier(
+    "une confirmation à la voix dit quelle ACTION continuer, et combien de fois",
+    bloc.includes("quand tu fais add_task — 3 fois : « Parfait merci »"),
+    bloc,
+  )
+  verifier(
+    "une confirmation du cockpit dit quelle FONCTIONNALITÉ marche, avec ses mots",
+    bloc.includes("« Le son des medias lorsque jarvis est actif »") && bloc.includes("« Ca marche tres bien »"),
+    bloc,
+  )
+  const dix = formaterCeQuiMarche(
+    Array.from({ length: 20 }, (_, i) => ({ source: "voix", titre: `action_${i}`, paroles: "x".repeat(500) })),
+  )
+  verifier(
+    "plafonné : huit lignes au plus, et ses mots tronqués",
+    dix.split("\n- ").length - 1 === MAX_CONFIRMATIONS && dix.length < 2000,
+    `${dix.length} caractères`,
+  )
+}
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

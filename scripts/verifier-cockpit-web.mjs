@@ -1497,6 +1497,99 @@ try {
 
   await uneALaFoisPage.close()
 
+  // ── Répondre sur un chantier « à constater » (chantier 56b1a074) ─────────
+  // Sa phrase du 23 sept. : « Impossible de répondre aux chantiers "à
+  // constater" dans le cockpit […] Je peux seulement cliquer et voir
+  // l'historique. » On vérifie ce qu'il fera, depuis l'écran : les trouver
+  // là où il répond déjà aux sessions, dire que ça marche, dire que ça ne
+  // marche pas — et que chaque réponse FAIT quelque chose.
+  const constatPage = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  await constatPage.goto(`${BASE}/scripts/harness/cockpit.html?constat=1`)
+  await constatPage.waitForSelector("text=Ce qui attend ta décision")
+  const ligneAEssayer = constatPage.getByRole("button", { name: /2 chantiers livrés attendent ton essai/ })
+  verifier(
+    "« Ce qui attend ta décision » compte les chantiers livrés à essayer, en UNE ligne",
+    await ligneAEssayer.isVisible(),
+  )
+  // Trois chantiers ouverts sur la page, dont un LIBRE : « 2 » ci-dessus dit
+  // déjà qu'il n'est pas compté. On vérifie seulement qu'il est bien là, pour
+  // que ce « 2 » ne soit pas vrai par accident.
+  verifier(
+    "…et le chantier LIBRE, bien présent sur la page, n'y est pas compté",
+    await constatPage.getByText("Un chantier libre, pas à essayer").first().isVisible(),
+  )
+  const hauteurRepliee = (await constatPage.getByText("Ce qui attend ta décision").locator("xpath=ancestor::*[contains(@class,'rounded')][1]").boundingBox())?.height ?? 0
+  verifier(
+    "repliée, la carte reste basse (budget du cockpit) : moins de 170 points",
+    hauteurRepliee > 0 && hauteurRepliee < 170,
+    `${Math.round(hauteurRepliee)} points`,
+  )
+  await ligneAEssayer.click()
+  await pause(150)
+  verifier(
+    "ouverte, elle en montre UN à la fois, avec ce qu'il faut essayer",
+    (await constatPage.getByText("1 sur 2").isVisible()) &&
+      (await constatPage.getByText("Essaie : fais glisser la bulle tout en bas de l'écran.").first().isVisible()),
+  )
+  const carte = constatPage.getByRole("group", { name: /Ton retour sur Glisser la bulle/ }).first()
+  await carte.getByRole("button", { name: "Ça ne marche pas" }).click()
+  await pause(100)
+  const envoyer = carte.getByRole("button", { name: "Envoyer" })
+  verifier(
+    "« Ça ne marche pas » exige ses mots : Envoyer reste grisé tant qu'il n'a rien écrit",
+    await envoyer.isDisabled(),
+  )
+  await carte.getByLabel("Ce qui ne marche pas").fill("La bulle revient toute seule après l'avoir glissée.")
+  verifier("…et s'active dès qu'il a écrit", await envoyer.isEnabled())
+  await envoyer.click()
+  await pause(300)
+  verifier(
+    "« Ça ne marche pas » : le chantier quitte la liste à essayer (redevenu libre)",
+    await constatPage.getByRole("button", { name: /1 chantier livré attend ton essai/ }).isVisible(),
+  )
+  const ligneBulle = constatPage.getByRole("region", { name: "Tableau du banc" }).or(constatPage.getByLabel("Tableau du banc"))
+  verifier(
+    "…et sur sa ligne du tableau, l'étiquette dit maintenant « libre »",
+    (await ligneBulle.getByRole("button", { name: /Glisser la bulle vers le bas/ }).getByText("libre", { exact: true }).count()) === 1,
+  )
+
+  // « Ça marche » depuis la CARTE du chantier dans le tableau : le même
+  // bloc, à l'endroit où il lit la dernière mise à jour.
+  await ligneBulle.getByRole("button", { name: /Le micro rend la main plus vite/ }).click()
+  await pause(150)
+  const blocCarte = ligneBulle.getByRole("group", { name: /Ton retour sur Le micro rend la main/ })
+  verifier("déplié, un chantier à constater porte « Tu l'as essayé ? »", await blocCarte.isVisible())
+  await blocCarte.getByRole("button", { name: "Ça marche" }).click()
+  await pause(100)
+  await blocCarte.getByRole("button", { name: "Confirmer" }).click()
+  await pause(300)
+  verifier(
+    "« Ça marche » : le chantier est archivé",
+    (await constatPage.getByTestId("archives").innerText()).includes("Le micro rend la main plus vite"),
+    await constatPage.getByTestId("archives").innerText(),
+  )
+  verifier(
+    "…et plus rien n'attend son essai : la ligne disparaît",
+    (await constatPage.getByText(/attend(ent)? ton essai/).count()) === 0,
+  )
+  await constatPage.close()
+
+  // En « Vue simple », les chantiers à essayer suivent ses questions dans la
+  // MÊME file : c'était l'écran où ils n'existaient pas du tout.
+  const constatSimple = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
+  await constatSimple.goto(`${BASE}/scripts/harness/cockpit.html?constat=1&simple=1`)
+  await constatSimple.waitForSelector("text=Ce qui attend ta décision")
+  verifier(
+    "« Vue simple » : les chantiers à essayer y sont, numérotés",
+    await constatSimple.getByText("À essayer 1 sur 2").isVisible(),
+  )
+  verifier(
+    "…avec les deux boutons, sans avoir à déplier quoi que ce soit",
+    (await constatSimple.getByRole("button", { name: "Ça marche" }).first().isVisible()) &&
+      (await constatSimple.getByRole("button", { name: "Ça ne marche pas" }).first().isVisible()),
+  )
+  await constatSimple.close()
+
 } finally {
   if (navigateur) await navigateur.close()
   vite.kill()

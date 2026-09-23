@@ -18,6 +18,8 @@ import {
   estUnePlainte,
   estUneRedite,
   estUnSignalementExplicite,
+  estUneSatisfaction,
+  satisfactionSignaleePar,
   signalementDicte,
   themeDeLAction,
   type TourJarvis,
@@ -416,6 +418,65 @@ verifier(
   signalementDicte("Signale ce problème de comportement") === null,
   "moins de sept mots utiles : la même règle que pour une plainte nue (correctionDite)",
 )
+
+// ── Ce qui MARCHE (chantier c2fd0205) : l'inverse d'une plainte ───────────
+// Mesuré le 23 sept. 2026 sur ses 477 vraies dictées (`echanges`) : ZÉRO ne
+// déclenche `estUneSatisfaction`. Ni « merci » (07/09), ni « est-ce que tu
+// fonctionnes » (03/09), ni les longues demandes qui contiennent « fonctionne »
+// ou « super » au milieu d'une phrase (« Gérer la superposition des voix… »).
+{
+  const apres = tour({ actions: ["add_task"], cible: null, transcript: "Rappelle-moi d'appeler Dan demain" })
+  const s = satisfactionSignaleePar("Parfait, merci Jarvis", apres, T0 + 20_000)
+  verifier(
+    "« parfait » juste après une action : retenu, rangé par FAMILLE d'action",
+    s !== null && s.titre === "add_task",
+    JSON.stringify(s),
+  )
+  verifier(
+    "…avec ses mots et ce qu'il avait demandé, comme preuve",
+    !!s && s.paroles === "Parfait, merci Jarvis" && s.contexte.includes("Rappelle-moi d'appeler Dan demain"),
+  )
+  verifier(
+    "« ça marche » après l'ouverture d'une app : la cible fait partie du titre",
+    satisfactionSignaleePar("ça marche très bien", tour(), T0 + 5_000)?.titre === "open_app (Apple Music)",
+  )
+  verifier(
+    "« tout se passe bien » — sa propre formule dans le chantier — est reconnu",
+    estUneSatisfaction("tout se passe bien"),
+  )
+
+  // Le silence, qui compte autant.
+  verifier("« ça marche pas » est une PLAINTE, jamais une satisfaction", !estUneSatisfaction("ça marche pas"))
+  verifier("« ça ne fonctionne pas » non plus", !estUneSatisfaction("ça ne fonctionne pas"))
+  verifier("« merci » seul ne juge rien", !estUneSatisfaction("merci"))
+  verifier(
+    "« c'est bon » est son mot pour VALIDER un envoi, pas pour juger",
+    !estUneSatisfaction("c'est bon envoie"),
+  )
+  verifier(
+    "une vraie phrase du 18/09 qui contient « fonctionne » au milieu n'en est pas une",
+    !estUneSatisfaction(
+      "Gérer la bulle Jarvis : la bulle ne fonctionne pas toujours, le micro devrait s'activer simplement",
+    ),
+  )
+  verifier(
+    "« super » dans un mot plus long (« superposition ») ne compte pas",
+    !estUneSatisfaction("gérer la superposition des voix"),
+  )
+  verifier(
+    "« parfait, maintenant ajoute une tâche pour demain matin à la première heure » : nouvelle demande",
+    !estUneSatisfaction("parfait maintenant ajoute une tâche pour demain matin à la première heure"),
+  )
+  verifier(
+    "« ça marche » après une QUESTION de Jarvis veut dire « oui », pas « bravo »",
+    satisfactionSignaleePar("ça marche", tour({ actions: ["clarify"] }), T0 + 5_000) === null,
+  )
+  verifier(
+    "trop tard (au-delà de la fenêtre) : on ne sait plus de quoi il parle",
+    satisfactionSignaleePar("parfait", tour(), T0 + 10 * 60_000) === null,
+  )
+  verifier("sans tour précédent : rien", satisfactionSignaleePar("parfait", null, T0) === null)
+}
 
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

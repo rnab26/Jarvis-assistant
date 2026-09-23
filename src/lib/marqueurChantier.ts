@@ -142,6 +142,16 @@ export function marqueurDe(item: DevItem): Marqueur | null {
  * « vas-y ». Un chantier marqué « [LIBRE pour la partie réglages, À CADRER
  * pour le reste] » (cas réel) ressort donc « à cadrer ».
  */
+/**
+ * Le marqueur que porte le CONTENU d'un crochet, lu avec la même table que
+ * l'étiquette. Exporté pour `constatChantier.ts`, qui doit savoir si le
+ * crochet qu'il s'apprête à remplacer est bien « à constater » — sans écrire
+ * une seconde table.
+ */
+export function marqueurDeCrochet(contenu: string): Marqueur | null {
+  return classer(normaliserRecherche(contenu).slice(0, 60))
+}
+
 function classer(entete: string): Marqueur | null {
   if (entete.includes("doublon")) return "doublon"
   if (entete.includes("a faire par raphael")) return "pour_raphael"

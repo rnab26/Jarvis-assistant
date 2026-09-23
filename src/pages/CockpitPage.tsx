@@ -123,6 +123,7 @@ export function CockpitPage() {
     deleteDevItem,
     archiveDevItem,
     unarchiveDevItem,
+    constaterChantier,
     updateManyDevItems,
     archiveManyDevItems,
     deleteManyDevItems,
@@ -258,6 +259,7 @@ export function CockpitPage() {
           onRepondre={devLog.repondreAQuestion}
           onEtat={devLog.changerEtatAction}
           entreeCible={entreeCible}
+          onConstater={constaterChantier}
           uneALaFois
         />
       ) : (
@@ -298,6 +300,7 @@ export function CockpitPage() {
             onRepondre={devLog.repondreAQuestion}
             onEtat={devLog.changerEtatAction}
             entreeCible={entreeCible}
+            onConstater={constaterChantier}
           />
 
           <NouveauChantier
@@ -398,6 +401,7 @@ export function CockpitPage() {
                 messages={devLog.entries}
                 onRepondre={(itemId, body) => devLog.addEntry(body, "reponse", itemId)}
                 onMarquerTraite={devLog.markAnswered}
+                onConstater={constaterChantier}
               />
             )}
           </div>

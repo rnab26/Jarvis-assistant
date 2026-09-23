@@ -9,6 +9,10 @@ import { errorMessage } from "@/lib/errorMessage"
 import { withErrorToast } from "@/lib/notifyError"
 import { supabase } from "@/lib/supabase"
 import { withTimeout } from "@/lib/withTimeout"
+import { proposerAnnulation } from "@/lib/annulation"
+import { notesApresConstat, type Verdict } from "@/lib/constatChantier"
+import { cheminPhoto } from "@/lib/decisions"
+import { compresserPhoto } from "@/lib/photoClient"
 import type { DevItem, DevItemInput, DevPriority, DevStatus } from "@/types/database"
 
 /** Ce qu'il faut retenir avant une fusion pour pouvoir l'« Annuler » :
@@ -372,6 +376,70 @@ export function useDevItems(userId: string | undefined) {
     })
   }
 
+  /**
+   * Sa réponse sur un chantier « à constater » (chantier 56b1a074) : « Ça
+   * marche » l'archive et le retient dans `ce_qui_marche` ; « Ça ne marche
+   * pas » le rend à la session suivante avec ses mots. Tout part d'un seul
+   * bloc côté base (`constater_chantier`, migration 0053) — la note calculée
+   * ici, le reste là-bas.
+   *
+   * La photo part AVANT l'écriture, comme pour une réponse du journal : si
+   * l'envoi échoue, rien n'est enregistré — une réponse qui renverrait vers
+   * une capture inexistante serait pire que pas de réponse.
+   */
+  async function constaterChantier(
+    item: DevItem,
+    verdict: Verdict,
+    paroles: string,
+    photo: File | null,
+  ) {
+    if (!userId) return
+    await withErrorToast("Impossible d'enregistrer ton retour", async () => {
+      let chemin: string | null = null
+      if (photo) {
+        const compressee = await compresserPhoto(photo)
+        chemin = cheminPhoto(userId, crypto.randomUUID())
+        const { error: envoiError } = await supabase.storage
+          .from("cockpit")
+          .upload(chemin, compressee, { contentType: "image/jpeg", upsert: false })
+        if (envoiError) throw envoiError
+      }
+
+      const { data, error } = await supabase.rpc("constater_chantier", {
+        p_item: item.id,
+        p_marche: verdict === "marche",
+        p_paroles: paroles.trim() || null,
+        p_photo: chemin,
+        p_notes_avant: item.notes ?? "",
+        p_notes_apres: notesApresConstat(item.notes, verdict, paroles, new Date()),
+      })
+      if (error) throw error
+      await refresh()
+
+      const faits = (data ?? {}) as { log_id?: string; marche_id?: string | null }
+      proposerAnnulation(
+        verdict === "marche"
+          ? `C'est noté : « ${item.title} » marche. Archivé, et retenu pour ne pas le casser.`
+          : `Retour envoyé : « ${item.title} » est à reprendre par la prochaine session.`,
+        [item],
+        async ([avant]) => {
+          await withErrorToast("Impossible d'annuler ton retour", async () => {
+            const { error: annulationError } = await supabase.rpc("annuler_constat", {
+              p_item: avant.id,
+              p_notes: avant.notes,
+              p_status: avant.status,
+              p_archived_at: avant.archived_at,
+              p_log: faits.log_id ?? null,
+              p_marche: faits.marche_id ?? null,
+            })
+            if (annulationError) throw annulationError
+            await refresh()
+          })
+        },
+      )
+    })
+  }
+
   async function unarchiveDevItem(id: string) {
     await withErrorToast("Impossible de désarchiver le chantier", async () => {
       const { error } = await supabase
@@ -436,6 +504,7 @@ export function useDevItems(userId: string | undefined) {
     deleteDevItem,
     archiveDevItem,
     unarchiveDevItem,
+    constaterChantier,
     libererReservation,
     updateManyDevItems,
     archiveManyDevItems,

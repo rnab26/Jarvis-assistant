@@ -49,6 +49,11 @@ const RAPPELS: { fichier: string; fonction: string; fin: string }[] = [
     fin: "",
   },
   {
+    fichier: "supabase/functions/_shared/ceQuiMarche.ts",
+    fonction: "export async function rappelerCeQuiMarche",
+    fin: "",
+  },
+  {
     fichier: "supabase/functions/live-jeton/index.ts",
     fonction: "async function souvenirsDeLUtilisateur",
     fin: "Deno.serve",

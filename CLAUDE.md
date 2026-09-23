@@ -456,6 +456,56 @@ exact `libre`. Ce nouveau marqueur compte aussi dans « pour toi » (voir
 `[À CADRER]`, une seule notion pour « ça attend une décision ou un geste de
 Raphaël », pas une deuxième à côté.
 
+### Il répond sur un chantier « à constater », et ce qui marche est retenu (migration 0053)
+
+Chantiers `56b1a074`, `fa209b63`, `6af9c51b`, `c2fd0205`, 23 sept. 2026. Ses
+mots : « Impossible de répondre aux chantiers "à constater" dans le cockpit,
+contrairement à ce qui est prévu pour les sessions Claude Code » ; « les
+chantiers ne sont pas mis à jour quand les sessions terminent » ; « savoir bien
+mémoriser lorsqu'on signale que quelque chose fonctionne bien pour ne pas
+régresser ». **Mesuré le jour même** : 93f6ee23 portait son « Ca marche tres
+bien » depuis six jours sans avoir été archivé — sa réponse partait dans le
+journal, et rien au bout ne bougeait.
+
+- **« Tu l'as essayé ? » — Ça marche / Ça ne marche pas**, sur la carte dépliée
+  d'un chantier `a_constater` ET dans « Ce qui attend ta décision » (une seule
+  ligne repliée, « N chantiers livrés attendent ton essai », un à la fois une
+  fois ouverte — le budget de hauteur du cockpit tient ; en « Vue simple » ils
+  suivent ses questions dans la même file). `ConstatChantier.tsx`.
+- **Ça marche** archive, écrit sa réponse au journal, et l'inscrit dans
+  `ce_qui_marche`. **Ça ne marche pas** exige ses mots et rend le chantier
+  `[LIBRE — RETOUR DE RAPHAËL …]` : la session suivante le reprend. « Annuler »
+  (8 s) défait les TROIS écritures.
+- **La note se calcule en TypeScript** (`src/lib/constatChantier.ts`, pur,
+  `verifier-constat-chantier.ts`) — le marqueur ne se lit jamais en SQL. Le
+  crochet d'en-tête est REMPLACÉ seulement s'il est simple, non imbriqué, et
+  porte bien « à constater » ; sinon le nouveau est posé au-dessus, séparé par
+  une ligne de texte (deux crochets collés, `marqueurDe` lirait « reste à
+  constater » avant « libre »). **Le crochet se lit en comptant les crochets
+  imbriqués**, jamais avec `^\[([^\]]*)\]` : c'est le piège payé à la main le
+  18 sept.
+- **La base écrit tout d'un bloc** (`constater_chantier`) et **refuse si la note
+  a bougé depuis que l'écran l'a lue** — sinon on écraserait ce qu'une session
+  vient d'écrire. Son propre constat ne lui revient PAS en notification
+  « chantier livré » (`jarvis.constat_par_raphael`, lu par
+  `notifier_push_chantiers_livres`).
+- **À la voix** : « parfait », « ça marche », « tout se passe bien » juste après
+  une action (`satisfactionSignaleePar`, `retours.ts`) — rangé par famille
+  d'action comme les échecs. Mesuré sur ses 477 vraies dictées : **zéro**
+  déclenchement à tort. « c'est bon », « ok », « merci » n'y sont PAS : ce sont
+  ses mots pour valider un envoi. **Le tour précédent n'est pas oublié** après
+  un compliment, contrairement à une plainte : « parfait, vas-y envoie-le » est
+  aussi une confirmation d'envoi.
+- **Où ça sert** : le hook de démarrage a deux blocs de plus — « Ses réponses
+  restées sans suite » (une réponse plus récente que le dernier changement du
+  chantier dans `dev_items_historique`) et « Ce qu'il a confirmé qui MARCHE —
+  ne le casse pas ». Et Jarvis le reçoit dans sa consigne
+  (`_shared/ceQuiMarche.ts`, voice-command ET live-jeton).
+
+`ANON_KEY=... node scripts/verifier-constat-reel.mjs` couvre ce que le hors
+ligne ne peut pas : les trois écritures d'un bloc, l'annulation, le refus d'une
+note périmée, le cloisonnement RLS, le regroupement des « parfait ».
+
 ### Un chantier garde ce qu'on y a écrit (migration 0027)
 
 Initiative d'une session le 6 sept. 2026, chantier `765b3d02`. La raison est
@@ -3620,6 +3670,8 @@ node --experimental-strip-types scripts/verifier-sessions-autonomes.ts  # une se
 node --experimental-strip-types scripts/verifier-historique-chantier.ts  # une note complétée n'est pas une note écrasée, sans réseau
 node --experimental-strip-types scripts/verifier-fil-journal.ts  # reprendre une discussion au journal, et dire ce qu'on ne montre pas, sans réseau
 node --experimental-strip-types scripts/verifier-derniere-maj.ts  # un chantier déplié montre sa dernière mise à jour d'abord, jamais le marqueur ni une entrée du milieu, sans réseau
+node --experimental-strip-types scripts/verifier-constat-chantier.ts  # « Ça marche / Ça ne marche pas » sur un chantier livré : le crochet d'en-tête change, rien ne se perd, sans réseau
+ANON_KEY=... node scripts/verifier-constat-reel.mjs      # sa réponse sur un chantier livré : trois écritures d'un bloc, annulation, RLS, « ce qui marche »
 ANON_KEY=... node scripts/verifier-historique-reel.mjs   # un chantier garde ce qu'on y a écrit : trigger, restauration tracée, RLS
 node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru dans un vrai navigateur, en écran de téléphone
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)

@@ -501,6 +501,14 @@ jobs:
       - name: Un chantier garde ce qu'on y a écrit
         run: node --experimental-strip-types scripts/verifier-historique-chantier.ts
 
+      # Le 23 sept. : « impossible de repondre aux chantiers a constater ».
+      # Ce qui peut etre FAUX EN SILENCE ici : un « ca ne marche pas » qui ne
+      # change pas le crochet d'en-tete laisse le chantier « a constater »,
+      # et aucune session ne le reprend. Et un crochet imbrique mal lu tronque
+      # la note, le piege deja paye a la main le 18 sept.
+      - name: Repondre sur un chantier a constater
+        run: node --experimental-strip-types scripts/verifier-constat-chantier.ts
+
       # Le 17 sept. : 304 entrees au journal, UNE SEULE repondable, et 60
       # affichees sans un mot. Ce qui se verifie ici est surtout le SILENCE —
       # un compteur qui s'affiche quand tout est visible, ou une citation

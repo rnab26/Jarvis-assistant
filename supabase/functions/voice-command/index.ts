@@ -6,6 +6,7 @@ import { CONSIGNE_HONNETETE } from "../_shared/honnetete.ts"
 import { CONSIGNE_QUESTION_POSEE } from "../_shared/questionPosee.ts"
 import { rappelerBranchements } from "../_shared/branchements.ts"
 import { rappelerCorrections } from "../_shared/corrections.ts"
+import { rappelerCeQuiMarche } from "../_shared/ceQuiMarche.ts"
 import { decisionDesigneeClairement, pointsCeQuiLAttend, rappelerCeQuiLAttend } from "../_shared/ceQuiLAttend.ts"
 import { rappelerMoteurActif } from "../_shared/moteurActif.ts"
 import { appelerModele, moteurNonConfigure, phrasePourEchec } from "../_shared/modele.ts"
@@ -778,7 +779,7 @@ Documents existants de l'utilisateur : ${JSON.stringify(documents)}.
 Contacts existants de l'utilisateur : ${JSON.stringify(contacts)}.
 Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
 Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?? [])}.
-Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${blocTacheEnAttente(tacheEnAttente)}${await rappelerBranchements(supabase)}${await rappelerMoteurActif(supabase)}${await rappelerCorrections(supabase)}${await rappelerCeQuiLAttend(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
+Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${blocTacheEnAttente(tacheEnAttente)}${await rappelerBranchements(supabase)}${await rappelerMoteurActif(supabase)}${await rappelerCorrections(supabase)}${await rappelerCeQuiMarche(supabase)}${await rappelerCeQuiLAttend(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
 
     const {
       args,

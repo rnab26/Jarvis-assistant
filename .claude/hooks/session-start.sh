@@ -71,6 +71,23 @@ attentes=$(interroger "select coalesce(string_agg(format('- %s | %s | pose le %s
 # sortait, et la question se reposait.
 reponses=$(interroger "select coalesce(string_agg(format('- %s%s%s', to_char(created_at, 'DD/MM HH24:MI'), case when item_id is not null then ' | chantier ' || item_id else '' end, chr(10) || '    ' || left(replace(body, chr(10), ' '), 400) || case when photo_chemin is not null then chr(10) || '    capture jointe : ' || photo_chemin || ' (scripts/photo.sh pour la recuperer)' else '' end), chr(10) order by created_at desc), '(aucune)') as t from (select * from dev_log where kind = 'reponse' and author ilike 'rapha%' order by created_at desc limit 12) r")
 
+# CE QU'IL A CONFIRMÉ QUI MARCHE (chantiers 6af9c51b et c2fd0205, 23 sept.
+# 2026, migration 0053). Ses mots : « savoir bien mémoriser lorsqu'on signale
+# que quelque chose fonctionne bien pour ne pas régresser si des modifications
+# sont faites ». Un « Ça marche » appuyé sur un chantier à constater, ou dit à
+# Jarvis juste après une action. Une session qui touche au code d'un de ces
+# sujets le revérifie avant de pousser.
+marche=$(interroger "select coalesce(string_agg(format('- [%s] %s%s — %s%s', source, titre, case when occurrences > 1 then ' (' || occurrences || ' fois)' else '' end, to_char(last_seen, 'DD/MM'), case when coalesce(paroles, '') <> '' then chr(10) || '    ses mots : ' || left(replace(paroles, chr(10), ' '), 200) else '' end || case when item_id is not null then chr(10) || '    chantier ' || item_id else '' end), chr(10) order by last_seen desc), '(rien encore)') as t from (select * from ce_qui_marche order by last_seen desc limit 12) m")
+
+# SES RÉPONSES QUE PERSONNE N'A ENCORE TRAITÉES (chantier fa209b63, 23 sept.
+# 2026 : « les chantiers ne sont pas mis à jour dans le cockpit dev quand les
+# sessions terminent de livrer »). Mesuré le jour même : 93f6ee23 portait son
+# « Ca marche tres bien » depuis six jours sans avoir été archivé. Un chantier
+# ouvert dont sa DERNIÈRE réponse est plus récente que le dernier changement
+# de sa note, de son statut ou de son archivage (dev_items_historique, 0027) :
+# quelqu'un doit refermer, reprendre, ou écrire pourquoi.
+sans_suite=$(interroger "select coalesce(string_agg(format('- %s | %s%s    sa reponse du %s : %s', i.id, i.title, chr(10), to_char(l.created_at, 'DD/MM HH24:MI'), left(replace(l.body, chr(10), ' '), 250)), chr(10) order by l.created_at desc), '(aucune)') as t from dev_items i join lateral (select * from dev_log x where x.item_id = i.id and x.kind = 'reponse' and x.author ilike 'rapha%' order by x.created_at desc limit 1) l on true where i.archived_at is null and l.created_at > coalesce((select max(h.change_at) from dev_items_historique h where h.item_id = i.id and h.champ in ('notes', 'status', 'archived_at')), i.created_at)")
+
 journal=$(interroger "select coalesce(string_agg(format('- %s | %s | %s%s%s', to_char(created_at, 'DD/MM HH24:MI'), author, kind, case when answered_at is not null then ' (repondu)' else '' end, chr(10) || '    ' || left(replace(body, chr(10), ' '), 300)), chr(10) order by created_at desc), '(vide)') as t from (select * from dev_log order by created_at desc limit 12) d")
 
 livres=$(interroger "select coalesce(string_agg(format('- %s (%s)', title, to_char(archived_at, 'DD/MM')), chr(10) order by archived_at desc), '(aucun)') as t from (select * from dev_items where archived_at is not null order by archived_at desc limit 8) a")
@@ -116,6 +133,20 @@ Ses mots, tels qu'il les a écrits dans le cockpit. **Traite-les comme
 acquis** : une question déjà tranchée qu'on repose est ce qui l'épuise le plus.
 
 ${reponses:-(non chargé)}
+
+## Ses réponses restées sans suite
+Il a répondu sur ces chantiers APRÈS leur dernière mise à jour : personne n'a
+encore refermé, repris, ni écrit pourquoi. Traite-les en premier — c'est
+exactement ce qu'il reproche (« les chantiers ne sont pas mis à jour »).
+
+${sans_suite:-(non chargé)}
+
+## Ce qu'il a confirmé qui MARCHE — ne le casse pas
+Retenu quand il appuie « Ça marche » sur un chantier livré, ou le dit à Jarvis
+juste après une action (table \`ce_qui_marche\`). Si ton travail touche l'un de
+ces sujets, relis le chantier d'origine et revérifie-le avant de pousser.
+
+${marche:-(non chargé)}
 
 ## Ce que Jarvis rate en boucle, sans que personne s'en occupe
 Des échecs que Jarvis a constatés LUI-MÊME (\`src/lib/retours.ts\`) : une action

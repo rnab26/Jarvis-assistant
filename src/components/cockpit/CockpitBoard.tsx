@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { DevItemCard } from "@/components/cockpit/DevItemCard"
+import { DevItemCard, type DevItemCardProps } from "@/components/cockpit/DevItemCard"
 import { SectionsDialog } from "@/components/cockpit/SectionsDialog"
 import type { useDevSections } from "@/hooks/useDevSections"
 import {
@@ -97,6 +97,8 @@ interface CockpitBoardProps {
   messages?: DevLogEntry[]
   onRepondre?: (itemId: string, body: string) => Promise<void>
   onMarquerTraite?: (id: string) => Promise<void>
+  /** Sa réponse sur un chantier « à constater » (chantier 56b1a074). */
+  onConstater?: DevItemCardProps["onConstater"]
 }
 
 /**
@@ -134,6 +136,7 @@ export function CockpitBoard({
   messages = [],
   onRepondre,
   onMarquerTraite,
+  onConstater,
 }: CockpitBoardProps) {
   const setFiltre = onFiltre
   const [ouvertes, setOuvertes] = useState<Set<string>>(new Set())
@@ -523,6 +526,7 @@ export function CockpitBoard({
                 messages={messagesParChantier.get(item.id)}
                 onRepondre={onRepondre}
                 onMarquerTraite={onMarquerTraite}
+                onConstater={onConstater}
                 selectionnable={enSelection}
                 selectionne={selection?.has(item.id) ?? false}
                 onSelectionner={basculerSelection}
