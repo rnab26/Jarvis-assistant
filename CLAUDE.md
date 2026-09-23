@@ -4206,6 +4206,36 @@ Une préférence qu'un seul chemin permet de poser — une question orale, une
 détection automatique, une valeur par défaut — se règle **aussi** depuis
 Paramètres. Au minimum : la voir, et pouvoir l'effacer.
 
+## Les réglages à la voix : quatorze, et ils s'appliquent tout de suite (23 sept. 2026)
+
+Chantier `8e1da88b`, né du parapluie a9c75d52. `src/lib/reglagesVoix.ts` est
+passé de 9 à 14 réglages : l'annonce du résultat de chaque action, le mode
+Live, la clôture du Live à la voix, la vue simple du cockpit, et ce que le
+cockpit compte comme livré. Chacun relu dans le module qui possède la clé
+(valeur stockée exacte). **Écartés exprès**, et la raison est dans l'en-tête
+du module : l'annonce app fermée (recopiée côté Android par son écran), les
+curseurs continus (des paliers seraient inventés), l'archive des tâches (lue
+une seule fois à l'ouverture de l'onglet), l'envoi automatique des messages
+(envoi en son nom).
+
+**Trouvé en le faisant, et c'est le vrai défaut : un réglage changé à la voix
+ne s'appliquait pas.** `ecrireReglage` n'émet que `REGLAGE_MODIFIE` (la
+sauvegarde en base) ; les écrans et hooks qui gardent un réglage en mémoire se
+relisent sur `REGLAGES_RESTAURES`. « Mets le thème sombre » écrivait donc la
+valeur, et l'écran restait clair jusqu'au redémarrage — d'autant que la
+relecture du thème vivait dans la carte Thème de Paramètres, montée seulement
+quand cet écran est ouvert. Désormais `set_setting` émet
+`REGLAGES_RESTAURES`, et `src/components/ThemeEnDirect.tsx`, monté UNE fois à
+la racine (App.tsx), est la seule relecture du thème de l'app.
+
+`verifier-reglages-voix.ts` exige pour CHAQUE réglage vocal un lecteur connu
+qui l'applique tout de suite (`RELU_PAR`) : un réglage ajouté sans lecteur
+fait rougir le contrôle. `verifier-reglages-web.mjs` rejoue le chemin de la
+voix dans un vrai navigateur (essayé à l'envers : sans `ThemeEnDirect`, il
+rougit). **La moitié serveur** (`_shared/branchements.ts`, l'énumération et la
+consigne de `voice-command`) attend le redéploiement (chantier 2e40a764) :
+d'ici là, le modèle ne propose que les neuf anciens réglages.
+
 ## Le thème sombre existait déjà, et rien ne l'allumait
 
 Trouvé le 4 sept. : le bloc `.dark` de `src/index.css` définit une

@@ -89,7 +89,7 @@ verifier(
 )
 
 verifier(
-  "la liste parlée cite bien les neuf réglages",
+  "la liste parlée cite bien tous les réglages",
   REGLAGES_VOIX.every((r) => listeReglagesVoix().includes(r.nom)),
 )
 
@@ -126,6 +126,61 @@ for (const reglage of REGLAGES_VOIX) {
         ` » (${reglage.cle})`,
       indexTs.includes(option.cleValeur),
     )
+  }
+}
+
+// ── Ça s'applique TOUT DE SUITE (chantier 8e1da88b, 23 sept. 2026) ─────────
+// `ecrireReglage` ne prévient que la sauvegarde en base : sans l'événement de
+// relecture, « mets le thème sombre » écrivait la valeur et l'écran restait
+// clair jusqu'au redémarrage. Contrôle qui LIT le code, et vise l'appel dans
+// le cas set_setting, pas la simple présence du mot dans le fichier.
+{
+  const actions = readFileSync(new URL("../src/lib/voiceActions.ts", import.meta.url), "utf8")
+  const debut = actions.indexOf('case "set_setting"')
+  const cas = actions.slice(debut, actions.indexOf("case ", debut + 20))
+  verifier(
+    "set_setting fait relire écrans et hooks (REGLAGES_RESTAURES) après avoir écrit",
+    cas.indexOf("ecrireReglage(") !== -1 &&
+      /dispatchEvent\(new Event\(REGLAGES_RESTAURES\)\)/.test(cas.slice(cas.indexOf("ecrireReglage("))),
+  )
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
+  verifier(
+    "le thème se relit à la RACINE de l'app, pas seulement quand Paramètres est ouvert",
+    /<ThemeEnDirect \/>/.test(app) && app.indexOf("<ThemeEnDirect />") > app.indexOf("<ThemeProvider"),
+  )
+  const carte = readFileSync(new URL("../src/components/settings/Theme.tsx", import.meta.url), "utf8")
+  verifier(
+    "…et une seule fois : la carte Thème n'en garde pas de copie",
+    !/useRelireApresRestauration\(/.test(carte),
+  )
+}
+
+// Chaque nouveau réglage vocal doit être RELU par quelqu'un après
+// l'événement, sinon le dire ne change rien avant un redémarrage. Les
+// lecteurs connus, relevés le 23 sept. — un réglage ajouté sans lecteur ici
+// fait rougir ce contrôle, c'est voulu : prouve d'abord qu'il s'applique.
+const RELU_PAR: Record<string, string> = {
+  jarvis_wake_word_enabled: "src/hooks/useWakeWordSetting.ts",
+  jarvis_geofence_enabled: "écrit par le hook lui-même (setGeofenceEnabled)",
+  jarvis_theme: "src/components/ThemeEnDirect.tsx",
+  jarvis_memoire_retention: "lu en base par purger_echanges",
+  jarvis_delai_annulation: "lu à chaque action (actionsTelephoneFenetre)",
+  jarvis_maj_auto: "lu au démarrage de la vérification de mise à jour",
+  jarvis_moteur_auto: "lu en base par moteur-veille",
+  jarvis_sessions_autonomes: "lu en base par etat_pour_passe_autonome",
+  jarvis_ia_relais_lecture: "lu à chaque réponse d'IA (relaisIA.ts)",
+  jarvis_voice_confirmer_resultat: "src/hooks/useVoiceSetting.ts",
+  jarvis_mode_live: "src/components/voice/MicButton.tsx",
+  jarvis_live_cloture_actif: "lu à l'ouverture de chaque session Live (sessionLive.ts)",
+  jarvis_cockpit_simplifie: "src/pages/CockpitPage.tsx",
+  jarvis_cockpit_fenetre: "src/components/cockpit/OuJenSuis.tsx",
+}
+for (const reglage of REGLAGES_VOIX) {
+  const lecteur = RELU_PAR[reglage.cle]
+  verifier(`« ${reglage.cle} » a un lecteur qui l'applique tout de suite`, Boolean(lecteur), "ajoute-le à RELU_PAR après l'avoir vérifié")
+  if (lecteur?.startsWith("src/")) {
+    const source = readFileSync(new URL(`../${lecteur}`, import.meta.url), "utf8")
+    verifier(`   …et ${lecteur} se relit bien après restauration`, /useRelireApresRestauration\(/.test(source))
   }
 }
 

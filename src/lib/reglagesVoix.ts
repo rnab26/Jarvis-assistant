@@ -140,6 +140,66 @@ export const REGLAGES_VOIX: ReglageVoix[] = [
       { cleValeur: "inactif", stocke: null, dit: "désactivée" },
     ],
   },
+  // ── Ajoutés le 23 sept. 2026 (chantier 8e1da88b). Chacun relu dans le
+  // module qui possède la clé, et chacun RELU par son écran ou son hook sur
+  // REGLAGES_RESTAURES — sinon le changer à la voix ne changerait rien avant
+  // un redémarrage. Écartés exprès : l'annonce app fermée (recopiée côté
+  // Android par son écran, une écriture ici la laisserait désalignée), les
+  // curseurs continus (vitesse et hauteur de la voix, pauses du dialogue :
+  // des paliers seraient inventés), l'archive des tâches (lue une seule fois
+  // à l'ouverture de l'onglet), et l'envoi automatique des messages (envoi en
+  // son nom : jamais sans lui).
+  {
+    // voicePrefs.ts : absent ou « 1 » = oui, seul « 0 » coupe.
+    cle: "jarvis_voice_confirmer_resultat",
+    nom: "l'annonce à voix haute du résultat de chaque action",
+    ou: "Paramètres › Voix et écoute › Voix de Jarvis",
+    options: [
+      { cleValeur: "actif", stocke: "1", dit: "activée" },
+      { cleValeur: "inactif", stocke: "0", dit: "désactivée" },
+    ],
+  },
+  {
+    // livePrefs.ts : « 1 » seulement.
+    cle: "jarvis_mode_live",
+    nom: "le mode conversation Live",
+    ou: "Paramètres › Voix et écoute › Mode conversation Live",
+    options: [
+      { cleValeur: "actif", stocke: "1", dit: "activé" },
+      { cleValeur: "inactif", stocke: "0", dit: "désactivé" },
+    ],
+  },
+  {
+    // livePrefs.ts : absent = oui, « 1 »/« 0 » sinon.
+    cle: "jarvis_live_cloture_actif",
+    nom: "la fin de conversation à la voix (« terminé », « au revoir »)",
+    ou: "Paramètres › Voix et écoute › Mode conversation Live",
+    options: [
+      { cleValeur: "actif", stocke: "1", dit: "activée" },
+      { cleValeur: "inactif", stocke: "0", dit: "désactivée" },
+    ],
+  },
+  {
+    // cockpitSimplifie.ts : « true »/« false », pas « 1 »/« 0 ».
+    cle: "jarvis_cockpit_simplifie",
+    nom: "la vue simple du cockpit",
+    ou: "Paramètres › Le cockpit",
+    options: [
+      { cleValeur: "actif", stocke: "true", dit: "activée" },
+      { cleValeur: "inactif", stocke: "false", dit: "désactivée" },
+    ],
+  },
+  {
+    // ouJenSuis.ts, FenetreBilan : « aujourdhui » | « 24h » | « 7j ».
+    cle: "jarvis_cockpit_fenetre",
+    nom: "ce que le cockpit compte comme livré",
+    ou: "Paramètres › Le cockpit",
+    options: [
+      { cleValeur: "aujourdhui", stocke: "aujourdhui", dit: "depuis ce matin" },
+      { cleValeur: "24h", stocke: "24h", dit: "sur les dernières 24 heures" },
+      { cleValeur: "7j", stocke: "7j", dit: "sur les sept derniers jours" },
+    ],
+  },
 ]
 
 export function trouverReglageVoix(cle: string): ReglageVoix | undefined {

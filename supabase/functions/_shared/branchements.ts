@@ -106,6 +106,31 @@ export const REGLAGES_MODIFIABLES: { cle: string; dit: (v: string) => string; de
     dit: (v) => `lecture à voix haute d'une IA relayée : ${v === "1" ? "activée" : "désactivée"}`,
     defaut: "0",
   },
+  {
+    cle: "jarvis_voice_confirmer_resultat",
+    dit: (v) => `résultat dit à voix haute : ${v === "0" ? "non" : "oui"}`,
+    defaut: "1",
+  },
+  {
+    cle: "jarvis_mode_live",
+    dit: (v) => `mode Live : ${v === "1" ? "oui" : "non"}`,
+    defaut: "0",
+  },
+  {
+    cle: "jarvis_live_cloture_actif",
+    dit: (v) => `« terminé » clôt le Live : ${v === "0" ? "non" : "oui"}`,
+    defaut: "1",
+  },
+  {
+    cle: "jarvis_cockpit_simplifie",
+    dit: (v) => `vue simple du cockpit : ${v === "true" ? "oui" : "non"}`,
+    defaut: "false",
+  },
+  {
+    cle: "jarvis_cockpit_fenetre",
+    dit: (v) => `« livré » du cockpit : ${v === "24h" ? "24 h" : v === "7j" ? "7 jours" : "depuis ce matin"}`,
+    defaut: "aujourdhui",
+  },
 ]
 
 /** Ce que dit une portée Google, en français. */

@@ -11,7 +11,7 @@ import type { Brouillon, MessageComplet, MessageResume, Recu } from "@/lib/googl
 import { estDernierMessage, nomExpediteur } from "@/lib/gmailVoix"
 import { cleTheme } from "@/lib/themeChantier"
 import { deciderDoublonTache, deciderDoublonVocal } from "@/lib/doublonChantierALaVoix"
-import { ecrireReglage } from "@/lib/reglages"
+import { ecrireReglage, REGLAGES_RESTAURES } from "@/lib/reglages"
 import { listeReglagesVoix, trouverOptionReglageVoix, trouverReglageVoix } from "@/lib/reglagesVoix"
 import {
   arreterEnregistrement,
@@ -1453,7 +1453,16 @@ export async function executeVoiceAction(
       // une écriture locale toute seule — voir ReglagesVoixApi.
       if (reglage.cle === "jarvis_wake_word_enabled") setWakeWordEnabled(option.stocke === "1")
       else if (reglage.cle === "jarvis_geofence_enabled") setGeofenceEnabled(option.stocke === "1")
-      else ecrireReglage(reglage.cle, option.stocke)
+      else {
+        ecrireReglage(reglage.cle, option.stocke)
+        // S'APPLIQUE TOUT DE SUITE (sa règle d'e687f0e2) : `ecrireReglage` ne
+        // prévient que la sauvegarde en base (REGLAGE_MODIFIE). Les écrans et
+        // les hooks qui gardent le réglage en mémoire se relisent sur
+        // REGLAGES_RESTAURES — sans lui, « mets le thème sombre » écrivait la
+        // valeur et l'écran restait clair jusqu'au redémarrage (vérifié le
+        // 23 sept. 2026, chantier 8e1da88b).
+        if (typeof window !== "undefined") window.dispatchEvent(new Event(REGLAGES_RESTAURES))
+      }
       return `C'est fait : ${reglage.nom} est maintenant ${option.dit}. Tu peux aussi le voir depuis ${reglage.ou}.`
     }
 

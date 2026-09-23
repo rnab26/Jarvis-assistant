@@ -2,6 +2,7 @@ import { ThemeProvider } from "next-themes"
 import { lazy, Suspense, useEffect, useState } from "react"
 import { Navigate, Route, HashRouter, Routes } from "react-router-dom"
 import { Toaster } from "@/components/ui/sonner"
+import { ThemeEnDirect } from "@/components/ThemeEnDirect"
 import { AuthProvider } from "@/components/auth/AuthProvider"
 import { ProtectedShell } from "@/components/layout/ProtectedShell"
 import { useAuth } from "@/hooks/useAuth"
@@ -155,6 +156,7 @@ function App() {
       enableSystem
       disableTransitionOnChange
     >
+      <ThemeEnDirect />
       <AuthProvider>
         <HashRouter>
           <AppRoutes />

@@ -637,6 +637,22 @@ try {
     !(await page.evaluate(() => document.documentElement.classList.contains("dark"))),
   )
 
+  // Le chemin de la VOIX (chantier 8e1da88b) : « mets le thème sombre » écrit
+  // la clé puis émet REGLAGES_RESTAURES, sans passer par la carte. Avant le
+  // 23 sept., seule la carte relisait — l'écran restait clair.
+  await page.evaluate(() => {
+    localStorage.setItem("jarvis_theme", "dark")
+    window.dispatchEvent(new Event("jarvis:reglages-restaures"))
+  })
+  await pause(300)
+  verifier(
+    "un thème changé ailleurs que par la carte (à la voix) s'applique tout de suite",
+    await page.evaluate(() => document.documentElement.classList.contains("dark")),
+    "la classe « dark » n'est pas posée : le thème ne suit le réglage qu'au redémarrage",
+  )
+  await theme.getByRole("button", { name: "Clair" }).click()
+  await pause(300)
+
   // ── Remettre les réglages par défaut ──
   await page.evaluate(() => localStorage.setItem("jarvis_voice_rate", "1.75"))
   const reinit = page.locator("#reinit")

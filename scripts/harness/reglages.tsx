@@ -19,6 +19,7 @@ import type { LigneConsommation } from "@/lib/consommationModele"
 import type { StatsCanal } from "@/lib/notifications/apprentissage"
 import type { PasseAutonome } from "@/lib/passeAutonome"
 import { Theme } from "@/components/settings/Theme"
+import { ThemeEnDirect } from "@/components/ThemeEnDirect"
 import type { NotificationsApi } from "@/hooks/useNotifications"
 import type { MajWebApi } from "@/hooks/useMajWeb"
 import type { PublishedBuild, UpdateStatus, Verdict } from "@/hooks/useUpdateCheck"
@@ -611,6 +612,9 @@ function BancDesReglages() {
 
 createRoot(document.getElementById("root")!).render(
   <ThemeProvider attribute="class" defaultTheme="system" storageKey={THEME_KEY} enableSystem>
+    {/* Comme dans App.tsx : c'est lui qui applique un thème changé ailleurs
+        que par la carte (à la voix, depuis un autre appareil). */}
+    <ThemeEnDirect />
     <BancDesReglages />
   </ThemeProvider>,
 )

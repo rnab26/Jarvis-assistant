@@ -1,7 +1,6 @@
 import { useTheme } from "next-themes"
 import { useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { ecrireReglage } from "@/lib/reglages"
 import { CHOIX_THEME, estChoixTheme, THEME_KEY, type ChoixTheme } from "@/lib/theme"
 
@@ -17,20 +16,9 @@ export function Theme() {
   const { theme, setTheme, resolvedTheme } = useTheme()
   const actuel: ChoixTheme = estChoixTheme(theme) ? theme : "system"
 
-  // La base gagne à la connexion : elle écrit la clé dans le stockage local,
-  // mais next-themes garde son propre état en mémoire. Sans cette relecture,
-  // l'écran resterait sur le thème de cet appareil après une restauration.
-  useRelireApresRestauration(() => {
-    try {
-      const recu = localStorage.getItem(THEME_KEY)
-      // Clé absente = remise à zéro des réglages : on retombe sur « comme le
-      // téléphone », sinon l'écran garderait le thème choisi avant.
-      const cible: ChoixTheme = estChoixTheme(recu) ? recu : "system"
-      if (cible !== theme) setTheme(cible)
-    } catch {
-      // Stockage illisible : on garde le thème en cours.
-    }
-  })
+  // La relecture après une restauration (ou un changement à la voix) vit
+  // dans ThemeEnDirect, monté à la racine : ici, elle ne valait que quand
+  // cette carte était à l'écran.
 
   // Au tout premier lancement, rien n'est enregistré : on inscrit le choix
   // par défaut pour qu'il parte en base comme les autres réglages, au lieu
