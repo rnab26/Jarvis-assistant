@@ -125,7 +125,80 @@ function nettoyer(phrase: string): string {
       }
     }
   }
-  return texte
+  return imperatifDeTete(texte)
+}
+
+/**
+ * L'INFINITIF DE TÊTE devient l'impératif que les règles attendent.
+ *
+ * MESURÉ le 23 sept. 2026 sur ses 160 vraies commandes du mode Live : le
+ * modèle Live REFORMULE ce qu'il dit avant de le passer à l'outil, et il le
+ * fait presque toujours à l'infinitif — « Ouvrir YouTube », « Supprimer la
+ * tâche … », « terminer la tâche … », « lancer la musique de Booba DKR ».
+ * Toutes les règles de ce fichier attendent l'impératif (« ouvre », « supprime
+ * »). Ces phrases partaient donc au serveur : trois à cinq secondes d'attente
+ * au lieu de zéro, et une panne quand Google sature (16 h 07 ce jour-là,
+ * « activer la lecture des rappels à voix haute » → « Le serveur ne répond
+ * pas »). Seul le PREMIER mot est touché, et seulement s'il est dans cette
+ * liste : un titre qui commence par « rappeler » ou « appeler » après
+ * « ajoute une tâche : » n'est pas en tête, il ne bouge pas.
+ */
+const IMPERATIFS: Record<string, string> = {
+  creer: "cree",
+  ajouter: "ajoute",
+  rajouter: "rajoute",
+  modifier: "modifie",
+  supprimer: "supprime",
+  effacer: "efface",
+  terminer: "termine",
+  finir: "finis",
+  ouvrir: "ouvre",
+  lancer: "lance",
+  relancer: "relance",
+  envoyer: "envoie",
+  appeler: "appelle",
+  mettre: "mets",
+  noter: "note",
+  reprogrammer: "reprogramme",
+  reporter: "reporte",
+  decaler: "decale",
+  classer: "classe",
+  ranger: "range",
+  cocher: "coche",
+  decocher: "decoche",
+  marquer: "marque",
+  archiver: "archive",
+  renommer: "renomme",
+  deplacer: "deplace",
+  activer: "active",
+  desactiver: "desactive",
+  reactiver: "reactive",
+  couper: "coupe",
+  arreter: "arrete",
+  afficher: "affiche",
+  montrer: "montre",
+  lire: "lis",
+  jouer: "joue",
+  defiler: "defile",
+  cliquer: "clique",
+  chercher: "cherche",
+  rechercher: "recherche",
+  programmer: "programme",
+  regler: "regle",
+  aller: "va",
+}
+
+export function imperatifDeTete(texte: string): string {
+  // « me mettre un rappel … » : l'infinitif pronominal de sa dictée en Live.
+  const pronominal = texte.match(/^me (mettre|noter|creer|ajouter|rappeler|faire) (.+)$/)
+  if (pronominal) {
+    const verbe = pronominal[1] === "rappeler" ? "rappelle" : pronominal[1] === "faire" ? "fais" : IMPERATIFS[pronominal[1]]
+    return `${verbe}-moi ${pronominal[2]}`
+  }
+  const m = texte.match(/^([a-z]+)(\s.*)?$/)
+  if (!m) return texte
+  const imperatif = IMPERATIFS[m[1]]
+  return imperatif ? `${imperatif}${m[2] ?? ""}` : texte
 }
 
 /** Score de ressemblance entre ce qui est dit et un titre existant. */
@@ -609,10 +682,19 @@ export function interpreterLocalement(
   // application au lieu de créer le chantier. Le mot « chantier » qui suit
   // lève toute ambiguïté — « lance Spotify » n'est pas concerné.
   const ajoutChantier = texte.match(
-    /^(?:(?:dans (?:les|mes) (?:chantiers|taches de developpement)[^,]*,?\s*)?(?:ajouter?|rajouter?|creer?|noter?|nouveau|nouvelle|lance[rz]?|demarrer?|ouvre|ouvrir))\s+(?:un |une |le |la |moi un |moi une )?(?:chantier|tache de developpement)\b\s*(?:a traiter\s*)?(?:et (?:vas-y )?(?:ajoute|rajoute)(?:-le)?\.?\s*)?(?:j'aimerais\s+)?:?\s*(.+)$/,
+    /^(?:(?:dans (?:les|mes) (?:chantiers|taches de developpement)[^,]*,?\s*)?(?:ajouter?|rajouter?|creer?|noter?|nouveau|nouvelle|lance[rz]?|demarrer?|ouvre|ouvrir))\s+(?:un |une |le |la |moi un |moi une )?(?:nouveau |nouvel |nouvelle )?(?:chantier|tache de developpement)\b\s*(?:a traiter\s*)?(?:et (?:vas-y )?(?:ajoute|rajoute)(?:-le)?\.?\s*)?(?:j'aimerais\s+)?:?\s*(.+)$/,
   )
   if (ajoutChantier) {
-    const resteChantier = queueSimple(ajoutChantier[1])
+    // « Créer un chantier dans le cockpit dev : … », « Ajouter un chantier pour
+    // Claude Code : … » : le LIEU ou le destinataire, jamais le sujet. Laissés
+    // en tête, ils faisaient les titres « Dans le cockpit dev : Développer la
+    // fonctionnalité » et « Claude Code : Le paramètre pour choisir » (ses
+    // chantiers réels, relus le 23 sept. 2026).
+    const sansLieu = ajoutChantier[1].replace(
+      /^(?:(?:dans (?:le |mon )?cockpit(?: dev)?|(?:pour )?(?:une session |les sessions )?claude code)\s*[:,]?\s*(?:pour\s+(?!que\b|qu'))?)+/,
+      "",
+    )
+    const resteChantier = queueSimple(sansLieu)
     if (!resteChantier) return null
     const brut = titreDepuis(resteChantier)
     if (!brut || brut.length < 3) return null
@@ -683,7 +765,10 @@ export function interpreterLocalement(
   if (/^(?:arrete|stoppe|coupe)( la musique| ca)\b/.test(texte)) {
     return [{ action: "media_control", media_command: "stop" }]
   }
-  if (/^(?:reprends?|relance)( la musique)?\b/.test(texte) || /^remets( la musique)\b/.test(texte)) {
+  // Ancré sur la FIN de la phrase : « relance la recherche série H sur YouTube
+  // et clique sur la première vidéo » (sa commande Live du 18 sept.) n'est pas
+  // une reprise de lecture, ni « relance Yoni pour le devis ».
+  if (/^(?:reprends?|relance)(?: la musique| la lecture)?$/.test(texte) || /^remets la musique$/.test(texte)) {
     return [{ action: "media_control", media_command: "lecture" }]
   }
   if (/^(?:(?:morceau|chanson|piste|titre) suivante?|suivante?|passe (?:a la|au) suivante?)\b/.test(texte)) {
@@ -802,6 +887,14 @@ export function interpreterLocalement(
   // recherche — on l'avait cherché mot pour mot. Rendu au serveur, qui a la
   // conversation (memoireDeTravail.ts) et appuie sur l'écran réel.
   if (musiqueSur && designeUnElementDejaAffiche(musiqueSur[1])) return null
+  // « lancer un itinéraire sur Waze au Hagam Kineret » (sa commande Live du
+  // 18 sept.) : ce qui suit « sur » n'est un nom d'application que s'il en a
+  // la taille — six mots, c'est une destination. Et un itinéraire ou un appel
+  // ne se « lancent » pas comme une musique : rendus au serveur, qui a
+  // navigate_to et call_contact.
+  if (musiqueSur && (!estUnNomDApp(musiqueSur[2].trim()) || /\b(?:itineraire|trajet|route|appel)\b/.test(musiqueSur[1]))) {
+    return null
+  }
   if (musiqueSur) {
     return [
       {
@@ -841,6 +934,9 @@ export function interpreterLocalement(
     // vidéo ») désigne ce que `screen_action` doit cliquer sur l'écran RÉEL,
     // jamais une application à deviner à l'aveugle.
     if (!estUnNomDApp(cible) || ressembleAUnElementAffiche(cible)) return null
+    // « Lancer l'appel vidéo maintenant », « lance l'itinéraire » : un geste,
+    // pas une application qui porterait ce nom (18 sept., commande Live).
+    if (/\b(?:appel|itineraire|trajet|recherche)\b/.test(cible)) return null
     return [{ action: "open_app", app_name: majuscule(cible) }]
   }
 
@@ -853,18 +949,31 @@ export function interpreterLocalement(
     // mal entendue. On rend la main au serveur, qui demandera — plutôt que de
     // composer un numéro, ce qui ne se rattrape pas. Cette fois-là, l'appel
     // est parti vers le répondeur.
-    if (cibleTropCourante(appelContact[1])) return null
-    const contact = meilleurContact(appelContact[1], ctx.contacts ?? [])
-    if (contact) return [{ action: "call_contact", contact_id: contact.id }]
+    // « … sur WhatsApp », « … en appel vidéo » : le CANAL, pas le nom. Laissé
+    // dans le nom, « Dan Marciano au bureau sur WhatsApp » cherchait un contact
+    // qui s'appelle ainsi et composait un appel ordinaire (mesuré sur ses
+    // commandes Live, 23 sept. 2026). Un appel vidéo, lui, repart au serveur :
+    // rien ici ne sait le lancer.
+    if (/\b(?:appel )?video\b/.test(appelContact[1])) return null
+    // « appeler Mel ma femme à 23h19 » : une heure dans la phrase, c'est peut-
+    // être un rappel à poser, pas un appel à composer tout de suite — et « à
+    // 23h19 » laissé dans le nom ne trouve personne dans le répertoire.
+    if (/\b\d{1,2} ?h(?: ?\d{2})?\b/.test(appelContact[1])) return null
+    const canalWhatsapp = /\s+(?:sur|par|via|en)\s+whatsapp$/.test(appelContact[1])
+    const cibleAppel = appelContact[1].replace(/\s+(?:sur|par|via|en)\s+whatsapp$/, "").trim()
+    if (cibleTropCourante(cibleAppel)) return null
+    const contact = meilleurContact(cibleAppel, ctx.contacts ?? [])
+    const canal = canalWhatsapp ? { call_channel: "whatsapp" as const } : {}
+    if (contact) return [{ action: "call_contact", contact_id: contact.id, ...canal }]
     // Aucun contact enregistré ne correspond : on rend quand même l'action,
     // avec le nom tel qu'il l'a dit. C'est le TÉLÉPHONE qui cherchera dans
     // son vrai répertoire (chercherContact), et qui répondra « je ne trouve
     // personne à ce nom » si rien ne colle. Avant le 5 sept. 2026 on rendait
     // null, et la phrase partait au serveur pour finir par lui réclamer un
     // numéro qu'il avait déjà dans son téléphone.
-    const nomDit = appelContact[1].trim()
+    const nomDit = cibleAppel
     if (nomDit.length < 2) return null
-    return [{ action: "call_contact", contact_name: majuscule(nomDit) }]
+    return [{ action: "call_contact", contact_name: majuscule(nomDit), ...canal }]
   }
 
   /* ---------- Préparer un message ---------- */
@@ -982,6 +1091,21 @@ export function interpreterLocalement(
     if (/^que\b/.test(ajoutTache[1])) return null
     const resteTache = queueSimple(ajoutTache[1])
     if (!resteTache) return null
+    // « Ajouter au cockpit dev : … », « Noter dans le journal de bord : … »,
+    // « créer la tâche X dans la section Prélèvements », « Ajouter dans les
+    // tâches administratives : … » — SES phrases, relues le 23 sept. 2026 :
+    // la règle en faisait une tâche dont le titre commençait par « Journal de
+    // bord » ou « Dans les tâches administratives », et la catégorie qu'il
+    // avait nommée était perdue. Un LIEU nommé (chantier, cockpit, journal,
+    // section, catégorie, liste) se comprend au serveur, qui a les catégories
+    // et les chantiers ; ici on ne sait que deviner.
+    if (
+      /\b(?:au|aux|a la|a l'|dans (?:le|la|les|mes|ma|mon))\s*(?:journal|cockpit|chantiers?|notes?|sections?|categories?|parties?|listes?|taches?)\b/.test(
+        resteTache,
+      )
+    ) {
+      return null
+    }
 
     const { date, heure, motsRetires } = lireQuand(resteTache, maintenant)
     const brut = titreDepuis(retirerMots(resteTache, motsRetires))

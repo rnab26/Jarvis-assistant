@@ -577,5 +577,61 @@ doitLaisserPasser(
   "« application » vit dans le vocabulaire de deux sections à la fois (app ET apps) : on se tait",
 )
 
+// ── Les commandes du mode Live, reformulées à l'infinitif (23 sept. 2026) ──
+// Le modèle Live passe presque toujours l'infinitif à l'outil ; mesuré sur ses
+// 160 vraies commandes, elles partaient au serveur. Ce sont SES phrases.
+doitDonner("Ouvrir WhatsApp", { action: "open_app", app_name: "Whatsapp" })
+doitDonner("supprimer la tâche Appeler le plombier", { action: "delete_task", task_id: "t-plombier" })
+doitDonner("appeler Yoni", { action: "call_contact", contact_id: "ct-yoni" })
+doitDonner("appeler Dan Marciano au bureau sur WhatsApp", {
+  action: "call_contact",
+  contact_name: "Dan marciano au bureau",
+  call_channel: "whatsapp",
+})
+doitDonner("appelle Yoni sur WhatsApp", { action: "call_contact", contact_id: "ct-yoni", call_channel: "whatsapp" })
+doitDonner("ajouter une tâche : rappeler Yoni demain", { action: "add_task", title: "Rappeler Yoni" })
+doitLaisserPasser("appeler Mel Ma Femme en appel vidéo", "un appel vidéo : rien ici ne sait le lancer")
+doitLaisserPasser("appeler Mel ma femme à 23h19", "une heure dans la phrase : peut-être un rappel, et « à 23h19 » ne trouve personne")
+doitLaisserPasser("Lancer l'appel vidéo maintenant", "un geste, pas une application qui s'appellerait « l'appel vidéo maintenant »")
+doitLaisserPasser(
+  "lancer un itinéraire sur Waze au Hagam Kineret Hamesh Netanya",
+  "six mots après « sur » : une destination, pas une application",
+)
+doitLaisserPasser(
+  "relancer la recherche série H sur YouTube et cliquer sur la première vidéo",
+  "ce n'est pas une reprise de lecture",
+)
+doitLaisserPasser(
+  "reprends le contexte c'est pour la boutique de fripouille",
+  "sa vraie dictée : relançait la musique avant le 23 sept.",
+)
+doitDonner("relance la musique", { action: "media_control", media_command: "lecture" })
+
+// ── Un LIEU nommé n'est pas un titre de tâche (ses dictées, relues le 23 sept.) ──
+doitLaisserPasser("Ajouter au cockpit dev : le temps de connexion est beaucoup trop long", "le cockpit n'est pas une tâche")
+doitLaisserPasser("Noter dans le journal de bord : incohérence sur la durée", "le journal de bord n'est pas une tâche")
+doitLaisserPasser("Ajouter au chantier que les actions doivent être instantanées", "compléter un chantier, pas créer une tâche")
+doitLaisserPasser(
+  "créer la tâche gocardless à relancer dans la section Prélèvements",
+  "la catégorie qu'il nomme se perdait, et finissait dans le titre",
+)
+doitLaisserPasser("Ajouter dans les tâches administratives : passer chez Jonathan", "idem, « Dans les tâches administratives » devenait le titre")
+doitDonner("créer un nouveau chantier : archiver les tâches terminées", { action: "add_dev_item" })
+doitDonner("Noter un nouveau chantier : s'assurer que Jarvis fait deux choses à la fois", { action: "add_dev_item" })
+{
+  const a = interpreterLocalement("Créer un chantier dans le cockpit dev : Développer le déclenchement vocal des sessions", CTX)?.[0] as
+    | Record<string, unknown>
+    | undefined
+  verifier(
+    "« dans le cockpit dev : » ne reste pas en tête du titre du chantier",
+    a?.action === "add_dev_item" && /^Développer/.test(String(a.title)),
+    JSON.stringify(a),
+  )
+  const b = interpreterLocalement("ouvrir un chantier dans le cockpit dev pour Claude Code pour rajouter le quota à côté du cœur", CTX)?.[0] as
+    | Record<string, unknown>
+    | undefined
+  verifier("« pour Claude Code pour » non plus", b?.action === "add_dev_item" && /^Rajouter le quota/.test(String(b.title)), JSON.stringify(b))
+}
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)
