@@ -204,6 +204,10 @@ console.log("\n— Musique, appels, messages, alarmes, itinéraires —")
 // pour de vrai, la fonctionnalité n'a jamais tourné faute de crédit. À
 // corriger avec de vraies tournures dès qu'il en dicte.
 
+// 17 sept. 2026, juste après « lance un épisode de la série H sur YouTube » :
+// un RANG désigne ce qui est déjà affiché — on l'avait cherché mot pour mot.
+doitLaisserPasser("Lance le premier épisode disponible sur YouTube", "un rang : l'écran, pas une recherche")
+doitDonner("lance un épisode de la série H sur YouTube", { action: "open_app", app_name: "Youtube" })
 doitDonner("mets du Brassens sur Spotify", {
   action: "open_app",
   app_name: "Spotify",

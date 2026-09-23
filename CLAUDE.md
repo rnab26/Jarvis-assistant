@@ -3695,6 +3695,56 @@ existent aussi et continueraient à échapper à un motif énuméré) : puisqu'u
 vraie demande a toujours `pourquoi`, une question qui n'en a pas n'est
 structurellement plus une demande bien formée, quelle que soit sa formulation.
 
+## Jarvis se souvient de ce qu'on vient de se dire (23 sept. 2026)
+
+Le trou le plus coûteux, MESURÉ sur ses 409 vraies dictées : `voice-command`
+ne recevait que la phrase COURANTE. « Lance le premier épisode » après une
+recherche, « classe les deux chantiers créés à l'instant », « mets-la plutôt
+dans Perso », « à 9h » dit après sa propre question, « pourquoi tu n'as pas
+ouvert le chantier ? » (→ « lequel ? ») tombaient dans le vide. Une dizaine de
+correctifs de ce fichier compensaient chacun UN cas de ce même trou
+(`tacheEnAttente`, `confirmationEnvoi`, `repriseDictee`…) — ils restent, ils
+décident sur l'appareil sans aller-retour.
+
+- `src/lib/memoireDeTravail.ts` (**pur**) : les six derniers tours des dix
+  dernières minutes — ce qu'il a dit, ce qui a été FAIT (action + titre, app,
+  contact, ids), ce que Jarvis a répondu. Mémoire VIVE, jamais écrite : la
+  mémoire longue durée existe pour le reste. `MicButton` l'alimente dans
+  `retenirLeTour` (tous les chemins) et à chaque `clarify`, et l'envoie en
+  `derniersTours`.
+- `supabase/functions/_shared/derniersTours.ts` : le bloc de consigne. **Vide,
+  il ne rend RIEN.** Il dit aussi les limites : ne jamais REFAIRE une action
+  listée, ne pas rattacher de force une phrase qui se suffit à elle-même,
+  demander quand on ne sait pas à quel échange elle renvoie — et, sur un
+  reproche (« pourquoi tu ne l'as pas fait ? ») après un échec, le FAIRE.
+- **Pas en Live** : la session garde déjà tout (et la poignée de reprise).
+
+**Vérifié contre le VRAI modèle sans déployer** : `scripts/essayer-consigne.sh
+memoire-de-travail` (10/10). Chaque cas qui compte est rejoué SANS la mémoire :
+sans elle, il rangeait le mauvais chantier, déplaçait la mauvaise tâche, ne
+comprenait pas « à 9h » et redemandait « lequel ? ». Les cas « à ne pas faire »
+(une nouvelle tâche après une tâche, « appelle Yoni » après un autre appel)
+tiennent.
+
+**Et ce qu'il a VRAIMENT répondu est gardé.** Le serveur n'écrit dans
+`echanges` que le `message` du modèle — vide pour une action. Pour 223 de ses
+échanges, « Vos conversations » montrait sa phrase sans rien en face.
+`completerReponseEchange` (`echangeLocal.ts`) écrit la phrase dite après
+l'exécution sur la ligne du serveur (quelques essais espacés : elle est écrite
+APRÈS la réponse), jamais par-dessus une réponse déjà là.
+
+### Essayer une consigne sans la déployer : `scripts/essayer-consigne.sh`
+
+Né le 23 sept. 2026, jeton de déploiement expiré. Il prend la consigne de
+`voice-command` telle qu'elle est SUR LE DISQUE (le code d'`index.ts` jusqu'à
+`Deno.serve`, extrait, jamais recopié), l'appelle avec `GEMINI_API_KEY_TEST`,
+et joue les cas de `scripts/consigne/<nom>.ts`. Aucun compte de test, aucune
+écriture en base. Deno est installé une fois depuis npm s'il manque. Ce qu'il
+ne couvre pas : ce que la fonction LIT en base (souvenirs, corrections…) —
+après un déploiement, `verifier-commande-vocale.mjs` reste LA vérification.
+**Écris un fichier de cas pour toute modification de consigne**, avec un
+témoin sans la modification : c'est ce qui prouve qu'elle sert.
+
 ## Ce que Jarvis sait de sa propre application
 
 `supabase/functions/_shared/environnement.ts` — **une seule source**, importée
@@ -3849,6 +3899,8 @@ node --experimental-strip-types scripts/verifier-ecran.ts        # appuyer sur l
 node --experimental-strip-types scripts/verifier-apps-ia.ts      # les IA déjà installées : mises en avant sans jamais limiter, sans réseau
 node --experimental-strip-types scripts/verifier-apps-par-defaut.ts  # les applications proposées sont celles du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-trouver-application.ts  # « ouvre l'application WhatsApp » ouvre WhatsApp, jamais מכבי, sans réseau
+node --experimental-strip-types scripts/verifier-memoire-de-travail.ts  # ce qu'on vient de se dire part avec la phrase, et rien de vieux, sans réseau
+scripts/essayer-consigne.sh memoire-de-travail           # la consigne sur le disque contre le VRAI modèle (clé de test), sans déployer ni compte
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
 node scripts/verifier-autorisations-web.mjs              # l'écran des autorisations dans un vrai navigateur, en écran de téléphone

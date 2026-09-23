@@ -221,6 +221,20 @@ function estUnNomDApp(cible: string): boolean {
  * tournures aussi probables que le singulier — les manquer laisserait
  * repasser le même מכבי sous une formulation à peine différente.
  */
+/**
+ * Un rang ou un « suivant » devant un élément affiché : « le premier épisode »,
+ * « la deuxième vidéo », « l'épisode suivant ». Plus étroit que
+ * `ressembleAUnElementAffiche` : « un épisode de la série H sur YouTube » reste
+ * une RECHERCHE, seul un rang désigne ce qui est déjà affiché.
+ */
+function designeUnElementDejaAffiche(cible: string): boolean {
+  const t = cible.trim()
+  return (
+    ressembleAUnElementAffiche(t) &&
+    /\b(?:premi[eè]re?|deuxi[eè]me|troisi[eè]me|quatri[eè]me|derni[eè]re?|dernier|suivante?|prochaine?|\d+(?:e|er|eme|ème))\b/.test(t)
+  )
+}
+
 function ressembleAUnElementAffiche(cible: string): boolean {
   return /^(?:(?:un|une|le|la|les|des|ce|cette|mon|ma|son|sa)\s+|l['’]\s*)(?:\d+|premi[eè]re?|deuxi[eè]me|troisi[eè]me|dernier|derni[eè]re|autre|prochaine?)?\s*(?:episodes?|épisodes?|vid[eé]os?|chansons?|morceaux?|chapitres?|pages?|onglets?|r[ée]sultats?|articles?|photos?|images?)\b/i.test(
     cible.trim(),
@@ -769,6 +783,11 @@ export function interpreterLocalement(
 
   /* ---------- Ouvrir une application, avec ou sans musique précise ---------- */
   const musiqueSur = texte.match(/^(?:mets?|joue|lance)\s+(.+?)\s+sur\s+([a-z0-9 ]+)$/)
+  // « lance le premier épisode disponible sur YouTube » (17 sept. 2026, juste
+  // après avoir lancé la série H) : c'est un élément DÉJÀ À L'ÉCRAN, pas une
+  // recherche — on l'avait cherché mot pour mot. Rendu au serveur, qui a la
+  // conversation (memoireDeTravail.ts) et appuie sur l'écran réel.
+  if (musiqueSur && designeUnElementDejaAffiche(musiqueSur[1])) return null
   if (musiqueSur) {
     return [
       {

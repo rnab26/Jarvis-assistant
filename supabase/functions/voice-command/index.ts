@@ -10,6 +10,7 @@ import { rappelerCeQuiMarche } from "../_shared/ceQuiMarche.ts"
 import { decisionDesigneeClairement, pointsCeQuiLAttend, rappelerCeQuiLAttend } from "../_shared/ceQuiLAttend.ts"
 import { rappelerMoteurActif } from "../_shared/moteurActif.ts"
 import { appelerModele, moteurNonConfigure, phrasePourEchec } from "../_shared/modele.ts"
+import { blocDerniersTours } from "../_shared/derniersTours.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -726,6 +727,9 @@ Deno.serve(async (req: Request) => {
       pronunciations,
       widgetConfig,
       tacheEnAttente,
+      // Ce qu'on vient de se dire (src/lib/memoireDeTravail.ts) : une app
+      // installée plus ancienne ne l'envoie pas, et le bloc est alors vide.
+      derniersTours,
       todayISO,
     } = await req.json()
 
@@ -790,7 +794,7 @@ Documents existants de l'utilisateur : ${JSON.stringify(documents)}.
 Contacts existants de l'utilisateur : ${JSON.stringify(contacts)}.
 Rappels de lieu existants de l'utilisateur : ${JSON.stringify(placeReminders)}.
 Corrections de transcription déjà apprises : ${JSON.stringify(pronunciations ?? [])}.
-Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${blocTacheEnAttente(tacheEnAttente)}${await rappelerBranchements(supabase)}${await rappelerMoteurActif(supabase)}${await rappelerCorrections(supabase)}${await rappelerCeQuiMarche(supabase)}${await rappelerCeQuiLAttend(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
+Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${blocTacheEnAttente(tacheEnAttente)}${blocDerniersTours(derniersTours)}${await rappelerBranchements(supabase)}${await rappelerMoteurActif(supabase)}${await rappelerCorrections(supabase)}${await rappelerCeQuiMarche(supabase)}${await rappelerCeQuiLAttend(supabase)}${await rappelerSouvenirs(supabase, transcript)}`
 
     const {
       args,

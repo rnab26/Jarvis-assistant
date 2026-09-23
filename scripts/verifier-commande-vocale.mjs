@@ -18,6 +18,10 @@
  * créer et supprimer l'utilisateur de test.
  *
  * FONCTION=voice-command-essai permet de viser une autre fonction déployée.
+ * URL_FONCTION=http://127.0.0.1:8787/ vise une fonction qui tourne EN LOCAL
+ * (Deno, clé Gemini de test) : c'est ainsi qu'une modification de consigne se
+ * vérifie contre le vrai modèle AVANT d'être déployée — l'authentification,
+ * elle, reste celle du vrai projet.
  * PAUSE_MS=4000 espace les contrôles : l'offre gratuite de Gemini limite les
  * requêtes par minute, et 25 phrases en rafale mesurent ce quota au lieu du
  * comportement de Jarvis. Raphaël, lui, ne dicte pas 25 phrases par minute.
@@ -126,7 +130,7 @@ let PRONONCIATIONS = []
 // quota du jour de Raphael, et c est ce qui l a laisse sans Jarvis le 3 sept.
 // 2026 a 21h28. Ne l enleve pas.
 async function demander(phrase, extra = {}) {
-  const r = await fetch(`${URL_PROJET}/functions/v1/${FONCTION}`, {
+  const r = await fetch(process.env.URL_FONCTION ?? `${URL_PROJET}/functions/v1/${FONCTION}`, {
     method: "POST",
     headers: {
       apikey: ANON,

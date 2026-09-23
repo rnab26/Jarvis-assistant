@@ -31,7 +31,8 @@ import { completionExpiree } from "@/lib/tacheDateEtCategorie"
 import { completerPlutotQueCreer, estUneReprise, phraseRepriseAction } from "@/lib/repriseDictee"
 import { estConfirmationEnvoi } from "@/lib/confirmationEnvoi"
 import { estDejaAnnoncee } from "@/lib/annonceDejaDite"
-import { enregistrerEchangeLocal } from "@/lib/echangeLocal"
+import { ajouterTour, decrireActions, toursPourLeServeur, type TourMemorise } from "@/lib/memoireDeTravail"
+import { completerReponseEchange, enregistrerEchangeLocal } from "@/lib/echangeLocal"
 import { signalerErreur } from "@/lib/erreurs"
 import {
   cibleDeLAction,
@@ -363,7 +364,12 @@ export function MicButton({
 
   /** Garde la trace d'une commande que l'appareil a traitée sans le serveur. */
   function tracerSiLocale(transcript: string, reponse: string | null) {
-    if (derniereLocaleRef.current !== transcript) return
+    // Comprise par le serveur : sa ligne existe (ou va exister), il lui manque
+    // seulement ce qui a vraiment été répondu après l'exécution.
+    if (derniereLocaleRef.current !== transcript) {
+      completerReponseEchange(transcript, reponse)
+      return
+    }
     derniereLocaleRef.current = null
     enregistrerEchangeLocal(transcript, reponse)
   }
@@ -433,8 +439,26 @@ export function MicButton({
     })
   }
 
+  // Ce qu'on vient de se dire, pour que la phrase suivante puisse y renvoyer
+  // (« le premier », « annule ça », « les deux chantiers créés à l'instant »).
+  // Mémoire VIVE seulement : voir src/lib/memoireDeTravail.ts.
+  const toursRef = useRef<TourMemorise[]>([])
+  function memoriserTour(dit: string, actions: VoiceAction[], repondu: string | null) {
+    toursRef.current = ajouterTour(
+      toursRef.current,
+      {
+        dit,
+        fait: decrireActions(actions as unknown as Record<string, unknown>[]),
+        repondu,
+        at: Date.now(),
+      },
+      Date.now(),
+    )
+  }
+
   /** Retient ce qui vient d'être fait, au cas où la phrase suivante le conteste. */
   function retenirLeTour(transcript: string, actions: VoiceAction[], reponse: string | null) {
+    memoriserTour(transcript, actions, reponse)
     dernierTourRef.current = {
       transcript,
       actions: actions.map((a) => a.action),
@@ -679,6 +703,10 @@ export function MicButton({
               categorie_a_valider: attente.suggestion !== null,
             }
           })(),
+          // Ce qu'on vient de se dire : sans ça, « lance le premier épisode »
+          // après une recherche partait en recherche littérale (17 sept.).
+          // Vide la plupart du temps, et le serveur n'ajoute alors rien.
+          derniersTours: toursPourLeServeur(toursRef.current, Date.now()),
           todayISO: new Date().toISOString().slice(0, 10),
         },
       }),
@@ -744,6 +772,9 @@ export function MicButton({
     const premiere = actions[0]
     if (premiere.action === "clarify" && round < 3) {
       const action = premiere
+      // La question fait partie de la conversation : s'il y répond plus tard,
+      // dans une nouvelle phrase, le serveur doit savoir ce qui a été demandé.
+      memoriserTour(transcript, [action], action.message)
       setLastReply(action.message)
       setStatus("speaking")
       bargeInRef.current = false

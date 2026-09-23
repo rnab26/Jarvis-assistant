@@ -96,3 +96,60 @@ export function enregistrerEchangeLocal(transcript: string, reponse: string | nu
     }
   })()
 }
+
+/**
+ * Ce que Jarvis a VRAIMENT répondu à une phrase comprise par le serveur.
+ *
+ * MESURÉ le 23 sept. 2026 : sur ses 223 échanges passés par le serveur, la
+ * réponse gardée était vide pour presque tous — le serveur n'écrit que le
+ * `message` du modèle, et une action (ajouter une tâche, lancer une musique)
+ * n'en a pas : ce qui a été dit (« Tâche "…" ajoutée », « Je n'ai pas pu
+ * appuyer… ») n'est connu qu'ICI, après l'exécution. « Vos conversations »
+ * montrait donc ses phrases sans rien en face, et « qu'est-ce que tu m'as
+ * répondu hier ? » ne pouvait rien retrouver.
+ *
+ * La ligne est écrite par le serveur APRÈS lui avoir répondu (waitUntil) :
+ * elle peut ne pas exister encore quand la réponse est dite. D'où quelques
+ * essais espacés, puis on renonce en silence — la ligne reste ce qu'elle
+ * était, rien n'est perdu. On ne touche QUE la plus récente ligne de cette
+ * phrase, des trois dernières minutes, et seulement si elle est vide : une
+ * réponse déjà écrite (un message du modèle) n'est jamais écrasée.
+ */
+const ESSAIS_MS = [2_000, 6_000, 15_000]
+
+export function completerReponseEchange(transcript: string, reponse: string | null): void {
+  const dit = transcript.replace(/\s+/g, " ").trim()
+  const texte = reponse?.replace(/\s+/g, " ").trim()
+  if (!dit || !texte) return
+
+  void (async () => {
+    try {
+      const { supabase } = await import("@/lib/supabase")
+      const { withTimeout } = await import("@/lib/withTimeout")
+      const depuis = new Date(Date.now() - 3 * 60_000).toISOString()
+      for (const attente of ESSAIS_MS) {
+        await new Promise((r) => setTimeout(r, attente))
+        const { data: lignes } = await withTimeout(
+          supabase
+            .from("echanges")
+            .select("id, reponse")
+            .eq("transcript", transcript)
+            .gte("created_at", depuis)
+            .order("created_at", { ascending: false })
+            .limit(1),
+          DELAI_MAX_MS,
+        )
+        const ligne = lignes?.[0]
+        if (!ligne) continue
+        if (ligne.reponse) return // déjà écrite par le serveur : on ne l'écrase pas
+        await withTimeout(
+          supabase.from("echanges").update({ reponse: texte }).eq("id", ligne.id).is("reponse", null).select("id"),
+          DELAI_MAX_MS,
+        )
+        return
+      }
+    } catch {
+      // Une trace de confort : son échec ne doit rien déranger.
+    }
+  })()
+}
