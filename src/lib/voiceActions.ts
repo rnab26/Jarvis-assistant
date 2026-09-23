@@ -54,6 +54,8 @@ import { phraseLectureNote, phraseListeNotes } from "@/lib/notesVocales"
 import { phraseMiseAJourChantier, phraseMiseAJourTache } from "@/lib/phraseMiseAJour"
 import { proposerAnnulation } from "@/lib/annulation"
 import type { MessageProgramme } from "@/lib/messagesProgrammes"
+import { champsVerifies, nomDit, phraseProgrammation, verifierDestinataire } from "@/lib/destinataireProgramme"
+import { lireRepertoire } from "@/lib/repertoire"
 import type {
   Category,
   Contact,
@@ -350,6 +352,8 @@ export interface MessagesProgrammesApi {
     envoyer_a: string
     canal?: "whatsapp" | "sms" | null
     contact_id?: string | null
+    contact_nom?: string | null
+    telephone?: string | null
   }) => Promise<MessageProgramme | null>
   messagesAAnnoncer: () => Promise<MessageProgramme[]>
   marquerAnnonce: (id: string) => Promise<void>
@@ -1445,12 +1449,28 @@ export async function executeVoiceAction(
       // valide. Contrairement à send_message, on n'ouvre RIEN maintenant —
       // on écrit une intention, que le téléphone annoncera à voix haute à
       // l'heure dite (src/lib/messagesProgrammes.ts).
-      const nom =
-        contacts.find((c) => c.id === action.contact_id)?.name ??
-        action.contact_name ??
-        action.phone_number ??
-        null
-      const moment = momentLocal(action.due_date, action.due_time)
+      //
+      // LE DESTINATAIRE EST VÉRIFIÉ ICI, pas à l'heure dite (chantier
+      // a122a936, destinataireProgramme.ts) : le 22 sept., « Harry locataire
+      // bureau » est arrivé ici SANS nom et a été enregistré « ce contact »,
+      // avec un « C'est noté » qui laissait croire que tout allait bien.
+      const contactConnu = contacts.find((c) => c.id === action.contact_id)
+      const dit = nomDit({
+        nomContactConnu: contactConnu?.name,
+        contact_name: action.contact_name,
+        contact_id: action.contact_id,
+        phone_number: action.phone_number,
+      })
+      // Sans texte, il n'y a rien à programmer : le 22 sept. à 10h45, une
+      // demande de MODIFICATION arrivée ici sans message_text finissait sur
+      // « Cannot read properties of undefined (reading 'trim') ».
+      const texte = typeof action.message_text === "string" ? action.message_text.trim() : ""
+      if (!texte) {
+        return "Qu'est-ce que je dois écrire dans ce message ? Pour modifier un message déjà programmé, passe par l'onglet Programmé."
+      }
+      // `?? ""` : le modèle peut omettre l'un des deux (c'est ce qui levait
+      // l'exception du 22 sept., dans momentLocal) — ça se dit, ça ne plante pas.
+      const moment = momentLocal(action.due_date ?? "", action.due_time ?? "")
       if (!moment) {
         return "Je n'ai pas compris la date ou l'heure d'envoi, dis-le-moi autrement."
       }
@@ -1462,20 +1482,22 @@ export async function executeVoiceAction(
       // tranche à l'heure dite, comme pour send_message.
       const canal: "whatsapp" | "sms" | null =
         action.message_channel === "sms" ? "sms" : action.message_channel ? "whatsapp" : null
+      const verification = verifierDestinataire(dit, dit ? await lireRepertoire() : { etat: "indisponible" })
       try {
         await programmerMessage({
-          destinataire: nom ?? "ce contact",
-          texte: action.message_text,
+          // Ce qu'il a DIT, ou rien : jamais un « ce contact » inventé.
+          destinataire: dit ?? "",
+          texte,
           envoyer_a: moment.toISOString(),
           canal,
-          contact_id: contacts.find((c) => c.id === action.contact_id)?.id ?? null,
+          contact_id: contactConnu?.id ?? null,
+          ...champsVerifies(verification),
         })
       } catch {
         return "Je n'ai pas réussi à programmer ce message, réessaie."
       }
       const heure = action.due_time ? ` à ${action.due_time.slice(0, 5)}` : ""
-      const pour = nom ? ` pour ${nom}` : ""
-      return `C'est noté : je te proposerai ce message${pour} ${formatDateCourte(action.due_date)}${heure}.`
+      return phraseProgrammation(dit, verification, `${formatDateCourte(action.due_date)}${heure}`)
     }
 
     case "open_app":

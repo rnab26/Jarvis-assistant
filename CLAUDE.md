@@ -3793,7 +3793,8 @@ node scripts/verifier-cockpit-web.mjs                    # le cockpit parcouru d
 scripts/verifier-cockpit-reel.mjs                        # le même, sur ses VRAIES données (lit la base ; pas dans la CI)
 node scripts/verifier-taches-web.mjs                     # la corbeille d'une tâche demande avant de supprimer, vrai navigateur
 node scripts/verifier-notes-web.mjs                      # l'onglet Notes : créer/modifier/supprimer avec confirmation/chercher, vrai navigateur
-node scripts/verifier-programmes-web.mjs                 # l'écran Programmé : voir tout, modifier, annuler avec confirmation, vrai navigateur
+node scripts/verifier-programmes-web.mjs                 # l'écran Programmé : à qui il partira, choisir le contact, « pas parti », annuler avec confirmation, vrai navigateur
+node --experimental-strip-types scripts/verifier-destinataire-programme.ts  # un message programmé : destinataire vérifié dans le répertoire en le dictant, jamais « ce contact », sans réseau
 node scripts/verifier-documents-web.mjs                  # l'onglet Docs : un nom hébreu ou accentué s'affiche et tient sur un écran de téléphone, vrai navigateur
 node scripts/verifier-ios-web.mjs                        # le site dans un vrai moteur WEBKIT à la taille d'un iPhone : rendu, zones tactiles, contrat « sur l'écran d'accueil »
 node scripts/verifier-reglages-web.mjs                   # les réglages parcourus dans un vrai navigateur, en écran de téléphone
@@ -3955,8 +3956,57 @@ n'ayant eu besoin jusqu'ici de la regarder en direct depuis un écran.
 
 Vérifié dans un vrai navigateur, écran de téléphone :
 `node scripts/verifier-programmes-web.mjs` (banc `scripts/harness/programmes.tsx`,
-qui recopie le balisage de `ProgrammesPage.tsx` avec un état local — toute
-retouche de l'un va dans l'autre).
+qui monte la VRAIE `ProgrammesPage` depuis le 23 sept. — voir plus bas).
+
+### Le destinataire d'un message programmé : vérifié en le dictant (chantier a122a936, 23 sept. 2026)
+
+Ses mots : « améliorer la gestion des contacts lors de la programmation de
+messages, en s'assurant que le contact WhatsApp programmé soit visible et
+garanti ». MESURÉ le 22 sept. à 10h44 : « Programme un message à envoyer à
+Harry locataire bureau sur WhatsApp pour 18h… » a été enregistré avec pour
+destinataire **« ce contact »** — le nom n'était pas arrivé, et
+`schedule_message` comblait en silence (`nom ?? "ce contact"`) avant de
+répondre « C'est noté ». Sa tentative de correction à la voix a ensuite fini
+sur « Cannot read properties of undefined (reading 'trim') » (`momentLocal`
+sans date). Et à 18h le message n'est jamais parti (app fermée) : il est
+resté « Prévu » le lendemain.
+
+`src/lib/destinataireProgramme.ts` (**pur**, `verifier-destinataire-programme.ts`)
+porte les deux règles :
+
+1. **On ne comble jamais un destinataire manquant.** Le message est gardé
+   (texte et heure coûtent le plus à redicter), `destinataire` vide, et
+   Jarvis le DIT. `nomDit` reprend un nom que le modèle aurait rangé dans
+   `contact_id`. Un « ce contact » déjà en base se lit comme manquant.
+2. **Le répertoire tranche AU MOMENT DE PROGRAMMER.** Trouvé : `contact_nom`
+   et `telephone` (migration 0056) sont gardés, Jarvis NOMME le contact exact,
+   et c'est ce numéro qui sert à l'heure dite (`MicButton` passe
+   `phone_number`) — on ne redevine pas. Homonymes, introuvable, accès refusé :
+   dit, avec les noms, et « choisis-le dans l'onglet Programmé ».
+
+L'écran « Programmé » montre à qui il partira (✓ nom + numéro ENTIER, « Contact
+à vérifier », ou « Destinataire manquant »), « Pas parti — heure passée » pour
+un message resté prévu au-delà de la marge d'annonce (`messageManque`,
+`MARGE_ANNONCE_MS`), et le dialogue de modification cherche dans le
+répertoire tout seul à l'ouverture : il n'a qu'à toucher le bon contact.
+
+**Trouvé en faisant ce chantier, et corrigé à la source** : `chercherContact`
+rapportait les mots communs au nom le PLUS LONG — « Harry » valait 50 pour
+« Harry Cohen » et 33 pour « Harry Locataire Bureau », sous le seuil. Le
+second disparaissait, et « écris à Harry » partait chez Harry Cohen sans une
+question. Désormais les contacts qui contiennent TOUT ce qu'il a dit passent
+d'abord : un seul → trouvé ; plusieurs → on demande ; un nom dit en entier
+l'emporte. Ça vaut pour les appels et les messages immédiats aussi
+(`verifier-contact-repertoire.ts`).
+
+**Le banc de l'écran monte la VRAIE page** (`scripts/harness/programmes.tsx`,
+comme celui des documents) avec un faux répertoire injecté par la prop
+`lireContacts` de `ProgrammesPage` — il en recopiait le balisage avant.
+
+**Pas couvert, et ce n'est pas un oubli** : modifier un message programmé À
+LA VOIX (le modèle ne voit pas la liste, par conception — ed32cbcc) ; et la
+langue demandée (« en hébreu ») est dans la consigne du serveur, à déployer
+(chantier 2e40a764).
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 

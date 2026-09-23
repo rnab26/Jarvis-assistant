@@ -1,4 +1,4 @@
-import { Ban, Pencil } from "lucide-react"
+import { Ban, CircleCheck, Pencil } from "lucide-react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { LoadError } from "@/components/LoadError"
 import { MessageProgrammeFormDialog } from "@/components/programmes/MessageProgrammeFormDialog"
@@ -6,7 +6,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useJarvisData } from "@/contexts/JarvisDataContext"
+import { etatDestinataire } from "@/lib/destinataireProgramme"
+import { messageManque } from "@/lib/messageAnnonce"
 import { libelleStatut, type MessageProgramme, type StatutMessage } from "@/lib/messagesProgrammes"
+import type { LectureRepertoire } from "@/lib/repertoire"
 
 /** « demain à 10 h 00 » — l'heure prévue, en clair. */
 function formatHeurePrevue(iso: string): string {
@@ -43,8 +46,54 @@ function modifiable(statut: StatutMessage): boolean {
   return statut === "prevu" || statut === "annonce"
 }
 
-export function ProgrammesPage() {
+/** À qui il partira — vérifié dans le répertoire, à vérifier, ou manquant
+ * (chantier a122a936 : « que le contact programmé soit visible et garanti »).
+ * Pour un message parti ou annulé, seul le nom compte encore. */
+function Destinataire({ m, actif }: { m: MessageProgramme; actif: boolean }) {
+  const d = etatDestinataire(m)
+  if (d.etat === "verifie") {
+    // Le numéro entier, jamais tronqué : c'est lui la garantie. Il passe à la
+    // ligne plutôt que de finir en « +972 50-123-45… ».
+    return (
+      <span className="inline-flex flex-wrap items-center gap-x-1">
+        {actif && <CircleCheck className="size-3.5 shrink-0 text-emerald-600" aria-label="Contact vérifié" />}
+        <span>À {d.libelle}</span>
+        <span className="whitespace-nowrap">({d.numero})</span>
+      </span>
+    )
+  }
+  if (d.etat === "manquant") {
+    return actif ? (
+      <Badge variant="destructive" className="destinataire-alerte">
+        Destinataire manquant
+      </Badge>
+    ) : (
+      <span>Sans destinataire</span>
+    )
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <span>À {d.libelle}</span>
+      {actif && (
+        <Badge
+          variant="outline"
+          className="destinataire-alerte border-amber-500 text-amber-700 dark:text-amber-400"
+        >
+          Contact à vérifier
+        </Badge>
+      )}
+    </span>
+  )
+}
+
+export function ProgrammesPage({
+  lireContacts,
+}: {
+  /** Le banc d'essai injecte un faux répertoire ; l'app lit le vrai. */
+  lireContacts?: () => Promise<LectureRepertoire>
+} = {}) {
   const { programmesState } = useJarvisData()
+  const maintenant = new Date()
   const { messages, loading, error, refresh, modifier, annuler } = programmesState
 
   const triees = [...messages].sort(
@@ -76,17 +125,27 @@ export function ProgrammesPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{formatHeurePrevue(m.envoyer_a)}</p>
-                    <Badge variant={couleurStatut(m.statut)}>{libelleStatut(m.statut)}</Badge>
+                    {messageManque(m, maintenant) ? (
+                      // L'heure est passée sans qu'il parte (app fermée à
+                      // l'heure dite) : « Prévu » mentirait.
+                      <Badge variant="destructive" className="message-manque">
+                        Pas parti — heure passée
+                      </Badge>
+                    ) : (
+                      <Badge variant={couleurStatut(m.statut)}>{libelleStatut(m.statut)}</Badge>
+                    )}
+                    <span className="text-xs text-muted-foreground">{libelleCanal(m.canal)}</span>
                   </div>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    À {m.destinataire} · {libelleCanal(m.canal)}
-                  </p>
+                  <div className="mt-0.5 text-sm text-muted-foreground">
+                    <Destinataire m={m} actif={modifiable(m.statut)} />
+                  </div>
                   <p className="mt-1 line-clamp-3 text-sm whitespace-pre-wrap">{m.texte}</p>
                 </div>
                 {modifiable(m.statut) && (
                   <>
                     <MessageProgrammeFormDialog
                       message={m}
+                      lireContacts={lireContacts}
                       onSubmit={(champs) => modifier(m.id, champs)}
                       trigger={
                         <Button variant="ghost" size="icon" className="zone-tactile" aria-label="Modifier">
@@ -98,7 +157,7 @@ export function ProgrammesPage() {
                       titre="Annuler cet envoi programmé ?"
                       description={
                         <>
-                          Le message à « {m.destinataire} » prévu {formatHeurePrevue(m.envoyer_a)} ne
+                          Le message à « {m.contact_nom || m.destinataire || "personne"} » prévu {formatHeurePrevue(m.envoyer_a)} ne
                           partira pas.
                         </>
                       }

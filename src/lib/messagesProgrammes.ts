@@ -45,6 +45,11 @@ export type MessageProgramme = {
   contact_id: string | null
   /** Toujours la façon dont il l'a nommé à l'oral — c'est ce qu'on lui relit. */
   destinataire: string
+  /** Ce que le RÉPERTOIRE a répondu au moment de programmer (migration 0056,
+   * chantier a122a936) : le nom exact du contact et son numéro. Présents =
+   * vérifié, et ce numéro sert à l'heure dite ; absents = à vérifier. */
+  contact_nom?: string | null
+  telephone?: string | null
   texte: string
   envoyer_a: string
   statut: StatutMessage
@@ -53,7 +58,7 @@ export type MessageProgramme = {
 }
 
 const CHAMPS =
-  "id, canal, contact_id, destinataire, texte, envoyer_a, statut, annonce_a, created_at"
+  "id, canal, contact_id, destinataire, contact_nom, telephone, texte, envoyer_a, statut, annonce_a, created_at"
 
 export async function programmerMessage(entree: {
   destinataire: string
@@ -62,6 +67,8 @@ export async function programmerMessage(entree: {
   /** Absent tant qu'il ne l'a pas dit : le canal se tranche au moment d'envoyer. */
   canal?: "whatsapp" | "sms" | null
   contact_id?: string | null
+  contact_nom?: string | null
+  telephone?: string | null
 }): Promise<MessageProgramme | null> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) return null
@@ -75,6 +82,8 @@ export async function programmerMessage(entree: {
       envoyer_a: entree.envoyer_a,
       canal: entree.canal ?? null,
       contact_id: entree.contact_id ?? null,
+      contact_nom: entree.contact_nom ?? null,
+      telephone: entree.telephone ?? null,
     })
     .select(CHAMPS)
     .single()
@@ -146,6 +155,8 @@ export async function annulerMessage(id: string): Promise<void> {
 export type ModificationMessage = Partial<{
   destinataire: string
   contact_id: string | null
+  contact_nom: string | null
+  telephone: string | null
   canal: "whatsapp" | "sms" | null
   texte: string
   envoyer_a: string

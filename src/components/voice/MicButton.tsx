@@ -68,6 +68,7 @@ import {
   phraseAnnonceMessage,
   prochainMessageAAnnoncer,
 } from "@/lib/messageAnnonce"
+import { destinataireManquant } from "@/lib/destinataireProgramme"
 import {
   envoiAutoActif,
   estReponseNon,
@@ -1657,6 +1658,13 @@ export function MicButton({
         return
       }
 
+      // Sans destinataire (le nom s'est perdu en programmant), l'annonce
+      // vient de dire où le choisir : on ne prépare RIEN (chantier a122a936).
+      if (!prochain.telephone && destinataireManquant(prochain.destinataire)) {
+        if (!annule) setStatus("idle")
+        return
+      }
+
       // Prépare VRAIMENT le brouillon (WhatsApp/SMS) — c'est ce même
       // brouillon que « envoie-le », « remplace X par Y » et « relis-le
       // moi » (déjà reconnus juste au-dessus pour un message préparé à
@@ -1665,11 +1673,15 @@ export function MicButton({
         action: "send_message",
         message_text: prochain.texte,
         contact_id: prochain.contact_id ?? undefined,
-        // Le contact_id n'est presque jamais connu (le carnet de Jarvis n'en
-        // tient plus, voir CLAUDE.md) : c'est `destinataire` — ce qu'il a
-        // dit à l'oral en programmant l'envoi — qui sert à le retrouver dans
-        // le répertoire du téléphone, exactement comme contact_name ailleurs.
-        contact_name: prochain.contact_id ? undefined : prochain.destinataire,
+        // LE NUMÉRO VÉRIFIÉ AU MOMENT DE PROGRAMMER, quand on l'a (chantier
+        // a122a936) : c'est lui qui « garantit » le destinataire — on ne
+        // redevine pas à l'heure dite ce qui a été tranché devant lui.
+        phone_number: prochain.telephone ?? undefined,
+        // Sinon (message d'avant ce correctif, ou contact resté « à
+        // vérifier ») : `destinataire` — ce qu'il a dit à l'oral — sert à le
+        // retrouver dans le répertoire, exactement comme contact_name ailleurs.
+        // Avec un numéro, il ne sert plus qu'à NOMMER le destinataire.
+        contact_name: prochain.contact_id ? undefined : (prochain.contact_nom ?? prochain.destinataire),
         message_channel: prochain.canal ?? undefined,
       }
       // sauterFenetre: l'annonce qu'on vient de dire EST déjà la

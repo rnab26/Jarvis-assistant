@@ -208,6 +208,28 @@ export function chercherContact(cible: string, repertoire: ContactTelephone[]): 
     else parNom.set(cle, [entree])
   }
 
+  // D'ABORD : les contacts dont le nom contient TOUT ce qu'il a dit. Trouvé le
+  // 23 sept. 2026 (chantier a122a936) : le score ci-dessous rapporte les mots
+  // communs au nom le PLUS LONG, donc « Harry » valait 50 pour « Harry Cohen »
+  // et 33 pour « Harry Locataire Bureau » — sous le seuil. Le second
+  // disparaissait, et « écris à Harry » partait chez Harry Cohen sans une
+  // question, alors que le contact qu'il voulait portait exactement le mot
+  // dit. Deux contacts qui contiennent chacun tout ce qu'il a dit sont des
+  // homonymes pour lui : on demande. Un nom dit en entier l'emporte.
+  const motsDits = motsUtiles(cible)
+  const couvrants = [...parNom.entries()].filter(([, entrees]) => {
+    const motsNom = motsUtiles(entrees[0].nom)
+    return motsDits.length > 0 && motsDits.every((m) => motsNom.includes(m))
+  })
+  if (couvrants.length > 0) {
+    const exact = couvrants.find(([cle]) => cle === aplatir(cible))
+    if (exact) return { etat: "trouve", contact: meilleurNumero(exact[1]) }
+    if (couvrants.length === 1) return { etat: "trouve", contact: meilleurNumero(couvrants[0][1]) }
+    return { etat: "ambigu", candidats: couvrants.map(([, entrees]) => meilleurNumero(entrees)) }
+  }
+
+  // SINON : la ressemblance partielle (« mon frère Yoni » pour « Yoni »),
+  // au-dessus du seuil — inchangée.
   let meilleur = 0
   let gagnants: ContactTelephone[] = []
   for (const entrees of parNom.values()) {

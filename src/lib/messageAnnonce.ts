@@ -18,9 +18,14 @@
  * scripts/verifier-message-annonce.ts.
  */
 
+import { destinataireManquant } from "./destinataireProgramme.ts"
+
 export interface MessageAAnnoncer {
   id: string
   destinataire: string
+  /** Le contact vérifié au moment de programmer (chantier a122a936). */
+  contact_nom?: string | null
+  telephone?: string | null
   texte: string
   envoyer_a: string
   statut: "prevu" | "annonce" | "envoye" | "annule"
@@ -42,10 +47,15 @@ export type StatutJarvis = "idle" | "wake-listening" | "listening" | "processing
  * chercher, mais Jarvis ne relance pas une annonce pour un rendez-vous
  * manqué de plusieurs heures.
  */
+/** Au-delà, un message « prévu » n'est plus annoncé tout seul (voir
+ * ci-dessous) — et l'écran « Programmé » le dit, au lieu d'afficher « Prévu »
+ * pour un rendez-vous passé depuis la veille. */
+export const MARGE_ANNONCE_MS = 6 * 60 * 60 * 1000
+
 export function prochainMessageAAnnoncer<T extends MessageAAnnoncer>(
   messages: T[],
   maintenant: Date,
-  margeMs = 6 * 60 * 60 * 1000,
+  margeMs = MARGE_ANNONCE_MS,
 ): T | null {
   const du = messages
     .filter((m) => m.statut === "prevu")
@@ -57,6 +67,22 @@ export function prochainMessageAAnnoncer<T extends MessageAAnnoncer>(
     })
     .sort((a, b) => new Date(a.envoyer_a).getTime() - new Date(b.envoyer_a).getTime())
   return du[0] ?? null
+}
+
+/**
+ * Un message resté « prévu » dont l'heure est passée depuis plus que la marge :
+ * il ne partira plus tout seul — l'app n'était pas ouverte à l'heure dite. Le
+ * 22 sept., celui pour Harry (18 h) est resté « Prévu » le lendemain, sans
+ * rien qui dise qu'il n'était jamais parti (chantier a122a936).
+ */
+export function messageManque(
+  m: { statut: MessageAAnnoncer["statut"]; envoyer_a: string },
+  maintenant: Date,
+  margeMs = MARGE_ANNONCE_MS,
+): boolean {
+  if (m.statut !== "prevu") return false
+  const t = new Date(m.envoyer_a).getTime()
+  return !Number.isNaN(t) && maintenant.getTime() - t > margeMs
 }
 
 /**
@@ -86,7 +112,15 @@ export function peutAnnoncerMaintenant(params: {
  * ailleurs dans ce projet.
  */
 export function phraseAnnonceMessage(m: MessageAAnnoncer): string {
-  return `Message à envoyer à ${m.destinataire} : « ${m.texte} ». Je te le prépare — dis-moi si je l'envoie, si tu veux corriger le texte, ou si tu préfères annuler.`
+  // Sans destinataire, on ne prépare RIEN : un brouillon « à personne » est
+  // pire qu'une phrase qui dit où le compléter (chantier a122a936).
+  if (!m.telephone && destinataireManquant(m.destinataire)) {
+    return `C'est l'heure du message « ${m.texte} », mais je ne sais pas à qui l'envoyer : choisis le destinataire dans l'onglet Programmé.`
+  }
+  // Le nom EXACT du contact vérifié, quand on l'a : c'est lui que WhatsApp
+  // affichera, et c'est à lui que le message partira.
+  const qui = m.telephone && m.contact_nom ? m.contact_nom : m.destinataire
+  return `Message à envoyer à ${qui} : « ${m.texte} ». Je te le prépare — dis-moi si je l'envoie, si tu veux corriger le texte, ou si tu préfères annuler.`
 }
 
 /** Les tournures qui annulent un message dont Jarvis vient de faire

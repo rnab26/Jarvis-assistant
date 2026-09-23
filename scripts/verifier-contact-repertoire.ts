@@ -91,6 +91,38 @@ console.log("\n— On ne compose JAMAIS au hasard —")
   )
 }
 
+// Le 23 sept. 2026 (chantier a122a936) : « Harry » tout court, et deux
+// Harry dans le répertoire dont l'un porte un nom plus long. Le score
+// rapporté au nom le plus long éliminait « Harry Locataire Bureau » (33) et
+// gardait « Harry Cohen » (50) — sans une question.
+{
+  const deuxHarry = [
+    c("Harry Cohen", "0521111111"),
+    c("Harry Locataire Bureau", "0542222222"),
+    c("Dylan Cohen", "0533333333"),
+  ]
+  const r = chercherContact("Harry", deuxHarry)
+  verifier(
+    "deux Harry dont un au nom LONG : on demande, on ne prend pas le plus court",
+    r.etat === "ambigu" && r.candidats.length === 2,
+    JSON.stringify(r),
+  )
+  const r2 = chercherContact("Harry locataire bureau", deuxHarry)
+  verifier(
+    "« Harry locataire bureau » trouve le bon",
+    r2.etat === "trouve" && r2.contact.numero === "0542222222",
+    JSON.stringify(r2),
+  )
+  const r3 = chercherContact("Harry Cohen", deuxHarry)
+  verifier(
+    "un nom dit en entier l'emporte, même si un autre contient aussi « Harry »",
+    r3.etat === "trouve" && r3.contact.numero === "0521111111",
+    JSON.stringify(r3),
+  )
+  const r4 = chercherContact("Cohen", deuxHarry)
+  verifier("un nom de famille partagé : on demande", r4.etat === "ambigu", JSON.stringify(r4))
+}
+
 verifier(
   "un inconnu ne trouve personne",
   chercherContact("Bertrand", REPERTOIRE).etat === "aucun",
