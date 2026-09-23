@@ -11,6 +11,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -19,10 +20,13 @@ import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.WindowManager;
 import android.widget.ImageView;
+import android.widget.TextView;
 
 /**
  * La bulle Jarvis, posée par-dessus les autres applications.
@@ -68,6 +72,25 @@ public class BulleService extends Service {
     private ImageView bulle;
     private WindowManager.LayoutParams params;
     private final Handler principal = new Handler(Looper.getMainLooper());
+
+    /**
+     * LA CROIX DU BAS — glisser la bulle dessus la range (chantier 9c22a183,
+     * sa demande : « permettre de supprimer la bulle en la faisant glisser
+     * vers le bas de l'écran au lieu de passer par les paramètres »). Le geste
+     * de Messenger et de toutes les bulles Android : la cible n'apparaît QUE
+     * pendant un glissement, et ne prend aucun toucher (FLAG_NOT_TOUCHABLE) —
+     * posée par-dessus l'écran, elle volerait sinon les appuis de
+     * l'application en dessous.
+     */
+    private TextView cible;
+    private WindowManager.LayoutParams paramsCible;
+    private boolean cibleAffichee = false;
+    private boolean surCible = false;
+    private static final int TAILLE_CIBLE_DP = 64;
+    private static final int MARGE_CIBLE_DP = 56;
+    /** Le doigt n'a pas à être pile au centre : un rayon généreux, comme les
+     * bulles de Messenger qui « aimantent » vers la croix. */
+    private static final int RAYON_AIMANT_DP = 72;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -180,7 +203,8 @@ public class BulleService extends Service {
     /**
      * Le cœur de Jarvis, en petit.
      *
-     * Un appui l'ouvre, un glissement la déplace, un appui long la range.
+     * Un appui l'ouvre, un glissement la déplace, un appui long la range —
+     * et la glisser sur la croix qui apparaît en bas la range aussi.
      * La distinction entre les deux se fait sur la DISTANCE parcourue, pas
      * sur une durée : sur un téléphone, un appui bouge toujours de quelques
      * pixels, et un seuil de zéro rendrait la bulle impossible à ouvrir.
@@ -195,6 +219,20 @@ public class BulleService extends Service {
             private int departX, departY;
             private float doigtX, doigtY;
             private boolean deplacee;
+            private boolean appuiLongFait;
+
+            /**
+             * L'APPUI LONG, détecté ICI et plus par setOnLongClickListener.
+             * Trouvé le 23 sept. 2026 : ce listener renvoie `true` dès
+             * ACTION_DOWN, donc Android n'appelait jamais onTouchEvent — là où
+             * il détecte l'appui long. « Appui long pour la ranger », promis
+             * par la notification et par Paramètres, n'a jamais pu marcher.
+             */
+            private final Runnable appuiLong = () -> {
+                appuiLongFait = true;
+                vue.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                ranger();
+            };
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -205,11 +243,19 @@ public class BulleService extends Service {
                         doigtX = event.getRawX();
                         doigtY = event.getRawY();
                         deplacee = false;
+                        appuiLongFait = false;
+                        principal.postDelayed(appuiLong, ViewConfiguration.getLongPressTimeout());
                         return true;
                     case MotionEvent.ACTION_MOVE:
+                        if (appuiLongFait) return true;
                         int dx = Math.round(event.getRawX() - doigtX);
                         int dy = Math.round(event.getRawY() - doigtY);
-                        if (Math.abs(dx) > seuil || Math.abs(dy) > seuil) deplacee = true;
+                        if (!deplacee && (Math.abs(dx) > seuil || Math.abs(dy) > seuil)) {
+                            deplacee = true;
+                            // Un glissement n'est pas un appui long.
+                            principal.removeCallbacks(appuiLong);
+                            montrerCible();
+                        }
                         params.x = departX + dx;
                         params.y = departY + dy;
                         // Borné À CHAQUE mouvement, pas seulement au relâcher :
@@ -217,6 +263,7 @@ public class BulleService extends Service {
                         // geste, et c'est ce départ-là qui donne l'impression
                         // qu'on l'a perdue.
                         bornerDansEcran(v.getWidth() > 0 ? v.getWidth() : dp(52));
+                        if (deplacee) marquerCible(doigtSurCible(event.getRawX(), event.getRawY()));
                         try {
                             fenetres.updateViewLayout(bulle, params);
                         } catch (Exception ignore) {
@@ -224,7 +271,19 @@ public class BulleService extends Service {
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
+                        principal.removeCallbacks(appuiLong);
+                        if (appuiLongFait) return true;
                         if (deplacee) {
+                            boolean aRanger = cibleAffichee && doigtSurCible(event.getRawX(), event.getRawY());
+                            cacherCible();
+                            if (aRanger) {
+                                // Rangée : on NE garde PAS cette position —
+                                // sinon elle réapparaîtrait sur la croix, en
+                                // bas de l'écran, la prochaine fois.
+                                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                                ranger();
+                                return true;
+                            }
                             // La position est gardée : la retrouver ailleurs à
                             // chaque redémarrage rendrait le réglage inutile.
                             getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -233,20 +292,119 @@ public class BulleService extends Service {
                             ouvrirJarvis();
                         }
                         return true;
+                    case MotionEvent.ACTION_CANCEL:
+                        principal.removeCallbacks(appuiLong);
+                        cacherCible();
+                        return true;
                     default:
                         return false;
                 }
             }
         });
-
-        vue.setOnLongClickListener(v -> {
-            // Ranger la bulle sans aller dans Paramètres. Le réglage, lui,
-            // reste allumé : c'est un masquage jusqu'au prochain démarrage,
-            // pas un choix qu'on lui ferait prendre par mégarde.
-            stopSelf();
-            return true;
-        });
         return vue;
+    }
+
+    /**
+     * Ranger la bulle sans passer par Paramètres. Si elle écoutait, l'écoute
+     * s'arrête AVEC elle : sa teinte rouge était la seule chose qui disait que
+     * le micro était ouvert — la ranger en le laissant ouvert laisserait un
+     * micro allumé que rien ne montre.
+     */
+    private void ranger() {
+        cacherCible();
+        BulleEcouteActivity.arreterSiActive();
+        stopSelf();
+    }
+
+    private void montrerCible() {
+        if (cibleAffichee || fenetres == null) return;
+        if (cible == null) {
+            cible = new TextView(this);
+            cible.setText("\u2715");
+            cible.setTextColor(Color.WHITE);
+            cible.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+            cible.setGravity(Gravity.CENTER);
+            cible.setContentDescription("Ranger la bulle");
+            GradientDrawable fond = new GradientDrawable();
+            fond.setShape(GradientDrawable.OVAL);
+            fond.setColor(Color.argb(170, 30, 30, 30));
+            cible.setBackground(fond);
+
+            int type = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+            int taille = dp(TAILLE_CIBLE_DP);
+            paramsCible = new WindowManager.LayoutParams(
+                taille,
+                taille,
+                type,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+            paramsCible.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+            paramsCible.y = dp(MARGE_CIBLE_DP);
+        }
+        surCible = false;
+        cible.setScaleX(1f);
+        cible.setScaleY(1f);
+        try {
+            fenetres.addView(cible, paramsCible);
+            cibleAffichee = true;
+        } catch (Exception ignore) {
+            // Sans la croix, le glissement reste un simple déplacement.
+        }
+    }
+
+    private void cacherCible() {
+        if (!cibleAffichee || fenetres == null || cible == null) return;
+        try {
+            fenetres.removeView(cible);
+        } catch (Exception ignore) {
+            // Déjà retirée.
+        }
+        cibleAffichee = false;
+        surCible = false;
+    }
+
+    /** La croix grossit et rougit quand le doigt est dessus : il sait, AVANT
+     * de lâcher, que la bulle va être rangée. */
+    private void marquerCible(boolean dessus) {
+        if (!cibleAffichee || cible == null || dessus == surCible) return;
+        surCible = dessus;
+        cible.setScaleX(dessus ? 1.25f : 1f);
+        cible.setScaleY(dessus ? 1.25f : 1f);
+        GradientDrawable fond = new GradientDrawable();
+        fond.setShape(GradientDrawable.OVAL);
+        fond.setColor(dessus ? Color.argb(220, 220, 50, 50) : Color.argb(170, 30, 30, 30));
+        cible.setBackground(fond);
+        if (dessus) cible.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+    }
+
+    /**
+     * Le DOIGT est-il sur la croix ? On compare le doigt (coordonnées
+     * d'écran brutes) au centre RÉEL de la croix tel qu'Android l'a posée —
+     * pas à une position recalculée, qui se tromperait de la hauteur de la
+     * barre de navigation selon les téléphones.
+     */
+    private boolean doigtSurCible(float xDoigt, float yDoigt) {
+        if (cible == null) return false;
+        int centreX;
+        int centreY;
+        if (cible.getWidth() > 0) {
+            int[] ou = new int[2];
+            cible.getLocationOnScreen(ou);
+            centreX = ou[0] + cible.getWidth() / 2;
+            centreY = ou[1] + cible.getHeight() / 2;
+        } else {
+            DisplayMetrics ecran = getResources().getDisplayMetrics();
+            centreX = ecran.widthPixels / 2;
+            centreY = ecran.heightPixels - dp(MARGE_CIBLE_DP) - dp(TAILLE_CIBLE_DP) / 2;
+        }
+        float dx = xDoigt - centreX;
+        float dy = yDoigt - centreY;
+        float rayon = dp(RAYON_AIMANT_DP);
+        return dx * dx + dy * dy <= rayon * rayon;
     }
 
     /**
@@ -327,7 +485,7 @@ public class BulleService extends Service {
             : new Notification.Builder(this);
         Notification notif = b
             .setContentTitle("Bulle Jarvis affichée")
-            .setContentText("Appuie dessus pour lui parler. Appui long pour la ranger.")
+            .setContentText("Appuie dessus pour lui parler. Glisse-la sur la croix en bas pour la ranger.")
             .setSmallIcon(R.drawable.ic_stat_jarvis)
             .setContentIntent(action)
             .setOngoing(true)
@@ -352,6 +510,7 @@ public class BulleService extends Service {
     public void onDestroy() {
         active = false;
         if (instance == this) instance = null;
+        cacherCible();
         if (bulle != null && fenetres != null) {
             try {
                 fenetres.removeView(bulle);

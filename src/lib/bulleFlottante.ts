@@ -72,8 +72,8 @@ export function phraseBulle(situation: SituationBulle): string {
     case "sans_autorisation":
       return "Android demande une autorisation à part pour afficher quelque chose par-dessus les autres applications. Elle ne se donne que depuis ses réglages."
     case "rangee":
-      return "La bulle est rangée. Un appui long dessus la range aussi, sans venir ici."
+      return "La bulle est rangée. Sans venir ici, tu peux aussi la glisser sur la croix qui apparaît en bas de l'écran."
     case "affichee":
-      return "Un appui dessus ouvre Jarvis, un glissement la déplace, un appui long la range."
+      return "Un appui dessus active le micro, un glissement la déplace. Glisse-la sur la croix en bas de l'écran (ou appui long) pour la ranger."
   }
 }

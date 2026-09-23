@@ -114,5 +114,58 @@ verifier(
   "même règle que « Revérifier » de la mémoire : une action qui ne montre rien passe pour cassée",
 )
 
+console.log("\n— La ranger sans passer par Paramètres (chantier 9c22a183) —")
+
+{
+  // L'appui long ne pouvait JAMAIS se déclencher : l'OnTouchListener renvoie
+  // true dès ACTION_DOWN, donc Android n'appelle pas onTouchEvent, qui est
+  // l'endroit où il détecte l'appui long. Un setOnLongClickListener sur cette
+  // vue est donc du code mort — ce contrôle refuse qu'on le remette.
+  verifier(
+    "pas d'OnLongClickListener mort sur la bulle",
+    !/\.setOnLongClickListener\(/.test(service),
+    "avec un OnTouchListener qui consomme ACTION_DOWN, il ne se déclenche jamais",
+  )
+  const toucher = corps(service, "public boolean onTouch(")
+  const bas = toucher.slice(toucher.indexOf("ACTION_DOWN"), toucher.indexOf("ACTION_MOVE"))
+  verifier(
+    "l'appui long est programmé à l'appui (postDelayed + délai système)",
+    /postDelayed\(appuiLong,\s*ViewConfiguration\.getLongPressTimeout\(\)\)/.test(bas),
+  )
+  const mouvement = toucher.slice(toucher.indexOf("ACTION_MOVE"), toucher.indexOf("ACTION_UP"))
+  verifier("   et annulé dès qu'elle glisse", /removeCallbacks\(appuiLong\)/.test(mouvement))
+  const relache = toucher.slice(toucher.indexOf("ACTION_UP"), toucher.indexOf("ACTION_CANCEL"))
+  verifier("   et au relâcher", /removeCallbacks\(appuiLong\)/.test(relache))
+  verifier(
+    "le glissement montre la croix du bas",
+    /montrerCible\(\)/.test(mouvement),
+  )
+  verifier(
+    "lâchée sur la croix, elle est rangée AVANT que la position soit enregistrée",
+    relache.indexOf("ranger()") !== -1 && relache.indexOf("ranger()") < relache.indexOf("putInt(POS_X"),
+    "enregistrer d'abord la ferait réapparaître sur la croix, en bas de l'écran, la prochaine fois",
+  )
+}
+{
+  const cible = corps(service, "private void montrerCible(")
+  verifier(
+    "la croix ne prend AUCUN toucher (elle volerait les appuis de l'app en dessous)",
+    /FLAG_NOT_TOUCHABLE/.test(cible) && /FLAG_NOT_FOCUSABLE/.test(cible),
+  )
+  const ranger = corps(service, "private void ranger(")
+  verifier(
+    "ranger la bulle arrête aussi son écoute — sa teinte était le seul signe que le micro était ouvert",
+    ranger.indexOf("arreterSiActive()") !== -1 && ranger.indexOf("arreterSiActive()") < ranger.indexOf("stopSelf()"),
+  )
+  verifier(
+    "la croix disparaît avec le service",
+    /cacherCible\(\)/.test(corps(service, "public void onDestroy(")),
+  )
+  verifier(
+    "Paramètres dit comment la ranger sans y revenir",
+    /croix en bas/.test(pont),
+  )
+}
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} vérification(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)

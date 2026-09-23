@@ -2125,6 +2125,40 @@ Quatre choses à ne pas défaire :
    latérale ») lit l'état réel par `RoleManager` et ouvre le meilleur écran
    système atteignable.
 
+### La ranger en la glissant sur une croix, et l'appui long qui ne marchait pas (23 sept. 2026)
+
+Chantier `9c22a183`, sa demande : « permettre de supprimer la bulle en la
+faisant glisser vers le bas de l'écran au lieu de passer par les
+paramètres ». Le geste de toutes les bulles Android : dès qu'elle glisse, une
+croix apparaît en bas au centre ; le doigt dessus, elle grossit et rougit ;
+lâchée dessus, la bulle est rangée. **La position n'est PAS enregistrée dans
+ce cas** — sinon elle réapparaîtrait sur la croix, en bas de l'écran.
+
+**Trouvé en le faisant : l'appui long « pour la ranger » n'a JAMAIS marché.**
+L'`OnTouchListener` renvoie `true` dès `ACTION_DOWN`, donc Android n'appelle
+jamais `onTouchEvent` — là où il détecte l'appui long : le
+`setOnLongClickListener` était du code mort, alors que la notification et
+Paramètres le promettaient. L'appui long est maintenant programmé dans
+`ACTION_DOWN` (`postDelayed` + `ViewConfiguration.getLongPressTimeout()`) et
+annulé au glissement et au relâcher. **Ne remets jamais un
+`setOnLongClickListener` sur cette vue** : `verifier-bulle-position.ts` le
+refuse.
+
+Trois points à ne pas défaire : la croix est `FLAG_NOT_TOUCHABLE` (posée
+par-dessus l'écran, elle volerait sinon les appuis de l'application en
+dessous) ; le doigt est comparé au centre RÉEL de la croix
+(`getLocationOnScreen`), pas à une position recalculée qui se tromperait de
+la barre de navigation ; et **ranger arrête l'écoute** — la teinte rouge de la
+bulle était le seul signe que le micro était ouvert.
+
+**Compilé pour de vrai ici, pas seulement en CI** : le build Android ne tourne
+que sur le tronc. `BulleService.java` a été compilé avec `javac` contre
+l'`android.jar` de la plateforme 34 (téléchargé depuis dl.google.com — Maven
+Central refuse par limite de débit) et trois bouchons (`R`,
+`BulleEcouteActivity`, `MainActivity`) : rc=0. La méthode vaut pour tout
+fichier Java touché hors du tronc. **Non essayé sur un téléphone** : il faut
+une vraie APK.
+
 ### La fenêtre invisible de la bulle : 2 dip n'avait jamais été essayé (17 sept. 2026)
 
 Chantiers `efe7e44c` / `7b8e68a7`. Sa phrase, le 17 sept. à 14h59, en réponse
