@@ -18,6 +18,7 @@ import {
   estUnePanne,
   phraseTourSansTexte,
   raisonDepuisCode,
+  raisonDepuisErreurWeb,
   RIEN_ENTENDU,
   type RaisonEcoute,
 } from "@/lib/raisonEcoute"
@@ -829,7 +830,29 @@ export function useSpeechRecognition() {
       const finaux: string[] = []
       const courante: { reco: SpeechRecognition | null } = { reco: null }
 
+      // CE QU'ON MESURE DU CHEMIN WEB (chantier f0228dc7). Il n'écrivait RIEN
+      // dans `journal_ecoute` : ni `rafale_debut`, ni `rafale_fin`, ni leurs
+      // équivalents de commande. La plateforme ajoutée le 23 sept. enrichit
+      // chaque évènement — mais sur le web il n'y avait aucun évènement
+      // d'écoute à enrichir, donc la requête prévue par le chantier serait
+      // restée vide quoi qu'il fasse. Les noms de champs sont ceux du chemin
+      // Android, pour que la MÊME requête réponde des deux côtés.
+      const debutAt = Date.now()
+      let nbSessions = 0
+      let nbPartiels = 0
+      /** Le navigateur a rendu la main alors qu'on voulait encore écouter.
+       * C'est le signal que le chemin Android n'a pas, et l'hypothèse écrite
+       * dans le chantier porte exactement dessus : ces fins-là ne sont pas
+       * des démarrages REFUSÉS, donc `renonceApresRefus` ne les compte pas. */
+      let finsSpontanees = 0
+      let demarrageRefuse = false
+      /** Le code BRUT du navigateur. Gardé À CÔTÉ de `raison` et jamais dans
+       * `code`, qui ne porte que des codes Android : deux sens sous une même
+       * clé, et une session future lirait un nombre là où il y a un mot. */
+      let erreurWeb: string | null = null
+
       function noterWeb(interim: string) {
+        nbPartiels++
         const texte = [...finaux, interim]
           .map((s) => s.trim())
           .filter(Boolean)
@@ -881,6 +904,10 @@ export function useSpeechRecognition() {
           }
 
           reco.onerror = (event) => {
+            // Relevé AVANT le tri ci-dessous : « no-speech » et « aborted »
+            // ne changent rien au tour, mais ce sont eux qu'il faut compter
+            // pour savoir si le navigateur s'arrête tout seul.
+            erreurWeb = event.error
             // "no-speech" et "aborted" ne sont pas des erreurs ici : le
             // moteur s'arrête sur un silence ou sur notre propre stop(), et
             // c'est nous qui décidons si le tour est fini.
@@ -891,6 +918,9 @@ export function useSpeechRecognition() {
           }
 
           reco.onend = () => {
+            // Ni nous ni Raphaël n'avons demandé l'arrêt : c'est le
+            // navigateur qui a rendu la main.
+            if (!flux.stopDemande && !arretManuelRef.current) finsSpontanees++
             setReady(false)
             resolve()
           }
@@ -910,6 +940,7 @@ export function useSpeechRecognition() {
           try {
             reco.start()
           } catch {
+            demarrageRefuse = true
             reject(new Error(MOTEUR_OCCUPE))
           }
         })
@@ -931,17 +962,44 @@ export function useSpeechRecognition() {
       }
 
       setListening(true)
+      noterEcoute(isWake ? "rafale_debut" : "commande_debut")
+      /** Une seule ligne de fin par tour, quel que soit le chemin de sortie —
+       * et il y en a trois : le tour normal, une erreur du moteur, un
+       * démarrage refusé. Les deux dernières ressortent par une exception, et
+       * ce sont précisément celles qu'on cherche à compter. */
+      let finNotee = false
+      const noterFinWeb = () => {
+        if (finNotee) return
+        finNotee = true
+        noterEcoute(isWake ? "rafale_fin" : "commande_fin", {
+          // Mêmes valeurs que le chemin Android : « veille » = la boucle du
+          // mot-clé, « commande » = il a appuyé et il parle.
+          mode: isWake ? "veille" : "commande",
+          duree_ms: Date.now() - debutAt,
+          sessions: nbSessions,
+          partiels: nbPartiels,
+          fins_spontanees: finsSpontanees,
+          demarrage_refuse: demarrageRefuse,
+          arret_manuel: arretManuelRef.current,
+          raison: raisonDepuisErreurWeb(erreurWeb),
+          erreur_web: erreurWeb,
+          entendu: extraitEntendu(texteDuTour(flux.etat)),
+        })
+      }
       try {
         for (;;) {
+          nbSessions++
           await session()
           if (flux.erreur) throw new Error(flux.erreur)
           if (flux.stopDemande || isWake || arretManuelRef.current) break
           if (decider(flux.etat, Date.now(), opts, true) !== "relancer") break
         }
         const transcript = texteDuTour(flux.etat)
+        noterFinWeb()
         if (!transcript) throw new Error(RIEN_ENTENDU)
         return transcript
       } finally {
+        noterFinWeb()
         clearInterval(battement)
         clorePresenteRef.current = null
         courante.reco = null

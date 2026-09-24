@@ -79,6 +79,40 @@ export function raisonDepuisCode(code: number | null | undefined): RaisonEcoute 
 }
 
 /**
+ * Les codes du NAVIGATEUR, traduits dans le MÊME vocabulaire (chantier
+ * f0228dc7, « le bruit du micro persiste sur la version WEB »).
+ *
+ * Sur le web l'écoute ne passe pas par Android mais par l'API du navigateur,
+ * dont les erreurs sont des chaînes normalisées par le W3C
+ * (`SpeechRecognitionErrorEvent.error`). Sans cette traduction, une rafale
+ * web et une rafale du téléphone ne se comparent pas dans la même requête —
+ * et c'est exactement ce que le chantier demande de pouvoir faire.
+ *
+ * DEUX CODES RENDENT `null`, ET CE N'EST PAS UN OUBLI. « aborted » est NOTRE
+ * propre `stop()` : le compter comme une panne signalerait une erreur à
+ * chaque tour normal. « no-speech » est le repos de la veille, déjà traité
+ * comme `silence` côté Android — il est ici pour la même raison, et
+ * `estUnePanne` s'en occupe.
+ */
+const CODES_WEB: Record<string, RaisonEcoute | null> = {
+  "no-speech": "silence",
+  aborted: null,
+  "audio-capture": "audio",
+  network: "reseau",
+  "not-allowed": "permission",
+  "service-not-allowed": "permission",
+  "language-not-supported": "langue",
+  "bad-grammar": "service",
+}
+
+export function raisonDepuisErreurWeb(code: string | null | undefined): RaisonEcoute | null {
+  if (!code) return null
+  // Un code inconnu est une vraie erreur du moteur, jamais un silence : le
+  // ranger en `service` le rend visible plutôt que de l'effacer.
+  return code in CODES_WEB ? CODES_WEB[code] : "service"
+}
+
+/**
  * Ce silence-là mérite-t-il qu'on dérange Raphaël ?
  *
  * « silence » ne se signale JAMAIS : c'est le fonctionnement normal d'une

@@ -22,11 +22,14 @@
  * aucune vérification malgré ce que promettait son propre commentaire.
  */
 
+import { readFileSync } from "node:fs"
+
 import { erreurDepuisEcoute } from "../src/lib/erreurs.ts"
 import {
   estUnePanne,
   phraseTourSansTexte,
   raisonDepuisCode,
+  raisonDepuisErreurWeb,
   RIEN_ENTENDU,
   titreDeLaPanne,
   type RaisonEcoute,
@@ -300,6 +303,73 @@ function titre(evenement: string, detail: Record<string, string | number | boole
   verifier(
     "la phrase du silence commence bien par ce que MicButton reconnaît",
     RIEN_ENTENDU.startsWith("Je n'ai rien entendu"),
+    true,
+  )
+}
+
+// --- LE CHEMIN WEB (chantier f0228dc7) ------------------------------------
+//
+// Sur le web l'écoute ne passe pas par Android : les erreurs sont les chaînes
+// du W3C. Ces contrôles tiennent les deux moitiés — la traduction dans le
+// vocabulaire commun, et le fait que ce chemin écrive quelque chose DU TOUT
+// dans le journal (il n'écrivait rien jusqu'au 24 sept. 2026, ce qui rendait
+// la mesure demandée par le chantier structurellement impossible).
+
+verifier(
+  "une vraie panne du navigateur est traduite dans le vocabulaire commun",
+  [
+    raisonDepuisErreurWeb("not-allowed"),
+    raisonDepuisErreurWeb("service-not-allowed"),
+    raisonDepuisErreurWeb("audio-capture"),
+    raisonDepuisErreurWeb("network"),
+    raisonDepuisErreurWeb("language-not-supported"),
+  ],
+  ["permission", "permission", "audio", "reseau", "langue"],
+)
+
+verifier(
+  "un code inconnu du navigateur reste VISIBLE plutôt qu'effacé",
+  raisonDepuisErreurWeb("quelque-chose-de-neuf"),
+  "service",
+)
+
+// NOTRE PROPRE `stop()` N'EST PAS UNE PANNE. Chaque tour normal se termine
+// par un `abort`/`stop` : le compter ferait une erreur par tour, et un
+// registre qui crie à chaque tour n'est plus lu du tout.
+verifier("« aborted » ne signale rien", raisonDepuisErreurWeb("aborted"), null)
+verifier("rien reçu ne signale rien", [raisonDepuisErreurWeb(null), raisonDepuisErreurWeb("")], [null, null])
+
+// Le silence du navigateur suit exactement la règle d'Android : traduit en
+// `silence`, donc jamais une panne.
+verifier("« no-speech » est un silence, pas une panne", estUnePanne(raisonDepuisErreurWeb("no-speech")), false)
+
+{
+  // LE TROU QUE CE CHANTIER A TROUVÉ, ET QU'AUCUN CONTRÔLE NE GARDAIT :
+  // `ecouterWeb` n'appelait `noterEcoute` NULLE PART. La plateforme ajoutée
+  // le 23 sept. enrichit chaque évènement du journal — mais sur le web il n'y
+  // avait aucun évènement d'écoute à enrichir. La requête prévue par le
+  // chantier serait restée vide quoi qu'il fasse.
+  //
+  // On vise le CORPS de la fonction, commentaires retirés : un contrôle qui
+  // chercherait le mot n'importe où dans le fichier resterait vert sur les
+  // appels du chemin Android, qui sont juste au-dessus.
+  const source = readFileSync(new URL("../src/hooks/useSpeechRecognition.ts", import.meta.url), "utf8")
+  const sansCommentaires = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
+  const debut = sansCommentaires.indexOf("const ecouterWeb = useCallback(")
+  const fin = sansCommentaires.indexOf("const listen = useCallback(")
+  const corps = debut >= 0 && fin > debut ? sansCommentaires.slice(debut, fin) : ""
+
+  verifier("le corps d'ecouterWeb est bien là où on le cherche", corps.length > 0, true)
+  verifier(
+    "le chemin web ouvre une ligne de journal",
+    /noterEcoute\(\s*isWake \? "rafale_debut" : "commande_debut"\s*\)/.test(corps),
+    true,
+  )
+  verifier(
+    "et il en referme une, avec ce qu'il faut pour mesurer",
+    ["rafale_fin", "fins_spontanees", "demarrage_refuse", "raison:", "erreur_web"].every((cle) =>
+      corps.includes(cle),
+    ),
     true,
   )
 }
