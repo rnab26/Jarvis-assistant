@@ -216,11 +216,24 @@ verifier(
 // simplement sauté les redites : `ranger()` touche `updated_at` quand il
 // fusionne, et rien d'autre ne le touche. Sans ce contrôle, le test passait
 // au vert en n'ayant rien vérifié du tout.
+//
+// Depuis le 23 sept. 2026 (commit c5c8d97), l'extracteur reçoit ce qu'il sait
+// déjà et ne réécrit plus un fait connu : une redite ne va donc plus jusqu'à
+// `ranger()`, et updated_at ne bouge pas — c'est le dédoublonnage qui se fait
+// UN CRAN PLUS TÔT. Le contrôle restait rouge sur un comportement voulu
+// (constaté le 24 sept., deux passes d'affilée). La question qu'il pose reste
+// la même : les redites ont-elles VRAIMENT atteint la mémoire, ou un 429 les
+// a-t-il sautées ? `appels_modele` y répond directement — une ligne par appel
+// du modèle de mémoire pour ce compte, 200 quand il a répondu.
+const memoireAReponduA = sql(
+  `select count(*)::int as n from appels_modele
+   where user_id = '${userId}' and role = 'memoire' and statut = 200`,
+)[0].n
 verifier(
-  "une redite a bien été fondue dans le souvenir existant (updated_at retouché)",
-  vivants.some((s) => s.retouche === true),
-  "aucun souvenir retouché : les redites n'ont pas atteint la mémoire (429 du " +
-    "modèle ? augmente PAUSE_MS) — le contrôle des doublons ne prouve alors rien",
+  "les redites ont bien atteint la mémoire (fusionnées, ou écartées car déjà connues)",
+  vivants.some((s) => s.retouche === true) || memoireAReponduA >= REDITES.length,
+  `${memoireAReponduA} réponse(s) du modèle de mémoire pour ${REDITES.length} redites, aucun souvenir retouché : ` +
+    "les redites n'ont pas atteint la mémoire (429 du modèle ? augmente PAUSE_MS) — le contrôle des doublons ne prouve alors rien",
 )
 
 // Un chiffre qui change met à jour au lieu d'empiler : l'ancien est périmé.

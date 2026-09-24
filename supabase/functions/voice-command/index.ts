@@ -11,6 +11,7 @@ import { decisionDesigneeClairement, pointsCeQuiLAttend, rappelerCeQuiLAttend } 
 import { rappelerMoteurActif } from "../_shared/moteurActif.ts"
 import { appelerModele, moteurNonConfigure, phrasePourEchec } from "../_shared/modele.ts"
 import { blocDerniersTours } from "../_shared/derniersTours.ts"
+import { sansListeAvantTransmission } from "./recuTransmis.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -881,8 +882,8 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${blocTacheEnAttente
       : args.action
         ? [args]
         : []
-    const actions = brutes
-      .filter((a) => a && typeof a.action === "string")
+    const actions = sansListeAvantTransmission(brutes
+      .filter((a) => a && typeof a.action === "string"))
       .map((a) =>
         normaliserAction(a, {
           idsContacts: new Set(
