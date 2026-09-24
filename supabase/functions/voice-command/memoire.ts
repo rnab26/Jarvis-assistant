@@ -9,7 +9,7 @@
 // dans `echanges` puis disparaît — c'est le choix de Raphaël.
 
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2"
-import { appelerModele } from "../_shared/modele.ts"
+import { appelerModele, attendreLesTraces } from "../_shared/modele.ts"
 import { CONSIGNE_EXTRACTION, OUTIL_EXTRACTION, messageExtraction } from "./extraction.ts"
 import { signalerPanne } from "../_shared/pannes.ts"
 import {
@@ -366,6 +366,23 @@ export async function memoriser(
       err,
       transcript,
     )
+  } finally {
+    // LA TRACE DE L'APPEL DOIT SURVIVRE À CETTE FONCTION (chantier 1f970c1f).
+    // `appelerModele` écrit sa ligne d'`appels_modele` sans l'attendre — c'est
+    // voulu, le rôle « commande » est sur le chemin de la réponse de Raphaël.
+    // Mais ici la fonction s'arrête souvent JUSTE APRÈS l'appel au modèle : le
+    // `return` du cas « aucun fait à retenir », qui est le plus fréquent depuis
+    // qu'une redite déjà connue ne se réécrit plus. L'écriture partait alors
+    // avec la fonction, et la page Consommation sous-comptait les appels de
+    // mémoire — le compteur même qui doit signaler un plafond du JOUR.
+    //
+    // Dans un `finally` et pas avant le `return` : il y a trois sorties (le
+    // cas sans fait, le chemin normal, l'erreur), et seule celle-ci les couvre
+    // toutes les trois. Rien de ce qui est attendu ici n'est sur le chemin de
+    // sa réponse : `memoriser` tourne dans `EdgeRuntime.waitUntil`, après.
+    // `compacterVieuxEchanges` est couverte du même coup, puisqu'elle est
+    // attendue plus haut dans cette fonction.
+    await attendreLesTraces()
   }
 }
 

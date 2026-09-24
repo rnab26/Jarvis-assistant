@@ -433,6 +433,60 @@ function reveillerLaVeille(appel: AppelModele): void {
 }
 
 /**
+ * LES ÉCRITURES DE TRACE ENCORE EN VOL, et pourquoi il faut pouvoir les attendre.
+ *
+ * MESURÉ le 24 sept. 2026 (chantier 1f970c1f) : pour trois phrases passées
+ * chacune par `memoriser`, `appels_modele` n'a gardé qu'une puis deux lignes
+ * `role = 'memoire'`, alors que le modèle répondait 200 à chaque fois. La
+ * cause n'est pas la base : `noter` écrit sans attendre (c'est voulu, voir
+ * plus bas), et quand l'extraction ne rend aucun fait — le cas le plus
+ * fréquent, puisqu'une redite déjà connue ne se réécrit plus — `memoriser`
+ * se termine juste après l'appel au modèle. La fonction s'arrête, et
+ * l'écriture part avec elle.
+ *
+ * La carte « Le moteur de langue » et `moteurActif` sous-comptaient donc les
+ * appels de mémoire — et c'est précisément le compteur qui doit dire qu'un
+ * plafond du JOUR se rapproche, celui qui a déjà laissé Raphaël sans Jarvis.
+ *
+ * ON NE MET PAS D'`await` DANS `noter` POUR AUTANT. Le rôle « commande » est
+ * sur le chemin de sa réponse : lui faire attendre une écriture de
+ * comptabilité rendrait Jarvis plus lent à chaque phrase, pour un chiffre
+ * qu'il regarde une fois par semaine. C'est l'APPELANT qui attend, et
+ * seulement celui qui peut se le permettre.
+ */
+const tracesEnVol = new Set<Promise<void>>()
+
+function suivreLaTrace(ecriture: PromiseLike<unknown>): void {
+  const suivie = Promise.resolve(ecriture).then(
+    () => {},
+    () => {},
+  )
+  tracesEnVol.add(suivie)
+  void suivie.finally(() => tracesEnVol.delete(suivie))
+}
+
+/**
+ * Attend que les traces parties soient vraiment écrites.
+ *
+ * À N'APPELER QUE HORS DU CHEMIN DE SA RÉPONSE. Un seul appelant aujourd'hui :
+ * le `finally` de `memoriser`, qui tourne dans `EdgeRuntime.waitUntil`, donc
+ * après que Raphaël a eu sa phrase. Il couvre aussi `compacterVieuxEchanges`,
+ * qui est attendue à l'intérieur de `memoriser`. Jamais depuis le rôle
+ * « commande » : ce serait rendre Jarvis plus lent à chaque phrase.
+ *
+ * BORNÉ À TROIS PASSES : une trace peut en démarrer une autre pendant qu'on
+ * attend (un secours essayé juste après). Une boucle « tant qu'il en reste »
+ * pourrait ne jamais finir si quelque chose en produit en continu ; trois
+ * passes couvrent le cas réel (un principal et ses deux secours) et rendent
+ * la main quoi qu'il arrive.
+ */
+export async function attendreLesTraces(): Promise<void> {
+  for (let passe = 0; passe < 3 && tracesEnVol.size > 0; passe++) {
+    await Promise.all([...tracesEnVol])
+  }
+}
+
+/**
  * Note ce que l'appel a coûté, sans jamais gêner l'appel lui-même.
  *
  * Pas d'`await` chez l'appelant, erreurs avalées : la commande de Raphaël a
@@ -449,8 +503,8 @@ function noter(
 ): void {
   if (!appel.journal) return
   const e = resultat.echec
-  void appel.journal.supabase
-    .rpc("noter_appel_modele", {
+  suivreLaTrace(
+    appel.journal.supabase.rpc("noter_appel_modele", {
       p_fournisseur: fournisseur,
       p_role: appel.role,
       p_modele: modele,
@@ -470,8 +524,8 @@ function noter(
       // quel ; ceci garde le chiffre et l'id précis, perdus sinon.
       p_quota_id: e?.quota?.id ?? null,
       p_quota_limite: e?.quota?.limite ?? null,
-    })
-    .then(() => {}, () => {})
+    }),
+  )
 }
 
 /**

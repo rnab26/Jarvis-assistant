@@ -92,6 +92,7 @@ const {
   nomFournisseurChoisi,
   phrasePourEchec,
   oublierChoixEnBase,
+  attendreLesTraces,
   FOURNISSEUR_PAR_DEFAUT,
 } = await import("../supabase/functions/_shared/modele.ts")
 const { gemini } = await import("../supabase/functions/_shared/gemini.ts")
@@ -582,6 +583,98 @@ const journalFactice = (
   )
 }
 
+// ── La trace de l'appel survit-elle à la fonction ? (chantier 1f970c1f) ────
+//
+// MESURÉ le 24 sept. 2026 : pour trois phrases passées par `memoriser`,
+// `appels_modele` n'a gardé qu'une puis deux lignes `role = 'memoire'`. La
+// comptabilité part sans `await` — c'est voulu, le rôle « commande » est sur
+// le chemin de sa réponse — mais `memoriser` se terminait juste après l'appel
+// au modèle (le cas « aucun fait à retenir », le plus fréquent), et l'écriture
+// partait avec la fonction.
+//
+// Les deux moitiés comptent autant l'une que l'autre, et c'est pour ça
+// qu'elles sont vérifiées ensemble : l'appel ne doit RIEN attendre, et
+// l'appelant qui peut se le permettre doit pouvoir attendre.
+{
+  remiseAZero()
+  let tracesEcrites = 0
+  const clientLent = {
+    rpc: async (nom: string) => {
+      if (nom === "noter_appel_modele") {
+        await new Promise((r) => setTimeout(r, 80))
+        tracesEcrites++
+        return { data: null }
+      }
+      return { data: [] }
+    },
+    functions: { invoke: () => Promise.resolve({}) },
+  }
+  const journalLent = { supabase: clientLent, userId: "u1" } as unknown as Parameters<
+    typeof appelerModele
+  >[0]["journal"]
+
+  await appel({ journal: journalLent })
+  verifier(
+    "la phrase de Raphaël n'attend pas la comptabilité",
+    tracesEcrites === 0,
+    `${tracesEcrites} trace(s) déjà écrite(s) alors que l'appel vient de rendre`,
+  )
+  await attendreLesTraces()
+  verifier(
+    "mais la trace s'écrit vraiment quand on l'attend",
+    tracesEcrites === 1,
+    `${tracesEcrites} trace(s) au lieu d'une`,
+  )
+
+  // Chaque candidat essayé laisse sa ligne : un secours sollicité tous les
+  // jours doit se voir. Les deux traces doivent donc être attendues, pas
+  // seulement la dernière.
+  remiseAZero()
+  tracesEcrites = 0
+  // 404 et pas 429 : un 429 est aussi dans les statuts qu'on REJOUE, donc le
+  // principal répondrait au second essai et il n'y aurait qu'une trace. 404
+  // (« ce modèle n'existe plus ») passe directement au secours — c'est
+  // exactement ce qui est arrivé le 4 sept. aux trois modèles d'un coup.
+  scenario = [404, "ok"]
+  await appel({ journal: journalLent })
+  await attendreLesTraces()
+  verifier("un modèle mort et son secours laissent DEUX traces", tracesEcrites === 2, `${tracesEcrites} trace(s)`)
+
+  // Une base injoignable ne doit pas faire échouer ce qu'elle compte, ni
+  // retenir l'appelant pour toujours.
+  remiseAZero()
+  const journalCasse = {
+    supabase: { rpc: async () => { throw new Error("base injoignable") }, functions: { invoke: () => Promise.resolve({}) } },
+    userId: "u1",
+  } as unknown as Parameters<typeof appelerModele>[0]["journal"]
+  let rendu = false
+  await appel({ journal: journalCasse })
+  await attendreLesTraces().then(() => {
+    rendu = true
+  })
+  verifier("une base qui refuse la trace ne bloque pas l'attente", rendu)
+
+  // ET QUELQU'UN DOIT RÉELLEMENT ATTENDRE, sinon tout ce qui précède ne sert
+  // à rien. On vise le CORPS de `memoriser`, commentaires retirés : chercher
+  // le mot n'importe où dans le fichier resterait vert le jour où l'appel
+  // disparaît mais que le commentaire qui l'explique reste.
+  const memoire = lire("supabase/functions/voice-command/memoire.ts")
+  const sansCommentaires = memoire.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "")
+  const debutMemoriser = sansCommentaires.indexOf("export async function memoriser(")
+  const finMemoriser = sansCommentaires.indexOf("\n}", debutMemoriser)
+  const corpsMemoriser =
+    debutMemoriser >= 0 && finMemoriser > debutMemoriser
+      ? sansCommentaires.slice(debutMemoriser, finMemoriser)
+      : ""
+  verifier("le corps de memoriser est bien là où on le cherche", corpsMemoriser.length > 0)
+  verifier(
+    "memoriser attend ses traces, et dans un finally",
+    /\}\s*finally\s*\{[^}]*await attendreLesTraces\(\)/.test(corpsMemoriser),
+    "sans le finally, le cas « aucun fait à retenir » — le plus fréquent — repartirait sans sa trace",
+  )
+}
+
 globalThis.fetch = vraiFetch
+
 console.log(echecs === 0 ? "\nTout est vert." : `\n${echecs} contrôle(s) en échec.`)
 process.exit(echecs === 0 ? 0 : 1)
