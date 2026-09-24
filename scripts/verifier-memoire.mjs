@@ -223,16 +223,24 @@ verifier(
 // UN CRAN PLUS TÔT. Le contrôle restait rouge sur un comportement voulu
 // (constaté le 24 sept., deux passes d'affilée). La question qu'il pose reste
 // la même : les redites ont-elles VRAIMENT atteint la mémoire, ou un 429 les
-// a-t-il sautées ? `appels_modele` y répond directement — une ligne par appel
-// du modèle de mémoire pour ce compte, 200 quand il a répondu.
-const memoireAReponduA = sql(
-  `select count(*)::int as n from appels_modele
-   where user_id = '${userId}' and role = 'memoire' and statut = 200`,
+// a-t-il sautées ?
+//
+// PAS `appels_modele` : essayé le 24 sept., il comptait 1 puis 2 réponses sur
+// 3 redites. `noter()` y écrit SANS attendre, et pour une redite déjà connue
+// l'extraction ne rend rien : `memoriser` finit aussitôt, l'Edge Function
+// s'arrête, et l'écriture de la trace se perd — précisément dans le cas testé.
+// La preuve durable est la ligne `echanges` que `memoriser` écrit EN
+// L'ATTENDANT avant d'appeler le modèle (source « serveur ») : une par redite
+// arrivée jusqu'à la mémoire. Que le modèle de mémoire réponde, lui, est
+// prouvé par le contrôle suivant (le fait est retenu une fois).
+const arriveesALaMemoire = sql(
+  `select count(*)::int as n from echanges
+   where user_id = '${userId}' and source = 'serveur' and transcript ilike '%tour Gamma%'`,
 )[0].n
 verifier(
   "les redites ont bien atteint la mémoire (fusionnées, ou écartées car déjà connues)",
-  vivants.some((s) => s.retouche === true) || memoireAReponduA >= REDITES.length,
-  `${memoireAReponduA} réponse(s) du modèle de mémoire pour ${REDITES.length} redites, aucun souvenir retouché : ` +
+  vivants.some((s) => s.retouche === true) || arriveesALaMemoire >= REDITES.length,
+  `${arriveesALaMemoire} redite(s) arrivée(s) jusqu'à la mémoire sur ${REDITES.length}, aucun souvenir retouché : ` +
     "les redites n'ont pas atteint la mémoire (429 du modèle ? augmente PAUSE_MS) — le contrôle des doublons ne prouve alors rien",
 )
 
