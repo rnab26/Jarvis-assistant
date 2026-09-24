@@ -1663,11 +1663,10 @@ aplati des règles locales. **Ce qui n'est PAS une note**, mesuré sur ses 477
 dictées : « note ça » (garder la réponse), « note un rappel… » (tâche), « note
 que Dylan… » (mémoire), « une note de frais », « une note à la tâche X », et sa
 dictée du 14 sept. « créer une note me rappelant d'appeler Adam… dans perso »,
-qui est un rappel. Le serveur connaît aussi `add_note`/`list_notes`, mais
-**n'est pas encore redéployé** (jeton de déploiement expiré le 23 sept.) : en
-attendant, le mode Live peut répondre « je ne sais pas » au lieu de passer la
-phrase à l'outil, parce que `_shared/environnement.ts` en ligne dit encore le
-contraire.
+qui est un rappel. Le serveur connaît aussi `add_note`/`list_notes`, **en
+ligne depuis le 23 sept.** (chantier 2e40a764 : voice-command v124, live-jeton
+v31) : en Live, une demande de note part à l'outil au lieu de « je ne sais
+pas ».
 `_shared/environnement.ts` (les deux consignes) connaît déjà l'onglet, pour
 que Jarvis n'envoie pas Raphaël vers un écran qu'il ignore. Au passage, la
 même mise à jour a corrigé une description devenue fausse depuis le 7 sept. :
@@ -3418,7 +3417,8 @@ vérifier seule) dit : un fait connu ne se réécrit pas, une personne connue
 garde SON orthographe, et une contradiction n'est retenue que s'il corrige
 EXPLICITEMENT. `scripts/essayer-consigne.sh memoire-extraction` (vrai modèle,
 clé de test) : 5/5, et le témoin sans « ce qu'elle sait » réécrit bien
-« La femme de Raphaël s'appelle Yael ». À déployer (chantier 2e40a764).
+« La femme de Raphaël s'appelle Yael ». En ligne depuis le 23 sept.
+(voice-command v124, chantier 2e40a764).
 
 Le même jour, rangement de l'existant (réversible, `perime_at` — barré dans
 l'onglet Mémoire, réactivable) : 29 sur 53. Dix-huit parlaient des bugs et
@@ -3743,7 +3743,8 @@ décident sur l'appareil sans aller-retour.
 - **Pas en Live** : la session garde déjà tout (et la poignée de reprise).
 
 **Vérifié contre le VRAI modèle sans déployer** : `scripts/essayer-consigne.sh
-memoire-de-travail` (10/10). Chaque cas qui compte est rejoué SANS la mémoire :
+memoire-de-travail` (10/10) — et **en ligne depuis le 23 sept.**
+(voice-command v124, chantier 2e40a764), revérifiée 10/10 le 24. Chaque cas qui compte est rejoué SANS la mémoire :
 sans elle, il rangeait le mauvais chantier, déplaçait la mauvaise tâche, ne
 comprenait pas « à 9h » et redemandait « lequel ? ». Les cas « à ne pas faire »
 (une nouvelle tâche après une tâche, « appelle Yoni » après un autre appel)
@@ -4104,6 +4105,14 @@ réponse (« Je prépare le reçu pour Dan sur WhatsApp, choisis-le et appuie su
 envoyer »), pas à viser techniquement sa conversation — ne le présente jamais
 comme si Jarvis avait choisi le destinataire à sa place.
 
+**Le serveur retire un `find_receipts` qui accompagne un `transmettre_recu`**
+(`voice-command/recuTransmis.ts`, 24 sept. 2026, v125). Mesuré avec la vraie
+consigne : le modèle rendait la liste PUIS la transmission 3 fois sur 4,
+malgré « jamais confondu avec find_receipts » en toutes lettres. Le téléphone
+retrouve le reçu seul par `mail_cible` : la liste ne faisait que lire à voix
+haute ce qu'il n'avait pas demandé. « Retrouve mes reçus » seul reste une
+liste — `verifier-gmail-voix.ts` garde les deux.
+
 **Touche `android/**` : une nouvelle APK est nécessaire**, la mise à jour
 rapide ne porte pas un nouveau plugin natif. **Non constaté sur un vrai
 compte Gmail** (pas de compte de test dans cet environnement, jeton Google
@@ -4205,8 +4214,8 @@ comme celui des documents) avec un faux répertoire injecté par la prop
 
 **Pas couvert, et ce n'est pas un oubli** : modifier un message programmé À
 LA VOIX (le modèle ne voit pas la liste, par conception — ed32cbcc) ; et la
-langue demandée (« en hébreu ») est dans la consigne du serveur, à déployer
-(chantier 2e40a764).
+langue demandée (« en hébreu ») est dans la consigne du serveur, en ligne
+depuis le 23 sept. (chantier 2e40a764).
 
 ## Requêtes SQL : passer par `scripts/sql.sh`, pas par l'outil MCP
 
@@ -4365,8 +4374,9 @@ qui l'applique tout de suite (`RELU_PAR`) : un réglage ajouté sans lecteur
 fait rougir le contrôle. `verifier-reglages-web.mjs` rejoue le chemin de la
 voix dans un vrai navigateur (essayé à l'envers : sans `ThemeEnDirect`, il
 rougit). **La moitié serveur** (`_shared/branchements.ts`, l'énumération et la
-consigne de `voice-command`) attend le redéploiement (chantier 2e40a764) :
-d'ici là, le modèle ne propose que les neuf anciens réglages.
+consigne de `voice-command`) est en ligne depuis le 23 sept. (chantier
+2e40a764 : voice-command v124, live-jeton v31) — le modèle connaît les
+dix-sept, au micro comme en Live.
 
 ### Le soir même : « règle ta vitesse de réponse », et « qu'est-ce que j'ai paramétré ? »
 
