@@ -4057,6 +4057,7 @@ scripts/essayer-consigne.sh memoire-de-travail           # la consigne sur le di
 scripts/essayer-consigne.sh memoire-extraction           # la mémoire ne réécrit pas ce qu'elle sait, ni une erreur de dictée qui le contredit
 scripts/essayer-consigne.sh reglages                     # un réglage en phrase libre devient set_setting côté serveur, jamais « je ne peux pas »
 scripts/essayer-consigne.sh widget                       # le widget porte toutes ses tâches quand il le demande ; le témoin (--temoin) rabattait « dix » sur cinq
+scripts/essayer-consigne.sh tache-en-attente             # « non mets-le dans la catégor » vise la tâche QUI ATTEND — plusieurs tours, et un témoin, parce qu'un échec unique ne dit pas s'il est causé ou s'il varie
 scripts/essayer-consigne-live.sh reglages                # en Live, une demande de réglage part à l'outil (vraie session Google, clé de test)
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
