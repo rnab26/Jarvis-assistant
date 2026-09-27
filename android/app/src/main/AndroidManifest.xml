@@ -218,6 +218,20 @@
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/jarvis_widget_info" />
         </receiver>
 
+        <!-- Ce qui fait DEFILER la liste du widget taches (chantier 562f1475).
+             Android n'offre qu'une facon de faire defiler quelque chose dans un
+             widget : une vue de collection branchee sur un RemoteViewsService.
+
+             LA PERMISSION EST OBLIGATOIRE, et son absence est SILENCIEUSE :
+             sans BIND_REMOTEVIEWS, n'importe quelle application pourrait se lier
+             a ce service - Android refuse donc de s'y lier lui-meme, la liste
+             reste vide, et rien ne le dit. Non exporte : c'est le systeme qui
+             s'y lie, via le PendingIntent du provider, pas une autre app. -->
+        <service
+            android:name=".JarvisWidgetTachesService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+
         <!-- Second widget : le cœur seul, on appuie, Jarvis écoute. Un
              fournisseur distinct parce que la taille minimale et l'aperçu se
              déclarent dans le XML, pas à l'exécution : un widget unique à deux

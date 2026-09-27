@@ -531,6 +531,14 @@ jobs:
       - name: Changer d'onglet à la voix, sans rien prendre d'autre pour un onglet
         run: node --experimental-strip-types scripts/verifier-onglets-app.ts
 
+      # Le 27 sept. : « fais en sorte quon puisse défiler les taches dans les
+      # widgets ». La liste était un TextView tronqué à 4 lignes, son réglage
+      # au plafond de 5 avec 43 tâches. Tout le câblage d'une liste défilante
+      # Android échoue EN SILENCE (adaptateur, notify, permission au
+      # manifeste) : ce contrôle le lit, faute de SDK Android ici.
+      - name: Le widget de tâches défile, et son câblage Android est complet
+        run: node --experimental-strip-types scripts/verifier-widget-taches.ts
+
       # Le 23 sept. : « crée une note courses : lait » devenait une TACHE.
       # Ce qui se verifie surtout ici, c'est le SILENCE : « note ca », « note
       # un rappel », « note que », « note de frais » ne sont pas des notes.

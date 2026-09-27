@@ -1,18 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget « Jarvis — tâches » : le cœur, puis ce qu'il reste à faire.
+<!-- Widget « Jarvis - taches » : le coeur, puis ce qu'il reste a faire.
 
-     Le cœur était absent : sans lui, la vignette ne se distinguait d'aucune
-     autre liste de tâches, et rien ne disait que c'était Jarvis. Il est ici à
-     gauche, à taille fixe, pour que la liste garde toute la largeur restante.
+     Le coeur etait absent : sans lui, la vignette ne se distinguait d'aucune
+     autre liste de taches, et rien ne disait que c'etait Jarvis. Il est ici a
+     gauche, a taille fixe, pour que la liste garde toute la largeur restante.
+
+     LA LISTE DEFILE (chantier 562f1475, 27 sept. 2026). C'etait un seul
+     TextView a maxLines=4 : rien ne pouvait defiler, par construction, et son
+     reglage etait au plafond de cinq taches quand il en a 43. C'est maintenant
+     une ListView alimentee par JarvisWidgetTachesService - la seule facon
+     qu'Android offre a un widget de faire defiler quoi que ce soit.
+
+     TROIS CHOSES A NE PAS DEFAIRE DANS CE FICHIER :
+
+     1. La hauteur. La colonne de droite est en match_parent et la ListView en
+        0dp+weight=1 : c'est ce qui lui donne toute la place restante. En
+        wrap_content, une ListView se replie sur la hauteur d'une ligne et ne
+        defile plus - elle n'aurait rien a faire defiler.
+     2. L'alignement du haut. La racine etait en gravity=center_vertical, ce qui
+        est bon pour deux lignes de texte et faux pour une liste : dans un widget
+        etire, le coeur flotterait au milieu a cote d'une liste qui commence en
+        haut.
+     3. widget_task_empty reste VISIBLE dans ce fichier. setEmptyView le montre
+        quand la liste est vide et le cache sinon ; en le posant a gone ici, on
+        n'aurait rien du tout dans l'apercu du selecteur de widgets, qui ne rend
+        que le XML.
 
      Chaque texte a son android:id : le provider les remplit, et rien d'autre
-     ne doit dépendre de leur ordre dans ce fichier. -->
+     ne doit dependre de leur ordre dans ce fichier. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="horizontal"
-    android:gravity="center_vertical"
     android:padding="14dp"
     android:background="@drawable/widget_background">
 
@@ -26,11 +46,12 @@
 
     <LinearLayout
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
         android:layout_weight="1"
         android:orientation="vertical">
 
         <LinearLayout
+            android:id="@+id/widget_header"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
@@ -61,16 +82,23 @@
 
         </LinearLayout>
 
-        <TextView
+        <ListView
             android:id="@+id/widget_task_list"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:layout_marginTop="3dp"
-            android:maxLines="4"
-            android:ellipsize="end"
+            android:divider="@null"
+            android:dividerHeight="0dp" />
+
+        <TextView
+            android:id="@+id/widget_task_empty"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="3dp"
             android:text="Aucune tâche"
             android:textSize="13sp"
-            android:lineSpacingExtra="2dp"
             android:textColor="#C7C7CC" />
 
         <TextView

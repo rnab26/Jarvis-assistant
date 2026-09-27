@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Une ligne de la liste defilante du widget « Jarvis - taches »
+     (chantier 562f1475).
+
+     Construite par JarvisWidgetTachesFactory, une par tache. Seules les vues
+     supportees par RemoteViews sont utilisables ici : LinearLayout et TextView.
+
+     Le titre prend la largeur restante et se coupe ; l'echeance garde la sienne
+     a droite. L'inverse - une echeance qui se fait rogner - donnerait
+     « aujourd'h... », c'est-a-dire l'information la plus courte de la ligne
+     rendue illisible pour gagner deux caracteres de titre. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_row_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/widget_row_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textSize="13sp"
+        android:textColor="#E5E5EA" />
+
+    <TextView
+        android:id="@+id/widget_row_due"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:maxLines="1"
+        android:textSize="11sp"
+        android:textColor="#8E8E93" />
+
+</LinearLayout>

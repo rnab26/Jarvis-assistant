@@ -66,6 +66,7 @@ import {
 } from "@/lib/dialoguePrefs"
 import { CLE_ARCHIVES_OUVERTES, archivesOuvertes } from "@/lib/archiveTaches"
 import { ecrireReglage } from "@/lib/reglages"
+import { PLAFOND_WIDGET, TOUTES } from "@/lib/widgetTaches"
 import { PITCH_MAX, PITCH_MIN, RATE_MAX, RATE_MIN } from "@/lib/voicePrefs"
 
 const isNative = Capacitor.isNativePlatform()
@@ -962,24 +963,30 @@ export function SettingsPage() {
           <CardHeader>
             <CardTitle>Widget d'écran d'accueil</CardTitle>
             <CardDescription>
-              Ce que le widget Android affiche : nombre de tâches, urgentes, et les prochaines à
-              faire. Le widget se met à jour dès que tu changes un réglage ici.
+              Ce que le widget Android affiche : nombre de tâches, urgentes, et celles qui restent
+              à faire. La liste <strong>défile</strong> — étire le widget en hauteur sur ton écran
+              d'accueil pour en voir plus d'un coup. Il se met à jour dès que tu changes un réglage
+              ici.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">Tâches affichées</span>
+              <span className="text-sm text-muted-foreground">Tâches portées</span>
               <Select
                 value={String(widgetState.config.maxTasks)}
                 onValueChange={(v) => widgetState.setConfig({ maxTasks: Number(v) })}
               >
-                <SelectTrigger className="w-20">
+                <SelectTrigger className="w-28">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[1, 2, 3, 4, 5].map((n) => (
+                  {/* « Toutes » d'abord : c'est le défaut, et c'est ce qu'on veut
+                      d'une liste qui défile. Les plafonds restent pour qu'il
+                      puisse en vouloir moins — jamais parce qu'on l'y oblige. */}
+                  <SelectItem value={String(TOUTES)}>Toutes</SelectItem>
+                  {[5, 10, 20, PLAFOND_WIDGET].map((n) => (
                     <SelectItem key={n} value={String(n)}>
-                      {n}
+                      {n} max
                     </SelectItem>
                   ))}
                 </SelectContent>

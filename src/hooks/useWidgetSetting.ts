@@ -1,11 +1,25 @@
 import { useState } from "react"
+import { TOUTES } from "@/lib/widgetTaches"
 import { useRelireApresRestauration } from "@/hooks/useReglagesSync"
 import { ecrireReglage } from "@/lib/reglages"
 
 const STORAGE_KEY = "jarvis_widget_config"
 
 export interface WidgetConfig {
-  /** Nombre de tâches listées sur le widget (1 à 5). */
+  /**
+   * Combien de tâches le widget PORTE — plus « combien il en montre ».
+   *
+   * La liste défile depuis le chantier 562f1475 (27 sept. 2026) : ce qui est
+   * visible d'un coup ne se règle donc plus ici, c'est la hauteur qu'il donne
+   * au widget sur son écran d'accueil qui le décide. Ce nombre n'est plus qu'un
+   * plafond, et `TOUTES` (0) veut dire « pas de plafond », borné par
+   * `PLAFOND_WIDGET`.
+   *
+   * MESURÉ le 27 sept. 2026 : sa valeur était 5, l'ANCIEN MAXIMUM du
+   * sélecteur, posée huit minutes avant qu'il demande à pouvoir défiler — avec
+   * 43 tâches à faire dont 14 urgentes. Le plafond était le problème, jamais
+   * un choix.
+   */
   maxTasks: number
   /** Ne montrer que les tâches en retard ou dues aujourd'hui. */
   urgentOnly: boolean
@@ -13,7 +27,11 @@ export interface WidgetConfig {
   categoryId: string | null
 }
 
-const DEFAULT_CONFIG: WidgetConfig = { maxTasks: 3, urgentOnly: false, categoryId: null }
+// Défaut : TOUTES. Un plafond par défaut n'avait de sens que tant que la liste
+// ne défilait pas — il faisait alors office de « combien de lignes tiennent à
+// l'écran ». Maintenant, le limiter d'entrée cacherait des tâches sans que rien
+// ne le dise.
+const DEFAULT_CONFIG: WidgetConfig = { maxTasks: TOUTES, urgentOnly: false, categoryId: null }
 
 function readStoredConfig(): WidgetConfig {
   try {

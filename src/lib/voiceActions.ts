@@ -80,6 +80,7 @@ import { proposerAnnulation } from "@/lib/annulation"
 import type { MessageProgramme } from "@/lib/messagesProgrammes"
 import { champsVerifies, nomDit, phraseProgrammation, verifierDestinataire } from "@/lib/destinataireProgramme"
 import { lireRepertoire } from "@/lib/repertoire"
+import { TOUTES } from "@/lib/widgetTaches"
 import type {
   Category,
   Contact,
@@ -1329,7 +1330,17 @@ export async function executeVoiceAction(
       })
       const catName = categoryName(categories, action.category_id ?? undefined)
       const parts: string[] = []
-      if (action.max_tasks !== undefined) parts.push(`${action.max_tasks} tâche(s) affichées`)
+      if (action.max_tasks !== undefined) {
+        // « portées », pas « affichées » : depuis que la liste défile (chantier
+        // 562f1475), ce qui est VISIBLE dépend de la hauteur qu'il donne au
+        // widget, pas de ce nombre. Dire « affichées » lui ferait chercher
+        // pourquoi il n'en voit que trois.
+        parts.push(
+          action.max_tasks === TOUTES
+            ? "toutes ses tâches portées"
+            : `${action.max_tasks} tâche(s) au plus`,
+        )
+      }
       if (action.urgent_only !== undefined) {
         parts.push(action.urgent_only ? "urgentes uniquement" : "toutes les tâches")
       }

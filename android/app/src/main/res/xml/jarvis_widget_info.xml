@@ -9,14 +9,20 @@
 
      minWidth/minHeight = la taille à la POSE. minResize* = jusqu'où on peut
      réduire ensuite. Les deux sont nécessaires, et c'est la seconde qui
-     manquait. -->
+     manquait.
+
+     maxResizeHeight EST PASSÉ DE 220 À 600 dp (chantier 562f1475, 27 sept.
+     2026). La liste défile maintenant, et 220 dp plafonnaient le widget à
+     quatre cases de haut : il pouvait défiler sans jamais pouvoir s'agrandir.
+     600 dp le laissent prendre une colonne entière quand il le veut. La taille
+     à la POSE ne bouge pas (3 × 2) : c'est lui qui étire, pas nous. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="180dp"
     android:minHeight="110dp"
     android:minResizeWidth="110dp"
     android:minResizeHeight="55dp"
     android:maxResizeWidth="440dp"
-    android:maxResizeHeight="220dp"
+    android:maxResizeHeight="600dp"
     android:targetCellWidth="3"
     android:targetCellHeight="2"
     android:description="@string/widget_taches_description"

@@ -3896,6 +3896,87 @@ notes » (qui les LISENT) ne bougent pas.
 naviguer dans le vide. Un onglet ajouté à la barre se déclare dans
 `ongletsApp.ts` dans le même travail.
 
+## Le widget de tâches DÉFILE (chantier 562f1475, 27 sept. 2026)
+
+Sa demande : « Peux tu faire en sorte quon puisse défiler les taches dans les
+widgets creer de jarvis ». **Ce n'était pas un réglage à monter.**
+
+**MESURÉ avant de coder** : 43 tâches à faire, 14 urgentes, et son réglage
+`jarvis_widget_config` à `maxTasks: 5` — *l'ancien maximum du sélecteur*, posé
+huit minutes avant sa demande. Il était au plafond, et le widget lui cachait 9
+urgentes sur 14. La liste était **un seul `TextView`** (`maxLines="4"`,
+`ellipsize="end"`) rempli par le provider : rien ne pouvait défiler, par
+construction.
+
+Android n'offre **qu'une** façon de faire défiler quelque chose dans un widget :
+une vue de collection branchée sur un `RemoteViewsService`. D'où
+`JarvisWidgetTachesService.java`, et la frontière compte :
+
+- `src/lib/widgetTaches.ts` — **pur** : quelles tâches partent, dans quel ordre,
+  avec quelle étiquette d'échéance, et le plafond. C'est là que ça peut être
+  faux en silence (une tâche cochée qui reste, un plafond qui coupe les
+  urgentes).
+- `JarvisWidgetTachesService.java` — la fabrique. Elle ne DÉCIDE rien : ni tri,
+  ni plafond. Une seconde règle écrite là contredirait l'onglet Tâches, et
+  `verifier-widget-taches.ts` la refuse.
+
+**Le réglage a changé de SENS, et c'est le point à ne pas défaire.** « Tâches
+affichées » (1 à 5) est devenu « Tâches portées » (Toutes / 5 / 10 / 20 / 50) :
+ce qui est VISIBLE dépend maintenant de la hauteur qu'il donne au widget sur son
+écran d'accueil, plus d'un nombre. `TOUTES` (0) est le défaut — un plafond par
+défaut n'avait de sens que tant que la liste ne défilait pas. `PLAFOND_WIDGET`
+(50) n'est pas une préférence : la charge utile d'une mise à jour de RemoteViews
+est plafonnée (~1 Mo), et au-delà la mise à jour ENTIÈRE échoue, widget vide à la
+clé. `maxResizeHeight` est passé de 220 à 600 dp : à 220 il pouvait défiler sans
+jamais pouvoir s'agrandir.
+
+**Cinq oublis, tous MUETS, que le contrôle garde** — c'est pour ça qu'il lit le
+code plutôt que de faire confiance, faute de SDK Android ici :
+
+1. `setRemoteAdapter` absent → la liste reste vide.
+2. `notifyAppWidgetViewDataChanged` absent → elle se fige sur son premier
+   dessin ; une tâche cochée y reste affichée.
+3. L'intent de l'adaptateur non rendu unique (`setData` + `toUri`) → Android
+   distingue deux adaptateurs par les DONNÉES de l'intent, **extras exclus** :
+   deux widgets côte à côte partagent une fabrique, et le second se fige sur le
+   contenu du premier.
+4. `BIND_REMOTEVIEWS` absent du manifeste → Android refuse de se lier au
+   service, et ne le dit nulle part.
+5. `setEmptyView` absent → une liste vide est un rectangle vide, qui se lit
+   exactement comme un widget en panne.
+
+**L'appui a dû être redistribué, et ce n'est pas un oubli** : une `ListView`
+consomme les appuis qui la touchent, donc le clic posé sur la racine ne serait
+plus jamais reçu au-dessus de la liste. Le **cœur** et l'**en-tête** gardent
+« ouvre et écoute » (chantier `0ea8fd8d`) ; une **ligne** ouvre l'app sans rien
+dicter, par `setPendingIntentTemplate` + `setOnClickFillInIntent` — RemoteViews
+refuse un `PendingIntent` par ligne dans une vue de collection, l'appui ne
+ferait rien. Le modèle est `FLAG_MUTABLE` : immuable, Android ne peut pas y
+ajouter ce que la ligne y met.
+
+**Trouvé en écrivant le module pur, corrigé avec** : `widgetSnapshot` calculait
+« aujourd'hui » avec `toISOString().slice(0, 10)`, donc en UTC. Il vit en Israël
+(UTC+2/+3) : entre minuit et 3 h du matin, ses tâches dues **aujourd'hui**
+cessaient d'être comptées urgentes. Même piège que `jourLocal()` dans
+`echeance.ts` et que la fenêtre « aujourd'hui » du cockpit.
+
+**Et trois contrôles sur dix-huit ne servaient à rien, trouvés en les essayant à
+l'envers** — le piège de ce dépôt, une sixième fois. Deux cherchaient leurs
+attributs XML avec un `[\s\S]*?` non borné : ils traversaient la fin de la
+balise visée et trouvaient le `0dp` du `TextView` vide plus bas, ou le
+`match_parent` de la racine — remettre `wrap_content` les laissait VERTS. Ils
+isolent maintenant la balise avant de la lire. Le troisième vérifiait que le
+jour se lit en LOCAL : le conteneur de la CI est en UTC, où local et UTC
+désignent le même jour, donc remettre `toISOString()` ne le faisait pas rougir.
+**Le script se relance lui-même sous `TZ=Asia/Jerusalem`** — poser
+`process.env.TZ` en cours de route ne suffit pas, Node garde le fuseau de son
+démarrage (mesuré le même jour).
+
+**Non vérifié sur l'appareil**, et il ne faut pas le présenter autrement : il n'y
+a ni SDK Android ni téléphone ici. La CI prouve que ça compile, pas que ça
+défile. Et **ça touche `android/` : il lui faut une vraie APK**, la mise à jour
+rapide ne porte pas un nouveau service natif.
+
 ## Les vérifications du dépôt
 
 Une seule méthode canonique par sujet, à relancer plutôt qu'à réinventer :
@@ -3973,6 +4054,7 @@ node --experimental-strip-types scripts/verifier-themes-non-declares.ts  # un th
 node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la section suggérée à la saisie, sans réseau
 node --experimental-strip-types scripts/verifier-navigation-parametres.ts  # une cible résolue vers UNE section de Paramètres, jamais une mauvaise, sans réseau
 node --experimental-strip-types scripts/verifier-onglets-app.ts  # « ouvre le cockpit » change d'onglet — et « ouvre WhatsApp », l'itinéraire, « lis mes notes » ne bougent pas, sans réseau
+node --experimental-strip-types scripts/verifier-widget-taches.ts  # le widget de tâches DÉFILE : la décision pure, et tout le câblage Android qui échoue en silence, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie
