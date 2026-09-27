@@ -3972,6 +3972,18 @@ désignent le même jour, donc remettre `toISOString()` ne le faisait pas rougir
 `process.env.TZ` en cours de route ne suffit pas, Node garde le fuseau de son
 démarrage (mesuré le même jour).
 
+**La consigne serveur disait encore « 1 à 5 », et le témoin prouve que ça
+comptait** : `scripts/essayer-consigne.sh widget --temoin` remonte l'ancienne
+description et remesure sur le VRAI modèle (clé de test, sans déployer).
+Résultat, le 27 sept. : « montre toutes mes tâches sur le widget » ne posait
+AUCUN `max_tasks`, et « limite le widget à **dix** tâches » rendait
+`max_tasks: 5` — le modèle rabattait dix sur le plafond écrit dans la
+description. Avec la nouvelle, 5 cas sur 5. Le témoin patche le **schéma
+d'outil**, pas `CONSIGNES` : les deux mentions (`max_tasks.description` et la
+longue prose de l'énumération `action`) y vivent, et une première version qui
+cherchait dans `CONSIGNES` s'arrêtait sur « introuvable » — ce qui se lit comme
+un bug de la consigne alors que c'était le témoin qui visait à côté.
+
 **Non vérifié sur l'appareil**, et il ne faut pas le présenter autrement : il n'y
 a ni SDK Android ni téléphone ici. La CI prouve que ça compile, pas que ça
 défile. Et **ça touche `android/` : il lui faut une vraie APK**, la mise à jour
@@ -4044,6 +4056,7 @@ node --experimental-strip-types scripts/verifier-capacites-voix.ts  # « mets-to
 scripts/essayer-consigne.sh memoire-de-travail           # la consigne sur le disque contre le VRAI modèle (clé de test), sans déployer ni compte
 scripts/essayer-consigne.sh memoire-extraction           # la mémoire ne réécrit pas ce qu'elle sait, ni une erreur de dictée qui le contredit
 scripts/essayer-consigne.sh reglages                     # un réglage en phrase libre devient set_setting côté serveur, jamais « je ne peux pas »
+scripts/essayer-consigne.sh widget                       # le widget porte toutes ses tâches quand il le demande ; le témoin (--temoin) rabattait « dix » sur cinq
 scripts/essayer-consigne-live.sh reglages                # en Live, une demande de réglage part à l'outil (vraie session Google, clé de test)
 node --experimental-strip-types scripts/verifier-assistant.ts     # Jarvis choisissable comme assistant du téléphone, sans réseau
 node --experimental-strip-types scripts/verifier-honnetete.ts     # « préparé » ne devient jamais « envoyé », et Jarvis sait à quoi il est branché, sans réseau
