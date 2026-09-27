@@ -3285,7 +3285,18 @@ ANON_KEY=... node scripts/verifier-commande-vocale.mjs
 ```
 
 Dix contrôles bout-en-bout sur la fonction réellement déployée, avec un
-utilisateur de test éphémère créé puis supprimé. La clé publique se récupère
+utilisateur de test éphémère créé puis supprimé.
+
+**`FILTRE=` garde les cas dont le nom contient un mot ; `TOURS=` les rejoue.**
+Le second est né le 27 sept. 2026 d'un cas tombé UNE fois sur une passe de 85,
+sans signature de quota — donc une vraie réponse. **Un cas joué une seule fois
+ne dit pas s'il est CASSÉ ou s'il VARIE**, et c'est pourtant la première
+question à trancher avant de relire son diff pendant une heure. Rejoué six
+fois, il s'est avéré échouer **une fois sur deux** (chantier `e945ae83`) :
+
+```bash
+ANON_KEY=... FILTRE="reponse coupee" TOURS=6 PAUSE_MS=5000 node scripts/verifier-commande-vocale.mjs
+``` La clé publique se récupère
 avec `mcp__Supabase__get_publishable_keys` (elle part déjà dans le bundle du
 site, ce n'est pas un secret — la clé de service, si).
 

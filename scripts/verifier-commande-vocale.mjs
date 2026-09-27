@@ -1416,8 +1416,22 @@ if (FILTRE.length) {
   console.log(`FILTRE actif : ${aJouer.length} cas sur ${cas.length}\n`)
 }
 
+// TOURS=4 rejoue les cas retenus autant de fois.
+//
+// POURQUOI, et c'est la leçon du 27 sept. 2026 : « une reponse coupee vise la
+// tache qui ATTEND » a rougi UNE fois sur une passe de 85 — sans signature de
+// quota, donc une vraie réponse du modèle. Un cas joué une seule fois ne dit
+// pas s'il est CASSÉ ou s'il VARIE, et c'est pourtant la première question à
+// trancher avant de relire son diff pendant une heure. Rejouer était jusqu'ici
+// impossible sans relancer la passe entière.
+const TOURS = Math.max(1, Number(process.env.TOURS ?? "1"))
+const sequence = TOURS > 1 ? Array.from({ length: TOURS }, () => aJouer).flat() : aJouer
+if (TOURS > 1) {
+  console.log(`TOURS=${TOURS} : ${sequence.length} appels au total\n`)
+}
+
 let premier = true
-for (const c of aJouer) {
+for (const c of sequence) {
   // Rien à attendre avant le tout premier appel : la pause ne sert qu'à
   // espacer deux requêtes déjà envoyées.
   if (!premier && PAUSE_MS > 0) await new Promise((r) => setTimeout(r, PAUSE_MS))
