@@ -5,9 +5,10 @@ import { JarvisWidget } from "@/lib/jarvisWidgetPlugin"
 import { estUrgente, isoLocal, lignesDuWidget, tachesDuWidget } from "@/lib/widgetTaches"
 import type { Category, Task } from "@/types/database"
 
-/** La clé lue par `JarvisWidgetTachesFactory` côté Android. Un seul endroit la
- * nomme de ce côté-ci ; si tu la changes, change-la là-bas dans le même
- * travail — un widget qui lit une clé disparue n'affiche rien et ne dit rien. */
+/** La clé lue côté Android par `JarvisWidgetTachesService` (sa `Factory`
+ * interne, champ `KEY_LIGNES`). Un seul endroit la nomme de ce côté-ci ; si tu
+ * la changes, change-la là-bas dans le même travail — un widget qui lit une clé
+ * disparue n'affiche rien et ne dit rien. Un contrôle compare les deux. */
 const CLE_LIGNES = "jarvis_task_rows"
 
 /**
