@@ -539,6 +539,13 @@ jobs:
       - name: Le widget de tâches défile, et son câblage Android est complet
         run: node --experimental-strip-types scripts/verifier-widget-taches.ts
 
+      # Le 27 sept. : le serveur rangeait une tâche dans une catégorie qu'il
+      # n'avait pas prononcée, 3 fois sur 6. La moitié de ces contrôles
+      # vérifie le SILENCE : ce garde-fou efface une action du modèle, donc
+      # se déclencher à tort coûte plus cher que le défaut qu'il corrige.
+      - name: Le serveur n'invente pas un rangement de tâche
+        run: node --experimental-strip-types scripts/verifier-categorie-inventee.ts
+
       # Le 23 sept. : « crée une note courses : lait » devenait une TACHE.
       # Ce qui se verifie surtout ici, c'est le SILENCE : « note ca », « note
       # un rappel », « note que », « note de frais » ne sont pas des notes.

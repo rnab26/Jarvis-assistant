@@ -985,6 +985,66 @@ contrôle bout-en-bout rougit, et le défaut revient tel quel. Le verdict
 `illisible` côté appareil reste en place par-dessus — il évite l'aller-retour
 réseau et couvre le cas où il ne nomme rien du tout.
 
+### Le serveur inventait un rangement une fois sur deux (28 sept. 2026)
+
+Chantier `e945ae83`. Trouvé le 27 sept. en vérifiant un déploiement sans rapport :
+le cas « une reponse coupee vise la tache qui ATTEND » de
+`verifier-commande-vocale.mjs` a rougi UNE fois sur une passe de 85, sans
+signature de quota. **Rejoué six fois (`TOURS=`, ajouté pour ça) : 3 échecs sur
+6.** Le garde-fou du 16 sept. ne tenait donc qu'une fois sur deux.
+
+**LA CAUSE, bisectée sur la fonction DÉPLOYÉE, pas supposée.** Même fonction,
+même consigne, même phrase, seul le CORPS change :
+
+    corps complet (ce que l'app envoie)  → 3 échecs sur 6
+    corps minimal (tâches + catégories)  → 0 échec sur 6
+
+Ce n'est pas la consigne : elle porte déjà « INTERDIT : poser un category_id sur
+cette tâche tant qu'il n'a pas PRONONCÉ le nom d'une catégorie », en toutes
+lettres. C'est le CONTEXTE qui l'entoure qui la dilue — et trois consignes
+renforcées avaient déjà échoué le 15 sept. (chantier `902bf94b`). **Donc du
+code**, comme `recuTransmis.ts` : `voice-command/categorieInventee.ts` retire un
+`category_id` que le modèle a inventé, et rend à la place la question qui NOMME
+la tâche. Mesuré après déploiement (v128) : **8 tours sur 8 justes**.
+
+**L'EXPOSITION RÉELLE EST PLUS ÉTROITE QUE CE CAS NE LE SUGGÈRE, et il faut le
+savoir pour ne pas se tromper de correctif.** Vérifié en appelant la vraie
+fonction pure : `reponseCategorie("non mets-le dans la catégor")` rend déjà
+`illisible` sur l'APPAREIL, donc cette phrase-là ne part jamais au serveur. Ce
+qui l'atteint, ce sont les phrases plus longues que la règle locale laisse
+passer (mesuré : « non pas celle-là, mets-le plutôt dans la catégorie des leads
+s'il te plaît », « non non, range-le dans les prélèvements plutôt que dans
+perso » rendent toutes `null`). Le garde-fou serveur est la SECONDE ligne, pas
+la première.
+
+**`nommeUneCategorie` est GÉNÉREUX exprès, et c'est toute sa sûreté.** Ce
+module s'interpose entre le modèle et ses tâches : croire à tort qu'il a nommé
+une catégorie ne change rien (c'est l'état d'avant) ; croire à tort qu'il n'en a
+nommé aucune **efface un rangement juste** et lui pose une question inutile.
+Même asymétrie que `secondeDemande.ts`. D'où la reconnaissance par le DÉBUT du
+nom (« l'administratif » vaut « Admin », « melisa » vaut « Melissa » — sa dictée
+écorche les noms propres en permanence).
+
+**TROIS LETTRES AU MINIMUM DE SON CÔTÉ, et c'est un vrai piège :** « mets-LE »
+donne le mot « le », qui est un début de « LEads ». Le garde-fou ne se
+déclenchait donc JAMAIS sur la phrase même qui l'a motivé — trouvé en lançant le
+contrôle, pas en relisant le code.
+
+**Et un contrôle sur dix ne servait à rien**, trouvé en les essayant à l'envers :
+monter `DEBUT_SUFFISANT` à 20 laissait tout vert, parce que les préfixes sont
+déjà reconnus dans les DEUX sens. Sa seule utilité réelle est un nom **mal
+transcrit**, et ce cas manquait ; il est là maintenant, et la mutation rougit.
+
+**La question est MOT POUR MOT celle de l'appareil** (`commandeLocale.ts`, verdict
+`illisible`) : deux formulations pour la même situation lui donneraient
+l'impression de parler à deux assistants. Le contrôle compare les deux SOURCES,
+pas une paraphrase — même stratégie que `verifier-moteur.ts` pour les phrases
+d'erreur.
+
+**Ce qui n'est PAS couvert** : si le modèle range dans une catégorie DIFFÉRENTE
+de celle qu'il a nommée, le garde-fou laisse passer — il ne vérifie que « a-t-il
+nommé une catégorie », pas « est-ce la bonne ». Non mesuré, donc non traité.
+
 ### Redire une dictée coupée COMPLÈTE la ligne, elle n'en crée pas une seconde
 
 Cinquième défaut du chantier `7b2c99e2`, mesuré le 16 sept. 2026 sur ses **298
@@ -4080,6 +4140,7 @@ node --experimental-strip-types scripts/verifier-suggestion-theme.ts  # la secti
 node --experimental-strip-types scripts/verifier-navigation-parametres.ts  # une cible résolue vers UNE section de Paramètres, jamais une mauvaise, sans réseau
 node --experimental-strip-types scripts/verifier-onglets-app.ts  # « ouvre le cockpit » change d'onglet — et « ouvre WhatsApp », l'itinéraire, « lis mes notes » ne bougent pas, sans réseau
 node --experimental-strip-types scripts/verifier-widget-taches.ts  # le widget de tâches DÉFILE : la décision pure, et tout le câblage Android qui échoue en silence, sans réseau
+node --experimental-strip-types scripts/verifier-categorie-inventee.ts  # le serveur ne range jamais une tâche dans une catégorie qu'il n'a pas prononcée — et surtout, il ne touche pas à un rangement JUSTE, sans réseau
 node --experimental-strip-types scripts/verifier-doublon-chantier.ts  # « ça existe déjà » : la redite et le déjà-livré, sans réseau
 node --experimental-strip-types scripts/verifier-doublons-existants.ts  # les doublons déjà en base, et surtout le silence quand il n'y en a pas
 node --experimental-strip-types scripts/verifier-tache-ou-chantier.ts  # une tâche perso qui est en fait un chantier — et le silence sur les chantiers de maçonnerie

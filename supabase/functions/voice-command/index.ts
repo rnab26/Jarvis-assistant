@@ -12,6 +12,7 @@ import { rappelerMoteurActif } from "../_shared/moteurActif.ts"
 import { appelerModele, moteurNonConfigure, phrasePourEchec } from "../_shared/modele.ts"
 import { blocDerniersTours } from "../_shared/derniersTours.ts"
 import { sansListeAvantTransmission } from "./recuTransmis.ts"
+import { sansCategorieInventee } from "./categorieInventee.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -882,16 +883,21 @@ Config actuelle du widget : ${JSON.stringify(widgetConfig)}.${blocTacheEnAttente
       : args.action
         ? [args]
         : []
-    const actions = sansListeAvantTransmission(brutes
-      .filter((a) => a && typeof a.action === "string"))
-      .map((a) =>
-        normaliserAction(a, {
-          idsContacts: new Set(
-            (Array.isArray(contacts) ? contacts : []).map((c: { id?: unknown }) => String(c?.id ?? "")),
-          ),
-          transcript,
-        }),
-      )
+    // APRÈS normaliserAction, exprès : c'est elle qui replie un `category_id`
+    // posé au premier niveau dans `changes`, donc une seule forme à traiter ici.
+    const actions = sansCategorieInventee(
+      sansListeAvantTransmission(brutes
+        .filter((a) => a && typeof a.action === "string"))
+        .map((a) =>
+          normaliserAction(a, {
+            idsContacts: new Set(
+              (Array.isArray(contacts) ? contacts : []).map((c: { id?: unknown }) => String(c?.id ?? "")),
+            ),
+            transcript,
+          }),
+        ),
+      { transcript, categories, tacheEnAttente },
+    )
 
     if (actions.length === 0) {
       return new Response(
