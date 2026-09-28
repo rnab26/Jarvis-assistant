@@ -2431,6 +2431,84 @@ et un banc de bout en bout ajouté à `scripts/verifier-ecoute-web.mjs` (le vrai
 pendant l'écoute) : la coupure est mesurée à moins de 1,5 s, contre plusieurs
 secondes à plusieurs minutes pour atteindre le seuil de vingt refus.
 
+### Et ce signal disait faux huit fois sur huit : on soupçonne, le micro tranche
+
+Chantier `20ae8529`, 28 sept. 2026, capture à l'appui. Ses mots : « La dernière
+fois que j'ai ouvert Jarvis, il y a écrit comme quoi le micro était occupé par
+autre chose alors que ce n'est pas vrai. Pour rien. »
+
+**MESURÉ dans `journal_ecoute`, pas supposé.** Les **huit** `veille_abandon` de
+raison `focus_perdu` posés depuis le 18 sept. (22/09 ×1, 23/09 ×3, 24/09 ×1,
+27/09 ×3) sont tous faux, et trois se contredisent frontalement :
+
+- **23/09 17:55** — la rafale ENTENDAIT sa voix à l'instant de l'abandon :
+  10 partiels, « mais ça veut dire quoi je te dis je paye un peu c'est quoi ».
+- **24/09 11:59** — idem, « contrôle Center » transcrit juste avant.
+- **27/09 12:24** — idem, « le monde entier s'est arrêté », puis « météo ».
+- **22/09 22:27** — la rafale a **continué APRÈS l'abandon** et s'est terminée
+  normalement en silence (code 7), 11,1 s plus tard.
+- **27/09 12:42** — `plateforme: "web"`, clic « Tâches » 4,1 s avant : il
+  naviguait dans l'app.
+
+Le micro marchait. Sa capture, elle, vient d'un **rechargement de la WebView
+après une mise à jour rapide** : `apk_build` passe de 356 à 366 et l'empreinte
+de `873edd07` à `8f1b4b43` entre les deux rafales, 20 s après son clic
+« Mettre à jour ».
+
+**LA CAUSE EST MÉCANIQUE.** `focusPerduPendantEcoute` se lit dans le NETTOYAGE
+de l'effet de veille, qui tourne pour **trois** raisons et pas une : la veille
+change d'état, l'abandon change d'état, ou le composant est démonté —
+navigation, rechargement, fermeture. Et `visible` retombe à faux sur
+`pagehide`, tandis que la spec HTML impose au document de passer à `hidden`
+AVANT `pagehide`. « Une autre app a pris le micro » et « cet effet se démonte
+pendant que le document est momentanément caché » sont **indistinguables** à
+cet instant-là.
+
+**Le second défaut est celui qu'il voit** : c'était irréversible. Une fois
+`veilleAbandonnee` posé, le message rouge restait jusqu'à un appui sur le
+cœur, même l'app revenue au premier plan depuis longtemps et le micro libre.
+
+**LA PARADE : on ne déclare plus, on SOUPÇONNE.** Le micro est coupé tout de
+suite, comme avant — sa demande du 18 sept. ne bouge pas. Mais le verdict
+attend le retour au premier plan, où **un essai réel tranche** :
+`conflitConfirmeAuRetour(soupçon, démarrage refusé)` (`src/lib/veille.ts`,
+**pure**). Refusé (`MOTEUR_OCCUPE`) → c'est un vrai conflit, on le dit ;
+accepté → silence, la veille reprend toute seule.
+
+Trois choses à ne pas défaire :
+
+1. **UN essai, pas vingt.** `REFUS_AVANT_ABANDON` reste le filet pour les cas
+   où l'app garde le premier plan, et la demande du chantier `7a6e75c4`
+   (couper vite, sans attendre le seuil) tient toujours.
+2. **Le soupçon est une REF, pas un état**, et il ne doit pas le redevenir :
+   la boucle le lit dans un `while` qu'aucun rendu ne réveille, et surtout il
+   ne doit PAS survivre au rechargement de page qui l'a si souvent posé pour
+   rien — il meurt avec elle, ce qui est exactement le cas de sa capture.
+3. **Il se consomme au PREMIER essai du retour**, quel qu'en soit le résultat,
+   et un appui sur le cœur le remet à zéro comme `echecsOccupeRef` : un refus
+   survenu dix minutes plus tard n'a plus rien à voir avec la perte de premier
+   plan d'avant.
+
+**L'ASYMÉTRIE JUSTIFIE CE SENS** : se taire à tort coûte une rafale de plus,
+rattrapée par `REFUS_AVANT_ABANDON` ; parler à tort pose un message rouge faux
+**qui bloque la veille** jusqu'à un appui manuel — le reproche exact du
+28 sept. Deux traces nouvelles pour la mesurer : `veille_conflit_soupconne` et
+`veille_conflit_ecarte`.
+
+**Le banc d'avant figeait le défaut** : il exigeait « j'ai arrêté d'insister »
+dès la perte du premier plan, avec un moteur qui acceptait pourtant de
+démarrer. `verifier-ecoute-web.mjs` a maintenant **les deux moitiés** — le
+conflit réel (le moteur refuse au retour → message) et le faux positif (il
+accepte → aucun message, reprise seule) — et chacune a été essayée à l'envers :
+remettre l'ancien comportement fait rougir trois contrôles, supprimer le
+verdict du retour en fait rougir deux.
+
+**CE QUI RESTE INCONNU, à ne pas présenter comme réglé** : quel évènement a
+caché le document 3 s après le redémarrage du 27/09. La preuve que le signal
+est faux n'en dépend pas — le micro entendait sa voix dans trois autres cas.
+**Non constaté sur son téléphone** : c'est du `src/`, la mise à jour rapide
+suffit.
+
 ## Supprimer demande toujours, partout dans l'app
 
 `src/components/ConfirmerAction.tsx` : la fenêtre qui pose la question avant

@@ -177,19 +177,27 @@ export function texteAAfficherEnVeille(partiel: string): string | null {
  *
  * La veille s'arrête déjà d'elle-même dans ce cas : dès que l'app perd le
  * premier plan, l'effet qui la porte est démonté et rend le micro tout de
- * suite, sans attendre la fin de la rafale (voir MicButton). Ce que cette
- * fonction décide EN PLUS, c'est qu'au retour elle ne doit pas reprendre
- * TOUTE SEULE — sa demande du 9 sept. 2026 pour REFUS_AVANT_ABANDON
- * s'applique à l'identique ici, mot pour mot : « il vaut mieux que le
- * micro s'arrête et qu'on réactive jarvis manuellement pour reprendre une
- * session plutôt que ça s'active de façon intempestive ». Une réactivation
- * manuelle (le cœur) remet `veilleAbandonnee` à faux, exactement comme
- * pour REFUS_AVANT_ABANDON — même mécanisme, complémentaire : celui-ci
- * coupe tout de suite sur un signal net (le micro était ouvert), l'autre
- * reste le filet pour les cas où l'app garde le premier plan (l'écran
- * partagé, une fenêtre d'assistance ouverte par-dessus une autre
- * application) et où rien ne dit qu'un conflit est en cours avant d'avoir
- * essayé — et échoué — plusieurs fois.
+ * suite, sans attendre la fin de la rafale (voir MicButton).
+ *
+ * ELLE NE REND PLUS UN VERDICT, MAIS UN SOUPÇON — voir
+ * `conflitConfirmeAuRetour` juste en dessous, et la mesure du 28 sept.
+ * 2026 qui l'a imposé. Ce qu'elle dit exactement : le micro était ouvert
+ * quand ce document a cessé d'être visible. C'est nécessaire pour un
+ * conflit, ce n'est pas suffisant — un rechargement de page produit
+ * exactement le même signal.
+ *
+ * Ce qui reste vrai, et qui ne change pas : au retour, la veille ne doit
+ * pas reprendre toute seule SI le conflit est confirmé — sa demande du
+ * 9 sept. 2026 pour REFUS_AVANT_ABANDON s'applique à l'identique ici, mot
+ * pour mot : « il vaut mieux que le micro s'arrête et qu'on réactive
+ * jarvis manuellement pour reprendre une session plutôt que ça s'active de
+ * façon intempestive ». Une réactivation manuelle (le cœur) remet
+ * `veilleAbandonnee` à faux, exactement comme pour REFUS_AVANT_ABANDON —
+ * même mécanisme, complémentaire : celui-ci tranche en un seul essai sur
+ * un signal net, l'autre reste le filet pour les cas où l'app garde le
+ * premier plan (l'écran partagé, une fenêtre d'assistance ouverte
+ * par-dessus une autre application) et où rien ne dit qu'un conflit est en
+ * cours avant d'avoir essayé — et échoué — plusieurs fois.
  *
  * Perdre le premier plan alors que la veille était simplement AU REPOS
  * (entre deux rafales, aucun micro ouvert) n'est PAS un conflit : rien
@@ -211,6 +219,50 @@ export function texteAAfficherEnVeille(partiel: string): string | null {
  */
 export function focusPerduPendantEcoute(statut: StatutVoix, documentCache: boolean): boolean {
   return statut === "wake-listening" && documentCache
+}
+
+/**
+ * CE SIGNAL SEUL NE SUFFIT PAS À DIRE « une autre application tient le
+ * micro », et l'avoir cru a coûté huit faux messages rouges.
+ *
+ * MESURÉ le 28 sept. 2026 dans `journal_ecoute` (chantier 20ae8529), sur
+ * les HUIT `veille_abandon` de raison `focus_perdu` posés depuis le
+ * 18 sept. Aucun ne ressemblait au cas visé, et trois le contredisaient
+ * frontalement : le 23/09 à 17:55 la rafale ENTENDAIT sa voix à l'instant
+ * de l'abandon (10 partiels, « mais ça veut dire quoi je te dis je paye un
+ * peu c'est quoi »), le 24/09 à 11:59 de même, et le 22/09 à 22:27 la
+ * rafale a CONTINUÉ après l'abandon pour se terminer normalement en
+ * silence, 11,1 s plus tard. Le micro marchait ; le message mentait. Sa
+ * capture du 28/09 vient elle d'un redémarrage de la WebView après une
+ * mise à jour rapide (`apk_build` 356 → 366 entre deux rafales).
+ *
+ * LA RAISON EST MÉCANIQUE. `focusPerduPendantEcoute` se lit dans le
+ * NETTOYAGE de l'effet de veille, qui tourne pour trois raisons et pas
+ * une : la veille change d'état, l'abandon change d'état, ou le composant
+ * est démonté — navigation, rechargement de la WebView, fermeture. Et
+ * pendant un déchargement, la spec HTML impose que le document passe à
+ * `hidden` AVANT `pagehide`. « Une autre app a pris le micro » et « cet
+ * effet se démonte pendant que le document est momentanément caché » sont
+ * indistinguables à cet instant-là.
+ *
+ * DONC ON NE CONCLUT PLUS LÀ : on SOUPÇONNE. Le micro est coupé tout de
+ * suite, comme avant — c'est sa demande du 18 sept. et elle ne bouge pas.
+ * Mais le verdict attend le retour au premier plan, où un essai RÉEL
+ * tranche : un démarrage refusé (`MOTEUR_OCCUPE`) confirme le conflit, un
+ * démarrage qui passe l'écarte et la veille reprend toute seule.
+ *
+ * UN essai, pas vingt : `REFUS_AVANT_ABANDON` reste le filet pour les cas
+ * où rien ne s'est passé au premier plan, et la demande du chantier
+ * 7a6e75c4 (couper vite, sans attendre le seuil) tient toujours.
+ *
+ * L'ASYMÉTRIE JUSTIFIE CE SENS, et c'est ce qu'il faut garder en tête si
+ * on y touche : se taire à tort coûte une rafale de plus, rattrapée par
+ * `REFUS_AVANT_ABANDON` ; parler à tort pose un message rouge faux QUI
+ * BLOQUE LA VEILLE jusqu'à ce qu'il touche le cœur — le reproche exact du
+ * 28 sept. (« alors que ce n'est pas vrai. Pour rien. »).
+ */
+export function conflitConfirmeAuRetour(soupcon: boolean, demarrageRefuse: boolean): boolean {
+  return soupcon && demarrageRefuse
 }
 
 /** Plafond du recul entre deux rafales muettes. Au-delà, « Jarvis » dit

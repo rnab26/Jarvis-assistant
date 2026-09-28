@@ -18,6 +18,7 @@ import {
   delaiApresOccupe,
   delaiAvantRafaleSuivante,
   enRefroidissement,
+  conflitConfirmeAuRetour,
   focusPerduPendantEcoute,
   peutEcouterEnVeille,
   renonceApresRefus,
@@ -1314,6 +1315,10 @@ export function MicButton({
     // au premier refus suivant, puisque la ref survit maintenant au
     // remontage de l'effet.
     echecsOccupeRef.current = 0
+    // Le soupçon aussi : il porte sur un aller-retour qu'il vient de clore en
+    // reprenant la main lui-même. Le garder ferait juger la prochaine perte de
+    // premier plan sur un essai qui n'a rien à voir avec elle.
+    soupconConflitRef.current = false
     if (modeLive) {
       if (liveRef.current) {
         arreterLive()
@@ -1415,6 +1420,17 @@ export function MicButton({
   // refus la remet à zéro : une pièce calme rend « silence », donc le
   // compteur ne monte jamais quand tout va bien.
   const echecsOccupeRef = useRef(0)
+  // UN CONFLIT DE MICRO SOUPÇONNÉ, PAS ENCORE CONSTATÉ. Posé quand l'app
+  // perd le premier plan pendant que le micro écoutait ; tranché au premier
+  // essai qui suit, par le micro lui-même (voir conflitConfirmeAuRetour dans
+  // veille.ts, et la mesure du 28 sept. 2026 qui a imposé ce détour).
+  //
+  // UNE REF ET PAS UN ÉTAT, pour deux raisons qui comptent toutes les deux :
+  // la boucle de veille la lit dans un `while` qu'aucun rendu ne réveille, et
+  // surtout un soupçon ne doit PAS survivre au rechargement de la page qui
+  // l'a souvent posé pour rien — il meurt avec elle, ce qui est exactement le
+  // cas de sa capture du 28 sept. (mise à jour rapide, build 356 → 366).
+  const soupconConflitRef = useRef(false)
 
   // Une mise à jour qui s'installe suspend la veille (voir majEnCours.ts et
   // peutEcouterEnVeille). L'état sert à l'AFFICHAGE, la ref à la boucle —
@@ -1490,6 +1506,23 @@ export function MicButton({
         }
         if (cancelled) return
         echecsOccupeRef.current = echecDemarrage ? echecsOccupeRef.current + 1 : 0
+        // LE VERDICT DU CONFLIT SOUPÇONNÉ, tranché par le micro et pas par
+        // une supposition. Consommé au PREMIER essai qui suit le retour, quel
+        // qu'en soit le résultat : un refus survenu dix minutes plus tard
+        // n'aurait plus rien à voir avec la perte du premier plan d'avant.
+        if (soupconConflitRef.current) {
+          soupconConflitRef.current = false
+          if (conflitConfirmeAuRetour(true, echecDemarrage)) {
+            noterEcoute("veille_abandon", { raison: "focus_perdu" })
+            setStatus("idle")
+            setVeilleAbandonnee(true)
+            return
+          }
+          // Le micro s'est ouvert normalement : rien ne le tenait. On se tait
+          // — et on garde la trace, pour que le prochain qui lit ce journal
+          // sache que le détour sert vraiment à quelque chose.
+          noterEcoute("veille_conflit_ecarte", { raison: "focus_perdu" })
+        }
         if (renonceApresRefus(echecsOccupeRef.current, seuilAbandonRef.current)) {
           // On s'arrête là, et on le DIT (voir plus bas, sous le cœur) :
           // continuer reviendrait à réclamer un micro que quelque chose
@@ -1616,8 +1649,13 @@ export function MicButton({
         // raisonnement et sa limite connue (l'écran partagé, une fenêtre
         // d'assistance par-dessus une autre app, ne se voient pas d'ici).
         if (focusPerduPendantEcoute(statusRef.current, document.visibilityState === "hidden")) {
-          setVeilleAbandonnee(true)
-          noterEcoute("veille_abandon", { raison: "focus_perdu" })
+          // ON SOUPÇONNE, ON NE DÉCLARE PAS. Ce nettoyage tourne aussi quand
+          // la page se décharge (navigation, mise à jour rapide) : conclure
+          // ici posait un message rouge faux qui bloquait la veille jusqu'à
+          // un appui sur le cœur — huit fois en dix jours, mesuré le
+          // 28 sept. 2026. Le verdict revient au premier essai du retour.
+          soupconConflitRef.current = true
+          noterEcoute("veille_conflit_soupconne", { raison: "focus_perdu" })
         }
       }
     }

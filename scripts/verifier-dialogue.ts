@@ -20,6 +20,7 @@ import {
 import {
   apresRafale,
   delaiApresOccupe,
+  conflitConfirmeAuRetour,
   focusPerduPendantEcoute,
   renonceApresRefus,
   REFUS_AVANT_ABANDON,
@@ -244,6 +245,36 @@ function verifier(nom: string, obtenu: unknown, attendu: unknown) {
     focusPerduPendantEcoute("idle", false), false)
   verifier("une vraie commande en cours (pas la veille) : hors du périmètre de cette détection",
     focusPerduPendantEcoute("listening", true), false)
+}
+
+// 11 quinquies. LE SOUPÇON NE SUFFIT PAS (chantier 20ae8529, 28 sept. 2026).
+//               Mesuré : les HUIT abandons `focus_perdu` posés depuis le
+//               18 sept. étaient faux — trois fois la rafale entendait sa
+//               voix à l'instant même, une fois elle a continué et fini
+//               normalement 11 s plus tard, et sa capture vient d'un
+//               rechargement de WebView après mise à jour rapide. Le verdict
+//               revient donc au premier essai du retour, tranché par le micro.
+{
+  verifier("soupçon confirmé par un démarrage refusé : c'est un vrai conflit",
+    conflitConfirmeAuRetour(true, true), true)
+  verifier("soupçon écarté par un démarrage qui passe : on se tait",
+    conflitConfirmeAuRetour(true, false), false)
+  verifier("un refus SANS perte de premier plan reste l'affaire de REFUS_AVANT_ABANDON",
+    conflitConfirmeAuRetour(false, true), false)
+  verifier("ni soupçon ni refus : rien",
+    conflitConfirmeAuRetour(false, false), false)
+
+  // LA MOITIÉ QUI COMPTE, et qui rougit si quelqu'un réunit les deux
+  // fonctions : le signal de départ reste vrai dans les cas MESURÉS comme
+  // faux — c'est précisément pour ça qu'il ne peut pas conclure seul.
+  {
+    // 27/09 23:38 : rechargement de la WebView après « Mettre à jour ».
+    const rechargement = focusPerduPendantEcoute("wake-listening", true)
+    verifier("un rechargement de page lève encore le soupçon…",
+      rechargement, true)
+    verifier("…mais ne dit plus rien tant que le micro n'a pas refusé",
+      conflitConfirmeAuRetour(rechargement, false), false)
+  }
 }
 
 // 12. Le « Oui ? » de Jarvis, dit pendant que le micro s'ouvre, ne doit pas

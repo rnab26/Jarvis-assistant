@@ -543,14 +543,17 @@ try {
   }
 
   // ── COUPURE PROACTIVE : L'APP PERD LE PREMIER PLAN PENDANT QUE LE MICRO
-  //    ÉCOUTE (chantier 7a6e75c4, 18 sept. 2026) ──
+  //    ÉCOUTE (chantier 7a6e75c4, 18 sept. 2026, révisé le 28 sept. 2026) ──
   // Sa demande : « j'ouvre WhatsApp et je lance une note vocale » ne doit pas
   // laisser la veille insister. Ici le moteur accepte de démarrer normalement
   // (pas de refus) : le micro est réellement ouvert, la veille attend le
   // mot-clé — exactement le moment où une autre application prend le premier
-  // plan. La coupure doit être IMMÉDIATE, pas après vingt refus comme dans
-  // le banc précédent, et la veille ne doit PAS reprendre toute seule au
-  // retour : Touche le cœur pour reprendre.
+  // plan. La coupure doit être IMMÉDIATE, pas après vingt refus.
+  //
+  // CE QUI A CHANGÉ LE 28 SEPT. (chantier 20ae8529) : la coupure reste
+  // immédiate, mais le MESSAGE attend un essai réel au retour. Les deux bancs
+  // ci-dessous sont les deux moitiés de cette décision, et il faut les deux —
+  // celui d'avant ne gardait que la première et figeait donc le défaut.
   {
     const conflit = await navigateur.newPage()
     conflit.on("pageerror", (e) => {
@@ -561,17 +564,18 @@ try {
     await conflit.goto(`${BASE}/scripts/harness/micbutton.html`)
     await conflit.waitForFunction("window.__actifs() === 1", null, { timeout: 10000 })
 
+    // Une autre application prend le premier plan ET le micro : au retour,
+    // le moteur refusera de démarrer — c'est ça, un vrai conflit.
     const avantConflit = Date.now()
     await conflit.evaluate(`
+      window.__sr.refuseDeDemarrer = true
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" })
       document.dispatchEvent(new Event("visibilitychange"))
     `)
-    await conflit
-      .waitForFunction("document.body.textContent.includes(\"j'ai arrêté d'insister\")", null, { timeout: 3000 })
-      .catch(() => {
-        echecs++
-        console.log("ÉCHEC conflit micro : la veille n'a pas coupé quand l'app a perdu le premier plan")
-      })
+    await conflit.waitForFunction("window.__actifs() === 0", null, { timeout: 3000 }).catch(() => {
+      echecs++
+      console.log("ÉCHEC conflit micro : la veille n'a pas coupé quand l'app a perdu le premier plan")
+    })
     verifier(
       "conflit micro : coupée tout de suite, pas après vingt refus",
       Date.now() - avantConflit < 1500,
@@ -579,21 +583,81 @@ try {
     )
     verifier("conflit micro : le micro est bien relâché", await conflit.evaluate("window.__actifs()"), 0)
 
-    // Retour au premier plan : elle ne doit PAS reprendre toute seule.
-    const departsAvant = await conflit.evaluate("window.__sr.starts")
+    // Retour au premier plan. Le micro est toujours pris : UN essai suffit à
+    // le constater, et alors seulement on le dit.
     await conflit.evaluate(`
       Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" })
       document.dispatchEvent(new Event("visibilitychange"))
     `)
-    await pause(1000)
-    const departsApres = await conflit.evaluate("window.__sr.starts")
-    verifier("conflit micro : retour au premier plan → pas de reprise automatique", departsApres, departsAvant)
+    await conflit
+      .waitForFunction("document.body.textContent.includes(\"j'ai arrêté d'insister\")", null, { timeout: 5000 })
+      .catch(() => {
+        echecs++
+        console.log("ÉCHEC conflit micro : le conflit RÉEL n'a pas été signalé au retour")
+      })
     verifier(
-      "conflit micro : elle attend toujours un appui sur le cœur",
+      "conflit micro confirmé : elle attend un appui sur le cœur",
       (await conflit.textContent("body"))?.includes("Touche le cœur pour reprendre.") ?? false,
       true,
     )
     await conflit.close()
+  }
+
+  // ── ET SURTOUT : UNE PERTE DE PREMIER PLAN QUI N'EST PAS UN CONFLIT NE
+  //    DOIT RIEN DIRE DU TOUT (chantier 20ae8529, 28 sept. 2026) ──
+  // MESURÉ dans son journal : les HUIT `veille_abandon` de raison
+  // `focus_perdu` posés depuis le 18 sept. étaient faux. Trois fois la rafale
+  // ENTENDAIT sa voix à l'instant de l'abandon ; une fois elle a continué et
+  // s'est terminée normalement 11,1 s plus tard ; et sa capture du 28 sept.
+  // vient d'un rechargement de la WebView après une mise à jour rapide
+  // (`apk_build` 356 → 366 entre deux rafales). Ses mots : « il y a écrit
+  // comme quoi le micro était occupé par autre chose alors que ce n'est pas
+  // vrai. Pour rien. »
+  //
+  // Ici le moteur accepte de redémarrer au retour — donc rien ne tenait le
+  // micro. Aucun message, et la veille reprend toute seule.
+  {
+    const faux = await navigateur.newPage()
+    faux.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (faux conflit) :", e.message)
+    })
+    await faux.addInitScript(FAUX_MOTEUR)
+    await faux.goto(`${BASE}/scripts/harness/micbutton.html`)
+    await faux.waitForFunction("window.__actifs() === 1", null, { timeout: 10000 })
+
+    await faux.evaluate(`
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" })
+      document.dispatchEvent(new Event("visibilitychange"))
+    `)
+    await faux.waitForFunction("window.__actifs() === 0", null, { timeout: 3000 }).catch(() => {
+      echecs++
+      console.log("ÉCHEC faux conflit : le micro n'a pas été relâché")
+    })
+
+    const departsAvant = await faux.evaluate("window.__sr.starts")
+    await faux.evaluate(`
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" })
+      document.dispatchEvent(new Event("visibilitychange"))
+    `)
+    let reprise = true
+    await faux
+      .waitForFunction(`window.__sr.starts > ${departsAvant}`, null, { timeout: 5000 })
+      .catch(() => {
+        reprise = false
+      })
+    verifier("faux conflit : la veille reprend toute seule, sans rien demander", reprise, true)
+    verifier(
+      "faux conflit : AUCUN message « le micro est pris par autre chose »",
+      (await faux.textContent("body"))?.includes("j'ai arrêté d'insister") ?? false,
+      false,
+    )
+    verifier(
+      "faux conflit : on ne lui demande pas de toucher le cœur",
+      (await faux.textContent("body"))?.includes("Touche le cœur pour reprendre.") ?? false,
+      false,
+    )
+    await faux.close()
   }
 } finally {
   await navigateur?.close()
