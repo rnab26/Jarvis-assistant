@@ -603,6 +603,23 @@ jobs:
       - name: Le décalage de la transcription Live se mesure sans rien supposer
         run: node --experimental-strip-types scripts/verifier-decalage-transcription.ts
 
+      # Contrôles hors ligne qui existaient et passaient mais n'étaient lancés par
+      # aucun workflow : ils ne protégeaient donc rien.
+      - name: L'annonce parlée pendant la fenêtre d'annulation n'est pas relue deux fois
+        run: node --experimental-strip-types scripts/verifier-annonce-dite.ts
+      - name: L'annonce native ne double pas l'annonce de l'app
+        run: node --experimental-strip-types scripts/verifier-annonce-native.ts
+      - name: Un chantier créé à la voix propose sa section et son titre, jamais seuls
+        run: node --experimental-strip-types scripts/verifier-chantier-en-attente.ts
+      - name: Un chantier déplié montre sa dernière mise à jour d'abord
+        run: node --experimental-strip-types scripts/verifier-derniere-maj.ts
+      - name: Un lien dicté ou partagé donne son adresse et le nom du fichier
+        run: node --experimental-strip-types scripts/verifier-documents.ts
+      - name: Le délai entre deux actions d'une même phrase
+        run: node --experimental-strip-types scripts/verifier-enchainement-actions.ts
+      - name: Un thème sans section se signale, jamais tout seul
+        run: node --experimental-strip-types scripts/verifier-themes-non-declares.ts
+
       # Un `--` dans un commentaire XML casse le build Android entier, avec un
       # message qui ne parle jamais du commentaire. Le contrôle coûte une
       # seconde ici, contre un build Android complet pour le découvrir.
