@@ -190,6 +190,9 @@ export function DashboardPage() {
           prefsNotifs={notificationsState.prefs}
           onRelancerEnvoi={relancerEnvoi}
           onOublierEnAttente={oublierEnAttente}
+          onAjouter={async (input) => {
+            await addTask(input)
+          }}
         />
       )}
     </div>

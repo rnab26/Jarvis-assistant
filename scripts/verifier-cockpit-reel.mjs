@@ -75,7 +75,7 @@ let nav
 try {
   await attendre()
   const chromium = await chargerChromium()
-  try { nav = await chromium.launch() } catch { nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" }) }
+  try { nav = await chromium.launch() } catch { nav = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" }) }
   const page = await nav.newPage({ viewport: { width: 390, height: 844 } })
   page.on("pageerror", (e) => { echecs++; console.log("ERREUR DE PAGE:", e.message) })
   await page.addInitScript((f) => { window.__FIXTURE_REELLE = f }, FIXTURE)

@@ -33,6 +33,9 @@ interface TaskFormDialogProps {
    * cockpit le fait depuis le 4 sept. ; la liste de tâches, non — et trois
    * « racheter un spot pour l'entrée de la maison » identiques y dormaient. */
   taches?: Task[]
+  /** Catégorie déjà choisie à l'ouverture (le « + » d'un bloc de catégorie).
+   * Pour une création seulement : en modification, ne pas la passer. */
+  categorieInitiale?: string | null
 }
 
 export function TaskFormDialog({
@@ -41,13 +44,14 @@ export function TaskFormDialog({
   onSubmit,
   trigger,
   taches = [],
+  categorieInitiale = null,
 }: TaskFormDialogProps) {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState(task?.title ?? "")
   const [notes, setNotes] = useState(task?.notes ?? "")
   const [dueDate, setDueDate] = useState(task?.due_date ?? "")
   const [dueTime, setDueTime] = useState(task?.due_time?.slice(0, 5) ?? "")
-  const [categoryId, setCategoryId] = useState(task?.category_id ?? NO_CATEGORY)
+  const [categoryId, setCategoryId] = useState(task?.category_id ?? categorieInitiale ?? NO_CATEGORY)
   const [submitting, setSubmitting] = useState(false)
 
   // Uniquement à la CRÉATION : sur une modification, la tâche se ressemblerait
@@ -61,9 +65,9 @@ export function TaskFormDialog({
       setNotes(task?.notes ?? "")
       setDueDate(task?.due_date ?? "")
       setDueTime(task?.due_time?.slice(0, 5) ?? "")
-      setCategoryId(task?.category_id ?? NO_CATEGORY)
+      setCategoryId(task?.category_id ?? categorieInitiale ?? NO_CATEGORY)
     }
-  }, [open, task])
+  }, [open, task, categorieInitiale])
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()

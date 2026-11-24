@@ -1,8 +1,11 @@
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronRight, Plus } from "lucide-react"
 import { useState } from "react"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { TaskFormDialog } from "@/components/tasks/TaskFormDialog"
 import { TaskItem } from "@/components/tasks/TaskItem"
 import { libelleArchive, phraseCategorieSoldee, repartir } from "@/lib/archiveTaches"
+import { categoriesOrdonnees } from "@/lib/ordreCategories"
 import type { PrefsNotifications } from "@/lib/notifications/prefs"
 import type { Category, Task, TaskInput } from "@/types/database"
 
@@ -25,6 +28,9 @@ interface TaskListProps {
    * (Paramètres › Tâches et organisation). Replié par défaut : c'est le but
    * même de sa demande — que les tâches faites cessent de polluer la liste. */
   archivesOuvertes?: boolean
+  /** Le « + » de chaque bloc : crée une tâche déjà rangée dans sa catégorie
+   * (sa demande du 24 nov. 2026). Absent = pas de bouton. */
+  onAjouter?: (input: TaskInput) => Promise<void>
 }
 
 const NO_CATEGORY_LABEL = "Sans catégorie"
@@ -40,6 +46,7 @@ export function TaskList({
   onRelancerEnvoi,
   onOublierEnAttente,
   archivesOuvertes = false,
+  onAjouter,
 }: TaskListProps) {
   const categoryById = new Map(categories.map((c) => [c.id, c.name]))
   const groups = new Map<string, Task[]>()
@@ -71,6 +78,9 @@ export function TaskList({
       {orderedKeys.map((categoryId) => (
         <BlocCategorie
           key={categoryId}
+          categorieId={categoryId === "none" ? null : categoryId}
+          toutesLesTaches={tasks}
+          onAjouter={onAjouter}
           nom={categoryById.get(categoryId) ?? NO_CATEGORY_LABEL}
           taches={groups.get(categoryId)!}
           categories={categories}
@@ -115,9 +125,15 @@ function BlocCategorie({
   onRelancerEnvoi,
   onOublierEnAttente,
   archivesOuvertes,
+  onAjouter,
+  categorieId,
+  toutesLesTaches,
 }: {
   nom: string
   taches: Task[]
+  categorieId: string | null
+  /** Pour le « ça existe déjà » du formulaire, qui compare à toute la liste. */
+  toutesLesTaches: Task[]
 } & Omit<TaskListProps, "tasks">) {
   const { aFaire, archivees } = repartir(taches)
   const [ouvert, setOuvert] = useState(archivesOuvertes === true)
@@ -149,8 +165,36 @@ function BlocCategorie({
     // de seize points sous un bandeau qui sépare déjà à l'œil ne sert plus à
     // rien — la séparation est faite par le trait, pas par le vide.
     <Card className="gap-2">
+      {/* Le « + » est posé PAR-DESSUS le bandeau, à droite, sans prendre de
+          place : le nom reste centré (padding symétrique px-9) et la carte
+          garde sa hauteur — budget mesuré par verifier-taches-web. */}
       <CardHeader className="-mt-(--card-spacing) border-b bg-muted/40 py-2.5">
-        <CardTitle className="text-center font-semibold tracking-wide">{nom}</CardTitle>
+        {/* Ancré sur la ligne du nom, pas sur le bandeau : le bandeau a plus
+            de marge en bas qu'en haut, le « + » y tombait plus bas que le nom. */}
+        <CardTitle className="relative px-9 text-center font-semibold tracking-wide">
+          {nom}
+          {onAjouter && (
+            // .zone-tactile impose position: relative : le placement va sur l'enveloppe.
+            <span className="absolute top-1/2 right-0 flex -translate-y-1/2">
+              <TaskFormDialog
+                categories={categoriesOrdonnees(categories)}
+                taches={toutesLesTaches}
+                categorieInitiale={categorieId}
+                onSubmit={onAjouter}
+                trigger={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Ajouter une tâche dans ${nom}`}
+                    className="zone-tactile"
+                  >
+                    <Plus className="size-5" />
+                  </Button>
+                }
+              />
+            </span>
+          )}
+        </CardTitle>
       </CardHeader>
       {/* Un filet entre deux tâches, pas un cadre autour de chacune :
           c'est ce qui rend la liste compacte sans rétrécir le texte. */}

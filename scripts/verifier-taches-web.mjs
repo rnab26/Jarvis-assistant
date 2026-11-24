@@ -73,7 +73,7 @@ try {
     navigateur = await chromium.launch()
   } catch {
     navigateur = await chromium.launch({
-      executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+      executablePath: "/opt/pw-browsers/chromium",
     })
   }
   const page = await navigateur.newPage({ viewport: { width: 390, height: 844 } })
@@ -590,6 +590,33 @@ try {
       "et le bandeau ne coûte pas de hauteur à la liste",
       hauteurListe <= BUDGET_LISTE,
       `la liste fait ${hauteurListe} points, budget ${BUDGET_LISTE}`,
+    )
+  }
+
+  // ── Le « + » de chaque bloc : une tâche déjà rangée dans SA catégorie ──
+  // Sa demande du 24 nov. 2026, capture à l'appui (un « + » dessiné sur
+  // chaque bandeau) : créer une tâche dans la section plus facilement.
+  {
+    const liste = page.locator("#liste-groupee")
+    verifier(
+      "chaque bloc a son bouton « + »",
+      (await liste.getByRole("button", { name: /^Ajouter une tâche dans / }).count()) === 3,
+    )
+    await liste.getByRole("button", { name: "Ajouter une tâche dans Leads" }).click()
+    await pause(300)
+    const fenetre = page.getByRole("dialog")
+    verifier(
+      "la fenêtre s'ouvre avec la catégorie du bloc déjà choisie",
+      (await fenetre.getByRole("combobox").innerText()).trim() === "Leads",
+      `catégorie lue : ${await fenetre.getByRole("combobox").innerText()}`,
+    )
+    await fenetre.getByLabel("Titre").fill("Relancer Yossi par téléphone")
+    await fenetre.getByRole("button", { name: "Ajouter" }).click()
+    await pause(400)
+    const blocLeads = liste.locator("[data-slot=card]", { hasText: "Leads" })
+    verifier(
+      "la tâche ajoutée apparaît dans le bloc Leads",
+      (await blocLeads.getByText("Relancer Yossi par téléphone").count()) === 1,
     )
   }
 

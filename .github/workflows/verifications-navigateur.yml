@@ -20,7 +20,9 @@ on:
 
 jobs:
   navigateur:
-    runs-on: ubuntu-latest
+    # Pas ubuntu-latest : passé à 26.04 en nov. 2026, que Playwright 1.56
+    # ne sait pas équiper (« does not support chromium on ubuntu26.04 »).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -69,7 +69,7 @@ try {
     navigateur = await chromium.launch()
   } catch {
     navigateur = await chromium.launch({
-      executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+      executablePath: "/opt/pw-browsers/chromium",
     })
   }
   // Un téléphone, pas un écran de bureau : c'est là que Raphaël s'en sert.
