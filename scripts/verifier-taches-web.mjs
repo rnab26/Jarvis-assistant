@@ -620,6 +620,59 @@ try {
     )
   }
 
+  // ── L'OBJECTIF DU JOUR ──
+  // Sa demande du 24 nov. 2026 : une cible juste avant le crayon, et la liste
+  // de ce qu'il veut finir aujourd'hui au-dessus de toutes les sections.
+  {
+    const liste = page.locator("#liste-groupee")
+    verifier(
+      "sans objectif, pas de bloc « Objectif du jour »",
+      (await liste.getByText("Objectif du jour").count()) === 0,
+      "un bloc vide pousserait toute la liste vers le bas pour rien",
+    )
+    await liste.getByRole("button", { name: "Ajouter à l'objectif du jour" }).first().click()
+    await pause(300)
+    const bloc = liste.locator("[data-slot=card]", { hasText: "Objectif du jour" })
+    verifier(
+      "la tâche ciblée monte dans « Objectif du jour »",
+      (await bloc.getByText("Ouvrir le terminal de paiement").count()) === 1,
+    )
+    const premier = await liste.locator("[data-slot=card]").first().innerText()
+    verifier("et ce bloc est au-dessus de toutes les sections", premier.includes("Objectif du jour"))
+    verifier(
+      "dans sa section aussi, la cible est allumée : on la reconnaît",
+      (await liste.getByRole("button", { name: "Retirer de l'objectif du jour" }).count()) === 2,
+    )
+    await liste.getByRole("button", { name: "Retirer de l'objectif du jour" }).first().click()
+    await pause(300)
+    verifier(
+      "la retirer la fait sortir, et le bloc disparaît",
+      (await liste.getByText("Objectif du jour").count()) === 0,
+    )
+  }
+
+  // ── REPLIER UNE SECTION, ET QU'ELLE S'EN SOUVIENNE ──
+  // Même jour : « pouvoir l'ouvrir ou la replier et que ça garde en mémoire
+  // […] pour cette section ».
+  {
+    const liste = page.locator("#liste-groupee")
+    await liste.getByRole("button", { name: /^Leads/ }).click()
+    await pause(250)
+    verifier(
+      "toucher le nom replie la section",
+      (await liste.getByText("Finir le tableau simplifié").count()) === 0,
+    )
+    verifier(
+      "repliée, elle dit encore combien il reste",
+      /^Leads\s*· 3$/.test((await liste.getByRole("button", { name: /^Leads/ }).innerText()).trim()),
+      await liste.getByRole("button", { name: /^Leads/ }).innerText(),
+    )
+    verifier(
+      "les autres sections restent dépliées",
+      (await liste.getByText("Ouvrir le terminal de paiement").count()) === 1,
+    )
+  }
+
   await page.getByRole("button", { name: "Supprimer" }).first().click()
   await pause(300)
   await page.getByRole("button", { name: "Supprimer", exact: true }).last().click()
@@ -629,6 +682,25 @@ try {
     (await page.getByText("Appeler le plombier").count()) === 0,
     "la tâche est toujours là après confirmation",
   )
+
+  // Le souvenir du repli : la page rechargée, Leads est toujours repliée.
+  // En dernier, parce que recharger remet le banc à zéro.
+  {
+    await page.reload()
+    await page.waitForSelector("#liste-groupee [data-slot=card-header]")
+    const liste = page.locator("#liste-groupee")
+    verifier(
+      "rechargée, la section repliée l'est toujours",
+      (await liste.getByRole("button", { name: /^Leads/ }).getAttribute("aria-expanded")) === "false" &&
+        (await liste.getByText("Finir le tableau simplifié").count()) === 0,
+    )
+    await liste.getByRole("button", { name: /^Leads/ }).click()
+    await pause(250)
+    verifier(
+      "et la rouvrir montre de nouveau ses tâches",
+      (await liste.getByText("Finir le tableau simplifié").count()) === 1,
+    )
+  }
 } finally {
   if (navigateur) await navigateur.close()
   vite.kill()
