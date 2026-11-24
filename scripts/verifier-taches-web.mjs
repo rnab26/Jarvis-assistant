@@ -683,8 +683,25 @@ try {
     "la tâche est toujours là après confirmation",
   )
 
-  // Le souvenir du repli : la page rechargée, Leads est toujours repliée.
-  // En dernier, parce que recharger remet le banc à zéro.
+  // Le menu « Sections » : replier la rangée des catégories (sa demande du
+  // 24 nov. 2026, rangée entourée sur la capture de la tablette).
+  {
+    const filtre = page.locator("#filtre-categories")
+    await filtre.getByRole("button", { name: /^Sections/ }).click()
+    await pause(250)
+    verifier(
+      "« Sections » replie la rangée des catégories",
+      (await filtre.getByRole("button", { name: /^Perso/ }).count()) === 0,
+    )
+    verifier(
+      "repliée, elle dit quel filtre est actif",
+      (await filtre.getByRole("button", { name: /^Sections/ }).innerText()).includes("Toutes"),
+      await filtre.getByRole("button", { name: /^Sections/ }).innerText(),
+    )
+  }
+
+  // Le souvenir du repli : la page rechargée, Leads est toujours repliée,
+  // et la rangée des catégories aussi. En dernier : recharger remet le banc à zéro.
   {
     await page.reload()
     await page.waitForSelector("#liste-groupee [data-slot=card-header]")
@@ -699,6 +716,17 @@ try {
     verifier(
       "et la rouvrir montre de nouveau ses tâches",
       (await liste.getByText("Finir le tableau simplifié").count()) === 1,
+    )
+    const filtre = page.locator("#filtre-categories")
+    verifier(
+      "rechargée, la rangée des catégories est toujours repliée",
+      (await filtre.getByRole("button", { name: /^Perso/ }).count()) === 0,
+    )
+    await filtre.getByRole("button", { name: /^Sections/ }).click()
+    await pause(250)
+    verifier(
+      "et « Sections » la déplie de nouveau",
+      (await filtre.getByRole("button", { name: /^Perso/ }).count()) === 1,
     )
   }
 } finally {
