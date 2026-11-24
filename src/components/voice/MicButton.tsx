@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core"
 import { useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
+import { Mic, MicOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { JarvisCore } from "@/components/JarvisCore"
 import { pastilleQuota, type Consommation } from "@/lib/consommationModele"
@@ -1818,23 +1819,44 @@ export function MicButton({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      {/* Le cœur EST le bouton : c'est lui qui réagit à ce qui se passe, plutôt
-          qu'une icône qui changerait de dessin. */}
-      <button
-        type="button"
-        onClick={handleClick}
-        disabled={status === "processing"}
-        aria-label={
-          status === "speaking"
-            ? "Interrompre Jarvis"
-            : status === "listening"
-              ? "J'ai fini de parler"
-              : "Commande vocale"
-        }
-        className="rounded-full transition-transform active:scale-95 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
-      >
-        <JarvisCore etat={status} taille={76} />
-      </button>
+      <div className="relative">
+        {/* Le cœur EST le bouton : c'est lui qui réagit à ce qui se passe, plutôt
+            qu'une icône qui changerait de dessin. */}
+        <button
+          type="button"
+          onClick={handleClick}
+          disabled={status === "processing"}
+          aria-label={
+            status === "speaking"
+              ? "Interrompre Jarvis"
+              : status === "listening"
+                ? "J'ai fini de parler"
+                : "Commande vocale"
+          }
+          className="rounded-full transition-transform active:scale-95 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+        >
+          <JarvisCore etat={status} taille={76} />
+        </button>
+        {/* COUPER LE MICRO, à côté du cœur (sa demande du 24 nov. 2026 : « qu'il
+            arrête de s'ouvrir et de s'éteindre incessamment »). C'est le même
+            réglage que Paramètres › Mot-clé de réveil : éteint, la boucle de
+            veille s'arrête et rend le micro tout de suite (nettoyage de l'effet
+            plus bas). Le cœur reste utilisable d'un appui. Posé à droite sans
+            décaler le cœur, qui reste centré. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setWakeWordEnabled(!wakeWordEnabled)}
+          aria-pressed={!wakeWordEnabled}
+          aria-label={wakeWordEnabled ? "Couper le micro" : "Réactiver le micro"}
+          className={cn(
+            "absolute top-1/2 left-full ml-3 size-11 -translate-y-1/2 rounded-full",
+            !wakeWordEnabled && "text-destructive",
+          )}
+        >
+          {wakeWordEnabled ? <Mic className="size-5" /> : <MicOff className="size-5" />}
+        </Button>
+      </div>
       {status === "listening" && !liveRef.current && (
         <p className="text-sm text-muted-foreground">
           {phraseEcoute({ pret: micReady, aDuTexte: !!lastUserText, attenteDepassee })}
@@ -1918,6 +1940,9 @@ export function MicButton({
             {modeLive ? "Dis « Jarvis » pour lancer la conversation" : "Dis « Jarvis » quand tu veux"}
           </p>
         )
+      )}
+      {!wakeWordEnabled && (status === "idle" || status === "wake-listening") && (
+        <p className="text-xs text-muted-foreground">Micro coupé. Touche le cœur pour parler quand même.</p>
       )}
       {(lastUserText || lastReply) && (
         <div className="flex max-w-xs flex-col items-center gap-2 text-center text-sm">

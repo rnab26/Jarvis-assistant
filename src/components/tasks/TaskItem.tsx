@@ -1,4 +1,4 @@
-import { ArrowRightLeft, BellOff, BellRing, CloudOff, Pencil, RotateCw, Trash2 } from "lucide-react"
+import { ArrowRightLeft, BellOff, BellRing, CloudOff, Pencil, RotateCw, Target, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { ConfirmerAction } from "@/components/ConfirmerAction"
 import { alreadyNotified } from "@/lib/notifyError"
@@ -44,6 +44,9 @@ interface TaskItemProps {
   onRelancerEnvoi?: (id: string) => void
   /** Retirer une dictée de la file : elle disparaît pour de bon. */
   onOublierEnAttente?: (id: string) => void
+  /** Mettre la tâche dans l'« Objectif du jour », ou l'en retirer. Absent =
+   * pas de cible. */
+  onObjectif?: (task: Task) => void
 }
 
 export function TaskItem({
@@ -56,6 +59,7 @@ export function TaskItem({
   prefsNotifs,
   onRelancerEnvoi,
   onOublierEnAttente,
+  onObjectif,
 }: TaskItemProps) {
   const [deplie, setDeplie] = useState(false)
   const [enCours, setEnCours] = useState(false)
@@ -165,6 +169,21 @@ export function TaskItem({
           </>
         ) : (
         <>
+        {/* La cible, juste avant le crayon (sa demande du 24 nov. 2026).
+            Colorée quand la tâche est dans l'objectif : on la reconnaît aussi
+            dans sa section, pas seulement dans la liste du haut. */}
+        {onObjectif && !isDone && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={`zone-tactile shrink-0 ${task.objectif_le ? "bg-primary/10 text-primary" : ""}`}
+            aria-label={task.objectif_le ? "Retirer de l'objectif du jour" : "Ajouter à l'objectif du jour"}
+            aria-pressed={!!task.objectif_le}
+            onClick={() => onObjectif(task)}
+          >
+            <Target className="size-3.5" />
+          </Button>
+        )}
         <TaskFormDialog
           categories={categories}
           task={task}

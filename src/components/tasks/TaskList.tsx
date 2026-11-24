@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Plus } from "lucide-react"
+import { ChevronDown, ChevronRight, Plus, Target } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,6 +31,9 @@ interface TaskListProps {
   /** Le « + » de chaque bloc : crée une tâche déjà rangée dans sa catégorie
    * (sa demande du 24 nov. 2026). Absent = pas de bouton. */
   onAjouter?: (input: TaskInput) => Promise<void>
+  /** La cible de chaque ligne : ajoute ou retire de l'« Objectif du jour ».
+   * Absent = ni cible ni bloc « Objectif du jour ». */
+  onObjectif?: (task: Task) => void
 }
 
 const NO_CATEGORY_LABEL = "Sans catégorie"
@@ -47,6 +50,7 @@ export function TaskList({
   onOublierEnAttente,
   archivesOuvertes = false,
   onAjouter,
+  onObjectif,
 }: TaskListProps) {
   const categoryById = new Map(categories.map((c) => [c.id, c.name]))
   const groups = new Map<string, Task[]>()
@@ -73,25 +77,45 @@ export function TaskList({
     )
   }
 
+  const communs = {
+    categories,
+    toutesLesTaches: tasks,
+    onToggle,
+    onUpdate,
+    onDelete,
+    onEnFaireUnChantier,
+    prefsNotifs,
+    onRelancerEnvoi,
+    onOublierEnAttente,
+    archivesOuvertes,
+    onObjectif,
+  }
+  // L'objectif du jour, au-dessus de toutes les sections (sa demande du
+  // 24 nov. 2026 : « pour éviter de tout consulter »). Une tâche cochée en
+  // sort ; elle reste aussi dans sa section, cible colorée.
+  const objectifs = onObjectif ? tasks.filter((t) => t.objectif_le && t.status !== "done") : []
+
   return (
     <div className="flex flex-col gap-4">
+      {objectifs.length > 0 && (
+        <BlocCategorie
+          {...communs}
+          cleRepli="objectif"
+          enAvant
+          categorieId={null}
+          nom="Objectif du jour"
+          taches={objectifs}
+        />
+      )}
       {orderedKeys.map((categoryId) => (
         <BlocCategorie
+          {...communs}
           key={categoryId}
+          cleRepli={categoryId}
           categorieId={categoryId === "none" ? null : categoryId}
-          toutesLesTaches={tasks}
           onAjouter={onAjouter}
           nom={categoryById.get(categoryId) ?? NO_CATEGORY_LABEL}
           taches={groups.get(categoryId)!}
-          categories={categories}
-          onToggle={onToggle}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
-          onEnFaireUnChantier={onEnFaireUnChantier}
-          prefsNotifs={prefsNotifs}
-          onRelancerEnvoi={onRelancerEnvoi}
-          onOublierEnAttente={onOublierEnAttente}
-          archivesOuvertes={archivesOuvertes}
         />
       ))}
     </div>
@@ -126,17 +150,38 @@ function BlocCategorie({
   onOublierEnAttente,
   archivesOuvertes,
   onAjouter,
+  onObjectif,
   categorieId,
   toutesLesTaches,
+  cleRepli,
+  enAvant = false,
 }: {
   nom: string
   taches: Task[]
   categorieId: string | null
   /** Pour le « ça existe déjà » du formulaire, qui compare à toute la liste. */
   toutesLesTaches: Task[]
+  /** Sous quel nom l'appareil retient si ce bloc est replié. */
+  cleRepli: string
+  /** Le bloc « Objectif du jour » : cible dans le titre, cadre coloré. */
+  enAvant?: boolean
 } & Omit<TaskListProps, "tasks">) {
   const { aFaire, archivees } = repartir(taches)
   const [ouvert, setOuvert] = useState(archivesOuvertes === true)
+  // Replié ou déplié, retenu par section sur CET appareil (sa demande du
+  // 24 nov. 2026). Même préfixe que les sections de Paramètres, déjà classé
+  // « confort d'écran, pas une préférence à synchroniser » dans reglages.ts.
+  const cleStockage = `jarvis_section_taches_${cleRepli}`
+  const [replie, setReplie] = useState(() => lireStockage(cleStockage) === "0")
+  function basculerRepli() {
+    const suivant = !replie
+    setReplie(suivant)
+    try {
+      localStorage.setItem(cleStockage, suivant ? "0" : "1")
+    } catch {
+      // Stockage refusé : le bloc s'ouvrira simplement déplié la prochaine fois.
+    }
+  }
   const soldee = aFaire.length === 0 ? phraseCategorieSoldee(archivees.length) : null
 
   const ligne = (task: Task) => (
@@ -150,6 +195,7 @@ function BlocCategorie({
       prefsNotifs={prefsNotifs}
       onRelancerEnvoi={onRelancerEnvoi}
       onOublierEnAttente={onOublierEnAttente}
+      onObjectif={onObjectif}
       onEnFaireUnChantier={
         onEnFaireUnChantier
           ? (titre, notes) => onEnFaireUnChantier(task, titre, notes)
@@ -164,7 +210,7 @@ function BlocCategorie({
     // carte, resserrer les écarts internes en rend 8 par intervalle. Un blanc
     // de seize points sous un bandeau qui sépare déjà à l'œil ne sert plus à
     // rien — la séparation est faite par le trait, pas par le vide.
-    <Card className="gap-2">
+    <Card className={enAvant ? "gap-2 ring-2 ring-primary/40" : "gap-2"}>
       {/* Le « + » est posé PAR-DESSUS le bandeau, à droite, sans prendre de
           place : le nom reste centré (padding symétrique px-9) et la carte
           garde sa hauteur — budget mesuré par verifier-taches-web. */}
@@ -172,7 +218,23 @@ function BlocCategorie({
         {/* Ancré sur la ligne du nom, pas sur le bandeau : le bandeau a plus
             de marge en bas qu'en haut, le « + » y tombait plus bas que le nom. */}
         <CardTitle className="relative px-9 text-center font-semibold tracking-wide">
-          {nom}
+          {/* Toucher le nom replie ou déplie le bloc. Replié, il garde son
+              compte : on sait ce qui attend sans rouvrir. */}
+          <button
+            type="button"
+            aria-expanded={!replie}
+            onClick={basculerRepli}
+            className="inline-flex w-full items-center justify-center gap-1.5"
+          >
+            {enAvant && <Target className="size-4 shrink-0 text-primary" />}
+            {nom}
+            {replie && aFaire.length > 0 && (
+              <span className="font-normal text-muted-foreground">· {aFaire.length}</span>
+            )}
+            <ChevronDown
+              className={`size-4 shrink-0 text-muted-foreground transition-transform ${replie ? "-rotate-90" : ""}`}
+            />
+          </button>
           {onAjouter && (
             // .zone-tactile impose position: relative : le placement va sur l'enveloppe.
             <span className="absolute top-1/2 right-0 flex -translate-y-1/2">
@@ -196,38 +258,52 @@ function BlocCategorie({
           )}
         </CardTitle>
       </CardHeader>
-      {/* Un filet entre deux tâches, pas un cadre autour de chacune :
-          c'est ce qui rend la liste compacte sans rétrécir le texte. */}
-      <CardContent className="divide-y">
-        {soldee ? (
-          <p className="py-2 text-center text-sm text-muted-foreground">{soldee}</p>
-        ) : (
-          aFaire.map(ligne)
-        )}
-      </CardContent>
-
-      {/* LES TERMINÉES. Le dépliant ne s'affiche PAS quand il n'y en a aucune :
-          « 0 terminées » est un contrôle mort, et la carte reste exactement
-          aussi haute qu'avant pour une catégorie qu'il n'a pas encore
-          entamée. */}
-      {archivees.length > 0 && (
-        <CardContent className="pt-0">
-          <button
-            type="button"
-            aria-expanded={ouvert}
-            onClick={() => setOuvert(!ouvert)}
-            className="zone-tactile flex w-full items-center justify-center gap-1.5 border-t pt-2 text-xs text-muted-foreground"
-          >
-            {ouvert ? (
-              <ChevronDown className="size-3.5 shrink-0" />
+      {!replie && (
+        <>
+          {/* Un filet entre deux tâches, pas un cadre autour de chacune :
+              c'est ce qui rend la liste compacte sans rétrécir le texte. */}
+          <CardContent className="divide-y">
+            {soldee ? (
+              <p className="py-2 text-center text-sm text-muted-foreground">{soldee}</p>
             ) : (
-              <ChevronRight className="size-3.5 shrink-0" />
+              aFaire.map(ligne)
             )}
-            {libelleArchive(archivees.length)}
-          </button>
-          {ouvert && <div className="divide-y">{archivees.map(ligne)}</div>}
-        </CardContent>
+          </CardContent>
+
+          {/* LES TERMINÉES. Le dépliant ne s'affiche PAS quand il n'y en a aucune :
+              « 0 terminées » est un contrôle mort, et la carte reste exactement
+              aussi haute qu'avant pour une catégorie qu'il n'a pas encore
+              entamée. */}
+          {archivees.length > 0 && (
+            <CardContent className="pt-0">
+              <button
+                type="button"
+                aria-expanded={ouvert}
+                onClick={() => setOuvert(!ouvert)}
+                className="zone-tactile flex w-full items-center justify-center gap-1.5 border-t pt-2 text-xs text-muted-foreground"
+              >
+                {ouvert ? (
+                  <ChevronDown className="size-3.5 shrink-0" />
+                ) : (
+                  <ChevronRight className="size-3.5 shrink-0" />
+                )}
+                {libelleArchive(archivees.length)}
+              </button>
+              {ouvert && <div className="divide-y">{archivees.map(ligne)}</div>}
+            </CardContent>
+          )}
+        </>
       )}
     </Card>
   )
+}
+
+/** Le stockage peut être refusé (navigation privée, quota) : on lit alors
+ * « rien choisi », donc déplié. */
+function lireStockage(cle: string): string | null {
+  try {
+    return localStorage.getItem(cle)
+  } catch {
+    return null
+  }
 }

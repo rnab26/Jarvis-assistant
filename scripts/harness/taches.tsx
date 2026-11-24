@@ -221,6 +221,11 @@ function BancDeLaListe() {
       }}
       onUpdate={rien}
       onDelete={rien}
+      onObjectif={(t) => {
+        setTaches((liste) =>
+          liste.map((x) => (x.id === t.id ? { ...x, objectif_le: x.objectif_le ? null : "2026-11-24" } : x)),
+        )
+      }}
       onAjouter={async (input) => {
         setTaches((liste) => [
           ...liste,

@@ -343,6 +343,39 @@ try {
   if (!reponseCoeur.includes("Tu as 2 tâches")) console.log("      page :", reponseCoeur.replace(/\s+/g, " ").slice(0, 300))
   await coeur.close()
 
+  // ── COUPER LE MICRO, À CÔTÉ DU CŒUR ──
+  // Sa demande du 24 nov. 2026 : « couper le micro réellement, pour qu'il
+  // arrête de s'ouvrir et de s'éteindre incessamment », et pouvoir le
+  // réactiver. Coupé = plus aucune écoute ouverte, et aucune ne se rouvre.
+  {
+    const muet = await navigateur.newPage()
+    muet.on("pageerror", (e) => {
+      echecs++
+      console.log("ERREUR DE PAGE (couper le micro):", e.message)
+    })
+    await muet.addInitScript(FAUX_MOTEUR)
+    await muet.goto(`${BASE}/scripts/harness/micbutton.html`)
+    await muet.waitForFunction("window.__sr && window.__sr.starts >= 1", null, { timeout: 10000 })
+    await muet.getByRole("button", { name: "Couper le micro" }).click()
+    await pause(300)
+    verifier("couper le micro : l'écoute en cours est rendue tout de suite", await muet.evaluate("window.__actifs()"), 0)
+    const departs = await muet.evaluate("window.__sr.starts")
+    await pause(3000)
+    verifier("couper le micro : aucune écoute ne se rouvre", await muet.evaluate("window.__sr.starts"), departs)
+    verifier(
+      "couper le micro : c'est dit sous le cœur",
+      await muet.getByText("Micro coupé").isVisible(),
+      true,
+    )
+    await muet.getByRole("button", { name: "Réactiver le micro" }).click()
+    const reprise = await muet
+      .waitForFunction(`window.__sr.starts > ${departs}`, null, { timeout: 8000 })
+      .then(() => true)
+      .catch(() => false)
+    verifier("réactiver le micro : la veille reprend", reprise, true)
+    await muet.close()
+  }
+
   // ── L'ÉCRAN FIGÉ PENDANT QU'IL PARLE (chantier 53d99720) ──
   //
   // MESURÉ sur ses quatre vrais tours du 18/09 : le micro s'ouvre en 23 à

@@ -48,6 +48,9 @@ const QUOTA_BANC = resumerConsommation([
 
 function BancDuCoeur() {
   const [tasks, setTasks] = useState<Task[]>([])
+  // Un vrai état, pas une constante : le bouton « Couper le micro » à côté du
+  // cœur doit pouvoir l'éteindre et le rallumer (banc du 24 nov. 2026).
+  const [veille, setVeille] = useState(true)
 
   // Les tâches arrivent un peu après le montage, comme depuis Supabase.
   useEffect(() => {
@@ -77,14 +80,14 @@ function BancDuCoeur() {
       // (36 phrases, aucun refus) plutôt qu'à null, sinon elle ne s'afficherait
       // jamais et le banc mesurerait une colonne qui n'existe pas.
       consommation={QUOTA_BANC}
-      wakeWordEnabled={true}
+      wakeWordEnabled={veille}
       // Réglable depuis l'URL (?abandon=3) et à 0 par défaut : 0 rend
       // exactement le comportement d'avant le 17 sept. 2026, donc tous les
       // autres contrôles de ce banc mesurent la même chose qu'hier. Un seuil
       // bas sert au contrôle qui vérifie qu'une chaîne de refus finit par
       // faire renoncer la veille sans attendre vingt paliers.
       seuilAbandonVeille={Number(new URLSearchParams(window.location.search).get("abandon") ?? 0)}
-      setWakeWordEnabled={() => {}}
+      setWakeWordEnabled={setVeille}
       setGeofenceEnabled={() => {}}
       entrainementApi={{ sequences: [], addSequence: rien, rejouer: async () => "" }}
       voiceIndex={null}

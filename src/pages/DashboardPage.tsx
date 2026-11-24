@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react"
 import { useEffect, useState } from "react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { BarreActualiser } from "@/components/BarreActualiser"
 import { LoadError } from "@/components/LoadError"
@@ -13,6 +14,7 @@ import { proposerAnnulation } from "@/lib/annulation"
 import { CLE_ARCHIVES_OUVERTES, archivesOuvertes, phraseArchivee, phraseRemiseAFaire } from "@/lib/archiveTaches"
 import { SANS_CATEGORIE, categoriesOrdonnees, compterAFaire } from "@/lib/ordreCategories"
 import { REGLAGE_MODIFIE } from "@/lib/reglages"
+import { isoLocal } from "@/lib/widgetTaches"
 import type { Task } from "@/types/database"
 
 export function DashboardPage() {
@@ -100,6 +102,18 @@ export function DashboardPage() {
     // pour un second chantier au prochain appui (revue Copilot, PR #5).
     if (task.enAttente) oublierEnAttente(task.id)
     else await toggleStatus(task)
+  }
+
+  /** La cible d'une ligne : dans l'« Objectif du jour », ou dehors. La date
+   * est locale (Israël), pas UTC — voir isoLocal. */
+  async function basculerObjectif(task: Task) {
+    const ajout = !task.objectif_le
+    try {
+      await updateTask(task.id, { objectif_le: ajout ? isoLocal(new Date()) : null })
+      toast.success(ajout ? "Ajoutée à l'objectif du jour" : "Retirée de l'objectif du jour")
+    } catch {
+      // L'échec est déjà dit par un toast d'erreur (withErrorToast).
+    }
   }
 
   const filteredTasks =
@@ -193,6 +207,7 @@ export function DashboardPage() {
           onAjouter={async (input) => {
             await addTask(input)
           }}
+          onObjectif={basculerObjectif}
         />
       )}
     </div>

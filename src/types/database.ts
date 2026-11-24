@@ -40,6 +40,9 @@ export interface Task {
   status: TaskStatus
   created_at: string
   updated_at: string
+  /** Jour où il l'a mise dans l'« Objectif du jour » (migration 0059).
+   * null ou absent = pas dans l'objectif. */
+  objectif_le?: string | null
   /**
    * Vrai quand cette tâche est dans la FILE D'ATTENTE : il l'a dictée, elle
    * s'affiche, mais elle n'est pas encore écrite en base (réseau coupé).
@@ -62,6 +65,8 @@ export interface TaskInput {
   due_time: string | null
   category_id: string | null
   status: TaskStatus
+  /** Absent = inchangé : le formulaire ne touche pas à l'objectif du jour. */
+  objectif_le?: string | null
 }
 
 export type DevStatus = "todo" | "in_progress" | "done"
