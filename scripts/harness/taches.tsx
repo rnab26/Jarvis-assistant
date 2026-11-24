@@ -221,6 +221,12 @@ function BancDeLaListe() {
       }}
       onUpdate={rien}
       onDelete={rien}
+      onAjouter={async (input) => {
+        setTaches((liste) => [
+          ...liste,
+          { ...tache(`n${liste.length}`, input.title, input.notes), category_id: input.category_id },
+        ])
+      }}
     />
   )
 }
