@@ -174,22 +174,25 @@ function BlocCategorie({
         <CardTitle className="relative px-9 text-center font-semibold tracking-wide">
           {nom}
           {onAjouter && (
-            <TaskFormDialog
-              categories={categoriesOrdonnees(categories)}
-              taches={toutesLesTaches}
-              categorieInitiale={categorieId}
-              onSubmit={onAjouter}
-              trigger={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`Ajouter une tâche dans ${nom}`}
-                  className="absolute top-1/2 right-0 -translate-y-1/2"
-                >
-                  <Plus className="size-5" />
-                </Button>
-              }
-            />
+            // .zone-tactile impose position: relative : le placement va sur l'enveloppe.
+            <span className="absolute top-1/2 right-0 flex -translate-y-1/2">
+              <TaskFormDialog
+                categories={categoriesOrdonnees(categories)}
+                taches={toutesLesTaches}
+                categorieInitiale={categorieId}
+                onSubmit={onAjouter}
+                trigger={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Ajouter une tâche dans ${nom}`}
+                    className="zone-tactile"
+                  >
+                    <Plus className="size-5" />
+                  </Button>
+                }
+              />
+            </span>
           )}
         </CardTitle>
       </CardHeader>
